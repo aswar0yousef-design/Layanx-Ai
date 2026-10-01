@@ -29,3 +29,7 @@ Flow:
 Development -> Staging -> CI Quality Gate -> Release Gate -> Production -> Health Probe -> Keep / Rollback
 
 Rollback is deliberately separated from application business logic so deployment recovery remains independently auditable. RecoveryAuditTrail records recovery start, rollback target, post-recovery verification, or a halted recovery with version/commit/checksum evidence and a final summary. RecoveryStateMachine constrains the lifecycle to valid transitions and prevents recovery from continuing after verification or halt. RecoveryPersistence stores the recovery identifier, deployment identity, target deployment, state, attempt count, timestamps, and reason so a process restart can inspect the last recovery position before starting another recovery. RecoveryResumeEngine maps an interrupted state to a safe next action: checking, verification, completion, or halt; an interrupted `recovering` state is verified before another rollback is considered. RecoveryPersistence keeps terminal recovery records in a bounded queryable history while retaining only one active recovery record, and the controller exposes that history for an administrative recovery view.
+
+## Runtime health endpoint
+
+The deployable runtime exposes `GET /health`. It returns HTTP 200 with `{ "ok": true, "status": "healthy" }` when ready, and HTTP 503 when readiness fails. The default port is `3000` and can be overridden with `PORT`. Build with `npm run build` and start with `npm start`.
