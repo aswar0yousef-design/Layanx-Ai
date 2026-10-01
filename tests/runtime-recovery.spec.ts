@@ -38,6 +38,9 @@ try{
 }catch(error){
   if(!(error instanceof Error)||!error.message.includes("Recovery readiness failed"))throw error;
 }
+const report=await recovery.report(mission.id,badRequest);
+if(report.readiness.ready)throw new Error("Recovery report incorrectly marked an invalid request as ready.");
+if(!report.readiness.issues.some(issue=>issue.code==="AGENT_UNAVAILABLE"))throw new Error("Recovery report omitted agent readiness issue.");
 const candidates=await recovery.inspect();
 if(candidates.length!==1||candidates[0]?.missionId!==mission.id)throw new Error("Persisted recovery candidate was not discovered.");
 
