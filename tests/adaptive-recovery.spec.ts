@@ -37,6 +37,7 @@ const first=await core1.executeMissionAdaptive(mission.id,"project",1);
 if(first.completed||calls1.tool!==1)throw new Error("First bounded run should execute only the first step.");
 const snapshot=await persistence.get(mission.id);
 if(!snapshot)throw new Error("Adaptive snapshot was not persisted.");
+
 const calls2={planner:0,tool:0};
 const core2=new LayanXCore(undefined,persistence);
 setup(core2,[JSON.stringify({tool:"step.two",action:"read second",permission:"L1_READ",reason:"continue"}),"null"],calls2);
