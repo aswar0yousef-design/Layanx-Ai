@@ -22,6 +22,7 @@ export interface PersistedRecoveryRecord{
 
 export class RecoveryPersistence{
  private readonly key="release:recovery";
+ private readonly historyKey="release:recovery:history";
 
  constructor(private readonly storage:StorageAdapter){}
 
@@ -30,8 +31,13 @@ export class RecoveryPersistence{
  }
 
  async get(recoveryId:string):Promise<PersistedRecoveryRecord|undefined>{
-  const record=await this.storage.transaction(async tx=>tx.get<PersistedRecoveryRecord>(this.key));
-  if(!record||record.recoveryId!==recoveryId)return undefined;
+  const record=await this.storage.transaction(async tx=>{
+   const current=await tx.get<PersistedRecoveryRecord>(this.key);
+   if(current?.recoveryId===recoveryId)return current;
+   const history=await tx.get<PersistedRecoveryRecord[]>(this.historyKey)??[];
+   return history.find(item=>item.recoveryId===recoveryId);
+  });
+  if(!record)return undefined;
   this.validate(record);
   return structuredClone(record);
  }
@@ -40,18 +46,37 @@ export class RecoveryPersistence{
   const record=await this.storage.transaction(async tx=>tx.get<PersistedRecoveryRecord>(this.key));
   if(!record)return undefined;
   this.validate(record);
-  if(record.state==="verified"||record.state==="halted")return undefined;
+  if(this.isTerminal(record))return undefined;
   return structuredClone(record);
+ }
+
+ async history(limit=50):Promise<PersistedRecoveryRecord[]>{
+  if(limit<1||!Number.isInteger(limit))throw new Error("Recovery history limit must be a positive integer.");
+  const records=await this.storage.transaction(async tx=>tx.get<PersistedRecoveryRecord[]>(this.historyKey)??[]);
+  records.forEach(record=>this.validate(record));
+  return records
+   .sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt))
+   .slice(0,limit)
+   .map(record=>structuredClone(record));
  }
 
  async save(record:PersistedRecoveryRecord):Promise<void>{
   this.validate(record);
   await this.storage.transaction(async tx=>{
    const current=await tx.get<PersistedRecoveryRecord>(this.key);
-   if(current&&current.recoveryId!==record.recoveryId&&current.state!=="verified"&&current.state!=="halted"){
+   if(current&&current.recoveryId!==record.recoveryId&&!this.isTerminal(current)){
     throw new Error("Another recovery operation is already active.");
    }
+
    const persisted={...record,startedAt:current&&current.recoveryId===record.recoveryId?current.startedAt:record.startedAt};
+   if(this.isTerminal(persisted)){
+    const history=await tx.get<PersistedRecoveryRecord[]>(this.historyKey)??[];
+    const withoutCurrent=history.filter(item=>item.recoveryId!==persisted.recoveryId);
+    withoutCurrent.push(structuredClone(persisted));
+    await tx.set(this.historyKey,withoutCurrent);
+    await tx.set(this.key,undefined);
+    return;
+   }
    await tx.set(this.key,structuredClone(persisted));
   });
  }
@@ -61,6 +86,10 @@ export class RecoveryPersistence{
    const current=await tx.get<PersistedRecoveryRecord>(this.key);
    if(current?.recoveryId===recoveryId)await tx.set(this.key,undefined);
   });
+ }
+
+ private isTerminal(record:PersistedRecoveryRecord):boolean{
+  return record.state==="verified"||record.state==="halted";
  }
 
  private validate(record:PersistedRecoveryRecord):void{
