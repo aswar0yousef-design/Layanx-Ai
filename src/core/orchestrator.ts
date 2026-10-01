@@ -129,7 +129,7 @@ export class LayanXCore{
 
   private recordAdaptiveStop(mission:import("./types.js").Mission,decision:import("./adaptive-decision.js").AdaptiveDecision,stepsExecuted:number,agentId:string){
     const metadata={missionId:mission.id,reason:decision.reason,stepsExecuted};
-    this.audit.append({timestamp:new Date().toISOString(),actor:agentId,action:"mission.adaptive.stop",resource:mission.id,result:decision.reason==="tool_failure"?"failure":"success",metadata});
+    this.audit.append({timestamp:new Date().toISOString(),actor:agentId,action:"mission.adaptive.stop",resource:mission.id,result:["tool_failure","planner_failure"].includes(decision.reason)?"failure":"success",metadata});
     this.memory.remember({missionId:mission.id,kind:"decision",summary:"Adaptive mission stopped: "+decision.reason,content:{reason:decision.reason,detail:decision.detail,stepsExecuted},confidence:1,tags:["mission","adaptive","stop",decision.reason]});
   }
 
@@ -173,10 +173,20 @@ export class LayanXCore{
       const missionMemory=this.memory.list().filter(entry=>entry.missionId===mission.id).slice(-12).map(entry=>({
         kind:entry.kind,summary:entry.summary,content:entry.content,tags:entry.tags
       }));
-      const next=await this.aiPlanner.nextTool({
-        goal:mission.goal,result:latest,tools:catalog,
-        requiredPermission:mission.requiredPermission,completedTools,memory:missionMemory
-      });
+      let next;
+      try{
+        next=await this.aiPlanner.nextTool({
+          goal:mission.goal,result:latest,tools:catalog,
+          requiredPermission:mission.requiredPermission,completedTools,memory:missionMemory
+        });
+      }catch(error){
+        const decision=this.adaptiveDecision.decide({
+          mission,toolResult:error instanceof Error?error.message:undefined,
+          stepsExecuted:processed,maxSteps,nextToolAvailable:true,plannerSucceeded:false
+        });
+        this.recordAdaptiveStop(mission,decision,processed,agentId);
+        return{missionId,results,completed:false,reason:decision.detail,recoverable:true};
+      }
       if(!next){
         const decision=this.adaptiveDecision.decide({mission,toolResult:latest,stepsExecuted:processed,maxSteps,nextToolAvailable:false,toolSucceeded:true});
         this.recordAdaptiveStop(mission,decision,processed,agentId);
