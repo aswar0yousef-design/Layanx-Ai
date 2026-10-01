@@ -1,0 +1,16 @@
+import {mkdtemp,writeFile,rm} from "node:fs/promises";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
+import {RecoveryPack} from "../src/core/recovery-pack.js";
+import {BackupManager} from "../src/core/backup-manager.js";
+import {RecoveryReadinessCheck} from "../src/core/recovery-readiness.js";
+const dir=await mkdtemp(join(tmpdir(),"layanx-recovery-"));
+const source=join(dir,"state.json"),backup=join(dir,"backup.json");
+await writeFile(source,"recovery-state","utf8");
+const pack=new RecoveryPack();const artifact=await pack.artifact(source);const manifest=pack.createManifest("0.1.0",[artifact]);
+if(manifest.artifacts[0].sha256!==artifact.sha256)throw new Error("Manifest checksum failed.");
+const record=await new BackupManager().backup(source,backup);
+if(!await new BackupManager().verify(record))throw new Error("Backup verification failed.");
+if(!new RecoveryReadinessCheck().evaluate({manifest:true,backup:true,checksum:true,lastKnownGood:true}).ready)throw new Error("Recovery readiness failed.");
+await rm(dir,{recursive:true,force:true});
+console.log("Recovery pack test passed.");
