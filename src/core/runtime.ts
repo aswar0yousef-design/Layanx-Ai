@@ -68,7 +68,7 @@ export class ExecutionRuntime{
   const planCount=mission.tools?.length??0;
   const currentPlanIndex=request.planIndex??(planCount>0?planCount-1:0);
   const hasNextTool=planCount>0&&currentPlanIndex<planCount-1;
-  if(hasNextTool){
+  if(runtimeOptions.deferVerification||hasNextTool){
    mission.status="running";
    this.core.executionStates.update(mission.id,{status:"running"});
    this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"success",metadata:{missionId:mission.id,planIndex:currentPlanIndex,nextPlanIndex:currentPlanIndex+1}});
