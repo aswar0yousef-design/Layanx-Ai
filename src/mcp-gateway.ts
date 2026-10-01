@@ -9,7 +9,7 @@ function error(id:string|number|undefined,code:number,message:string,data?:unkno
 
 export class McpGateway{
  constructor(private readonly core:LayanXCore){}
- handle(input:unknown):RpcResponse|undefined{
+ async handle(input:unknown):Promise<RpcResponse|undefined>{
   if(!input||typeof input!=="object"||Array.isArray(input))return error(undefined,-32600,"Invalid Request.");
   const request=input as RpcRequest;
   if(typeof request.method!=="string")return error(request.id,-32600,"Invalid Request.");
