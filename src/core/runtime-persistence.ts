@@ -53,11 +53,18 @@ export class RuntimePersistence{
   private validate(snapshot:RuntimeSnapshot):void{
     if(snapshot.schemaVersion!==RUNTIME_SNAPSHOT_VERSION)throw new Error("Unsupported runtime snapshot version.");
     if(snapshot.mission.id!==snapshot.executionState.missionId)throw new Error("Runtime snapshot mission/state mismatch.");
+    if(snapshot.ledger.some(entry=>entry.missionId!==snapshot.mission.id))throw new Error("Runtime snapshot ledger mismatch.");
+    if(snapshot.audit.some(event=>event.metadata?.missionId!==undefined && event.metadata.missionId!==snapshot.mission.id))throw new Error("Runtime snapshot audit mismatch.");
     if(snapshot.checkpoint && snapshot.checkpoint.missionId!==snapshot.mission.id)throw new Error("Runtime snapshot checkpoint mismatch.");
     if(snapshot.idempotency?.some(record=>record.missionId!==snapshot.mission.id))throw new Error("Runtime snapshot idempotency mismatch.");
     if(snapshot.memory?.some(entry=>entry.missionId!==snapshot.mission.id))throw new Error("Runtime snapshot memory mismatch.");
     if(snapshot.handoffs?.some(handoff=>handoff.missionId!==snapshot.mission.id))throw new Error("Runtime snapshot handoff mismatch.");
     if(snapshot.delegatedTasks?.some(task=>task.parentMissionId!==snapshot.mission.id))throw new Error("Runtime snapshot delegated-task mismatch.");
+    if(snapshot.delegatedTasks){
+      const taskIds=new Set(snapshot.delegatedTasks.map(task=>task.id));
+      if(snapshot.delegatedTasks.some(task=>task.dependsOn.some(dependencyId=>dependencyId===task.id||!taskIds.has(dependencyId))))
+        throw new Error("Runtime snapshot delegated-task dependency mismatch.");
+    }
     if(snapshot.nextAction && snapshot.nextAction.missionId!==snapshot.mission.id)throw new Error("Runtime snapshot next-action mismatch.");
   }
 
