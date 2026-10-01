@@ -96,7 +96,7 @@ export class LayanXCore{
       return{request,capabilityId:token.id,expiresAt:token.expiresAt};
     });
   }
-  async executeMissionTool(missionId:string,projectId:string,toolIndex=0,payload:unknown={},approvalId?:string,agentId="core"){
+  async executeMissionTool(missionId:string,projectId:string,toolIndex=0,payload:unknown={},approvalId?:string,agentId="core",runtimeOptions:{deferVerification?:boolean}={}){
     const mission=this.missions.get(missionId);
     if(!mission)throw new Error("Mission not found.");
     const plans=mission.tools??[];
@@ -106,9 +106,41 @@ export class LayanXCore{
     const catalog=this.toolCatalog.list(contract,mission.requiredPermission);
     const token=this.capabilities.issue({missionId:mission.id,agentId,projectId,resource:plan.tool,permission:plan.permission,expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
     const request=this.toolRequestBuilder.build(mission,plan,{agentId,projectId,capabilityId:token.id,payload,planIndex:toolIndex},catalog);
-    const result=await this.executionRuntime.run(mission,request,this.toolAdapters.get(plan.tool),approvalId,{projectId,capabilityId:token.id});
+    const result=await this.executionRuntime.run(mission,request,this.toolAdapters.get(plan.tool),approvalId,{projectId,capabilityId:token.id},runtimeOptions);
     this.missions.save(mission);
     return{...result,tool:plan.tool,action:plan.action,capabilityId:token.id};
+  }
+
+  async executeMissionAdaptive(missionId:string,projectId:string,maxSteps=10,agentId="core"){
+    const mission=this.missions.get(missionId);
+    if(!mission)throw new Error("Mission not found.");
+    const contract=this.agents.get(agentId);
+    const catalog=this.toolCatalog.list(contract,mission.requiredPermission);
+    if(!catalog.length)throw new Error("No tools are available for adaptive execution.");
+    const completedTools:string[]=[];
+    let latest:unknown={status:"not_started"};
+    const results=[];
+    for(let step=0;step<maxSteps;step++){
+      const next=await this.aiPlanner.nextTool({
+        goal:mission.goal,result:latest,tools:catalog,
+        requiredPermission:mission.requiredPermission,completedTools
+      });
+      if(!next)break;
+      mission.tools=mission.tools??[];
+      mission.tools.push(next);
+      this.missions.save(mission);
+      const index=mission.tools.length-1;
+      const result=await this.executeMissionTool(missionId,projectId,index,{},undefined,agentId,{deferVerification:true});
+      results.push(result);
+      if(!result.ok)return{missionId,results,completed:false,reason:result.error};
+      completedTools.push(next.tool);
+      latest=result.data;
+    }
+    const finalMission=this.missions.get(missionId);
+    if(!finalMission)throw new Error("Mission not found.");
+    const finalResult=await this.executionRuntime.finalize(finalMission,latest,agentId);
+    this.missions.save(finalMission);
+    return{missionId,results,completed:finalResult.ok,finalResult};
   }
 
   async executeMissionTools(missionId:string,projectId:string,payloads:unknown[]=[] ,approvalId?:string,agentId="core"){
