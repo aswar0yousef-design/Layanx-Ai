@@ -12,7 +12,14 @@ const rank:Record<PermissionLevel,number>={L1_READ:1,L2_ANALYZE:2,L3_MODIFY:3,L4
 
 export class CoreRuntime{
   private readonly runner:MissionRunner;
-  constructor(private readonly core:LayanXCore,private readonly persistence?:RuntimePersistence){this.runner=new MissionRunner(core);}
+  constructor(private readonly core:LayanXCore,private readonly persistence?:RuntimePersistence){
+    this.runner=new MissionRunner(core);
+    this.persistence?.startAutoCleanup();
+  }
+
+  shutdown():void{
+    this.persistence?.stopAutoCleanup();
+  }
 
   static withJsonPersistence(core:LayanXCore,path:string):CoreRuntime{
     return new CoreRuntime(core,new RuntimePersistence(RuntimeStorage.json(path)));
