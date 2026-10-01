@@ -4,12 +4,15 @@ import {configureProviders,providerSummary} from "./config/providers.js";
 import {registerBuiltinTools,registerHttpReadTool,registerGitHubReadTools} from "./tools/builtin.js";
 import {RuntimePersistence} from "./core/runtime-persistence.js";
 import {RuntimeStorage} from "./storage/runtime-storage.js";
+import {PostgresStorageAdapter} from "./storage/postgres-adapter.js";
 
 export interface RuntimeOptions{storagePath?:string;}
 
 export function createRuntime(options:RuntimeOptions={}){
  const storagePath=options.storagePath??process.env.LAYANX_RUNTIME_STORAGE_PATH;
- const persistence=storagePath?new RuntimePersistence(RuntimeStorage.json(storagePath)):undefined;
+ const databaseUrl=process.env.LAYANX_DATABASE_URL??process.env.DATABASE_URL;
+ const storage=databaseUrl?new RuntimeStorage(new PostgresStorageAdapter(databaseUrl)):storagePath?RuntimeStorage.json(storagePath):undefined;
+ const persistence=storage?new RuntimePersistence(storage):undefined;
  const core=new LayanXCore(undefined,persistence);
  registerBuiltinTools(core);
  registerHttpReadTool(core);
