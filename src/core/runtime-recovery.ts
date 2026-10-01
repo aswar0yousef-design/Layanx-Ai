@@ -56,7 +56,7 @@ export class RuntimeRecoveryManager{
     const result=await runner.execute(snapshot.mission,request,adapter,approvalId);
     const updated=this.core.executionStates.get(missionId);
     if(updated){
-      await this.persistence.save({
+      await this.persistence.saveAtomic({
         ...snapshot,
         mission:snapshot.mission,
         executionState:updated,
