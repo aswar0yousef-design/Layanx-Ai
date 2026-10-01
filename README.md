@@ -1,3 +1,32 @@
 # LayanX AI
 
-Local-first, secure, rebuildable autonomous AI platform.
+LayanX is a security-first autonomous AI runtime foundation.
+
+## Current architecture
+
+- Mission planning and execution
+- Risk, permission, approval, and capability enforcement
+- Tool registry and guarded execution
+- Verification, audit ledger, checkpoints, and recovery
+- Model/provider routing and failover foundations
+- Project isolation and memory boundaries
+- Skill scanning and controlled enablement
+- Storage abstraction and migrations foundation
+- Environment profiles and release gates
+- Post-deployment health probes and rollback logic
+
+## Quality commands
+
+```bash
+npm install
+npm run typecheck
+npm run security:check
+npm test
+npm run release:check
+```
+
+The repository intentionally separates core business logic from storage and deployment concerns so the persistence backend and hosting platform can evolve without rewriting the mission engine.
+
+## Development principle
+
+Stabilize and verify the existing foundation before adding another architectural layer. Production claims should be backed by executable CI evidence.
