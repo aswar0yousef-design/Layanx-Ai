@@ -161,8 +161,9 @@ export class LayanXCore{
         goal:mission.goal,result:latest,tools:catalog,
         requiredPermission:mission.requiredPermission,completedTools
       });
+      if(!next)break;
       const decision=this.adaptiveDecision.decide({
-        mission,toolResult:latest,stepsExecuted:processed,maxSteps,nextToolAvailable:Boolean(next),toolSucceeded:true
+        mission,toolResult:latest,stepsExecuted:processed,maxSteps,nextToolAvailable:true,toolSucceeded:true
       });
       if(!decision.continue)break;
       mission.tools=mission.tools??[];
