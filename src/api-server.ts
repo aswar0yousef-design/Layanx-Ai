@@ -13,6 +13,23 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   response.setHeader("cache-control","no-store");
   if(request.method==="GET"&&request.url==="/v1/status"){json(response,200,runtimeStatus(runtimeView(options.core)));return;}
   if(request.method==="GET"&&request.url==="/v1/health"){const health=await runtimeHealth(runtimeView(options.core));json(response,health.healthy?200:503,health);return;}
+  if(request.method==="GET"&&request.url==="/v1/tools"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const contract=options.core.agents.get("core");
+   json(response,200,{ok:true,tools:options.core.toolCatalog.list(contract,"L1_READ")});
+   return;
+  }
+  if(request.method==="GET"&&request.url?.startsWith("/v1/tools/discover")){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const parsed=new URL(request.url,"http://localhost");
+   const action=parsed.searchParams.get("action")?.trim()??"";
+   const permission=parsed.searchParams.get("permission")??"L1_READ";
+   const allowed=["L1_READ","L2_ANALYZE","L3_MODIFY","L4_EXECUTE","L5_CRITICAL"];
+   if(!action||!allowed.includes(permission)){json(response,400,{ok:false,error:"action and valid permission are required"});return;}
+   const tools=options.core.discoverTools(action,permission as import("./core/types.js").PermissionLevel,"core");
+   json(response,200,{ok:true,action,permission,tools});
+   return;
+  }
   if(request.method==="GET"&&request.url==="/v1/missions"){json(response,200,{ok:true,missions:options.core.missions.list()});return;}
   if(request.method==="GET"&&request.url?.startsWith("/v1/missions/")){const id=request.url.slice("/v1/missions/".length);const mission=options.core.missions.get(id);if(!mission){json(response,404,{ok:false,error:"mission_not_found"});return;}json(response,200,{ok:true,mission,execution:options.core.executionStates.get(id),audit:options.core.audit.forMission(id),ledger:options.core.ledger.forMission(id)});return;}
   if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/tools$/)){
