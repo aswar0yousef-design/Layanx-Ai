@@ -17,31 +17,10 @@ import {AgentTeam} from "./team.js";
 import {ExecutionStateStore} from "./execution-state.js";
 import {MissionObservatory} from "./observatory.js";
 import {LastKnownGood} from "./last-known-good.js";
-import type {PermissionLevel,ToolRequest} from "./types.js";
-import type {AgentContract} from "./contracts.js";
-
+import {CapabilityGate} from "../security/capability-gate.js";
 export class LayanXCore{
- readonly risk=new RiskEngine();
- readonly audit=new AuditLog();
- readonly noAction=new NoActionController();
- readonly delegation=new DelegationManager();
- readonly teams=new AgentTeam(this.delegation);
- readonly executionStates=new ExecutionStateStore();
- readonly observatory=new MissionObservatory();
- readonly lastKnownGood=new LastKnownGood();
- readonly planner=new MissionPlanner();
- readonly agents=new AgentManager();
- readonly verifier=new VerificationEngine();
- readonly ledger=new AgentLedger();
- readonly recovery=new RecoveryManager();
- readonly permissions=new PermissionEngine();
- readonly sentinel=new Sentinel();
- readonly tools=new ToolRegistry();
- readonly executor=new ToolExecutor(this.tools,this.sentinel);
- readonly models=new ModelRegistry();
- readonly modelRouter=new ModelRouter(this.models);
-
- registerAgent(c:AgentContract){this.agents.register(c);}
- startMission(goal:string){const m=this.planner.create(goal);this.ledger.append({id:crypto.randomUUID(),missionId:m.id,agentId:"core",action:"mission.create",status:"started",timestamp:new Date().toISOString(),detail:goal});return m;}
- authorize(r:ToolRequest,g:PermissionLevel){const c=this.agents.get(r.agentId);const p=this.permissions.authorize(r,c,g);if(!p.allowed)return p;return this.sentinel.inspect(r.action);}
+ readonly planner=new MissionPlanner();readonly agents=new AgentManager();readonly verifier=new VerificationEngine();readonly ledger=new AgentLedger();readonly recovery=new RecoveryManager();readonly permissions=new PermissionEngine();readonly sentinel=new Sentinel();readonly tools=new ToolRegistry();readonly executor=new ToolExecutor(this.tools,this.sentinel);readonly models=new ModelRegistry();readonly modelRouter=new ModelRouter(this.models);readonly risk=new RiskEngine();readonly audit=new AuditLog();readonly noAction=new NoActionController();readonly delegation=new DelegationManager();readonly teams=new AgentTeam(this.delegation);readonly executionStates=new ExecutionStateStore();readonly observatory=new MissionObservatory();readonly lastKnownGood=new LastKnownGood();readonly capabilities=new CapabilityGate();
+ registerAgent(c:Parameters<AgentManager["register"]>[0]){this.agents.register(c);}
+ startMission(goal:string){const m=this.planner.create(goal);this.executionStates.start(m.id);this.ledger.append({id:crypto.randomUUID(),missionId:m.id,agentId:"core",action:"mission.create",status:"started",timestamp:new Date().toISOString(),detail:goal});this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"mission.create",resource:m.id,result:"success",metadata:{goal}});return m;}
+ authorize(r:import("./types.js").ToolRequest,g:import("./types.js").PermissionLevel){const c=this.agents.get(r.agentId);const p=this.permissions.authorize(r,c,g);if(!p.allowed){this.audit.append({timestamp:new Date().toISOString(),actor:r.agentId,action:r.action,resource:r.tool,result:"denied",metadata:{reason:p.reason}});return p;}const s=this.sentinel.inspect(r.action);if(!s.allowed)this.audit.append({timestamp:new Date().toISOString(),actor:r.agentId,action:r.action,resource:r.tool,result:"denied",metadata:{reason:s.reason}});return s;}
 }
