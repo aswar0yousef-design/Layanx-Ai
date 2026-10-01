@@ -83,6 +83,7 @@ export class ExecutionRuntime{
     checkpoint:this.core.recovery.restore(mission.id),
     idempotency:(await this.core.idempotency.list()).filter(record=>record.missionId===mission.id),
     memory:this.core.memory.list().filter(entry=>entry.missionId===mission.id),
+    handoffs:this.core.handoffs.forMission(mission.id),
     savedAt:new Date().toISOString(),
     schemaVersion:1
   });
