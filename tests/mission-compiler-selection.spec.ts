@@ -1,8 +1,6 @@
-import {AiMissionPlanner} from "../src/core/ai-planner.js";
 import {MissionCompiler} from "../src/core/mission-compiler.js";
 import {ToolSelector} from "../src/core/tool-selection.js";
 import {ToolRegistry} from "../src/tools/registry.js";
-import type {ModelExecutionRouter} from "../src/core/model-execution.js";
 
 const planned={risk:"high" as const,requiredPermission:"L4_EXECUTE" as const,steps:[{description:"Read repository files"},{description:"Run a deployment command"}],successCriteria:["deployment completes"],stopCondition:"Stop on policy denial"};
 const mission=new MissionCompiler().compile(planned,"Deploy the repository");
