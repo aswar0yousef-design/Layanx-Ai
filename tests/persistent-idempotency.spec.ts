@@ -17,6 +17,14 @@ const [a,b]=await Promise.all([store.begin(request),store.begin(request)]);
 const accepted=[a,b].filter(x=>x.accepted);
 if(accepted.length!==1)throw new Error("Concurrent persistent claims were both accepted.");
 await store.complete(request.idempotencyKey,"done");
+const other={...request,missionId:"m2",idempotencyKey:"other-key"};
+await store.begin(other);
+await store.restore([{
+  key:request.idempotencyKey,missionId:"m1",agentId:"a1",tool:"echo",action:"echo",
+  status:"completed" as const,createdAt:new Date().toISOString(),completedAt:new Date().toISOString(),data:"done"
+}]);
+const otherState=await store.get("other-key");
+if(!otherState)throw new Error("Recovery restore removed another mission's idempotency state.");
 const replay=await store.begin(request);
 if(!replay.replay||replay.record.data!=="done")throw new Error("Persistent completed operation was not replayed.");
 
