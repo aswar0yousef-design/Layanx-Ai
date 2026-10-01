@@ -10,7 +10,9 @@
     "security:check": "node scripts/security-check.mjs",
     "release:check": "npm run security:check && npm run typecheck && npm test",
     "ci": "npm run release:check",
-    "test:unit": "tsx tests/*.spec.ts"
+    "test:unit": "tsx tests/*.spec.ts",
+    "build": "tsc",
+    "start": "node dist/health.js"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
