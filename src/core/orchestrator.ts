@@ -126,7 +126,7 @@ export class LayanXCore{
       if(!first)throw new Error("Initial adaptive tool is missing.");
       mission.tools=[first];
       this.missions.save(mission);
-      const result=await this.executeMissionTool(missionId,projectId,0,{},undefined,agentId,{deferVerification:true});
+      const result=await this.executeMissionTool(missionId,projectId,0,first.payload??{},undefined,agentId,{deferVerification:true});
       results.push(result);
       if(!result.ok)return{missionId,results,completed:false,reason:result.error};
       completedTools.push(first.tool);
@@ -142,7 +142,7 @@ export class LayanXCore{
       mission.tools.push(next);
       this.missions.save(mission);
       const index=mission.tools.length-1;
-      const result=await this.executeMissionTool(missionId,projectId,index,{},undefined,agentId,{deferVerification:true});
+      const result=await this.executeMissionTool(missionId,projectId,index,next.payload??{},undefined,agentId,{deferVerification:true});
       results.push(result);
       if(!result.ok)return{missionId,results,completed:false,reason:result.error};
       completedTools.push(next.tool);
