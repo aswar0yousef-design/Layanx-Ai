@@ -63,11 +63,13 @@ const resumed=await recovery.resume(mission.id,{
 },{async execute(){recoveryCalls++;return{done:true,stage:"recovered"};}},undefined,{projectId:"recovery-project",capabilityId:cap2.id});
 if(!resumed.ok||!resumed.verified||recoveryCalls!==1)throw new Error("Recovery did not complete exactly one retry execution.");
 
+const recoveredSnapshot=await persistence.get(mission.id);
+if(!recoveredSnapshot)throw new Error("Recovered snapshot is missing.");
 const restoredHandoff=core2.handoffs.get(handoff.id);
 if(restoredHandoff.status!=="pending")throw new Error("Persisted handoff was not restored after crash.");
 const capB=core2.capabilities.issue({missionId:mission.id,agentId:b2.agentId,projectId:"recovery-project",resource:"terminal.run",permission:"L4_EXECUTE",expiresAt:new Date(Date.now()+60000).toISOString()});
 const runner2=new MissionRunner(core2);
-const handoffResult=await runner2.executeHandoff(mission,restoredHandoff,{async execute(){return{done:true,stage:"handoff"};}},{projectId:"recovery-project",capabilityId:capB.id});
+const handoffResult=await runner2.executeHandoff(recoveredSnapshot.mission,restoredHandoff,{async execute(){return{done:true,stage:"handoff"};}},{projectId:"recovery-project",capabilityId:capB.id});
 if(!handoffResult.result.ok||!handoffResult.result.verified)throw new Error("Recovered handoff did not execute and verify.");
 if(core2.handoffs.get(handoff.id).status!=="completed")throw new Error("Recovered handoff was not completed.");
 if(!core2.memory.recall("Execute the recovered workflow").some(e=>e.kind==="handoff"))throw new Error("Recovered handoff was not remembered.");
