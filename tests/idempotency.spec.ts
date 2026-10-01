@@ -17,4 +17,19 @@ const second=await executor.execute(request,adapter);
 if(!first.ok||!second.ok)throw new Error("Idempotent execution failed.");
 if(calls!==1)throw new Error("Duplicate tool call was executed twice.");
 if(second.verified!==true||second.data!=="done")throw new Error("Completed idempotent result was not replayed.");
+const completed={
+  key:"crash-boundary-key",missionId:"m2",agentId:"a1",tool:"echo",action:"echo",
+  status:"completed" as const,createdAt:new Date().toISOString(),completedAt:new Date().toISOString(),data:"durable-result"
+};
+const crashLikeService={
+  async begin(){return{accepted:true,replay:false,record:{...completed,status:"running" as const}};},
+  async complete(){throw new Error("acknowledgement lost after durable completion");},
+  async fail(){throw new Error("record is already completed");},
+  async get(){return completed;}
+};
+const crashExecutor=new ToolExecutor(registry,new Sentinel(),crashLikeService);
+const crashResult=await crashExecutor.execute({...request,missionId:"m2",idempotencyKey:"crash-boundary-key"},adapter);
+if(!crashResult.ok||crashResult.data!=="durable-result"||crashResult.replayed!==true)
+  throw new Error("Durable completion boundary was not recovered.");
+
 console.log("Idempotency test passed.");
