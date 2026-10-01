@@ -9,9 +9,10 @@ export class CoreRuntime{
  constructor(private readonly core:LayanXCore){this.runner=new MissionRunner(core);}
  async run(goal:string,request:Omit<ToolRequest,"missionId">,adapter:ToolAdapter,capabilityTokenId?:string,projectId="default",approvalId?:string):Promise<CoreRunResult>{
   const mission=this.core.startMission(goal);
-  const effectiveToken=capabilityTokenId??(rank[request.permission]===1?this.core.capabilities.issue({
-   missionId:mission.id,agentId:request.agentId,projectId,resource:request.tool,permission:"L1_READ",expiresAt:new Date(Date.now()+60000).toISOString()
-  }):undefined);
+  let effectiveToken=capabilityTokenId;
+  if(!effectiveToken&&rank[request.permission]===1){
+   effectiveToken=this.core.capabilities.issue({missionId:mission.id,agentId:request.agentId,projectId,resource:request.tool,permission:"L1_READ",expiresAt:new Date(Date.now()+60000).toISOString()});
+  }
   if(!effectiveToken)return{ok:false,missionId:mission.id,verified:false,decision:"blocked",error:"A scoped capability token is required above L1_READ."};
   const gate=this.core.capabilities.authorize(effectiveToken,{missionId:mission.id,agentId:request.agentId,projectId,resource:request.tool,permission:request.permission});
   if(!gate.allowed)return{ok:false,missionId:mission.id,verified:false,decision:"blocked",error:gate.reason};
