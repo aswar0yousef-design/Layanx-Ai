@@ -37,7 +37,7 @@ const plannerProvider:ModelProviderAdapter={
           {description:"Execute requested read action"},
           {description:"Verify result"}
         ],
-        successCriteria:["done"],
+        successCriteria:["result.value === "fixture-ok""],
         stopCondition:"Stop on policy denial."
       })
     };
@@ -62,7 +62,7 @@ const agent={
   requiredPermission:"L1_READ" as const,
   maxToolCalls:5,
   maxRuntimeMs:10000,
-  successCriteria:["done"],
+  successCriteria:["result.value === "fixture-ok""],
   stopCondition:"Stop on policy denial."
 };
 core.registerAgent(agent);
