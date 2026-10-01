@@ -51,7 +51,8 @@ export class RecoveryPersistence{
    if(current&&current.recoveryId!==record.recoveryId&&current.state!=="verified"&&current.state!=="halted"){
     throw new Error("Another recovery operation is already active.");
    }
-   await tx.set(this.key,structuredClone(record));
+   const persisted={...record,startedAt:current&&current.recoveryId===record.recoveryId?current.startedAt:record.startedAt};
+   await tx.set(this.key,structuredClone(persisted));
   });
  }
 
