@@ -2,7 +2,6 @@ import type {PermissionLevel,ToolRequest} from "./types.js";
 import type {ToolAdapter} from "../tools/executor.js";
 import {LayanXCore} from "./orchestrator.js";
 import {MissionRunner} from "./mission-runner.js";
-import {JsonStateStore} from "./persistence.js";
 import {RuntimePersistence} from "./runtime-persistence.js";
 import {RuntimeStorage} from "../storage/runtime-storage.js";
 import {JsonStorageAdapter} from "../storage/json-adapter.js";
