@@ -11,6 +11,7 @@ function authorized(request:IncomingMessage,token?:string){return !token||reques
 function runtimeView(core:LayanXCore,persistence?:RuntimePersistence){return {core,models:core.models,providers:core.providers,providerSummary:providerSummary(),persistence};}
 export function startRuntimeApi(options:RuntimeApiOptions){
  const host=options.host??process.env.LAYANX_API_HOST??"127.0.0.1";const port=options.port??Number(process.env.LAYANX_API_PORT??3000);const max=options.maxBodyBytes??65536;
+ const mcp=new McpGateway(options.core);
  const server=createServer(async(request,response)=>{
   response.setHeader("cache-control","no-store");
   if(request.method==="POST"&&request.url==="/mcp"){
