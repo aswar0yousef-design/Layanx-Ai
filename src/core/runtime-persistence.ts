@@ -26,4 +26,12 @@ export class RuntimePersistence{
     return (await this.store.load()??[]).find(x=>x.mission.id===missionId);
   }
   async list():Promise<RuntimeSnapshot[]>{return (await this.store.load())??[];}
+
+  async resumable():Promise<RuntimeSnapshot[]>{
+    return (await this.list()).filter(x =>
+      x.executionState.status==="running" ||
+      x.mission.status==="running" ||
+      x.mission.status==="verifying"
+    );
+  }
 }
