@@ -1,6 +1,6 @@
 # LayanX Release Gate
 
-A production release must have evidence for typecheck, tests, red-team checks, configuration validation, and recovery readiness.
+A production release must have evidence for security checks, typecheck, tests, red-team checks, configuration validation, and recovery readiness. The release evidence must also contain a valid Git commit SHA and a 64-character SHA-256 manifest checksum.
 
 The release is bound to a version, Git commit SHA, and SHA-256 manifest checksum.
 
@@ -11,6 +11,8 @@ Every push and pull request to `main` runs:
 1. Secret/security check
 2. TypeScript typecheck
 3. Test suite
+
+The Release Gate separately refuses release evidence when security, recovery, or release identity/checksum evidence is missing or malformed.
 
 The same sequence is available locally with:
 
