@@ -42,9 +42,11 @@ export class LayanXCore{
   readonly observatory=new MissionObservatory();
   readonly lastKnownGood=new LastKnownGood();
   readonly capabilities=new CapabilityGate();
+  readonly idempotency:IdempotencyService;
 
   constructor(idempotency?:IdempotencyService){
-    this.executor=new ToolExecutor(this.tools,this.sentinel,idempotency??new IdempotencyStore());
+    this.idempotency=idempotency??new IdempotencyStore();
+    this.executor=new ToolExecutor(this.tools,this.sentinel,this.idempotency);
   }
 
   registerAgent(c:Parameters<AgentManager["register"]>[0]){this.agents.register(c);}
