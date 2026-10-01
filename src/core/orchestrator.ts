@@ -22,6 +22,9 @@ import type {IdempotencyService} from "./idempotency.js";
 import {IdempotencyStore} from "./idempotency.js";
 import {ModelProviderRegistry,ModelExecutionRouter} from "./model-execution.js";
 import {AiMissionPlanner} from "./ai-planner.js";
+import {ExecutionRuntime} from "./execution-runtime.js";
+import {ApprovalEngine} from "../security/approval.js";
+import {BudgetGuard,type Budget} from "./budget.js";
 import {MissionCompiler} from "./mission-compiler.js";
 import {ToolSelector} from "./tool-selection.js";
 
@@ -42,6 +45,10 @@ export class LayanXCore{
   readonly aiPlanner=new AiMissionPlanner(this.modelExecution);
   readonly missionCompiler=new MissionCompiler();
   readonly toolSelector=new ToolSelector(this.tools);
+  readonly approvals=new ApprovalEngine();
+  readonly budget=new BudgetGuard();
+  readonly budgetLimits:Budget={maxToolCalls:100,maxRuntimeMs:60000,maxCostUsd:10};
+  readonly executionRuntime:ExecutionRuntime;
   readonly risk=new RiskEngine();
   readonly audit=new AuditLog();
   readonly noAction=new NoActionController();
@@ -56,6 +63,7 @@ export class LayanXCore{
   constructor(idempotency?:IdempotencyService){
     this.idempotency=idempotency??new IdempotencyStore();
     this.executor=new ToolExecutor(this.tools,this.sentinel,this.idempotency);
+    this.executionRuntime=new ExecutionRuntime({agents:this.agents,permissions:this.permissions,risk:this.risk,sentinel:this.sentinel,capabilities:this.capabilities,approvals:this.approvals,executor:this.executor,executionStates:this.executionStates,budget:this.budget,budgetLimits:this.budgetLimits,verifier:this.verifier,ledger:this.ledger,audit:this.audit,recovery:this.recovery,idempotency:this.idempotency});
   }
 
   registerAgent(c:Parameters<AgentManager["register"]>[0]){this.agents.register(c);}
