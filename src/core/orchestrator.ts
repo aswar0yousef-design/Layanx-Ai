@@ -35,6 +35,8 @@ import {MissionStore} from "./mission-store.js";
 import {ToolAdapterRegistry} from "../tools/adapters.js";
 import {AdaptiveDecisionEngine} from "./adaptive-decision.js";
 import {ProjectIsolation} from "../security/project-isolation.js";
+import {SkillRegistry} from "../skills/registry.js";
+import {SkillRuntime} from "../skills/runtime.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -74,12 +76,15 @@ export class LayanXCore{
   readonly toolAdapters=new ToolAdapterRegistry();
   readonly adaptiveDecision=new AdaptiveDecisionEngine();
   readonly projectIsolation=new ProjectIsolation();
+  readonly skills=new SkillRegistry();
+  readonly skillRuntime:SkillRuntime;
 
   constructor(idempotency?:IdempotencyService,persistence?:RuntimePersistence){
     this.idempotency=idempotency??new IdempotencyStore();
     this.persistence=persistence;
     this.executor=new ToolExecutor(this.tools,this.sentinel,this.idempotency);
     this.executionRuntime=new ExecutionRuntime(this);
+    this.skillRuntime=new SkillRuntime(this.skills,async(missionId,projectId,toolIndex,payload)=>this.executeMissionTool(missionId,projectId,toolIndex,payload));
   }
 
   restoreRuntimeSnapshot(snapshot:import("./runtime-persistence.js").RuntimeSnapshot){
@@ -129,6 +134,12 @@ export class LayanXCore{
     const result=await this.executionRuntime.run(mission,request,this.toolAdapters.get(plan.tool),approvalId,{projectId,capabilityId:token.id},runtimeOptions);
     this.missions.save(mission);
     return{...result,tool:plan.tool,action:plan.action,capabilityId:token.id};
+  }
+
+  async executeSkill(skillId:string,missionId:string,projectId:string,payloads:unknown[]=[]){
+    const mission=this.missions.get(missionId);
+    if(!mission)throw new Error("Mission not found.");
+    return this.skillRuntime.run(skillId,mission,projectId,payloads);
   }
 
   private async recordAdaptiveStop(mission:import("./types.js").Mission,decision:import("./adaptive-decision.js").AdaptiveDecision,stepsExecuted:number,agentId:string){
