@@ -3,6 +3,7 @@ export type MemoryKind="fact"|"decision"|"experience"|"success"|"failure"|"hando
 export interface MemoryEntry{
   id:string;
   missionId:string;
+  projectId?:string;
   kind:MemoryKind;
   summary:string;
   content:unknown;
@@ -37,9 +38,10 @@ export class MemoryEngine{
     return structuredClone(entry);
   }
 
-  recall(query:string,limit=10){
+  recall(query:string,limit=10,projectId?:string){
     const terms=query.toLowerCase().split(/[^a-z0-9]+/).filter(term=>term.length>2);
     return [...this.entries.values()]
+      .filter(entry=>!projectId||entry.projectId===projectId)
       .map(entry=>({entry,score:terms.filter(term=>(entry.summary+" "+entry.tags.join(" ")).toLowerCase().includes(term)).length}))
       .filter(item=>item.score>0)
       .sort((a,b)=>b.score-a.score)
