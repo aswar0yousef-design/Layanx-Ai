@@ -3,6 +3,9 @@ import {LayanXCore} from "./orchestrator.js";
 import type {ToolAdapter} from "../tools/executor.js";
 import {BudgetGovernor} from "./budget-governor.js";
 import {ApprovalEngine} from "../security/approval.js";
+import type {CapabilityGate} from "../security/capability-gate.js";
+
+export interface RuntimeSecurityContext{projectId:string;capabilityId:string;}
 
 export interface RuntimeResult{ok:boolean;missionId:string;verified:boolean;error?:string;data?:unknown;recoverable?:boolean;}
 
@@ -10,7 +13,7 @@ export class ExecutionRuntime{
  readonly budget=new BudgetGovernor({maxToolCalls:100,maxRuntimeMs:60000,maxCostUsd:10});
  readonly approvals=new ApprovalEngine();
  constructor(private readonly core:LayanXCore){}
- async run(mission:Mission,request:ToolRequest,adapter:ToolAdapter,approvalId?:string):Promise<RuntimeResult>{
+ async run(mission:Mission,request:ToolRequest,adapter:ToolAdapter,approvalId?:string,security?:RuntimeSecurityContext):Promise<RuntimeResult>{
   if(["completed","cancelled"].includes(mission.status))return{ok:false,missionId:mission.id,verified:false,error:"Mission is not executable in its current state.",recoverable:false};
   const state=this.core.executionStates.get(mission.id)??this.core.executionStates.start(mission.id);
   const started=Date.now();
@@ -20,13 +23,16 @@ export class ExecutionRuntime{
   if(state.toolCalls>=contract.maxToolCalls)return this.block(mission,request,"Agent tool-call limit exceeded.");
   const risk=this.core.risk.assess(request);
   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:risk.requiresApproval?"denied":"allowed",metadata:{risk:risk.level,missionId:mission.id}});
+  const permission=this.core.permissions.authorize(request,contract,request.permission);
+  if(!permission.allowed)return this.block(mission,request,permission.reason);
+  if(!security)return this.block(mission,request,"Capability context is required.");
+  const capability=this.core.capabilities.authorize(security.capabilityId,{missionId:mission.id,agentId:request.agentId,projectId:security.projectId,resource:request.tool,permission:request.permission});
+  if(!capability.allowed)return this.block(mission,request,capability.reason);
   if(risk.requiresApproval){
    if(!approvalId)return this.block(mission,request,"Explicit approval is required for this risk level.");
    const approval=this.approvals.authorize(approvalId,{missionId:mission.id,agentId:request.agentId,action:request.action,permission:request.permission});
    if(!approval.allowed)return this.block(mission,request,approval.reason);
   }
-  const permission=this.core.permissions.authorize(request,contract,request.permission);
-  if(!permission.allowed)return this.block(mission,request,permission.reason);
   const sentinel=this.core.sentinel.inspect(request.action);
   if(!sentinel.allowed)return this.block(mission,request,sentinel.reason);
   const budget=this.budget.evaluate({toolCalls:state.toolCalls,runtimeMs:Date.now()-started,costUsd:state.costUsd});
