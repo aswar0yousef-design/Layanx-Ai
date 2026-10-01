@@ -10,9 +10,10 @@ export interface RuntimeSecurityContext{projectId:string;capabilityId:string;}
 export interface RuntimeResult{ok:boolean;missionId:string;verified:boolean;error?:string;data?:unknown;recoverable?:boolean;}
 
 export class ExecutionRuntime{
+ private readonly persistence:RuntimePersistence|undefined;
  readonly budget=new BudgetGovernor({maxToolCalls:100,maxRuntimeMs:60000,maxCostUsd:10});
  readonly approvals=new ApprovalEngine();
- constructor(private readonly core:LayanXCore,private readonly persistence?:RuntimePersistence){this.persistence??=core.persistence;}
+ constructor(private readonly core:LayanXCore,persistence?:RuntimePersistence){this.persistence=persistence??core.persistence;}
  async run(mission:Mission,request:ToolRequest,adapter:ToolAdapter,approvalId?:string,security?:RuntimeSecurityContext):Promise<RuntimeResult>{
   if(["completed","cancelled"].includes(mission.status))return{ok:false,missionId:mission.id,verified:false,error:"Mission is not executable in its current state.",recoverable:false};
   const state=this.core.executionStates.get(mission.id)??this.core.executionStates.start(mission.id);
