@@ -9,18 +9,18 @@ core.registerAgent({
 core.startMission("mcp fixture","project-a");
 const gateway=new McpGateway(core);
 
-const initialized=gateway.handle({jsonrpc:"2.0",id:1,method:"initialize"});
+const initialized=await gateway.handle({jsonrpc:"2.0",id:1,method:"initialize"});
 if(!initialized||initialized.error||!(initialized.result as {capabilities:{tools:{}}}).capabilities.tools)throw new Error("MCP initialize failed.");
 
-const listed=gateway.handle({jsonrpc:"2.0",id:2,method:"tools/list"});
+const listed=await gateway.handle({jsonrpc:"2.0",id:2,method:"tools/list"});
 const tools=(listed?.result as {tools:Array<{name:string}>}).tools;
 if(!tools.some(tool=>tool.name==="runtime.status"))throw new Error("MCP tools/list did not expose allowed tool.");
 if(tools.some(tool=>tool.name==="terminal.exec"))throw new Error("MCP tools/list exposed an L4 terminal tool.");
 
-const bad=gateway.handle({jsonrpc:"2.0",id:3,method:"tools/call",params:{name:"runtime.status",arguments:{missionId:"missing",projectId:"project-a",toolIndex:0}}});
+const bad=await gateway.handle({jsonrpc:"2.0",id:3,method:"tools/call",params:{name:"runtime.status",arguments:{missionId:"missing",projectId:"project-a",toolIndex:0}}});
 if(bad?.error?.code!==-32004)throw new Error("MCP missing mission was not rejected.");
 
-const wrong=gateway.handle({jsonrpc:"2.0",id:4,method:"tools/call",params:{name:"runtime.status",arguments:{missionId:core.missions.list()[0].id,projectId:"project-a",toolIndex:0}}});
+const wrong=await gateway.handle({jsonrpc:"2.0",id:4,method:"tools/call",params:{name:"runtime.status",arguments:{missionId:core.missions.list()[0].id,projectId:"project-a",toolIndex:0}}});
 if(wrong?.error?.code!==-32602)throw new Error("MCP unplanned tool call was not rejected.");
 
 console.log("MCP gateway tests passed.");
