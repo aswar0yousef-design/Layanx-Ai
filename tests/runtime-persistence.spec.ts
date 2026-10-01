@@ -45,3 +45,10 @@ const migrated=new RuntimePersistence(legacyStorage,[{
 }]);
 const migratedSnapshot=await migrated.get("m1");
 if(migratedSnapshot?.schemaVersion!==1)throw new Error("Legacy runtime snapshot was not migrated.");
+
+const oldSnapshot={...snapshot,savedAt:new Date(Date.now()-2*24*60*60*1000).toISOString()};
+const activeSnapshot={...snapshot,mission:{...snapshot.mission,id:"active",status:"running" as const},executionState:{...snapshot.executionState,missionId:"active",status:"running" as const},savedAt:new Date(Date.now()-2*24*60*60*1000).toISOString()};
+await storage.set([oldSnapshot,activeSnapshot]);
+const cleanup=await persistence.cleanup();
+if(cleanup.removed!==1)throw new Error("Snapshot retention cleanup did not remove the expired snapshot.");
+if(!(await persistence.get("active")))throw new Error("Snapshot cleanup removed a resumable mission.");
