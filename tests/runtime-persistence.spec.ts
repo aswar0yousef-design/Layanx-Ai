@@ -11,7 +11,7 @@ const snapshot={
   executionState:{missionId:"m1",startedAt:new Date().toISOString(),toolCalls:1,runtimeMs:12,costUsd:0,status:"completed" as const},
   ledger:[],
   audit:[],
-  savedAt:new Date().toISOString()
+  savedAt:new Date().toISOString(),schemaVersion:1
 };
 await persistence.saveAtomic(snapshot);
 const restored=await persistence.get("m1");
@@ -19,3 +19,20 @@ if(restored?.mission.goal!=="persist mission")throw new Error("Runtime snapshot 
 if(restored?.executionState.status!=="completed")throw new Error("Execution state was not persisted.");
 await rm(dir,{recursive:true,force:true});
 console.log("Runtime persistence test passed.");
+
+
+const invalid={...snapshot,schemaVersion:99};
+try{
+  await persistence.saveAtomic(invalid);
+  throw new Error("Unsupported snapshot version was accepted.");
+}catch(error){
+  if(!(error instanceof Error)||!error.message.includes("Unsupported runtime snapshot version.")) throw error;
+}
+
+const mismatch={...snapshot,executionState:{...snapshot.executionState,missionId:"other"}};
+try{
+  await persistence.saveAtomic(mismatch);
+  throw new Error("Mission/state mismatch was accepted.");
+}catch(error){
+  if(!(error instanceof Error)||!error.message.includes("mission/state mismatch")) throw error;
+}
