@@ -157,6 +157,11 @@ export class ProductionRecoveryController{
   return createRecoveryReport(deployment,record,decision,this.audit.summarize(this.resource(deployment)),resume);
  }
 
+ async history(limit=50):Promise<PersistedRecoveryRecord[]>{
+  if(!this.persistence)throw new Error("Recovery persistence is required for recovery history.");
+  return this.persistence.history(limit);
+ }
+
  async inspectActiveRecovery():Promise<RecoveryResumePlan|undefined>{
   const record=await this.persistence?.findActive();
   return record?this.resumeEngine.plan(record):undefined;
