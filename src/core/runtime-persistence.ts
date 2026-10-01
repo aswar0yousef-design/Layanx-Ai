@@ -6,6 +6,8 @@ import type {ExecutionState} from "./execution-state.js";
 import type {IdempotencyRecord} from "./idempotency.js";
 import {RuntimeStorage} from "../storage/runtime-storage.js";
 
+export const RUNTIME_SNAPSHOT_VERSION=1;
+
 export interface RuntimeSnapshot{
   mission:Mission;
   executionState:ExecutionState;
@@ -14,6 +16,7 @@ export interface RuntimeSnapshot{
   checkpoint?:Checkpoint;
   idempotency?:IdempotencyRecord[];
   savedAt:string;
+  schemaVersion:number;
 }
 
 export class RuntimePersistence{
