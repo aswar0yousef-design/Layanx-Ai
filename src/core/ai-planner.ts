@@ -43,6 +43,32 @@ export class AiMissionPlanner{
     });
     return this.parse(response.output,tools);
   }
+  async nextTool(input:{goal:string;result:unknown;tools:ToolCatalogEntry[];requiredPermission:PermissionLevel;completedTools:string[]}):Promise<PlannedTool|null>{
+    if(!input.goal.trim())throw new Error("Mission goal is empty.");
+    const catalog=input.tools.map(tool=>({name:tool.name,description:tool.description,permission:tool.permission,dangerous:tool.dangerous,actions:tool.actions,tags:tool.tags}));
+    const boundedResult=JSON.stringify(input.result).slice(0,12000);
+    const response=await this.models.execute({
+      capability:"reasoning",
+      input:[
+        "You are the LayanX adaptive mission planner.",
+        "Return ONLY valid JSON: either null when the mission is complete, or an object with tool, action, permission, reason.",
+        "Choose exactly one tool from the supplied catalog.",
+        "The selected permission must exactly match the catalog tool permission and must not exceed the mission permission.",
+        "Do not invent tools or actions. Do not request secrets or bypass security controls.",
+        "Prefer a tool that advances the goal using the latest result.",
+        "Completed tools: "+JSON.stringify(input.completedTools),
+        "Available tool catalog: "+JSON.stringify(catalog),
+        "Mission goal: "+input.goal,
+        "Latest tool result: "+boundedResult
+      ].join("\n")
+    });
+    let value:unknown;
+    try{value=JSON.parse(response.output);}catch{throw new Error("Adaptive planner returned invalid JSON.");}
+    if(value===null)return null;
+    if(!value||typeof value!=="object")throw new Error("Adaptive planner returned an invalid tool.");
+    return this.parseTools([value],input.tools,input.requiredPermission)[0]??null;
+  }
+
   private parse(raw:string,catalog:ToolCatalogEntry[]):PlannedMission{
     let value:unknown;
     try{value=JSON.parse(raw);}catch{throw new Error("Model planner returned invalid JSON.");}

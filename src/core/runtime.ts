@@ -14,7 +14,7 @@ export class ExecutionRuntime{
  readonly budget=new BudgetGovernor({maxToolCalls:100,maxRuntimeMs:60000,maxCostUsd:10});
  readonly approvals=new ApprovalEngine();
  constructor(private readonly core:LayanXCore,persistence?:RuntimePersistence){this.persistence=persistence??core.persistence;}
- async run(mission:Mission,request:ToolRequest,adapter:ToolAdapter,approvalId?:string,security?:RuntimeSecurityContext):Promise<RuntimeResult>{
+ async run(mission:Mission,request:ToolRequest,adapter:ToolAdapter,approvalId?:string,security?:RuntimeSecurityContext,runtimeOptions:{deferVerification?:boolean}={}):Promise<RuntimeResult>{
   if(["completed","cancelled"].includes(mission.status)){
    const replay=await this.core.idempotency.get(request.idempotencyKey);
    if(mission.status==="completed"&&replay?.status==="completed"&&replay.missionId===mission.id&&replay.agentId===request.agentId&&replay.tool===request.tool&&replay.action===request.action)
@@ -68,7 +68,7 @@ export class ExecutionRuntime{
   const planCount=mission.tools?.length??0;
   const currentPlanIndex=request.planIndex??(planCount>0?planCount-1:0);
   const hasNextTool=planCount>0&&currentPlanIndex<planCount-1;
-  if(hasNextTool){
+  if(runtimeOptions.deferVerification||hasNextTool){
    mission.status="running";
    this.core.executionStates.update(mission.id,{status:"running"});
    this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"success",metadata:{missionId:mission.id,planIndex:currentPlanIndex,nextPlanIndex:currentPlanIndex+1}});
@@ -94,6 +94,26 @@ export class ExecutionRuntime{
   await this.persist(mission);
   return{ok:true,missionId:mission.id,verified:true,data:result.data,recoverable:false};
  }
+ async finalize(mission:Mission,result:unknown,agentId="core"):Promise<RuntimeResult>{
+  const contract=this.core.agents.get(agentId);
+  mission.status="verifying";
+  this.core.executionStates.update(mission.id,{status:"running"});
+  const verification=this.core.verifier.verify(mission,result,contract.successCriteria);
+  if(!verification.verified){
+   mission.status="failed";
+   this.core.executionStates.update(mission.id,{status:"failed"});
+   await this.persist(mission);
+   return{ok:false,missionId:mission.id,verified:false,error:verification.failures.join("; "),recoverable:false};
+  }
+  mission.status="completed";
+  this.core.executionStates.update(mission.id,{status:"completed"});
+  this.core.memory.remember({missionId:mission.id,kind:"success",summary:mission.goal,content:{result,verified:true},confidence:1,tags:["mission"]});
+  this.approvals.revokeMission(mission.id);
+  this.core.audit.append({timestamp:new Date().toISOString(),actor:agentId,action:"mission.verify",resource:mission.id,result:"success",metadata:{missionId:mission.id}});
+  await this.persist(mission);
+  return{ok:true,missionId:mission.id,verified:true,data:result,recoverable:false};
+ }
+
  async persist(mission:Mission):Promise<void>{
   if(!this.persistence)return;
   const executionState=this.core.executionStates.get(mission.id);
