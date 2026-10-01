@@ -58,6 +58,7 @@ export class ExecutionRuntime{
   const runtimeMs=Date.now()-started;
   this.core.memory.remember({
    missionId:mission.id,
+   projectId:security.projectId,
    kind:result.ok?"experience":"failure",
    summary:result.ok?`Tool ${request.tool} completed: ${request.action}`:`Tool ${request.tool} failed: ${request.action}`,
    content:{tool:request.tool,action:request.action,planIndex:request.planIndex,result:result.ok?result.data:result.error},
@@ -97,7 +98,7 @@ export class ExecutionRuntime{
    return{ok:false,missionId:mission.id,verified:false,error:verification.failures.join("; "),recoverable:false};
   }
   mission.status="completed";
-  this.core.memory.remember({missionId:mission.id,kind:"success",summary:mission.goal,content:{result:result.data,verified:true,tool:request.tool,action:request.action},confidence:1,tags:[request.tool]});
+  this.core.memory.remember({missionId:mission.id,projectId:security.projectId,kind:"success",summary:mission.goal,content:{result:result.data,verified:true,tool:request.tool,action:request.action},confidence:1,tags:[request.tool]});
   this.approvals.revokeMission(mission.id);
   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"success",metadata:{missionId:mission.id}});
   await this.persist(mission);
