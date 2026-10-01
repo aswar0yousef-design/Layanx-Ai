@@ -5,6 +5,7 @@ import type {Checkpoint} from "./recovery.js";
 import type {ExecutionState} from "./execution-state.js";
 import type {IdempotencyRecord} from "./idempotency.js";
 import type {MemoryEntry} from "./memory.js";
+import type {MissionHandoff} from "./handoff.js";
 import {RuntimeStorage} from "../storage/runtime-storage.js";
 
 export const RUNTIME_SNAPSHOT_VERSION=1;
@@ -18,6 +19,7 @@ export interface RuntimeSnapshot{
   checkpoint?:Checkpoint;
   idempotency?:IdempotencyRecord[];
   memory?:MemoryEntry[];
+  handoffs?:MissionHandoff[];
   savedAt:string;
   schemaVersion:number;
 }
