@@ -7,7 +7,7 @@ export interface ToolRequestBuildContext{
   agentId:string;
   projectId:string;
   capabilityId:string;
-  payload?:unknown;
+  payload?:unknown; planIndex?:number;
 }
 
 export class ToolRequestBuilder{
@@ -27,7 +27,8 @@ export class ToolRequestBuilder{
       action:plan.action,
       permission:plan.permission,
       idempotencyKey,
-      payload:context.payload??{}
+      payload:context.payload??{},
+      planIndex:context.planIndex
     };
   }
 

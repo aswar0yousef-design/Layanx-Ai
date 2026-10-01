@@ -56,7 +56,7 @@ export class ExecutionRuntime{
   const result=await this.core.executor.execute(request,adapter);
   const runtimeMs=Date.now()-started;
   this.core.executionStates.update(mission.id,{toolCalls:state.toolCalls+1,runtimeMs:state.runtimeMs+runtimeMs,status:result.ok?"completed":"failed"});
-  mission.steps[3] && (mission.steps[3].status=result.ok?"completed":"failed");
+  if(executionStep) executionStep.status=result.ok?"completed":"failed";
   this.core.ledger.append({id:crypto.randomUUID(),missionId:mission.id,agentId:request.agentId,action:request.action,status:result.ok?"completed":"failed",timestamp:new Date().toISOString(),detail:result.error});
   await this.persist(mission);
   if(!result.ok){
@@ -65,9 +65,22 @@ export class ExecutionRuntime{
    await this.persist(mission);
    return{ok:false,missionId:mission.id,verified:false,error:result.error,recoverable:true};
   }
+  const planCount=mission.tools?.length??0;
+  const currentPlanIndex=request.planIndex??(planCount>0?planCount-1:0);
+  const hasNextTool=planCount>0&&currentPlanIndex<planCount-1;
+  if(hasNextTool){
+   mission.status="running";
+   this.core.executionStates.update(mission.id,{status:"running"});
+   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"success",metadata:{missionId:mission.id,planIndex:currentPlanIndex,nextPlanIndex:currentPlanIndex+1}});
+   await this.persist(mission);
+   return{ok:true,missionId:mission.id,verified:false,data:result.data,recoverable:true};
+  }
   mission.status="verifying";
   const verification=this.core.verifier.verify(mission,result.data,contract.successCriteria);
-  if(verification.verified && mission.steps[4]) mission.steps[4].status="completed";
+  if(verification.verified){
+   const verificationStep=mission.steps.find(step=>/verif|confirm|validate|check/i.test(step.description));
+   if(verificationStep) verificationStep.status="completed";
+  }
   if(!verification.verified){
    mission.status="failed";
    this.core.executionStates.update(mission.id,{status:"failed"});
