@@ -29,7 +29,7 @@ const audit={
 const decision={action:"keep" as const,target:deployment,requiresVerification:false};
 const report=createRecoveryReport(deployment,record,decision,audit);
 if(report.recoveryId!=="report-test")throw new Error("Recovery id missing.");
-if(report.status!=="recovered"||!report.terminal||!report.recoverable===true)throw new Error("Recovery report status is incorrect.");
+if(report.status!=="recovered"||!report.terminal||report.recoverable)throw new Error("Recovery report status is incorrect.");
 if(report.state!=="verified")throw new Error("Recovery state missing.");
 if(report.target?.version!=="1.0.0")throw new Error("Recovery target missing.");
 if(report.attempts!==1||!report.audit.complete)throw new Error("Recovery evidence missing.");
