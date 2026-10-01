@@ -6,6 +6,7 @@ export function createOllamaProvider(options:{baseUrl?:string;timeoutMs?:number;
  return new HttpModelProvider({
   name:"ollama",
   baseUrl:root+"/api/generate",
+  healthUrl:root+"/api/tags",
   timeoutMs:options.timeoutMs??30000,
   fetcher:options.fetcher,
   buildBody:(model,request)=>({model:model.id,prompt:request.input,stream:false}),
