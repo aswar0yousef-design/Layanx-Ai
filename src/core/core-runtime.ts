@@ -32,7 +32,7 @@ export class CoreRuntime{
   }
 
   async run(goal:string,request:Omit<ToolRequest,"missionId">,adapter:ToolAdapter,capabilityTokenId?:string,projectId="default",approvalId?:string):Promise<CoreRunResult>{
-    const mission=this.core.startMission(goal);
+    const mission=this.core.startMission(goal,projectId);
     await this.persist(mission);
     let effectiveToken=capabilityTokenId;
     if(!effectiveToken&&rank[request.permission]===1){

@@ -21,6 +21,8 @@ export class ExecutionRuntime{
     return{ok:true,missionId:mission.id,verified:true,data:replay.data,recoverable:false};
    return{ok:false,missionId:mission.id,verified:false,error:"Mission is not executable in its current state.",recoverable:false};
   }
+  if(!security)return this.block(mission,request,"Capability context is required.");
+  try{this.core.projectIsolation.assertMissionProject(security.projectId,mission.projectId);}catch(error){return this.block(mission,request,error instanceof Error?error.message:"Project isolation violation.");}
   const state=this.core.executionStates.get(mission.id)??this.core.executionStates.start(mission.id);
   await this.persist(mission);
   const started=Date.now();
@@ -37,7 +39,6 @@ export class ExecutionRuntime{
   if(rank[toolDefinition.permission]>rank[request.permission])return this.block(mission,request,"Requested permission is below the tool requirement.");
   const permission=this.core.permissions.authorize(request,contract,request.permission);
   if(!permission.allowed)return this.block(mission,request,permission.reason);
-  if(!security)return this.block(mission,request,"Capability context is required.");
   const capability=this.core.capabilities.authorize(security.capabilityId,{missionId:mission.id,agentId:request.agentId,projectId:security.projectId,resource:request.tool,permission:request.permission});
   if(!capability.allowed)return this.block(mission,request,capability.reason);
   if(risk.requiresApproval){
