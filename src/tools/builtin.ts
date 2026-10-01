@@ -2,6 +2,7 @@ import type {LayanXCore} from "../core/orchestrator.js";
 import type {ToolRequest} from "../core/types.js";
 import type {ToolAdapter} from "./executor.js";
 import {createHttpReadAdapter} from "./http-read.js";
+import {createGitHubReadAdapter} from "../connectors/github-read.js";
 
 function payloadRecord(request:ToolRequest):Record<string,unknown>{
   return request.payload&&typeof request.payload==="object"&&!Array.isArray(request.payload)
@@ -88,4 +89,18 @@ export function registerHttpReadTool(core:LayanXCore):void {
   tags:["http","https","url","web","read","رابط","ويب"]
  });
  core.toolAdapters.register("http.read",createHttpReadAdapter());
+}
+
+
+export function registerGitHubReadTools(core:LayanXCore,options:{token?:string;baseUrl?:string}={}):void {
+ const adapter=createGitHubReadAdapter(options);
+ const definitions=[
+  {name:"github.repo.read",description:"read public GitHub repository metadata",action:"read repository",tags:["github","repository","repo","read","git"]},
+  {name:"github.issues.list",description:"list open GitHub issues for a repository",action:"list issues",tags:["github","issues","issue","repository","read"]},
+  {name:"github.prs.list",description:"list open GitHub pull requests for a repository",action:"list pull requests",tags:["github","pull","request","prs","repository","read"]}
+ ];
+ for(const definition of definitions){
+  core.tools.register({name:definition.name,description:definition.description,permission:"L1_READ",dangerous:false,actions:[definition.action],tags:definition.tags});
+  core.toolAdapters.register(definition.name,adapter);
+ }
 }

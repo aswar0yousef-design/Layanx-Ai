@@ -1,7 +1,7 @@
 import {LayanXCore} from "./core/orchestrator.js";
 import type {AgentContract} from "./core/contracts.js";
 import {configureProviders,providerSummary} from "./config/providers.js";
-import {registerBuiltinTools,registerHttpReadTool} from "./tools/builtin.js";
+import {registerBuiltinTools,registerHttpReadTool,registerGitHubReadTools} from "./tools/builtin.js";
 
 export function createRuntime(){
  const core=new LayanXCore();
