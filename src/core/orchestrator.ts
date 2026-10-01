@@ -105,10 +105,25 @@ export class LayanXCore{
     const contract=this.agents.get(agentId);
     const catalog=this.toolCatalog.list(contract,mission.requiredPermission);
     const token=this.capabilities.issue({missionId:mission.id,agentId,projectId,resource:plan.tool,permission:plan.permission,expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
-    const request=this.toolRequestBuilder.build(mission,plan,{agentId,projectId,capabilityId:token.id,payload},catalog);
+    const request=this.toolRequestBuilder.build(mission,plan,{agentId,projectId,capabilityId:token.id,payload,planIndex:toolIndex},catalog);
     const result=await this.executionRuntime.run(mission,request,this.toolAdapters.get(plan.tool),approvalId,{projectId,capabilityId:token.id});
     this.missions.save(mission);
     return{...result,tool:plan.tool,action:plan.action,capabilityId:token.id};
+  }
+
+  async executeMissionTools(missionId:string,projectId:string,payloads:unknown[]=[] ,approvalId?:string,agentId="core"){
+    const mission=this.missions.get(missionId);
+    if(!mission)throw new Error("Mission not found.");
+    const plans=mission.tools??[];
+    if(!plans.length)throw new Error("Mission has no executable tools.");
+    const results=[];
+    for(let index=0;index<plans.length;index++){
+      const payload=payloads[index]??{};
+      const result=await this.executeMissionTool(missionId,projectId,index,payload,approvalId,agentId);
+      results.push(result);
+      if(!result.ok)break;
+    }
+    return{missionId,results,completed:results.length===plans.length&&results.every(result=>result.ok)};
   }
 
   async planMission(goal:string){
