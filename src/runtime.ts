@@ -21,7 +21,7 @@ export function createRuntime(options:RuntimeOptions={}){
  const agent:AgentContract={
   agentId:"core",
   purpose:"Safely orchestrate LayanX missions.",
-  allowedTools:["runtime.status","mission.inspect","memory.recall","http.read","github.repo.read","github.issues.list","github.prs.list"],
+  allowedTools:["runtime.status","mission.inspect","memory.recall","http.read","github.repo.read","github.issues.list","github.prs.list","browser.read","files.read","files.list","files.stat","terminal.exec"],
   forbiddenResources:["secrets","security-controls"],
   requiredPermission:"L1_READ",
   maxToolCalls:100,
