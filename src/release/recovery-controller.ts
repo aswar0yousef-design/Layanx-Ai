@@ -46,6 +46,8 @@ export class ProductionRecoveryController{
   if(active&&active.deploymentCommitSha!==deployment.commitSha){
    throw new Error("Another active recovery belongs to a different deployment.");
   }
+  if(active)return this.resumeActiveRecovery(deployment);
+
   this.rollback.record(deployment);
   const initial=await this.healthProbe.run();
 
