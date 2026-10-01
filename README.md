@@ -29,6 +29,13 @@ npm run release:check
 
 The repository intentionally separates core business logic from storage and deployment concerns so the persistence backend and hosting platform can evolve without rewriting the mission engine.
 
+## Runtime persistence
+
+- `LAYANX_DATABASE_URL` (or `DATABASE_URL`) enables the PostgreSQL runtime store.
+- `LAYANX_RUNTIME_STORAGE_PATH` enables durable JSON storage for local/self-hosted deployments when PostgreSQL is not configured.
+- PostgreSQL is preferred when both are configured.
+- Runtime snapshots remain validated by `RuntimePersistence` before they are committed.
+
 ## Development principle
 
 Stabilize and verify the existing foundation before adding another architectural layer. Production claims should be backed by executable CI evidence.
