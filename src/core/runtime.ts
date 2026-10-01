@@ -94,6 +94,26 @@ export class ExecutionRuntime{
   await this.persist(mission);
   return{ok:true,missionId:mission.id,verified:true,data:result.data,recoverable:false};
  }
+ async finalize(mission:Mission,result:unknown,agentId="core"):Promise<RuntimeResult>{
+  const contract=this.core.agents.get(agentId);
+  mission.status="verifying";
+  this.core.executionStates.update(mission.id,{status:"verifying"});
+  const verification=this.core.verifier.verify(mission,result,contract.successCriteria);
+  if(!verification.verified){
+   mission.status="failed";
+   this.core.executionStates.update(mission.id,{status:"failed"});
+   await this.persist(mission);
+   return{ok:false,missionId:mission.id,verified:false,error:verification.failures.join("; "),recoverable:false};
+  }
+  mission.status="completed";
+  this.core.executionStates.update(mission.id,{status:"completed"});
+  this.core.memory.remember({missionId:mission.id,kind:"success",summary:mission.goal,content:{result,verified:true},confidence:1,tags:["mission"]});
+  this.approvals.revokeMission(mission.id);
+  this.core.audit.append({timestamp:new Date().toISOString(),actor:agentId,action:"mission.verify",resource:mission.id,result:"success",metadata:{missionId:mission.id}});
+  await this.persist(mission);
+  return{ok:true,missionId:mission.id,verified:true,data:result,recoverable:false};
+ }
+
  async persist(mission:Mission):Promise<void>{
   if(!this.persistence)return;
   const executionState=this.core.executionStates.get(mission.id);
