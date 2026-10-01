@@ -44,7 +44,8 @@ export async function runtimeHealth(runtime=createRuntime()){
  const providers=await Promise.all(runtime.providers.list().map(provider=>provider.health()));
  let storage={healthy:true,writable:true,schemaVersion:1,reason:"Runtime persistence is disabled."};
  if(runtime.persistence){
-  storage={healthy:true,writable:true,schemaVersion:1,reason:"Runtime persistence is configured."};
+  const result=await runtime.persistence.health();
+  storage={healthy:result.healthy,writable:result.writable,schemaVersion:1,reason:result.reason};
  }
  return{
   system:"LayanX AI",
