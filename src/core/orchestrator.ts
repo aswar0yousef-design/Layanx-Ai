@@ -9,10 +9,26 @@ import {ToolRegistry} from "../tools/registry.js";
 import {ToolExecutor} from "../tools/executor.js";
 import {ModelRegistry} from "../models/registry.js";
 import {ModelRouter} from "./model-router.js";
+import {RiskEngine} from "../security/risk.js";
+import {AuditLog} from "./audit.js";
+import {NoActionController} from "./no-action.js";
+import {DelegationManager} from "./delegation.js";
+import {AgentTeam} from "./team.js";
+import {ExecutionStateStore} from "./execution-state.js";
+import {MissionObservatory} from "./observatory.js";
+import {LastKnownGood} from "./last-known-good.js";
 import type {PermissionLevel,ToolRequest} from "./types.js";
 import type {AgentContract} from "./contracts.js";
 
 export class LayanXCore{
+ readonly risk=new RiskEngine();
+ readonly audit=new AuditLog();
+ readonly noAction=new NoActionController();
+ readonly delegation=new DelegationManager();
+ readonly teams=new AgentTeam(this.delegation);
+ readonly executionStates=new ExecutionStateStore();
+ readonly observatory=new MissionObservatory();
+ readonly lastKnownGood=new LastKnownGood();
  readonly planner=new MissionPlanner();
  readonly agents=new AgentManager();
  readonly verifier=new VerificationEngine();
