@@ -27,6 +27,10 @@ export interface HandoffRequest{
  execution?:HandoffExecution;
 }
 
+const sensitiveKey=/api[_ -]?key|secret|password|token|authorization|private[_ -]?key|credential/i;
+const bearer=/bearer\\s+[A-Za-z0-9._-]{8,}/gi;
+function sanitize(value:unknown):unknown{if(typeof value==="string")return value.replace(bearer,"[REDACTED]");if(Array.isArray(value))return value.map(sanitize);if(value&&typeof value==="object"){const out:Record<string,unknown>={};for(const [key,item] of Object.entries(value))out[key]=sensitiveKey.test(key)?"[REDACTED]":sanitize(item);return out;}return value;}
+
 export class MissionHandoffManager{
  private readonly handoffs=new Map<string,MissionHandoff>();
 
@@ -38,8 +42,8 @@ export class MissionHandoffManager{
   if(!request.toAgent.allowedTools.length)throw new Error("Handoff target agent has no allowed tools.");
   const handoff:MissionHandoff={
    id:crypto.randomUUID(),missionId:request.missionId,fromAgentId:request.fromAgentId,
-   toAgentId:request.toAgent.agentId,goal:request.goal,context:structuredClone(request.context),
-   requiredPermission:request.requiredPermission,execution:request.execution?structuredClone(request.execution):undefined,createdAt:new Date().toISOString(),status:"pending"
+   toAgentId:request.toAgent.agentId,goal:request.goal,context:sanitize(request.context),
+   requiredPermission:request.requiredPermission,execution:request.execution?sanitize(request.execution) as HandoffExecution:undefined,createdAt:new Date().toISOString(),status:"pending"
   };
   this.handoffs.set(handoff.id,handoff);
   return structuredClone(handoff);
@@ -65,5 +69,5 @@ export class MissionHandoffManager{
 
  get(id:string){const h=this.handoffs.get(id);if(!h)throw new Error("Unknown mission handoff: "+id);return structuredClone(h);}
  forMission(missionId:string){return[...this.handoffs.values()].filter(h=>h.missionId===missionId).map(h=>structuredClone(h));}
- restore(handoffs:MissionHandoff[]){for(const handoff of handoffs)this.handoffs.set(handoff.id,structuredClone(handoff));}
+ restore(handoffs:MissionHandoff[]){for(const handoff of handoffs)this.handoffs.set(handoff.id,structuredClone({...handoff,context:sanitize(handoff.context),execution:handoff.execution?sanitize(handoff.execution) as HandoffExecution:undefined}));}
 }
