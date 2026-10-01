@@ -43,6 +43,24 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }
    return;
   }
+  if(request.method==="GET"&&request.url?.startsWith("/v1/context")){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const parsed=new URL(request.url,"http://localhost");
+   const projectId=parsed.searchParams.get("projectId")?.trim()??"";
+   const missionId=parsed.searchParams.get("missionId")?.trim()??"";
+   const query=parsed.searchParams.get("query")?.trim()??"";
+   if(!projectId||!missionId||!query){json(response,400,{ok:false,error:"projectId, missionId, and query are required"});return;}
+   const mission=options.core.missions.get(missionId);
+   if(!mission){json(response,404,{ok:false,error:"mission_not_found"});return;}
+   try{
+    const limit=Math.min(Math.max(Number(parsed.searchParams.get("limit")??8)||8,1),50);
+    const context=options.core.contextFabric.build({projectId,mission,query,limit,maxChars:12000});
+    json(response,200,{ok:true,context});
+   }catch(error){
+    json(response,403,{ok:false,error:error instanceof Error?error.message:"context resolution failed"});
+   }
+   return;
+  }
   if(request.method==="GET"&&request.url==="/v1/skills"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    json(response,200,{ok:true,skills:options.core.skills.list()});
