@@ -4,7 +4,8 @@ import type {AgentContract} from "./contracts.js";
 import {ToolSelector} from "./tool-selection.js";
 import {ExecutionRuntime} from "./runtime.js";
 import {Replanner} from "./replan.js";
-import type {RuntimeSecurityContext} from "./runtime.js";\nimport type {MissionHandoff} from "./handoff.js";
+import type {RuntimeSecurityContext} from "./runtime.js";
+import type {MissionHandoff} from "./handoff.js";
 
 export class MissionRunner{
  private readonly runtime:ExecutionRuntime;
