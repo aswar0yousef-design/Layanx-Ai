@@ -43,7 +43,8 @@ export class ExecutionRuntime{
    return{ok:false,missionId:mission.id,verified:false,error:result.error,recoverable:true};
   }
   mission.status="verifying";
-  const verification=this.core.verifier.verify(mission);
+  const verification=this.core.verifier.verify(mission,result.data,contract.successCriteria);
+  if(verification.verified && mission.steps[4]) mission.steps[4].status="completed";
   if(!verification.verified){
    mission.status="failed";
    this.core.executionStates.update(mission.id,{status:"failed"});
