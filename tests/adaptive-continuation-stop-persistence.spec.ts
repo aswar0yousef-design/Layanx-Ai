@@ -22,15 +22,18 @@ core.tools.register({name:"test.tool",description:"test",permission:"L1_READ",da
 core.toolAdapters.register("test.tool",{execute:async()=>({ok:true})});
 const mission=core.startMission("blocked adaptive continuation");
 mission.requiredPermission="L1_READ";
-mission.tools=[{tool:"test.tool",action:"read",permission:"L1_READ",reason:"test"}];
+mission.tools=[];
 core.missions.save(mission);
 
-core.aiPlanner.nextTool=async ()=>({
-  tool:"test.tool",
-  action:"read",
-  permission:"L1_READ",
-  reason:"test"
-});
+core.aiPlanner.nextTool=async ()=>{
+  mission.status="blocked";
+  return {
+    tool:"test.tool",
+    action:"read",
+    permission:"L1_READ",
+    reason:"test"
+  };
+};
 
 const first=await core.executeMissionAdaptive(mission.id,"project",3);
 if(first.completed)throw new Error("Blocked adaptive continuation should not complete.");
