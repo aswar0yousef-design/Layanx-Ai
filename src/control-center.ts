@@ -15,7 +15,7 @@ export class ControlCenter{
  snapshot(projectId?:string):ControlCenterSnapshot{
   const missions=this.core.missions.list().filter(m=>!projectId||m.projectId===projectId);
   const execution=missions.map(m=>this.core.executionStates.get(m.id)).filter((x):x is NonNullable<typeof x>=>Boolean(x));
-  const providers:ProviderHealth[]=[];
+  const providers:ProviderHealth[] = this.core.providers.list().map(provider => ({provider:provider.name,available:true,updatedAt:new Date().toISOString()}));
   const observatory=this.core.observatory.snapshot({
    missions:execution,
    agents:this.core.agents.list().length,
