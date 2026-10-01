@@ -15,7 +15,12 @@ export class ExecutionRuntime{
  readonly approvals=new ApprovalEngine();
  constructor(private readonly core:LayanXCore,persistence?:RuntimePersistence){this.persistence=persistence??core.persistence;}
  async run(mission:Mission,request:ToolRequest,adapter:ToolAdapter,approvalId?:string,security?:RuntimeSecurityContext):Promise<RuntimeResult>{
-  if(["completed","cancelled"].includes(mission.status))return{ok:false,missionId:mission.id,verified:false,error:"Mission is not executable in its current state.",recoverable:false};
+  if(["completed","cancelled"].includes(mission.status)){
+   const replay=await this.core.idempotency.get(request.idempotencyKey);
+   if(mission.status==="completed"&&replay?.status==="completed"&&replay.missionId===mission.id&&replay.agentId===request.agentId&&replay.tool===request.tool&&replay.action===request.action)
+    return{ok:true,missionId:mission.id,verified:true,data:replay.data,recoverable:false};
+   return{ok:false,missionId:mission.id,verified:false,error:"Mission is not executable in its current state.",recoverable:false};
+  }
   const state=this.core.executionStates.get(mission.id)??this.core.executionStates.start(mission.id);
   await this.persist(mission);
   const started=Date.now();
