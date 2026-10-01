@@ -196,7 +196,10 @@ export class LayanXCore{
       const decision=this.adaptiveDecision.decide({
         mission,toolResult:latest,stepsExecuted:processed,maxSteps,nextToolAvailable:true,toolSucceeded:true
       });
-      if(!decision.continue)break;
+      if(!decision.continue){
+        await this.recordAdaptiveStop(mission,decision,processed,agentId);
+        break;
+      }
       mission.tools=mission.tools??[];
       mission.tools.push(next);
       this.missions.save(mission);
