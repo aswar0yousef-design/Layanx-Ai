@@ -25,6 +25,7 @@ import {AiMissionPlanner} from "./ai-planner.js";
 import {ExecutionRuntime} from "./runtime.js";
 import {MissionCompiler} from "./mission-compiler.js";
 import {ToolSelector} from "./tool-selection.js";
+import {ToolCatalog} from "./tool-catalog.js";
 import {MemoryEngine} from "./memory.js";
 import type {RuntimePersistence} from "./runtime-persistence.js";
 import {MissionHandoffManager} from "./handoff.js";
@@ -49,6 +50,7 @@ export class LayanXCore{
   readonly aiPlanner=new AiMissionPlanner(this.modelExecution);
   readonly missionCompiler=new MissionCompiler();
   readonly toolSelector=new ToolSelector(this.tools);
+  readonly toolCatalog=new ToolCatalog(this.tools);
   readonly memory=new MemoryEngine();
   readonly executionRuntime:ExecutionRuntime;
   readonly persistence?:RuntimePersistence;
@@ -79,6 +81,10 @@ export class LayanXCore{
   }
 
   registerAgent(c:Parameters<AgentManager["register"]>[0]){this.agents.register(c);}
+  discoverTools(action:string,permission:import("./types.js").PermissionLevel,agentId="core"){
+    const contract=this.agents.get(agentId);
+    return this.toolSelector.discover(action,contract,permission);
+  }
   async planMission(goal:string){
     const plan=await this.aiPlanner.plan(goal);
     return this.missionCompiler.compile(plan,goal);
