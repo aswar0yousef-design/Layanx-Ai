@@ -62,7 +62,14 @@ export class IdempotencyStore implements IdempotencyService{
   }
 
   list():IdempotencyRecord[]{return [...this.records.values()].map(record=>structuredClone(record));}
-  restore(records:IdempotencyRecord[]):void{for(const record of records)this.records.set(record.key,structuredClone(record));}
+  restore(records:IdempotencyRecord[]):void{
+    for(const record of records){
+      const existing=this.records.get(record.key);
+      if(existing && (existing.missionId!==record.missionId||existing.agentId!==record.agentId||existing.tool!==record.tool||existing.action!==record.action))
+        throw new Error("Idempotency restore conflicts with an existing operation.");
+      this.records.set(record.key,structuredClone(record));
+    }
+  }
 
   get(key:string):IdempotencyRecord|undefined{
     const record=this.records.get(key);
