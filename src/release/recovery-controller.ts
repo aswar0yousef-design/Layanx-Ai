@@ -14,12 +14,17 @@ export interface RecoveryRunResult{
 export interface RecoveryControllerOptions{
  actor?:string;
  maxAttempts?:number;
+ persistence?:RecoveryPersistence;
+ recoveryId?:string;
 }
 
 export class ProductionRecoveryController{
  private readonly actor:string;
  private readonly maxAttempts:number;
- private readonly executor:RollbackExecutor;\n private readonly persistence?:RecoveryPersistence;\n private readonly recoveryId?:string;\n private readonly resumeEngine=new RecoveryResumeEngine();
+ private readonly executor:RollbackExecutor;
+ private readonly persistence?:RecoveryPersistence;
+ private readonly recoveryId?:string;
+ private readonly resumeEngine=new RecoveryResumeEngine();
 
  constructor(
   private readonly healthProbe:ReleaseHealthProbe,
@@ -30,10 +35,16 @@ export class ProductionRecoveryController{
  ){
   this.actor=options.actor??"release-controller";
   this.executor=executor;
+  this.persistence=options.persistence;
+  this.recoveryId=options.recoveryId;
   this.maxAttempts=Math.max(1,Math.floor(options.maxAttempts??1));
  }
 
  async evaluate(deployment:Deployment):Promise<RecoveryRunResult>{
+  const active=await this.persistence?.findActive();
+  if(active&&active.deploymentCommitSha!==deployment.commitSha){
+   throw new Error("Another active recovery belongs to a different deployment.");
+  }
   this.rollback.record(deployment);
   const initial=await this.healthProbe.run();
 
@@ -50,6 +61,7 @@ export class ProductionRecoveryController{
   }
 
   const resource=this.resource(deployment);
+  await this.persistState(deployment,"checking",0,initial.reason);
   this.audit.record({
    timestamp:new Date().toISOString(),
    actor:this.actor,
@@ -77,6 +89,7 @@ export class ProductionRecoveryController{
   while(decision.action==="rollback"&&decision.target&&attempts<this.maxAttempts){
    attempts++;
    const target=decision.target;
+   await this.persistState(deployment,"recovering",attempts,decision.reason,target);
    const execution=await this.executor.execute(target);
    if(!execution.success){
     const halted={action:"halt" as const,target,requiresVerification:false,reason:execution.reason??"Rollback execution failed."};
@@ -86,6 +99,7 @@ export class ProductionRecoveryController{
     });
     return{decision:halted,audit:this.audit.summarize(resource),attempts};
    }
+   await this.persistState(deployment,"rolled_back",attempts,decision.reason,target);
    this.audit.record({
     timestamp:new Date().toISOString(),
     actor:this.actor,
@@ -103,9 +117,11 @@ export class ProductionRecoveryController{
     }
    });
 
+   await this.persistState(deployment,"verifying",attempts,undefined,target);
    const verification=await this.healthProbe.run();
    decision=this.rollback.verifyRollback(target,verification);
    if(decision.action==="keep"){
+    await this.persistState(deployment,"verified",attempts,verification.reason,target);
     this.audit.record({
      timestamp:new Date().toISOString(),
      actor:this.actor,
@@ -119,6 +135,7 @@ export class ProductionRecoveryController{
   }
 
   const halted={action:"halt" as const,target:decision.target,requiresVerification:false,reason:"Recovery attempt limit reached or post-recovery verification failed."};
+  await this.persistState(deployment,"halted",attempts,halted.reason,decision.target);
   this.audit.record({
    timestamp:new Date().toISOString(),
    actor:this.actor,
@@ -128,6 +145,31 @@ export class ProductionRecoveryController{
    metadata:{reason:halted.reason}
   });
   return{decision:halted,audit:this.audit.summarize(resource),attempts};
+ }
+
+ async inspectActiveRecovery():Promise<RecoveryResumePlan|undefined>{
+  const record=await this.persistence?.findActive();
+  return record?this.resumeEngine.plan(record):undefined;
+ }
+
+ private async persistState(deployment:Deployment,state:PersistedRecoveryRecord["state"],attempts:number,reason?:string,target?:Deployment):Promise<void>{
+  if(!this.persistence)return;
+  const recoveryId=this.recoveryId??"recovery:"+deployment.version+":"+deployment.commitSha;
+  await this.persistence.save({
+   version:1,
+   recoveryId,
+   deploymentVersion:deployment.version,
+   deploymentCommitSha:deployment.commitSha,
+   deploymentChecksum:deployment.manifestChecksum,
+   state,
+   attempts,
+   startedAt:new Date().toISOString(),
+   updatedAt:new Date().toISOString(),
+   targetVersion:target?.version,
+   targetCommitSha:target?.commitSha,
+   targetChecksum:target?.manifestChecksum,
+   reason
+  });
  }
 
  private resource(deployment:Deployment):string{
