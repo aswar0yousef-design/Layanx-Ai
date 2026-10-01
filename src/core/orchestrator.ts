@@ -123,6 +123,7 @@ export class LayanXCore{
     const initialTools=mission.tools??[];
     if(initialTools.length){
       const first=initialTools[0];
+      if(!first)throw new Error("Initial adaptive tool is missing.");
       mission.tools=[first];
       this.missions.save(mission);
       const result=await this.executeMissionTool(missionId,projectId,0,{},undefined,agentId,{deferVerification:true});
