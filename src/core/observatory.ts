@@ -20,8 +20,8 @@ export class MissionObservatory{
    agents:{total:input.agents},
    providers:{total:input.providers.length,healthy:input.providers.filter(x=>x.available).length,degraded:input.providers.filter(x=>!x.available).length},
    execution:{active:m.filter(x=>x.status==="running").length,toolCalls:m.reduce((n,x)=>n+x.toolCalls,0),runtimeMs:m.reduce((n,x)=>n+x.runtimeMs,0),costUsd:m.reduce((n,x)=>n+x.costUsd,0)},
-   recentAudit:input.audit.slice(-20),
-   recentLedger:input.ledger.slice(-20)
+   recentAudit:structuredClone(input.audit.slice(-20)),
+   recentLedger:structuredClone(input.ledger.slice(-20))
   };
  }
 }
