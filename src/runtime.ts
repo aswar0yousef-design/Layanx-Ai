@@ -28,3 +28,19 @@ export function runtimeStatus(runtime=createRuntime()){
   models:runtime.models.list().map(model=>({id:model.id,provider:model.provider,local:model.local,enabled:model.enabled,priority:model.priority}))
  };
 }
+
+export async function runtimeHealth(runtime=createRuntime()){
+ const providers=await Promise.all(runtime.providers.list().map(provider=>provider.health()));
+ return{
+  system:"LayanX AI",
+  ready:runtime.core.isReady(),
+  healthy:providers.length>0&&providers.every(provider=>provider.available),
+  providers:providers.map(provider=>({
+   provider:provider.provider,
+   available:provider.available,
+   latencyMs:provider.latencyMs,
+   reason:provider.reason,
+   updatedAt:provider.updatedAt
+  }))
+ };
+}
