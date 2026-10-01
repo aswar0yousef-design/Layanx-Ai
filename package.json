@@ -8,7 +8,9 @@
     "dev": "tsx src/index.ts",
     "test": "tsx tests/*.spec.ts",
     "security:check": "node scripts/security-check.mjs",
-    "release:check": "npm run security:check && npm run typecheck && npm test"
+    "release:check": "npm run security:check && npm run typecheck && npm test",
+    "ci": "npm run release:check",
+    "test:unit": "tsx tests/*.spec.ts"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
