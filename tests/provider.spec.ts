@@ -1,0 +1,12 @@
+import {ModelRegistry} from "../src/models/registry.js";
+import {ModelRouter} from "../src/core/model-router.js";
+import {ProviderRouter} from "../src/core/provider-router.js";
+import type {ModelClient} from "../src/core/provider-client.js";
+const registry=new ModelRegistry();
+registry.register({id:"local-test",provider:"local",capabilities:["chat"],local:true,enabled:true,priority:1});
+registry.register({id:"cloud-test",provider:"cloud",capabilities:["chat"],local:false,enabled:true,priority:2});
+const client:ModelClient={generate:async r=>({provider:"local",model:r.model,output:"ok"})};
+const router=new ProviderRouter(new ModelRouter(registry),new Map([["local",client]]));
+const result=await router.generate("chat","hello");
+if(result.output!=="ok"||result.provider!=="local")throw new Error("Provider routing test failed");
+console.log("Provider routing test passed.");
