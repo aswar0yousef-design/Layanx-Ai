@@ -62,7 +62,15 @@ export class CoreRuntime{
     return{...result,decision};
   }
 
-  async restorePersistedMission(missionId:string){return this.persistence?.get(missionId);}\n\n  health():HealthCheck[]{\n    const providers=this.core.providers.list();\n    const healthyProviders=providers.filter(provider=>provider.available).length;\n    const missionFailures=this.core.executionStates.all().filter(state=>state.status==="failed").length;\n    return this.health.check({providers:providers.length,healthyProviders,agents:this.core.agents.list().length,missionFailures});\n  }
+  async restorePersistedMission(missionId:string){return this.persistence?.get(missionId);}
+
+  async health():Promise<HealthCheck[]>{
+    const providers=this.core.providers.list();
+    const results=await Promise.all(providers.map(async provider=>provider.health()));
+    const healthyProviders=results.filter(result=>result.available).length;
+    const missionFailures=this.core.executionStates.all().filter(state=>state.status==="failed").length;
+    return this.health.check({providers:providers.length,healthyProviders,agents:this.core.agents.list().length,missionFailures});
+  }
 
   private async persist(mission:import("./types.js").Mission):Promise<void>{
     if(!this.persistence)return;
