@@ -13,6 +13,7 @@ export class ReleaseGate{
    recovery:e.recovery
   }))if(!ok)reasons.push(name+" gate failed.");
   if(!e.version.trim())reasons.push("Version is required.");
+  if(!/^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(e.version.trim()))reasons.push("Version format is invalid.");
   if(!e.commitSha.trim())reasons.push("Commit SHA is required.");
   if(!/^[0-9a-f]{7,64}$/i.test(e.commitSha.trim()))reasons.push("Commit SHA format is invalid.");
   if(!/^[0-9a-f]{64}$/i.test(e.checksum.trim()))reasons.push("Release checksum format is invalid.");
