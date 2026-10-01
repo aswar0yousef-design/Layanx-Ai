@@ -43,6 +43,29 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }
    return;
   }
+  if(request.method==="GET"&&request.url==="/v1/skills"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   json(response,200,{ok:true,skills:options.core.skills.list()});
+   return;
+  }
+  if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/skills\/[^/]+\/execute$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const parts=request.url.split("/");
+   const missionId=parts[3] as string;
+   const skillId=parts[5] as string;
+   if(!options.core.missions.get(missionId)){json(response,404,{ok:false,error:"mission_not_found"});return;}
+   try{
+    const input=await body(request,max);
+    const projectId=typeof input.projectId==="string"?input.projectId.trim():"";
+    const payloads=Array.isArray(input.payloads)?input.payloads:[];
+    if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
+    const result=await options.core.executeSkill(skillId,missionId,projectId,payloads);
+    json(response,result.completed?200:403,result);
+   }catch(error){
+    json(response,422,{ok:false,error:error instanceof Error?error.message:"skill execution failed"});
+   }
+   return;
+  }
   if(request.method==="GET"&&request.url==="/v1/tools"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const contract=options.core.agents.get("core");
