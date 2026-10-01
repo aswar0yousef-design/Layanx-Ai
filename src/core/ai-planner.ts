@@ -53,10 +53,10 @@ export class AiMissionPlanner{
     const steps=Array.isArray(v.steps)?v.steps.filter(x=>x&&typeof x==="object"&&typeof (x as Record<string,unknown>).description==="string").map(x=>({description:String((x as Record<string,unknown>).description)})):[];
     const successCriteria=Array.isArray(v.successCriteria)?v.successCriteria.filter(x=>typeof x==="string").map(String):[];
     if(!steps.length||!successCriteria.length||typeof v.stopCondition!=="string"||!v.stopCondition.trim())throw new Error("Incomplete mission plan.");
-    const tools=this.parseTools(v.tools,catalog);
+    const tools=this.parseTools(v.tools,catalog,v.requiredPermission as PermissionLevel);
     return{risk:v.risk as PlannedMission["risk"],requiredPermission:v.requiredPermission as PermissionLevel,steps,successCriteria,stopCondition:String(v.stopCondition),tools};
   }
-  private parseTools(value:unknown,catalog:ToolCatalogEntry[]):PlannedTool[]{
+  private parseTools(value:unknown,catalog:ToolCatalogEntry[],missionPermission:PermissionLevel):PlannedTool[]{
     if(!Array.isArray(value))return[];
     const byName=new Map(catalog.map(tool=>[tool.name,tool]));
     return value.map(item=>{
@@ -71,7 +71,7 @@ export class AiMissionPlanner{
       if(!levels.includes(permission))throw new Error("Planner returned an invalid tool permission.");
       const rank=(x:PermissionLevel)=>levels.indexOf(x);
       if(rank(permission)<rank(tool.permission))throw new Error("Planner tool permission is below the tool requirement.");
-      if(rank(permission)>rank((tool.permission==="L1_READ"||tool.permission==="L2_ANALYZE"||tool.permission==="L3_MODIFY"||tool.permission==="L4_EXECUTE"||tool.permission==="L5_CRITICAL")?tool.permission:permission))throw new Error("Planner tool permission is not constrained.");
+      if(rank(permission)>rank(missionPermission))throw new Error("Planner tool permission exceeds mission scope.");
       return{tool:tool.name,action,permission,reason:typeof entry.reason==="string"?entry.reason:""};
     });
   }
