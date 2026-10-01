@@ -22,7 +22,7 @@ mission.tools=[{tool:"echo",action:"echo",permission:"L1_READ",reason:"recover"}
 const capability=core.capabilities.issue({missionId:mission.id,agentId:agent.agentId,projectId:"recovery-project",resource:"echo",permission:"L1_READ",expiresAt:new Date(Date.now()+60000).toISOString()});
 const request={missionId:mission.id,agentId:agent.agentId,tool:"echo",action:"echo",permission:"L1_READ" as const,idempotencyKey:"recoverable-failure-key",payload:"ok",planIndex:0};
 
-const failed=await core.executionRuntime.run(mission,request,{execute:async()=>{throw new Error("transient");}},{},{projectId:"recovery-project",capabilityId:capability.id},{deferVerification:true});
+const failed=await core.executionRuntime.run(mission,request,{execute:async()=>{throw new Error("transient");}},undefined,{projectId:"recovery-project",capabilityId:capability.id},{deferVerification:true});
 if(failed.ok||!failed.recoverable)throw new Error("Transient failure was not marked recoverable.");
 if(mission.status!=="failed")throw new Error("Transient failure did not persist failed mission status.");
 
