@@ -1,6 +1,4 @@
 import process from "node:process";
-import {runtimeHealth} from "../src/runtime.js";
-
 const baseUrl=(process.env.LAYANX_PRODUCTION_URL??"").replace(/\/$/,"");
 if(!baseUrl)throw new Error("LAYANX_PRODUCTION_URL is required.");
 
