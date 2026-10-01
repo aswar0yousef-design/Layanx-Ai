@@ -25,7 +25,7 @@ export function loadProviderConfig(env:NodeJS.ProcessEnv=process.env):ProviderRu
    enabled:env.OPENAI_ENABLED==="true",
    apiKey:env.OPENAI_API_KEY,
    baseUrl:env.OPENAI_BASE_URL??"https://api.openai.com/v1/responses",
-   model:env.OPENAI_MODEL??"gpt-5.6-mini"
+   model:env.OPENAI_MODEL??"gpt-5.6-luna"
   }
  };
 }
