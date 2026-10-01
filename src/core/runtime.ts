@@ -97,7 +97,7 @@ export class ExecutionRuntime{
  async finalize(mission:Mission,result:unknown,agentId="core"):Promise<RuntimeResult>{
   const contract=this.core.agents.get(agentId);
   mission.status="verifying";
-  this.core.executionStates.update(mission.id,{status:"verifying"});
+  this.core.executionStates.update(mission.id,{status:"running"});
   const verification=this.core.verifier.verify(mission,result,contract.successCriteria);
   if(!verification.verified){
    mission.status="failed";
