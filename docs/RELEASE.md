@@ -28,4 +28,4 @@ Flow:
 
 Development -> Staging -> CI Quality Gate -> Release Gate -> Production -> Health Probe -> Keep / Rollback
 
-Rollback is deliberately separated from application business logic so deployment recovery remains independently auditable. RecoveryAuditTrail records recovery start, rollback target, post-recovery verification, or a halted recovery with version/commit/checksum evidence and a final summary.
+Rollback is deliberately separated from application business logic so deployment recovery remains independently auditable. RecoveryAuditTrail records recovery start, rollback target, post-recovery verification, or a halted recovery with version/commit/checksum evidence and a final summary. RecoveryStateMachine constrains the lifecycle to valid transitions and prevents recovery from continuing after verification or halt.
