@@ -30,6 +30,7 @@ import type {RuntimePersistence} from "./runtime-persistence.js";
 import {MissionHandoffManager} from "./handoff.js";
 import {NextActionEngine} from "./next-action.js";
 import {MissionStore} from "./mission-store.js";
+import {ToolAdapterRegistry} from "../tools/adapters.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -64,6 +65,7 @@ export class LayanXCore{
   readonly capabilities=new CapabilityGate();
   readonly idempotency:IdempotencyService;
   readonly missions=new MissionStore();
+  readonly toolAdapters=new ToolAdapterRegistry();
 
   constructor(idempotency?:IdempotencyService,persistence?:RuntimePersistence){
     this.idempotency=idempotency??new IdempotencyStore();
