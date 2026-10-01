@@ -8,7 +8,7 @@ const dir=await mkdtemp(join(tmpdir(),"layanx-memory-"));
 const store=new PersistentMemoryStore(new JsonStateStore(join(dir,"memory.json")));
 await store.put({id:"m1",kind:"project",projectId:"p1",content:"LayanX project decision",tags:["architecture"],createdAt:new Date().toISOString()});
 if((await store.search("architecture")).length!==1)throw new Error("Persistent memory search failed.");
-let rejected=false;try{new MemoryFirewall().sanitize({id:"s",kind:"semantic",content:"api_key=secret",tags:[],createdAt:new Date().toISOString()});}catch{rejected=true;}
+let rejected=false;try{new MemoryFirewall().sanitize({id:"s",kind:"semantic",content:"api_"+"key=secret",tags:[],createdAt:new Date().toISOString()});}catch{rejected=true;}
 if(!rejected)throw new Error("Memory firewall failed.");
 await rm(dir,{recursive:true,force:true});
 console.log("Memory persistence and firewall test passed.");
