@@ -27,7 +27,7 @@ const result=await runtime.run(
 );
 if(!result.ok||!result.verified)throw new Error(result.error??"Persistent CoreRuntime execution failed.");
 
-const restored=await runtime["persistence"]?.get(result.missionId);
+const restored=await runtime.restorePersistedMission(result.missionId);
 if(restored?.mission.status!=="completed")throw new Error("Completed mission was not durably persisted.");
 if(restored.executionState.status!=="completed")throw new Error("Completed execution state was not durably persisted.");
 if(restored.ledger.length<2)throw new Error("Durable ledger snapshot is incomplete.");
