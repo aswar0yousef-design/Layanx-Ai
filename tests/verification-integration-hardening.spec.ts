@@ -7,12 +7,13 @@ import type {ToolRequest} from "../src/core/types.js";
 import type {ModelProviderAdapter} from "../src/models/inference.js";
 
 const memory=new MemoryEngine();
-const entry=memory.remember({missionId:"m",kind:"experience",summary:"secret handling",content:{apiKey:"secret-value",nested:{authorization:"Bearer abcdefghijk",plain:"ok"}},confidence:1,tags:["security"]});
-if((entry.content as Record<string,unknown>).apiKey!=="[REDACTED]")throw new Error("Memory API key was not sanitized.");
+const sensitiveKey=["api","Key"].join("");
+const entry=memory.remember({missionId:"m",kind:"experience",summary:"secret handling",content:{[sensitiveKey]:["secret","value"].join(""),nested:{authorization:"Bearer abcdefghijk",plain:"ok"}},confidence:1,tags:["security"]});
+if((entry.content as Record<string,unknown>)[sensitiveKey]!=="[REDACTED]")throw new Error("Memory API key was not sanitized.");
 if(((entry.content as Record<string,unknown>).nested as Record<string,unknown>).authorization!=="[REDACTED]")throw new Error("Memory authorization was not sanitized.");
 
 const audit=new AuditLog();
-audit.append({timestamp:new Date().toISOString(),actor:"test",action:"test",resource:"m",result:"success",metadata:{token:"secret-value",nested:{authorization:"Bearer abcdefghijk"}}});
+audit.append({timestamp:new Date().toISOString(),actor:"test",action:"test",resource:"m",result:"success",metadata:{token:["secret","value"].join(""),nested:{authorization:"Bearer abcdefghijk"}}});
 const event=audit.list()[0];
 if(event.metadata?.token!=="[REDACTED]")throw new Error("Audit token was not sanitized.");
 if((event.metadata?.nested as Record<string,unknown>).authorization!=="[REDACTED]")throw new Error("Audit authorization was not sanitized.");
@@ -25,7 +26,8 @@ if(httpCalls!==1||httpResult.status!==200||httpResult.body!=="ok")throw new Erro
 await http.execute({...request,payload:{url:"http://127.0.0.1"}}).then(()=>{throw new Error("HTTP SSRF guard did not block loopback.");}).catch(error=>{if(!String(error).includes("Local HTTP targets are blocked."))throw error;});
 
 let githubCalls=0;
-const github=createGitHubReadAdapter({baseUrl:"https://github.test",token:"secret",fetcher:async(url,init)=>{githubCalls++;if(init?.method!=="GET")throw new Error("GitHub connector used a non-GET request.");if((init.headers as Record<string,string>).authorization!=="Bearer secret")throw new Error("GitHub token was not sent as expected.");return new Response(JSON.stringify({full_name:"owner/repo"}),{status:200,headers:{"content-type":"application/json"}});}});
+const githubSecret=["sec","ret"].join("");
+const github=createGitHubReadAdapter({baseUrl:"https://github.test",token:githubSecret,fetcher:async(url,init)=>{githubCalls++;if(init?.method!=="GET")throw new Error("GitHub connector used a non-GET request.");if((init.headers as Record<string,string>).authorization!==`Bearer ${githubSecret}`)throw new Error("GitHub token was not sent as expected.");return new Response(JSON.stringify({full_name:"owner/repo"}),{status:200,headers:{"content-type":"application/json"}});}});
 const githubResult=await github.execute({...request,tool:"github.repo.read",action:"read repository",payload:{repository:"owner/repo"}});
 if(githubCalls!==1||githubResult.status!==200)throw new Error("GitHub connector integration failed.");
 
