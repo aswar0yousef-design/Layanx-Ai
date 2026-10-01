@@ -1,9 +1,18 @@
 {
-  "compilerOptions":{
-    "target":"ES2022","module":"NodeNext","moduleResolution":"NodeNext",
-    "strict":true,"noUncheckedIndexedAccess":true,"exactOptionalPropertyTypes":true,
-    "noImplicitOverride":true,"noFallthroughCasesInSwitch":true,"skipLibCheck":true,
-    "rootDir":"src","outDir":"dist"
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": false,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "rootDir": "src",
+    "outDir": "dist"
   },
-  "include":["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ]
 }
