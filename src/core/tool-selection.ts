@@ -18,7 +18,7 @@ export class ToolSelector{
     return this.registry.list()
       .filter(tool=>contract.allowedTools.includes(tool.name))
       .filter(tool=>!contract.forbiddenResources.includes(tool.name))
-      .filter(tool=>rank[tool.permission]<=rank[requiredPermission])
+      .filter(tool=>rank[tool.permission]<=Math.min(rank[requiredPermission],rank[contract.requiredPermission]))
       .map(tool=>{
         const haystack=(tool.name+" "+tool.description).toLowerCase();
         const matches=[...words].filter(word=>word.length>2&&haystack.includes(word)).length;
