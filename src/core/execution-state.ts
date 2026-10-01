@@ -4,5 +4,5 @@ export class ExecutionStateStore{
  start(missionId:string){const s={missionId,startedAt:new Date().toISOString(),toolCalls:0,runtimeMs:0,costUsd:0,status:"running" as const};this.states.set(missionId,s);return s;}
  restore(state:ExecutionState){this.states.set(state.missionId,structuredClone(state));return this.states.get(state.missionId)!;}
  update(missionId:string,patch:Partial<ExecutionState>){const current=this.states.get(missionId);if(!current)throw new Error("Unknown execution state.");const next={...current,...patch};this.states.set(missionId,next);return next;}
- get(missionId:string){const state=this.states.get(missionId);return state?structuredClone(state):undefined;}
+ get(missionId:string){const state=this.states.get(missionId);return state?structuredClone(state):undefined;}\n all(){return[...this.states.values()].map(state=>structuredClone(state));}
 }
