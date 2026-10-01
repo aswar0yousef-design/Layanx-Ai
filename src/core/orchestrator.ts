@@ -104,7 +104,8 @@ export class LayanXCore{
     const contract=this.agents.get(agentId);
     return this.toolSelector.discover(action,contract,permission);
   }
-  prepareMissionToolRequests(mission:import("./types.js").Mission,projectId:string,agentId="core"){\n    this.projectIsolation.assertMissionProject(projectId,mission.projectId);
+  prepareMissionToolRequests(mission:import("./types.js").Mission,projectId:string,agentId="core" ){
+    this.projectIsolation.assertMissionProject(projectId,mission.projectId);
     const contract=this.agents.get(agentId);
     const catalog=this.toolCatalog.list(contract,mission.requiredPermission);
     return (mission.tools??[]).map(plan=>{
@@ -116,7 +117,8 @@ export class LayanXCore{
   async executeMissionTool(missionId:string,projectId:string,toolIndex=0,payload:unknown={},approvalId?:string,agentId="core",runtimeOptions:{deferVerification?:boolean}={}){
     const mission=this.missions.get(missionId);
     if(!mission)throw new Error("Mission not found.");
-    this.projectIsolation.assertMissionProject(projectId,mission.projectId);\n    const plans=mission.tools??[];
+    this.projectIsolation.assertMissionProject(projectId,mission.projectId);
+    const plans=mission.tools??[];
     const plan=plans[toolIndex];
     if(!plan)throw new Error("Mission tool plan not found.");
     const contract=this.agents.get(agentId);
@@ -255,16 +257,18 @@ export class LayanXCore{
     return this.missionCompiler.compile(plan,goal);
   }
 
-  async planAndStartMission(goal:string){
+  async planAndStartMission(goal:string,projectId="default"){
     const m=await this.planMission(goal);
+    m.projectId=this.projectIsolation.normalize(projectId);
     this.executionStates.start(m.id);
     this.ledger.append({id:crypto.randomUUID(),missionId:m.id,agentId:"core",action:"mission.create",status:"started",timestamp:new Date().toISOString(),detail:goal});
     this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"mission.create",resource:m.id,result:"success",metadata:{goal,missionId:m.id}});
     this.missions.save(m);
     return m;
   }
-  startMission(goal:string){
+  startMission(goal:string,projectId="default"){
     const m=this.planner.create(goal);
+    m.projectId=this.projectIsolation.normalize(projectId);
     this.executionStates.start(m.id);
     this.ledger.append({id:crypto.randomUUID(),missionId:m.id,agentId:"core",action:"mission.create",status:"started",timestamp:new Date().toISOString(),detail:goal});
     this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"mission.create",resource:m.id,result:"success",metadata:{goal,missionId:m.id}});
