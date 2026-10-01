@@ -20,6 +20,7 @@ import {LastKnownGood} from "./last-known-good.js";
 import {CapabilityGate} from "../security/capability-gate.js";
 import type {IdempotencyService} from "./idempotency.js";
 import {IdempotencyStore} from "./idempotency.js";
+import {ModelProviderRegistry,ModelExecutionRouter} from "./model-execution.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -33,6 +34,8 @@ export class LayanXCore{
   readonly executor:ToolExecutor;
   readonly models=new ModelRegistry();
   readonly modelRouter=new ModelRouter(this.models);
+  readonly providers=new ModelProviderRegistry();
+  readonly modelExecution=new ModelExecutionRouter(this.models,this.providers);
   readonly risk=new RiskEngine();
   readonly audit=new AuditLog();
   readonly noAction=new NoActionController();
