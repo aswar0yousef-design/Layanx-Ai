@@ -2,11 +2,11 @@ import {HttpModelProvider} from "./http-model-provider.js";
 import type {ModelResponse} from "../models/inference.js";
 import type {ModelDefinition} from "../models/registry.js";
 
-export function createOpenAIProvider(options:{apiKey:string;baseUrl?:string;timeoutMs?:number;fetcher?:typeof fetch}){
+export function createOpenAIProvider(options:{apiKey:string;baseUrl?:string;healthUrl?:string;timeoutMs?:number;fetcher?:typeof fetch}){
  return new HttpModelProvider({
   name:"openai",
   baseUrl:options.baseUrl??"https://api.openai.com/v1/responses",
-  healthUrl:(options.baseUrl??"https://api.openai.com/v1").replace(/\/$/,"")+"/models",
+  healthUrl:options.healthUrl??"https://api.openai.com/v1/models",
   apiKey:options.apiKey,
   timeoutMs:options.timeoutMs,
   fetcher:options.fetcher,
