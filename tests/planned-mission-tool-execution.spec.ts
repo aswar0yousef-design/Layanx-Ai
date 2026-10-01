@@ -1,0 +1,18 @@
+import {LayanXCore} from "../src/core/orchestrator.js";
+const core=new LayanXCore();
+core.registerAgent({agentId:"core",purpose:"test",allowedTools:["runtime.status"],forbiddenResources:["secrets"],requiredPermission:"L1_READ",maxToolCalls:10,maxRuntimeMs:10000,successCriteria:["done"],stopCondition:"stop"});
+core.tools.register({name:"runtime.status",description:"read runtime status",permission:"L1_READ",dangerous:false,actions:["read runtime status"],tags:["runtime","status"]});
+let calls=0;
+core.toolAdapters.register("runtime.status",{async execute(){calls++;return{ready:true,calls};}});
+const mission=core.startMission("Read runtime status");
+mission.requiredPermission="L1_READ";
+mission.tools=[{tool:"runtime.status",action:"read runtime status",permission:"L1_READ",reason:"test"}];
+const result=await core.executeMissionTool(mission.id,"project-test",0,{});
+if(!result.ok||!result.verified)throw new Error("planned execution did not complete and verify");
+if(result.tool!=="runtime.status"||calls!==1)throw new Error("wrong tool execution");
+const stored=core.missions.get(mission.id);
+if(stored?.status!=="completed")throw new Error("mission was not persisted as completed");
+const replay=await core.executeMissionTool(mission.id,"project-test",0,{});
+if(!replay.ok||!replay.verified||!replay.recoverable)throw new Error("safe replay did not succeed");
+if(calls!==1)throw new Error("replay executed the adapter twice");
+console.log("Planned mission tool execution passed.");
