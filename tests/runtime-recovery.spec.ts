@@ -37,6 +37,10 @@ await persistence.save({
 const restoredCore=new LayanXCore();
 restoredCore.registerAgent({agentId:"agent",purpose:"recovery",allowedTools:["echo"],forbiddenResources:["secrets"],requiredPermission:"L1_READ",maxToolCalls:5,maxRuntimeMs:10000,successCriteria:["echo"],stopCondition:"stop"});
 restoredCore.tools.register({name:"echo",description:"recovery echo",permission:"L1_READ",dangerous:false});
+const recoveryCapability=restoredCore.capabilities.issue({
+  missionId:mission.id,agentId:"agent",projectId:"recovery-project",resource:"echo",
+  permission:"L1_READ",expiresAt:new Date(Date.now()+60000).toISOString()
+});
 const recovery=new RuntimeRecoveryManager(persistence,restoredCore);
 const badRequest={missionId:mission.id,agentId:"missing-agent",tool:"missing-tool",action:"echo",permission:"L1_READ" as const,idempotencyKey:"bad-recovery-key",payload:"blocked"};
 try{
@@ -55,7 +59,9 @@ let calls=0;
 const result=await recovery.resume(
   mission.id,
   replayRequest,
-  {execute:async request=>{calls++;return request.payload;}}
+  {execute:async request=>{calls++;return request.payload;}},
+  undefined,
+  {projectId:"recovery-project",capabilityId:recoveryCapability.id}
 );
 if(!result.ok||!result.verified)throw new Error(result.error??"Recovery resume failed.");
 if(mission.steps[3]?.status!=="completed")throw new Error("Recovery did not resume through the execution step.");

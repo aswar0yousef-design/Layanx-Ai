@@ -26,6 +26,7 @@ import {ExecutionRuntime} from "./runtime.js";
 import {MissionCompiler} from "./mission-compiler.js";
 import {ToolSelector} from "./tool-selection.js";
 import {MemoryEngine} from "./memory.js";
+import type {RuntimePersistence} from "./runtime-persistence.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -46,6 +47,7 @@ export class LayanXCore{
   readonly toolSelector=new ToolSelector(this.tools);
   readonly memory=new MemoryEngine();
   readonly executionRuntime:ExecutionRuntime;
+  readonly persistence?:RuntimePersistence;
   readonly risk=new RiskEngine();
   readonly audit=new AuditLog();
   readonly noAction=new NoActionController();
@@ -57,8 +59,9 @@ export class LayanXCore{
   readonly capabilities=new CapabilityGate();
   readonly idempotency:IdempotencyService;
 
-  constructor(idempotency?:IdempotencyService){
+  constructor(idempotency?:IdempotencyService,persistence?:RuntimePersistence){
     this.idempotency=idempotency??new IdempotencyStore();
+    this.persistence=persistence;
     this.executor=new ToolExecutor(this.tools,this.sentinel,this.idempotency);
     this.executionRuntime=new ExecutionRuntime(this);
   }
@@ -69,6 +72,13 @@ export class LayanXCore{
     return this.missionCompiler.compile(plan,goal);
   }
 
+  async planAndStartMission(goal:string){
+    const m=await this.planMission(goal);
+    this.executionStates.start(m.id);
+    this.ledger.append({id:crypto.randomUUID(),missionId:m.id,agentId:"core",action:"mission.create",status:"started",timestamp:new Date().toISOString(),detail:goal});
+    this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"mission.create",resource:m.id,result:"success",metadata:{goal,missionId:m.id}});
+    return m;
+  }
   startMission(goal:string){
     const m=this.planner.create(goal);
     this.executionStates.start(m.id);
