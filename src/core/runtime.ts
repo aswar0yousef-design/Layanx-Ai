@@ -3,7 +3,6 @@ import {LayanXCore} from "./orchestrator.js";
 import type {ToolAdapter} from "../tools/executor.js";
 import {BudgetGovernor} from "./budget-governor.js";
 import {ApprovalEngine} from "../security/approval.js";
-import type {CapabilityGate} from "../security/capability-gate.js";
 
 export interface RuntimeSecurityContext{projectId:string;capabilityId:string;}
 
