@@ -2,6 +2,7 @@ import {ReleaseHealthProbe} from "../src/release/health-probe.js";
 import {RecoveryAuditTrail} from "../src/release/recovery-audit.js";
 import {RollbackController} from "../src/release/rollback.js";
 import {ProductionRecoveryController} from "../src/release/recovery-controller.js";
+import {InMemoryRollbackExecutor} from "../src/release/rollback-executor.js";
 
 let calls=0;
 const probe=new ReleaseHealthProbe([{
@@ -10,7 +11,8 @@ const probe=new ReleaseHealthProbe([{
 }]);
 const audit=new RecoveryAuditTrail();
 const rollback=new RollbackController();
-const controller=new ProductionRecoveryController(probe,rollback,audit,{maxAttempts:1});
+const executor=new InMemoryRollbackExecutor();
+const controller=new ProductionRecoveryController(probe,rollback,audit,executor,{maxAttempts:1});
 
 const result=await controller.evaluate({
  version:"1.1.0",
@@ -26,7 +28,7 @@ if(!result.audit.started||!result.audit.rollback||!result.audit.verified||!resul
  throw new Error("Recovery controller did not produce a complete audit trail.");
 
 const healthyProbe=new ReleaseHealthProbe([{name:"api",check:async()=>true}]);
-const healthy=new ProductionRecoveryController(healthyProbe,new RollbackController(),new RecoveryAuditTrail());
+const healthy=new ProductionRecoveryController(healthyProbe,new RollbackController(),new RecoveryAuditTrail(),new InMemoryRollbackExecutor());
 const healthyResult=await healthy.evaluate({
  version:"2.0.0",
  commitSha:"good1234",
