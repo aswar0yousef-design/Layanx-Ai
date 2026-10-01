@@ -5,6 +5,9 @@ import {registerBuiltinTools,registerHttpReadTool,registerGitHubReadTools} from 
 
 export function createRuntime(){
  const core=new LayanXCore();
+ registerBuiltinTools(core);
+ registerHttpReadTool(core);
+ registerGitHubReadTools(core,{token:process.env.GITHUB_TOKEN});
  const agent:AgentContract={
   agentId:"core",
   purpose:"Safely orchestrate LayanX missions.",
