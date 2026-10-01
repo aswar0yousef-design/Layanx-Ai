@@ -41,7 +41,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     if(!options.core.toolAdapters.has(tool)){
      json(response,503,{ok:false,error:"No registered adapter is available for this tool"});return;
     }
-    const requestData={missionId:id,agentId,tool,action,permission:permission as import("./core/types.js").PermissionLevel,idempotencyKey,payload:input.payload};
+    const requestData:import("./core/types.js").ToolRequest={missionId:id,agentId,tool,action,permission:permission as import("./core/types.js").PermissionLevel,idempotencyKey,payload:input.payload};
     const rank:Record<string,number>={L1_READ:1,L2_ANALYZE:2,L3_MODIFY:3,L4_EXECUTE:4,L5_CRITICAL:5};
     if(rank[requestData.permission]>rank[mission.requiredPermission]||rank[requestData.permission]>rank[contract.requiredPermission]){
      json(response,403,{ok:false,error:"Requested permission exceeds mission or agent scope"});return;
