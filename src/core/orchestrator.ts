@@ -78,6 +78,19 @@ export class LayanXCore{
     this.executionRuntime=new ExecutionRuntime(this);
   }
 
+  restoreRuntimeSnapshot(snapshot:import("./runtime-persistence.js").RuntimeSnapshot){
+    this.missions.save(snapshot.mission);
+    this.executionStates.restore(snapshot.executionState);
+    this.ledger.restore(snapshot.ledger);
+    this.audit.restore(snapshot.audit);
+    this.recovery.restorePersisted(snapshot.checkpoint);
+    if(snapshot.idempotency)this.idempotency.restore(snapshot.idempotency);
+    if(snapshot.memory)this.memory.restore(snapshot.memory);
+    if(snapshot.handoffs)this.handoffs.restore(snapshot.handoffs);
+    if(snapshot.delegatedTasks)this.delegation.restore(snapshot.delegatedTasks);
+    return this.missions.get(snapshot.mission.id);
+  }
+
   isReady():boolean{
     return this.agents.list().length>0;
   }
@@ -114,25 +127,31 @@ export class LayanXCore{
   async executeMissionAdaptive(missionId:string,projectId:string,maxSteps=10,agentId="core"){
     const mission=this.missions.get(missionId);
     if(!mission)throw new Error("Mission not found.");
+    if(["completed","cancelled"].includes(mission.status))return{missionId,results:[],completed:mission.status==="completed",reason:"Mission is already terminal."};
     const contract=this.agents.get(agentId);
     const catalog=this.toolCatalog.list(contract,mission.requiredPermission);
     if(!catalog.length)throw new Error("No tools are available for adaptive execution.");
     const completedTools:string[]=[];
     let latest:unknown={status:"not_started"};
     const results=[];
-    const initialTools=mission.tools??[];
-    if(initialTools.length){
-      const first=initialTools[0];
-      if(!first)throw new Error("Initial adaptive tool is missing.");
-      mission.tools=[first];
-      this.missions.save(mission);
-      const result=await this.executeMissionTool(missionId,projectId,0,first.payload??{},undefined,agentId,{deferVerification:true});
+    let processed=0;
+
+    while(processed<(mission.tools?.length??0)&&processed<maxSteps){
+      const index=processed;
+      const plan=mission.tools?.[index];
+      if(!plan)break;
+      const result=await this.executeMissionTool(missionId,projectId,index,plan.payload??{},undefined,agentId,{deferVerification:true});
       results.push(result);
-      if(!result.ok)return{missionId,results,completed:false,reason:result.error};
-      completedTools.push(first.tool);
+      processed++;
+      if(!result.ok)return{missionId,results,completed:false,reason:result.error,recoverable:result.recoverable};
+      completedTools.push(plan.tool);
       latest=result.data;
     }
-    for(let step=results.length;step<maxSteps;step++){
+
+    if(processed>=maxSteps&&processed<(mission.tools?.length??0))
+      return{missionId,results,completed:false,reason:"Adaptive execution step limit reached before the persisted plan was exhausted.",recoverable:true};
+
+    for(;processed<maxSteps;processed++){
       const next=await this.aiPlanner.nextTool({
         goal:mission.goal,result:latest,tools:catalog,
         requiredPermission:mission.requiredPermission,completedTools
@@ -144,11 +163,13 @@ export class LayanXCore{
       const index=mission.tools.length-1;
       const result=await this.executeMissionTool(missionId,projectId,index,next.payload??{},undefined,agentId,{deferVerification:true});
       results.push(result);
-      if(!result.ok)return{missionId,results,completed:false,reason:result.error};
+      if(!result.ok)return{missionId,results,completed:false,reason:result.error,recoverable:result.recoverable};
       completedTools.push(next.tool);
       latest=result.data;
     }
-    if(!results.length)return{missionId,results,completed:false,reason:"Adaptive planner produced no executable tool."};
+
+    if(processed>=maxSteps)return{missionId,results,completed:false,reason:"Adaptive execution step limit reached.",recoverable:true};
+    if(!results.length)return{missionId,results,completed:false,reason:"Adaptive planner produced no executable tool.",recoverable:true};
     const finalMission=this.missions.get(missionId);
     if(!finalMission)throw new Error("Mission not found.");
     const finalResult=await this.executionRuntime.finalize(finalMission,latest,agentId);
