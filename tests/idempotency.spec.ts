@@ -33,3 +33,21 @@ if(!crashResult.ok||crashResult.data!=="durable-result"||crashResult.replayed!==
   throw new Error("Durable completion boundary was not recovered.");
 
 console.log("Idempotency test passed.");
+
+
+const crashBeforeCompletionService={
+  async begin(){return{accepted:true,replay:false,record:{...completed,status:"running" as const}};},
+  async complete(){throw new Error("simulated acknowledgement loss");},
+  async fail(){throw new Error("durable completion already exists");},
+  async get(){return completed;},
+  async list(){return[completed];},
+  async restore(){}
+};
+const boundaryExecutor2=new ToolExecutor(registry,new Sentinel(),crashBeforeCompletionService);
+const boundaryResult2=await boundaryExecutor2.execute(
+  {...request,missionId:"m2",idempotencyKey:"crash-boundary-key"},
+  adapter
+);
+if(!boundaryResult2.ok||boundaryResult2.verified!==true||boundaryResult2.data!=="durable-result"||boundaryResult2.replayed!==true)
+  throw new Error("Recovery boundary replay failed.");
+if(calls!==1)throw new Error("Recovery boundary caused duplicate execution.");
