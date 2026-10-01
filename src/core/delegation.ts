@@ -10,5 +10,7 @@ export class DelegationManager{
  complete(id:string){const t=this.get(id);const next={...t,status:"completed" as const};this.tasks.set(id,next);return next;}
  fail(id:string){const t=this.get(id);const next={...t,status:"failed" as const};this.tasks.set(id,next);return next;}
  get(id:string){const t=this.tasks.get(id);if(!t)throw new Error("Unknown delegated task: "+id);return t;}
- forMission(id:string){return[...this.tasks.values()].filter(t=>t.parentMissionId===id);}
+ forMission(id:string){return[...this.tasks.values()].filter(t=>t.parentMissionId===id).map(t=>structuredClone(t));}
+ all(){return[...this.tasks.values()].map(t=>structuredClone(t));}
+ restore(tasks:DelegatedTask[]){for(const task of tasks)this.tasks.set(task.id,structuredClone(task));}
 }

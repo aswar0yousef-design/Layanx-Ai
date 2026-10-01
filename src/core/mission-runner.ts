@@ -24,10 +24,41 @@ export class MissionRunner{
    const replanned=this.replanner.replan(current,{code:"EXECUTION_FAILURE",message:result.error??"Execution failed",recoverable:true});
    if(replanned===current)return result;
    current=replanned;
+   Object.assign(mission,current);
+   this.core.executionStates.update(current.id,{status:"running"});
+   await this.runtime.persist(current);
    currentRequest={...currentRequest,idempotencyKey:`${request.idempotencyKey}:retry:${attempt+1}`};
   }
   return{ok:false,missionId:mission.id,verified:false,error:"Mission failed after recovery attempt.",recoverable:false};
  }
+ async executeHandoff(mission:Mission,handoff:import("./handoff.js").MissionHandoff,adapter:ToolAdapter,security:RuntimeSecurityContext,approvalId?:string){
+  if(handoff.missionId!==mission.id)throw new Error("Handoff does not belong to the mission.");
+  if(handoff.status!=="accepted")throw new Error("Handoff must be accepted before execution.");
+  if(!handoff.execution)throw new Error("Handoff has no execution descriptor.");
+  const agent=this.core.agents.get(handoff.toAgentId);
+  if(!agent.allowedTools.includes(handoff.execution.tool))throw new Error("Handoff tool is not allowed for the target agent.");
+  if(agent.requiredPermission==="L5_CRITICAL" && handoff.requiredPermission!=="L5_CRITICAL")throw new Error("Handoff permission is below the target agent requirement.");
+  const selection=this.selector.select(handoff.execution.action,agent,mission.requiredPermission);
+  const selected=selection.find(item=>item.tool.name===handoff.execution!.tool);
+  if(!selected)throw new Error("Handoff tool or permission is not authorized.");
+  if(selected.tool.permission!==handoff.requiredPermission)throw new Error("Handoff execution permission mismatch.");
+  const request:ToolRequest={
+   missionId:mission.id,agentId:agent.agentId,tool:selected.tool.name,action:handoff.execution.action,
+   permission:handoff.requiredPermission,idempotencyKey:["handoff",handoff.id,mission.id,agent.agentId,selected.tool.name,handoff.execution.action].join(":"),
+   payload:handoff.execution.payload
+  };
+  const result=await this.execute(mission,request,adapter,approvalId,security);
+  if(!result.ok)return{handoff:this.core.handoffs.get(handoff.id),request,result};
+  this.core.handoffs.complete(handoff.id);
+  this.core.memory.remember({
+   missionId:mission.id,kind:"handoff",summary:handoff.goal,
+   content:{handoffId:handoff.id,fromAgentId:handoff.fromAgentId,toAgentId:handoff.toAgentId,tool:selected.tool.name,action:handoff.execution.action,verified:true},
+   confidence:1,tags:["handoff",selected.tool.name]
+  });
+  await this.runtime.persist(mission);
+  return{handoff:this.core.handoffs.get(handoff.id),request,result};
+ }
+
  async executeAction(mission:Mission,agent:AgentContract,action:string,payload:unknown,adapter:ToolAdapter,approvalId?:string,security?:RuntimeSecurityContext){
   const selection=this.selector.select(action,agent,mission.requiredPermission);
   const selected=selection[0];

@@ -54,10 +54,13 @@ export class CoreRuntime{
       const result={ok:false,missionId:mission.id,verified:false,decision,error:"Execution decision is "+decision} as CoreRunResult;
       await this.persist(mission);return result;
     }
-    const result=await this.runner.execute(mission,{...request,missionId:mission.id},adapter,approvalId);
-    this.core.capabilities.revoke(effectiveToken);
-    await this.persist(mission);
-    return{...result,decision};
+    try{
+      const result=await this.runner.execute(mission,{...request,missionId:mission.id},adapter,approvalId,{projectId,capabilityId:effectiveToken});
+      await this.persist(mission);
+      return{...result,decision};
+    }finally{
+      this.core.capabilities.revoke(effectiveToken);
+    }
   }
 
   async restorePersistedMission(missionId:string){return this.persistence?.get(missionId);}
@@ -73,6 +76,10 @@ export class CoreRuntime{
       audit:this.core.audit.forMission(mission.id),
       checkpoint:this.core.recovery.restore(mission.id),
       idempotency:(await this.core.idempotency.list()).filter(record=>record.missionId===mission.id),
+      memory:this.core.memory.list().filter(entry=>entry.missionId===mission.id),
+      handoffs:this.core.handoffs.forMission(mission.id),
+      delegatedTasks:this.core.delegation.forMission(mission.id),
+      nextAction:this.core.nextAction.decide({mission,tasks:this.core.delegation.forMission(mission.id),handoffs:this.core.handoffs.forMission(mission.id)}),
       savedAt:new Date().toISOString(),
       schemaVersion:1
     });

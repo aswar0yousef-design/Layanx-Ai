@@ -71,7 +71,7 @@ export class ExecutionRuntime{
   await this.persist(mission);
   return{ok:true,missionId:mission.id,verified:true,data:result.data,recoverable:false};
  }
- private async persist(mission:Mission):Promise<void>{
+ async persist(mission:Mission):Promise<void>{
   if(!this.persistence)return;
   const executionState=this.core.executionStates.get(mission.id);
   if(!executionState)return;
