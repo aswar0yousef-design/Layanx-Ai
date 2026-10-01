@@ -3,6 +3,7 @@ import type {LedgerEntry} from "./ledger.js";
 import type {AuditEvent} from "./audit.js";
 import type {Checkpoint} from "./recovery.js";
 import type {ExecutionState} from "./execution-state.js";
+import type {IdempotencyRecord} from "./idempotency.js";
 import {RuntimeStorage} from "../storage/runtime-storage.js";
 
 export interface RuntimeSnapshot{
@@ -11,6 +12,7 @@ export interface RuntimeSnapshot{
   ledger:LedgerEntry[];
   audit:AuditEvent[];
   checkpoint?:Checkpoint;
+  idempotency?:IdempotencyRecord[];
   savedAt:string;
 }
 
