@@ -5,9 +5,14 @@ import type {ToolAdapter} from "../tools/executor.js";
 export interface RuntimeResult{ok:boolean;missionId:string;verified:boolean;error?:string;data?:unknown;}
 
 export class ExecutionRuntime{
+ readonly risk=new RiskEngine();
+ readonly audit=new AuditLog();
  constructor(private readonly core:LayanXCore){}
  async run(mission:Mission,request:ToolRequest,adapter:ToolAdapter):Promise<RuntimeResult>{
   const contract=this.core.agents.get(request.agentId);
+  const risk=this.risk.assess(request);
+  this.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:risk.requiresApproval?"denied":"allowed",metadata:{risk:risk.level}});
+  if(risk.requiresApproval)return{ok:false,missionId:mission.id,verified:false,error:"Explicit approval is required for this risk level."};
   const permission=this.core.permissions.authorize(request,contract,request.permission);
   if(!permission.allowed){this.core.ledger.append({id:crypto.randomUUID(),missionId:mission.id,agentId:request.agentId,action:request.action,status:"blocked",timestamp:new Date().toISOString(),detail:permission.reason});return{ok:false,missionId:mission.id,verified:false,error:permission.reason};}
   const sentinel=this.core.sentinel.inspect(request.action);
