@@ -66,7 +66,8 @@ export class CoreRuntime{
       audit:this.core.audit.forMission(mission.id),
       checkpoint:this.core.recovery.restore(mission.id),
       idempotency:await this.core.idempotency.list(),
-      savedAt:new Date().toISOString()
+      savedAt:new Date().toISOString(),
+      schemaVersion:1
     });
   }
 }
