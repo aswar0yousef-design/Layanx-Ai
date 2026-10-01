@@ -18,7 +18,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    if(!authorized(request,options.token)){json(response,401,{jsonrpc:"2.0",error:{code:-32001,message:"Unauthorized"}});return;}
    try{
     const input=await body(request,max);
-    const result=mcp.handle(input);
+    const result=await mcp.handle(input);
     if(result===undefined){response.statusCode=202;response.end();return;}
     json(response,200,{jsonrpc:"2.0",...result});
    }catch(error){
