@@ -70,7 +70,7 @@ export class AiMissionPlanner{
       const levels:PermissionLevel[]=["L1_READ","L2_ANALYZE","L3_MODIFY","L4_EXECUTE","L5_CRITICAL"];
       if(!levels.includes(permission))throw new Error("Planner returned an invalid tool permission.");
       const rank=(x:PermissionLevel)=>levels.indexOf(x);
-      if(rank(permission)<rank(tool.permission))throw new Error("Planner tool permission is below the tool requirement.");
+      if(rank(permission)!==rank(tool.permission))throw new Error("Planner tool permission must match the tool requirement.");
       if(rank(permission)>rank(missionPermission))throw new Error("Planner tool permission exceeds mission scope.");
       return{tool:tool.name,action,permission,reason:typeof entry.reason==="string"?entry.reason:""};
     });
