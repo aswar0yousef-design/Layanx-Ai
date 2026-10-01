@@ -24,6 +24,7 @@ export class MissionRunner{
    const replanned=this.replanner.replan(current,{code:"EXECUTION_FAILURE",message:result.error??"Execution failed",recoverable:true});
    if(replanned===current)return result;
    current=replanned;
+   Object.assign(mission,current);
    this.core.executionStates.update(current.id,{status:"running"});
    await this.runtime.persist(current);
    currentRequest={...currentRequest,idempotencyKey:`${request.idempotencyKey}:retry:${attempt+1}`};
