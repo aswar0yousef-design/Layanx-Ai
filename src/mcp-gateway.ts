@@ -1,0 +1,56 @@
+import type {LayanXCore} from "./core/orchestrator.js";
+import type {PermissionLevel} from "./core/types.js";
+
+interface RpcRequest{id?:string|number;method:string;params?:Record<string,unknown>}
+interface RpcResponse{id?:string|number;result?:unknown;error?:{code:number;message:string;data?:unknown}}
+
+function response(id:string|number|undefined,result:unknown):RpcResponse{return{id,result};}
+function error(id:string|number|undefined,code:number,message:string,data?:unknown):RpcResponse{return{id,error:{code,message,data}};}
+
+export class McpGateway{
+ constructor(private readonly core:LayanXCore){}
+ handle(input:unknown):RpcResponse|undefined{
+  if(!input||typeof input!=="object"||Array.isArray(input))return error(undefined,-32600,"Invalid Request.");
+  const request=input as RpcRequest;
+  if(typeof request.method!=="string")return error(request.id,-32600,"Invalid Request.");
+  if(request.method==="notifications/initialized")return undefined;
+  if(request.method==="ping")return response(request.id,{});
+  if(request.method==="initialize"){
+   return response(request.id,{
+    protocolVersion:"2025-06-18",
+    capabilities:{tools:{}},
+    serverInfo:{name:"LayanX AI MCP Gateway",version:"0.1.0"}
+   });
+  }
+  if(request.method==="tools/list"){
+   const contract=this.core.agents.get("core");
+   const tools=this.core.toolCatalog.list(contract,"L1_READ").map(tool=>({
+    name:tool.name,description:tool.description,inputSchema:{type:"object",additionalProperties:true}
+   }));
+   return response(request.id,{tools});
+  }
+  if(request.method==="tools/call"){
+   const params=request.params??{};
+   const name=typeof params.name==="string"?params.name.trim():"";
+   const args=params.arguments&&typeof params.arguments==="object"&&!Array.isArray(params.arguments)?params.arguments as Record<string,unknown>:{};
+   const missionId=typeof args.missionId==="string"?args.missionId.trim():"";
+   const projectId=typeof args.projectId==="string"?args.projectId.trim():"";
+   const toolIndex=typeof args.toolIndex==="number"&&Number.isInteger(args.toolIndex)?args.toolIndex:-1;
+   if(!name||!missionId||!projectId||toolIndex<0)return error(request.id,-32602,"name, missionId, projectId, and non-negative toolIndex are required.");
+   const mission=this.core.missions.get(missionId);
+   if(!mission)return error(request.id,-32004,"Mission not found.");
+   const plan=mission.tools?.[toolIndex];
+   if(!plan||plan.tool!==name)return error(request.id,-32602,"MCP tool call must match the mission tool plan.");
+   try{
+    const result=await this.core.executeMissionTool(
+     missionId,projectId,toolIndex,args.payload??plan.payload??{},
+     typeof args.approvalId==="string"?args.approvalId:undefined,"core"
+    );
+    return response(request.id,{content:[{type:"text",text:JSON.stringify(result)}],isError:!result.ok});
+   }catch(cause){
+    return error(request.id,-32000,cause instanceof Error?cause.message:"MCP tool execution failed.");
+   }
+  }
+  return error(request.id,-32601,"Method not found.");
+ }
+}
