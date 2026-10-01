@@ -19,7 +19,11 @@ export class ModelExecutionRouter{
     if(!candidates.length)throw new Error("No enabled model matches capability: "+request.capability);
     const attempts:ModelExecutionAttempt[]=[];
     for(const model of candidates){
-      const provider=this.providers.get(model.provider);
+      let provider:ModelProviderAdapter;
+      try{provider=this.providers.get(model.provider);}catch(error){
+        attempts.push({modelId:model.id,provider:model.provider,ok:false,error:error instanceof Error?error.message:"Provider unavailable"});
+        continue;
+      }
       const health=await provider.health();
       if(!health.available){
         attempts.push({modelId:model.id,provider:model.provider,ok:false,error:health.reason??"Provider unavailable"});
