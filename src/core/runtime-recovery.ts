@@ -124,7 +124,6 @@ export class RuntimeRecoveryManager{
           nextAction:this.core.nextAction.decide({mission:snapshot.mission,tasks:this.core.delegation.forMission(snapshot.mission.id),handoffs:this.core.handoffs.forMission(snapshot.mission.id)}),
           savedAt:new Date().toISOString()
         });
-        const persisted=await this.persistence.get(missionId);
         return{ok:true,missionId,verified:true,data:record.data,recoverable:false,replayed:true};
       }
     }
@@ -133,13 +132,6 @@ export class RuntimeRecoveryManager{
        !["running","verifying"].includes(snapshot.mission.status)){
       throw new Error("Mission is not resumable.");
     }
-    this.core.ledger.restore(snapshot.ledger);
-    this.core.audit.restore(snapshot.audit);
-    this.core.recovery.restorePersisted(snapshot.checkpoint);
-    if(snapshot.idempotency) await this.core.idempotency.restore(snapshot.idempotency);
-    if(snapshot.memory) this.core.memory.restore(snapshot.memory);
-    if(snapshot.handoffs) this.core.handoffs.restore(snapshot.handoffs);
-    if(snapshot.delegatedTasks) this.core.delegation.restore(snapshot.delegatedTasks);
     const resumeStepId=snapshot.checkpoint?.stepId;
     if(resumeStepId){
       const resumeIndex=snapshot.mission.steps.findIndex(step=>step.id===resumeStepId);
