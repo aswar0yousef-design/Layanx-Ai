@@ -1,0 +1,3 @@
+export interface FeatureFlags{enableCloudModels:boolean;enableSkills:boolean;enableComputerAgent:boolean;enableTrading:boolean;enableProductionWrites:boolean;}
+export const safeDefaults:FeatureFlags={enableCloudModels:false,enableSkills:true,enableComputerAgent:false,enableTrading:false,enableProductionWrites:false};
+export function assertProductionFlags(flags:FeatureFlags){if(flags.enableTrading)throw new Error("Trading must be explicitly enabled outside the safe production baseline.");if(flags.enableProductionWrites&&flags.enableCloudModels===false)throw new Error("Production writes require a configured model provider.");}
