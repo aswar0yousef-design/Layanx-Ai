@@ -12,10 +12,11 @@ export class MissionRunner{
   for(let attempt=0;attempt<2;attempt++){
    const result=await this.runtime.run(current,request,adapter,approvalId);
    if(result.ok)return result;
-   const replanned=this.replanner.replan(current,{code:"EXECUTION_FAILURE",message:result.error??"Execution failed",recoverable:attempt===0});
+   if(!result.recoverable)return result;
+   const replanned=this.replanner.replan(current,{code:"EXECUTION_FAILURE",message:result.error??"Execution failed",recoverable:true});
    if(replanned===current)return result;
    current=replanned;
   }
-  return{ok:false,missionId:mission.id,verified:false,error:"Mission failed after recovery attempt."};
+  return{ok:false,missionId:mission.id,verified:false,error:"Mission failed after recovery attempt.",recoverable:false};
  }
 }
