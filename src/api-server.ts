@@ -13,6 +13,21 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   response.setHeader("cache-control","no-store");
   if(request.method==="GET"&&request.url==="/v1/status"){json(response,200,runtimeStatus(runtimeView(options.core)));return;}
   if(request.method==="GET"&&request.url==="/v1/health"){const health=await runtimeHealth(runtimeView(options.core));json(response,health.healthy?200:503,health);return;}
+  if(request.method==="GET"&&request.url?.startsWith("/v1/missions/")&&request.url.endsWith("/tools/prepare")){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const id=request.url.slice("/v1/missions/".length,-"/tools/prepare".length);
+   const mission=options.core.missions.get(id);
+   if(!mission){json(response,404,{ok:false,error:"mission_not_found"});return;}
+   const projectId=request.headers["x-layanx-project-id"];
+   if(typeof projectId!=="string"||!projectId.trim()){json(response,400,{ok:false,error:"x-layanx-project-id is required"});return;}
+   try{
+    const prepared=options.core.prepareMissionToolRequests(mission,projectId,"core");
+    json(response,200,{ok:true,missionId:id,requests:prepared});
+   }catch(error){
+    json(response,422,{ok:false,error:error instanceof Error?error.message:"tool request preparation failed"});
+   }
+   return;
+  }
   if(request.method==="GET"&&request.url==="/v1/tools"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const contract=options.core.agents.get("core");
