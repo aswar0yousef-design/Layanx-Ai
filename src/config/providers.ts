@@ -7,7 +7,7 @@ export type ProviderMode="local"|"cloud"|"hybrid";
 
 export interface ProviderRuntimeConfig{
  mode:ProviderMode;
- ollama:{enabled:boolean;baseUrl:string;model:string};
+ ollama:{enabled:boolean;baseUrl:string;healthUrl:string;model:string};
  openai:{enabled:boolean;apiKey?:string;baseUrl:string;model:string};
 }
 
@@ -25,6 +25,7 @@ export function loadProviderConfig(env:NodeJS.ProcessEnv=process.env):ProviderRu
    enabled:env.OPENAI_ENABLED==="true",
    apiKey:env.OPENAI_API_KEY,
    baseUrl:env.OPENAI_BASE_URL??"https://api.openai.com/v1/responses",
+   healthUrl:env.OPENAI_HEALTH_URL??"https://api.openai.com/v1/models",
    model:env.OPENAI_MODEL??"gpt-5.6-luna"
   }
  };
@@ -38,7 +39,7 @@ export function configureProviders(config=loadProviderConfig(),models=new ModelR
   models.register({id:config.ollama.model,provider:"ollama",capabilities:["chat","reasoning","coding"],local:true,enabled:true,priority:1});
  }
  if(config.openai.enabled&&allowCloud&&config.openai.apiKey){
-  providers.register(createOpenAIProvider({apiKey:config.openai.apiKey,baseUrl:config.openai.baseUrl}));
+  providers.register(createOpenAIProvider({apiKey:config.openai.apiKey,baseUrl:config.openai.baseUrl,healthUrl:config.openai.healthUrl}));
   models.register({id:config.openai.model,provider:"openai",capabilities:["chat","reasoning","coding","vision"],local:false,enabled:true,priority:10});
  }
  return{models,providers};
@@ -48,6 +49,6 @@ export function providerSummary(config=loadProviderConfig()){
  return{
   mode:config.mode,
   ollama:{enabled:config.ollama.enabled,baseUrl:config.ollama.baseUrl,model:config.ollama.model},
-  openai:{enabled:config.openai.enabled,configured:Boolean(config.openai.apiKey),baseUrl:config.openai.baseUrl,model:config.openai.model}
+  openai:{enabled:config.openai.enabled,configured:Boolean(config.openai.apiKey),baseUrl:config.openai.baseUrl,healthUrl:config.openai.healthUrl,model:config.openai.model}
  };
 }
