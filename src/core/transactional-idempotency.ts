@@ -1,13 +1,6 @@
 import type {ToolRequest} from "./types.js";
-import type {IdempotencyClaim,IdempotencyRecord} from "./idempotency.js";
+import type {IdempotencyClaim,IdempotencyRecord,IdempotencyService} from "./idempotency.js";
 import type {StorageAdapter} from "../storage/repository.js";
-
-export interface IdempotencyService{
-  begin(request:ToolRequest):Promise<IdempotencyClaim>;
-  complete(key:string,data:unknown):Promise<void>;
-  fail(key:string,error:string):Promise<void>;
-  get(key:string):Promise<IdempotencyRecord|undefined>;
-}
 
 export class TransactionalIdempotencyStore implements IdempotencyService{
   private readonly key="idempotency:records";
