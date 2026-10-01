@@ -4,8 +4,9 @@ import {createBrowserToolAdapter,createFileToolAdapter,createTerminalToolAdapter
 import type {ToolRequest} from "../src/core/types.js";
 
 const dir=await mkdtemp(join(process.cwd(),"fabric-test-"));
-await writeFile(join(dir,"hello.txt"),"LayanX fabric");
-await mkdir(join(dir,"nested"));
+await mkdir(join(dir,"project-a"));
+await writeFile(join(dir,"project-a","hello.txt"),"LayanX fabric");
+await mkdir(join(dir,"project-a","nested"));
 
 const base:ToolRequest={missionId:"m",agentId:"core",projectId:"project-a",tool:"files.read",action:"read file",permission:"L1_READ",idempotencyKey:"fabric-read"};
 const files=createFileToolAdapter({root:dir});
