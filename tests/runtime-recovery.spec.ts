@@ -18,12 +18,18 @@ if(!state)throw new Error("Missing execution state.");
 original.recovery.checkpoint({missionId:mission.id,stepId:mission.steps[3]?.id??"mission",createdAt:new Date().toISOString(),state:{checkpoint:"before-crash"}});
 original.ledger.append({id:"ledger-before",missionId:mission.id,agentId:"agent",action:"before.crash",status:"started",timestamp:new Date().toISOString()});
 original.audit.append({timestamp:new Date().toISOString(),actor:"agent",action:"before.crash",resource:mission.id,result:"success",metadata:{missionId:mission.id}});
+const replayRequest={missionId:mission.id,agentId:"agent",tool:"echo",action:"echo",permission:"L1_READ" as const,idempotencyKey:"recovery-test-key",payload:"resumed"};
+const replayClaim=await original.idempotency.begin(replayRequest);
+if(!replayClaim.accepted)throw new Error("Could not seed completed idempotency record.");
+await original.idempotency.complete(replayRequest.idempotencyKey,"resumed");
+
 await persistence.save({
   mission,
   executionState:state,
   ledger:original.ledger.forMission(mission.id),
   audit:original.audit.forMission(mission.id),
   checkpoint:original.recovery.restore(mission.id),
+  idempotency:await original.idempotency.list(),
   savedAt:new Date().toISOString(),
   schemaVersion:1
 });
@@ -48,12 +54,12 @@ if(candidates.length!==1||candidates[0]?.missionId!==mission.id)throw new Error(
 let calls=0;
 const result=await recovery.resume(
   mission.id,
-  {missionId:mission.id,agentId:"agent",tool:"echo",action:"echo",permission:"L1_READ",idempotencyKey:"recovery-test-key",payload:"resumed"},
+  replayRequest,
   {execute:async request=>{calls++;return request.payload;}}
 );
 if(!result.ok||!result.verified)throw new Error(result.error??"Recovery resume failed.");
 if(mission.steps[3]?.status!=="completed")throw new Error("Recovery did not resume through the execution step.");
-if(calls!==1)throw new Error("Recovery execution did not run exactly once.");
+if(calls!==0)throw new Error("Persisted idempotency record was not replayed safely after recovery.");
 
 const after=await persistence.get(mission.id);
 if(!after)throw new Error("Recovered snapshot missing.");
@@ -61,6 +67,7 @@ if(after.ledger.length<2)throw new Error("Ledger history was lost during recover
 if(!after.audit.some(x=>x.action==="before.crash"))throw new Error("Audit history was lost during recovery.");
 if(after.checkpoint?.state===undefined)throw new Error("Checkpoint was not restored.");
 if(after.executionState.status!=="completed")throw new Error("Recovered execution state was not completed.");
+if(after.idempotency?.find(record=>record.key===replayRequest.idempotencyKey)?.status!=="completed")throw new Error("Recovered idempotency state was not preserved.");
 
 await rm(dir,{recursive:true,force:true});
 console.log("Runtime recovery hydration test passed.");
