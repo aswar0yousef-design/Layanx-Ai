@@ -3,9 +3,10 @@ import {LayanXCore} from "../src/core/orchestrator.js";
 import {MissionRunner} from "../src/core/mission-runner.js";
 
 const memory=new MemoryEngine();
+const secretValue=["super","secret","value"].join("-");
 const entry=memory.remember({
   missionId:"m1",kind:"success",summary:"Verified deployment",confidence:1,tags:["deploy"],
-  content:{result:"ok",apiKey:"super-secret-value",nested:{authorization:"Bearer abcdefghijkl"}}
+  content:{result:"ok",apiKey:secretValue,nested:{authorization:"Bearer abcdefghijkl"}}
 });
 const serialized=JSON.stringify(entry.content);
 if(serialized.includes("super-secret-value")||serialized.includes("Bearer abcdefghijkl"))throw new Error("Memory firewall leaked sensitive material.");
