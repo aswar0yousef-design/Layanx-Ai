@@ -21,6 +21,7 @@ export interface RuntimeSnapshot{
 }
 
 export class RuntimePersistence{
+  private cleanupTimer?:ReturnType<typeof setInterval>;
   constructor(private readonly storage:RuntimeStorage,private readonly migrations:RuntimeSnapshotMigration[]=[]){
     this.assertMigrationChain();
   }
@@ -85,7 +86,17 @@ export class RuntimePersistence{
     );
   }
 
-  async cleanup(retentionMs=24*60*60*1000,now=Date.now()):Promise<{removed:number;kept:number}>{
+  startAutoCleanup(intervalMs=24*60*60*1000,retentionMs=7*24*60*60*1000):void{
+    this.stopAutoCleanup();
+    this.cleanupTimer=setInterval(()=>{void this.cleanup(retentionMs).catch(()=>undefined);},intervalMs);
+    this.cleanupTimer.unref?.();
+  }
+
+  stopAutoCleanup():void{
+    if(this.cleanupTimer){clearInterval(this.cleanupTimer);this.cleanupTimer=undefined;}
+  }
+
+  async cleanup(retentionMs=7*24*60*60*1000,now=Date.now()):Promise<{removed:number;kept:number}>{
     if(retentionMs<0)throw new Error("Snapshot retention must be non-negative.");
     return this.storage.transaction(async tx=>{
       const raw=await tx.get<unknown[]>()??[];
