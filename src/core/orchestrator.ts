@@ -70,6 +70,10 @@ export class LayanXCore{
     this.executionRuntime=new ExecutionRuntime(this);
   }
 
+  isReady():boolean{
+    return this.agents.list().length>0;
+  }
+
   registerAgent(c:Parameters<AgentManager["register"]>[0]){this.agents.register(c);}
   async planMission(goal:string){
     const plan=await this.aiPlanner.plan(goal);
