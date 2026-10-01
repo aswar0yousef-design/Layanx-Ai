@@ -119,8 +119,9 @@ export class LayanXCore{
     if(!plan)throw new Error("Mission tool plan not found.");
     const contract=this.agents.get(agentId);
     const catalog=this.toolCatalog.list(contract,mission.requiredPermission);
+    const pendingRequest=this.toolRequestBuilder.build(mission,plan,{agentId,projectId,capabilityId:"pending",payload,planIndex:toolIndex},catalog);
     const token=this.capabilities.issue({missionId:mission.id,agentId,projectId,resource:plan.tool,permission:plan.permission,expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
-    const request=this.toolRequestBuilder.build(mission,plan,{agentId,projectId,capabilityId:token.id,payload,planIndex:toolIndex},catalog);
+    const request={...pendingRequest,capabilityId:token.id};
     const result=await this.executionRuntime.run(mission,request,this.toolAdapters.get(plan.tool),approvalId,{projectId,capabilityId:token.id},runtimeOptions);
     this.missions.save(mission);
     return{...result,tool:plan.tool,action:plan.action,capabilityId:token.id};
