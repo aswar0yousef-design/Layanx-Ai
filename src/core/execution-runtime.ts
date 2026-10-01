@@ -84,6 +84,8 @@ export class ExecutionRuntime{
 
     this.core.executionStates.update(mission.id,{toolCalls:state.toolCalls+1,costUsd:state.costUsd+(context.costUsd??0)});
     const result=await this.core.executor.execute(request,adapter);
+    const executionStep=mission.steps.find(step=>step.description.startsWith("Execute"));
+    if(executionStep)executionStep.status=result.ok?"completed":"failed";
     const verification=this.core.verifier.verify(mission,result.data,[]);
     const elapsed=Date.now()-started;
 
