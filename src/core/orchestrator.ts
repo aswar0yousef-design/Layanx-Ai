@@ -188,7 +188,8 @@ export class LayanXCore{
     }
 
     for(;processed<maxSteps;processed++){
-      const missionMemory=this.memory.list().filter(entry=>entry.missionId===mission.id).slice(-12).map(entry=>({
+      const missionContext=this.contextFabric.build({projectId,mission,query:mission.goal,limit:12,maxChars:8000});
+      const missionMemory=missionContext.memories.filter(entry=>entry.missionId===mission.id).map(entry=>({
         kind:entry.kind,summary:entry.summary,content:entry.content,tags:entry.tags
       }));
       let next;
