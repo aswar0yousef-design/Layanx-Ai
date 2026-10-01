@@ -1,10 +1,12 @@
 import {createOpenAIProvider} from "../src/providers/openai-provider.js";
 import {createOllamaProvider} from "../src/providers/ollama-provider.js";
 
+const testCredential="unit-token";
+
 const model={id:"test-model",provider:"openai",capabilities:["chat"] as const,local:false,enabled:true,priority:1};
 
 let lastBody="";
-const openai=createOpenAIProvider({apiKey:"unit-token",fetcher:async(input,init)=>{
+const openai=createOpenAIProvider({apiKey:testCredential,fetcher:async(input,init)=>{
  if(init?.method==="GET")return new Response("",{status:200});
  lastBody=String(init?.body);
  return new Response(JSON.stringify({output_text:"hello",usage:{input_tokens:3,output_tokens:4}}),{status:200});
