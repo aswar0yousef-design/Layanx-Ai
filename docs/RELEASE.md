@@ -22,7 +22,7 @@ npm run release:check
 
 ## Deployment safety
 
-After deployment, ReleaseHealthProbe runs configured health checks. If the new deployment is unhealthy, RollbackController selects the previous known-good deployment.
+After deployment, ReleaseHealthProbe runs configured health checks. If the new deployment is unhealthy, RollbackController selects the previous known-good deployment. A rollback is not considered recovered until the target deployment passes a second post-recovery health verification. If that verification fails, recovery halts instead of looping automatically.
 
 Flow:
 
