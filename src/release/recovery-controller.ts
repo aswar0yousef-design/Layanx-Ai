@@ -149,6 +149,27 @@ export class ProductionRecoveryController{
   return{decision:halted,audit:this.audit.summarize(resource),attempts};
  }
 
+ async resumeActiveRecovery(deployment:Deployment):Promise<RecoveryRunResult>{
+  if(!this.persistence)throw new Error("Recovery persistence is required to resume recovery.");
+  const record=await this.persistence.findActive();
+  if(!record)return{decision:{action:"keep",target:deployment,requiresVerification:false,reason:"No active recovery requires resumption."},audit:this.audit.summarize(this.resource(deployment)),attempts:0};
+  if(record.deploymentCommitSha!==deployment.commitSha)throw new Error("Active recovery belongs to a different deployment.");
+  const plan=this.resumeEngine.plan(record);
+  if(plan.action==="halt")return{decision:{action:"halt",target:plan.target,requiresVerification:false,reason:plan.reason},audit:this.audit.summarize(this.resource(deployment)),attempts:record.attempts};
+  const target=plan.target;
+  if(plan.action==="complete"&&target)return{decision:{action:"keep",target,requiresVerification:false,reason:"Recovery was already verified."},audit:this.audit.summarize(this.resource(deployment)),attempts:record.attempts};
+  const verification=await this.healthProbe.run();
+  if(verification.healthy&&target){
+   await this.persistState(deployment,"verified",record.attempts,verification.reason,target);
+   this.audit.record({timestamp:new Date().toISOString(),actor:this.actor,action:"recovery.verified",resource:this.resource(deployment),result:"verified",metadata:{toVersion:target.version,toCommitSha:target.commitSha,toChecksum:target.manifestChecksum,verificationReason:verification.reason??"Resumed recovery target passed health verification."}});
+   return{decision:{action:"keep",target,requiresVerification:false,reason:"Resumed recovery target passed health verification."},audit:this.audit.summarize(this.resource(deployment)),attempts:record.attempts};
+  }
+  const reason=verification.reason??"Resumed recovery health verification failed; automatic rollback replay is unsafe.";
+  await this.persistState(deployment,"halted",record.attempts,reason,target);
+  this.audit.record({timestamp:new Date().toISOString(),actor:this.actor,action:"recovery.halted",resource:this.resource(deployment),result:"halted",metadata:{reason,toVersion:target?.version,toCommitSha:target?.commitSha,toChecksum:target?.manifestChecksum}});
+  return{decision:{action:"halt",target,requiresVerification:false,reason},audit:this.audit.summarize(this.resource(deployment)),attempts:record.attempts};
+ }
+
  async report(deployment:Deployment,decision:RecoveryDecision):Promise<RecoveryReport>{
   if(!this.persistence)throw new Error("Recovery persistence is required for a recovery report.");
   const recoveryId=this.recoveryId??"recovery:"+deployment.version+":"+deployment.commitSha;
