@@ -23,6 +23,7 @@ export class ToolRequestBuilder{
     return{
       missionId:mission.id,
       agentId:context.agentId,
+      projectId:context.projectId,
       tool:plan.tool,
       action:plan.action,
       permission:plan.permission,
