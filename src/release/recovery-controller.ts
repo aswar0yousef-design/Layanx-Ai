@@ -1,6 +1,7 @@
 import {ReleaseHealthProbe} from "./health-probe.js";
 import {RollbackController, type Deployment, type RecoveryDecision} from "./rollback.js";
 import {RecoveryAuditTrail} from "./recovery-audit.js";
+import type {RollbackExecutor} from "./rollback-executor.js";
 
 export interface RecoveryRunResult{
  decision:RecoveryDecision;
@@ -16,14 +17,17 @@ export interface RecoveryControllerOptions{
 export class ProductionRecoveryController{
  private readonly actor:string;
  private readonly maxAttempts:number;
+ private readonly executor:RollbackExecutor;
 
  constructor(
   private readonly healthProbe:ReleaseHealthProbe,
   private readonly rollback:RollbackController,
   private readonly audit:RecoveryAuditTrail,
+  executor:RollbackExecutor,
   options:RecoveryControllerOptions={}
  ){
   this.actor=options.actor??"release-controller";
+  this.executor=executor;
   this.maxAttempts=Math.max(1,Math.floor(options.maxAttempts??1));
  }
 
@@ -71,6 +75,15 @@ export class ProductionRecoveryController{
   while(decision.action==="rollback"&&decision.target&&attempts<this.maxAttempts){
    attempts++;
    const target=decision.target;
+   const execution=await this.executor.execute(target);
+   if(!execution.success){
+    const halted={action:"halt" as const,target,requiresVerification:false,reason:execution.reason??"Rollback execution failed."};
+    this.audit.record({
+     timestamp:new Date().toISOString(),actor:this.actor,action:"recovery.halted",resource,result:"halted",
+     metadata:{reason:halted.reason,toVersion:target.version,toCommitSha:target.commitSha,toChecksum:target.manifestChecksum}
+    });
+    return{decision:halted,audit:this.audit.summarize(resource),attempts};
+   }
    this.audit.record({
     timestamp:new Date().toISOString(),
     actor:this.actor,
