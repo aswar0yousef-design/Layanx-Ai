@@ -15,6 +15,8 @@ if((read as {content:string}).content!=="LayanX fabric")throw new Error("File re
 const listed=await files.execute({...base,action:"list files",payload:{path:"."}});
 if(!(listed as {entries:Array<{name:string}>}).entries.some(x=>x.name==="hello.txt"))throw new Error("File listing failed.");
 await files.execute({...base,payload:{path:"../outside.txt"}}).then(()=>{throw new Error("Path traversal was not blocked.");}).catch(error=>{if(!String(error).includes("escapes"))throw error;});
+await files.execute({...base,projectId:"project-b",payload:{path:"hello.txt"}}).then(()=>{throw new Error("Cross-project workspace unexpectedly exposed a file.");}).catch(error=>{if(!String(error).includes("ENOENT"))throw error;});
+await files.execute({...base,projectId:"../escape",payload:{path:"hello.txt"}}).then(()=>{throw new Error("Invalid project workspace identity was accepted.");}).catch(error=>{if(!String(error).includes("Invalid project workspace identity"))throw error;});
 
 let browserCalls=0;
 const browser=createBrowserToolAdapter({fetcher:async(input,init)=>{browserCalls++;if(init?.method!=="GET")throw new Error("Browser was not GET-only.");return new Response("<html>LayanX</html>",{status:200,headers:{"content-type":"text/html"}});}});
