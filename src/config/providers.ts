@@ -7,7 +7,7 @@ export type ProviderMode="local"|"cloud"|"hybrid";
 
 export interface ProviderRuntimeConfig{
  mode:ProviderMode;
- ollama:{enabled:boolean;baseUrl:string;healthUrl:string;model:string};
+ ollama:{enabled:boolean;baseUrl:string;model:string};
  openai:{enabled:boolean;apiKey?:string;baseUrl:string;model:string};
 }
 
