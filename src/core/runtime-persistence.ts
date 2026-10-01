@@ -7,6 +7,7 @@ import type {IdempotencyRecord} from "./idempotency.js";
 import {RuntimeStorage} from "../storage/runtime-storage.js";
 
 export const RUNTIME_SNAPSHOT_VERSION=1;
+export interface RuntimeSnapshotMigration{from:number;to:number;up:(snapshot:unknown)=>unknown;}
 
 export interface RuntimeSnapshot{
   mission:Mission;
@@ -20,7 +21,28 @@ export interface RuntimeSnapshot{
 }
 
 export class RuntimePersistence{
-  constructor(private readonly storage:RuntimeStorage){}
+  constructor(private readonly storage:RuntimeStorage,private readonly migrations:RuntimeSnapshotMigration[]=[]){
+    this.assertMigrationChain();
+  }
+
+  private assertMigrationChain():void{
+    const seen=new Set<number>();
+    for(const migration of this.migrations){
+      if(seen.has(migration.from))throw new Error("Duplicate runtime snapshot migration.");
+      seen.add(migration.from);
+      if(migration.to!==migration.from+1)throw new Error("Runtime snapshot migrations must advance one version at a time.");
+    }
+  }
+
+  private migrate(snapshot:unknown):RuntimeSnapshot{
+    let current=snapshot as {schemaVersion?:number};
+    while(current.schemaVersion!==RUNTIME_SNAPSHOT_VERSION){
+      const migration=this.migrations.find(item=>item.from===current.schemaVersion);
+      if(!migration)throw new Error("Unsupported runtime snapshot version.");
+      current=migration.up(structuredClone(current)) as {schemaVersion?:number};
+    }
+    return current as RuntimeSnapshot;
+  }
   private validate(snapshot:RuntimeSnapshot):void{
     if(snapshot.schemaVersion!==RUNTIME_SNAPSHOT_VERSION)throw new Error("Unsupported runtime snapshot version.");
     if(snapshot.mission.id!==snapshot.executionState.missionId)throw new Error("Runtime snapshot mission/state mismatch.");
