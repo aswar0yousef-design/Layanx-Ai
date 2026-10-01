@@ -15,4 +15,6 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - run: npm run release:check
+      - run: npm run security:check
+      - run: npm run typecheck
+      - run: npm test
