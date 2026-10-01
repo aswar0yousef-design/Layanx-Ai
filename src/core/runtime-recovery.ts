@@ -64,7 +64,8 @@ export class RuntimeRecoveryManager{
         audit:this.core.audit.forMission(missionId),
         checkpoint:this.core.recovery.restore(missionId)??snapshot.checkpoint,
         idempotency:await this.core.idempotency.list(),
-        savedAt:new Date().toISOString()
+        savedAt:new Date().toISOString(),
+        schemaVersion:1
       });
     }
     return result;
