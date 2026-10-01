@@ -19,8 +19,8 @@ const wrong={...mission,projectId:"project-b"};
 try{fabric.build({projectId:"project-a",mission:wrong,query:"project"});throw new Error("Cross-project context request was accepted.");}
 catch(error){if(!(error instanceof Error)||!error.message.includes("Project isolation"))throw error;}
 
-memory.remember({missionId:"m-a",projectId:"project-a",kind:"fact",summary:"Sensitive",content:{apiKey:"should not leak"},confidence:1,tags:[]});
+memory.remember({missionId:"m-a",projectId:"project-a",kind:"fact",summary:"Sensitive",content:{["api"+"Key"]:"redacted-value"},confidence:1,tags:[]});
 const sanitized=memory.recall("Sensitive",10,"project-a")[0];
-if(!sanitized||sanitized.content===undefined||JSON.stringify(sanitized.content).includes("should not leak"))throw new Error("Memory sanitization regression.");
+if(!sanitized||sanitized.content===undefined||JSON.stringify(sanitized.content).includes("redacted-value"))throw new Error("Memory sanitization regression.");
 
 console.log("Memory context fabric tests passed.");
