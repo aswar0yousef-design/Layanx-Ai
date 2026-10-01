@@ -1,0 +1,13 @@
+import {LayanXCore} from "../src/core/orchestrator.js";
+const core=new LayanXCore();
+core.registerAgent({agentId:"core",purpose:"test",allowedTools:["http.read"],forbiddenResources:["secrets"],requiredPermission:"L1_READ",maxToolCalls:10,maxRuntimeMs:10000,successCriteria:["done"],stopCondition:"stop"});
+core.tools.register({name:"http.read",description:"read public URL",permission:"L1_READ",dangerous:false,actions:["read url"],tags:["http","url"]});
+let executed=0;
+core.toolAdapters.register("http.read",{async execute(request){executed++;return{url:(request.payload as {url:string}).url,ok:true};}});
+const mission=core.startMission("Read a public URL");
+mission.requiredPermission="L1_READ";
+mission.tools=[{tool:"http.read",action:"read url",permission:"L1_READ",reason:"read public resource"}];
+const result=await core.executeMissionTool(mission.id,"project-web",0,{url:"https://example.com"});
+if(!result.ok||!result.verified||executed!==1)throw new Error("HTTP planned tool did not execute");
+if(core.missions.get(mission.id)?.status!=="completed")throw new Error("HTTP mission did not complete");
+console.log("HTTP read mission path passed.");
