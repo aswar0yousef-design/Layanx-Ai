@@ -8,11 +8,11 @@ const fakeFetch=async(input:RequestInfo|URL,init?:RequestInit)=>{
   if(String(input).endsWith("/chat/completions"))return new Response(JSON.stringify({choices:[{message:{content:"hello from cloud"}}],usage:{prompt_tokens:3,completion_tokens:4}}),{status:200});
   return new Response("ok",{status:200});
 };
-const cloud=new OpenAICompatibleProvider({name:"cloud",baseUrl:"https://example.test/v1",apiKey:process.env.PROVIDER_TEST_TOKEN??"x",fetcher:fakeFetch});
+const cloud=new OpenAICompatibleProvider({name:"cloud",baseUrl:"https://example.test/v1",apiKey:process.env.PROVIDER_TEST_TOKEN??"test-token",fetcher:fakeFetch});
 const cloudResult=await cloud.generate(model,{capability:"chat",input:"hello"});
 if(cloudResult.output!=="hello from cloud"||cloudResult.usage?.inputTokens!==3)throw new Error("OpenAI-compatible provider parsing failed.");
 const auth=String(calls[0]?.init?.headers&&new Headers(calls[0].init.headers).get("authorization"));
-if(auth!=="Bearer secret")throw new Error("Provider authorization header was not applied.");
+if(auth!==`Bearer ${process.env.PROVIDER_TEST_TOKEN??"test-token"}`)throw new Error("Provider authorization header was not applied.");
 
 const localModel:ModelDefinition={id:"llama3.2:3b",provider:"ollama",capabilities:["chat"],local:true,enabled:true,priority:1};
 const ollamaFetch=async(input:RequestInfo|URL,init?:RequestInit)=>{
