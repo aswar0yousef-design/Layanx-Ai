@@ -39,7 +39,7 @@ export class ExecutionRuntime{
   if(!sentinel.allowed)return this.block(mission,request,sentinel.reason);
   const budget=this.budget.evaluate({toolCalls:state.toolCalls,runtimeMs:Date.now()-started,costUsd:state.costUsd});
   if(!budget.allowed)return this.block(mission,request,budget.reason);
-  const executionStep=mission.steps.find(step=>step.description.startsWith("Execute"));
+  const executionStep=mission.steps.find(step=>/execute|run|perform|action/i.test(step.description))??mission.steps.find(step=>step.status==="pending");
   if(executionStep) executionStep.status="running";
   this.core.recovery.checkpoint({missionId:mission.id,stepId:executionStep?.id??"mission",createdAt:new Date().toISOString(),state:{request}});
   await this.persist(mission);
@@ -52,6 +52,7 @@ export class ExecutionRuntime{
   if(!result.ok){
    mission.status="failed";
    this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"failure",metadata:{error:result.error,missionId:mission.id}});
+   await this.persist(mission);
    return{ok:false,missionId:mission.id,verified:false,error:result.error,recoverable:true};
   }
   mission.status="verifying";
@@ -60,6 +61,7 @@ export class ExecutionRuntime{
   if(!verification.verified){
    mission.status="failed";
    this.core.executionStates.update(mission.id,{status:"failed"});
+   await this.persist(mission);
    return{ok:false,missionId:mission.id,verified:false,error:verification.failures.join("; "),recoverable:false};
   }
   mission.status="completed";
