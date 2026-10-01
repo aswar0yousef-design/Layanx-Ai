@@ -9,6 +9,8 @@ LayanX is a security-first autonomous AI runtime foundation.
 - Tool registry and guarded execution
 - Verification, audit ledger, checkpoints, and recovery
 - Model/provider routing and failover foundations
+- Executable local Ollama and OpenAI-compatible model adapters
+- Health-gated provider failover with bounded request timeouts
 - Project isolation and memory boundaries
 - Skill scanning and controlled enablement
 - Storage abstraction and migrations foundation
