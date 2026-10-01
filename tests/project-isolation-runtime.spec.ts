@@ -41,7 +41,7 @@ const matchingCapability=core.capabilities.issue({
 });
 const matching=await runner.execute(
  matchingMission,
- {missionId:mission.id,agentId:agent.agentId,tool:"echo",action:"echo",permission:"L1_READ",idempotencyKey:"project-isolation-right",payload:"ok"},
+ {missionId:matchingMission.id,agentId:agent.agentId,tool:"echo",action:"echo",permission:"L1_READ",idempotencyKey:"project-isolation-right",payload:"ok"},
  {async execute(){return{ok:true};}},
  undefined,
  {projectId:"project-a",capabilityId:matchingCapability.id}
