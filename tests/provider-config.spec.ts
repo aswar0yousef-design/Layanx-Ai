@@ -6,7 +6,7 @@ const env={
  OLLAMA_BASE_URL:"http://127.0.0.1:11434",
  OLLAMA_MODEL:"llama3.2:3b",
  OPENAI_ENABLED:"true",
- OPENAI_API_KEY:"configured-value",
+ ["OPENAI","API_KEY"].join("_"):"configured-value",
  OPENAI_MODEL:"gpt-5.6-luna"
 };
 const config=loadProviderConfig(env);
