@@ -7,10 +7,10 @@ export class MissionRunner{
  private readonly runtime:ExecutionRuntime;
  private readonly replanner=new Replanner();
  constructor(private readonly core:ConstructorParameters<typeof ExecutionRuntime>[0]){this.runtime=new ExecutionRuntime(core);}
- async execute(mission:Mission,request:ToolRequest,adapter:ToolAdapter){
+ async execute(mission:Mission,request:ToolRequest,adapter:ToolAdapter,approvalId?:string){
   let current=mission;
   for(let attempt=0;attempt<2;attempt++){
-   const result=await this.runtime.run(current,request,adapter);
+   const result=await this.runtime.run(current,request,adapter,approvalId);
    if(result.ok)return result;
    const replanned=this.replanner.replan(current,{code:"EXECUTION_FAILURE",message:result.error??"Execution failed",recoverable:attempt===0});
    if(replanned===current)return result;
