@@ -38,5 +38,15 @@ run(process.platform==="win32"?"npm.cmd":"npm",["run","build"]);
 console.log("Checking runtime configuration...");
 run(process.platform==="win32"?"npm.cmd":"npm",["run","layanx","--","check"]);
 
+console.log("Checking local provider setup...");
+try{run(process.platform==="win32"?"npm.cmd":"npm",["run","doctor"]);}catch{console.log("Provider doctor reported a setup warning. Continue with 'npm run doctor' after Ollama is installed.");}
+
+if(args.has("--pull-ollama-model")){
+ console.log("Explicit model download requested.");
+ if(!check("ollama",["--version"])){console.error("Ollama executable was not found; install Ollama first.");process.exit(2);}
+ const model=process.env.OLLAMA_MODEL??"llama3.2:3b";
+ run("ollama",["pull",model]);
+}
+
 console.log("Bootstrap completed.");
 console.log("Next: npm run layanx -- health");

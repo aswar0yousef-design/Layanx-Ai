@@ -26,8 +26,9 @@ The bootstrap:
 3. Installs npm dependencies unless `--skip-install` is supplied.
 4. Builds the TypeScript runtime.
 5. Runs the LayanX configuration check.
+6. Runs the provider doctor and reports local-provider warnings without failing bootstrap.
 
-It does **not** download Ollama, pull models, or overwrite credentials. Provider installation remains an explicit user action.
+It does **not** download Ollama or pull models by default. To explicitly pull the configured Ollama model after installing Ollama, use `node scripts/bootstrap.mjs --pull-ollama-model`. Existing credentials are never overwritten.
 
 After bootstrap:
 
