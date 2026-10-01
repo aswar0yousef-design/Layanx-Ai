@@ -31,3 +31,36 @@ brokenProviders.register({name:"broken",async health(){return{provider:"broken",
 try{await new ModelExecutionRouter(brokenModels,brokenProviders).execute({capability:"chat",input:"x"});throw new Error("Expected all-provider failure.");}catch(error){if(!(error instanceof Error)||!error.message.includes("All candidate model providers failed"))throw error;}
 
 console.log("Model execution failover test passed.");
+
+
+const mismatchModels=new ModelRegistry();
+mismatchModels.register({id:"identity-model",provider:"identity-provider",capabilities:["chat"],local:true,enabled:true,priority:1});
+const mismatchProviders=new ModelProviderRegistry();
+mismatchProviders.register({
+ name:"identity-provider",
+ async health(){return{provider:"identity-provider",available:true,updatedAt:new Date().toISOString()};},
+ async generate(){return{modelId:"wrong-model",provider:"identity-provider",output:"spoofed"};}
+});
+try{
+ await new ModelExecutionRouter(mismatchModels,mismatchProviders).execute({capability:"chat",input:"identity"});
+ throw new Error("Expected model identity mismatch to fail.");
+}catch(error){
+ if(!(error instanceof Error)||!error.message.includes("identity mismatch"))throw error;
+}
+
+const healthMismatchModels=new ModelRegistry();
+healthMismatchModels.register({id:"health-model",provider:"health-provider",capabilities:["chat"],local:true,enabled:true,priority:1});
+const healthMismatchProviders=new ModelProviderRegistry();
+healthMismatchProviders.register({
+ name:"health-provider",
+ async health(){return{provider:"different-provider",available:true,updatedAt:new Date().toISOString()};},
+ async generate(){throw new Error("must not execute after health identity mismatch");}
+});
+try{
+ await new ModelExecutionRouter(healthMismatchModels,healthMismatchProviders).execute({capability:"chat",input:"health"});
+ throw new Error("Expected provider health identity mismatch to fail.");
+}catch(error){
+ if(!(error instanceof Error)||!error.message.includes("identity mismatch"))throw error;
+}
+
+console.log("Canonical provider/model identity checks passed.");

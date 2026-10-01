@@ -25,12 +25,20 @@ export class ModelExecutionRouter{
         continue;
       }
       const health=await provider.health();
+      if(health.provider!==provider.name){
+        attempts.push({modelId:model.id,provider:model.provider,ok:false,error:"Provider health identity mismatch."});
+        continue;
+      }
       if(!health.available){
         attempts.push({modelId:model.id,provider:model.provider,ok:false,error:health.reason??"Provider unavailable"});
         continue;
       }
       try{
         const response=await provider.generate(model,request);
+        if(response.modelId!==model.id||response.provider!==provider.name){
+          attempts.push({modelId:model.id,provider:model.provider,ok:false,error:"Provider response identity mismatch."});
+          continue;
+        }
         return{...response,attempts:[...attempts,{modelId:model.id,provider:model.provider,ok:true}]};
       }catch(error){
         attempts.push({modelId:model.id,provider:model.provider,ok:false,error:error instanceof Error?error.message:"Model execution failed"});
