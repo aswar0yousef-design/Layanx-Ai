@@ -47,3 +47,18 @@ const completeAudit=complete.audit.forMission(completeMission.id).find(event=>ev
 if(completeAudit?.metadata?.reason!=="planner_complete")throw new Error("Planner completion audit reason missing.");
 
 console.log("Adaptive stop audit and memory passed.");
+\nconst plannerFailure=setup("planner.fail",async()=>({ok:true}));
+plannerFailure.models.register({id:"failing-planner",provider:"failing-planner",capabilities:["reasoning"],local:true,enabled:true,priority:1});
+plannerFailure.providers.register({
+  name:"failing-planner",
+  async health(){return{provider:"failing-planner",available:true,updatedAt:new Date().toISOString()};},
+  async generate(){throw new Error("planner unavailable");}
+});
+const plannerFailureMission=plannerFailure.startMission("test planner failure");
+plannerFailureMission.requiredPermission="L1_READ";
+plannerFailureMission.tools=[{tool:"planner.fail",action:"read test",permission:"L1_READ",reason:"seed"}];
+plannerFailure.missions.save(plannerFailureMission);
+const plannerFailureResult=await plannerFailure.executeMissionAdaptive(plannerFailureMission.id,"project",3);
+if(plannerFailureResult.completed||!plannerFailureResult.reason?.includes("Adaptive planner execution failed"))throw new Error("Expected planner failure stop.");
+const plannerFailureAudit=plannerFailure.audit.forMission(plannerFailureMission.id).find(event=>event.action==="mission.adaptive.stop");
+if(plannerFailureAudit?.metadata?.reason!=="planner_failure")throw new Error("Planner failure audit reason missing.");
