@@ -88,7 +88,6 @@ export class LayanXCore{
     this.ledger.append({id:crypto.randomUUID(),missionId:m.id,agentId:"core",action:"mission.create",status:"started",timestamp:new Date().toISOString(),detail:goal});
     this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"mission.create",resource:m.id,result:"success",metadata:{goal,missionId:m.id}});
     this.missions.save(m);
-    this.missions.save(m);
     return m;
   }
   startMission(goal:string){
