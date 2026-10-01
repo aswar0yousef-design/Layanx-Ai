@@ -78,6 +78,19 @@ export class LayanXCore{
     this.executionRuntime=new ExecutionRuntime(this);
   }
 
+  restoreRuntimeSnapshot(snapshot:import("./runtime-persistence.js").RuntimeSnapshot){
+    this.missions.save(snapshot.mission);
+    this.executionStates.restore(snapshot.executionState);
+    this.ledger.restore(snapshot.ledger);
+    this.audit.restore(snapshot.audit);
+    this.recovery.restorePersisted(snapshot.checkpoint);
+    if(snapshot.idempotency)this.idempotency.restore(snapshot.idempotency);
+    if(snapshot.memory)this.memory.restore(snapshot.memory);
+    if(snapshot.handoffs)this.handoffs.restore(snapshot.handoffs);
+    if(snapshot.delegatedTasks)this.delegation.restore(snapshot.delegatedTasks);
+    return this.missions.get(snapshot.mission.id);
+  }
+
   isReady():boolean{
     return this.agents.list().length>0;
   }
