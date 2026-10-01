@@ -11,7 +11,7 @@ export interface RuntimeOptions{storagePath?:string;}
 export function createRuntime(options:RuntimeOptions={}){
  const storagePath=options.storagePath??process.env.LAYANX_RUNTIME_STORAGE_PATH;
  const databaseUrl=process.env.LAYANX_DATABASE_URL??process.env.DATABASE_URL;
- const storage=databaseUrl?new PostgresStorageAdapter(databaseUrl):storagePath?RuntimeStorage.json(storagePath):undefined;
+ const storage=databaseUrl?new RuntimeStorage(new PostgresStorageAdapter(databaseUrl)):storagePath?RuntimeStorage.json(storagePath):undefined;
  const persistence=storage?new RuntimePersistence(storage):undefined;
  const core=new LayanXCore(undefined,persistence);
  registerBuiltinTools(core);
