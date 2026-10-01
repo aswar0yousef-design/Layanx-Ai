@@ -152,9 +152,12 @@ export class LayanXCore{
       return{missionId,results,completed:false,reason:"Adaptive execution step limit reached before the persisted plan was exhausted.",recoverable:true};
 
     for(;processed<maxSteps;processed++){
+      const missionMemory=this.memory.list().filter(entry=>entry.missionId===mission.id).slice(-12).map(entry=>({
+        kind:entry.kind,summary:entry.summary,content:entry.content,tags:entry.tags
+      }));
       const next=await this.aiPlanner.nextTool({
         goal:mission.goal,result:latest,tools:catalog,
-        requiredPermission:mission.requiredPermission,completedTools
+        requiredPermission:mission.requiredPermission,completedTools,memory:missionMemory
       });
       if(!next)break;
       mission.tools=mission.tools??[];
