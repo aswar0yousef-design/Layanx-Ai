@@ -120,8 +120,9 @@ export class LayanXCore{
     const completedTools:string[]=[];
     let latest:unknown={status:"not_started"};
     const results=[];
-    if((mission.tools??[]).length){
-      const first=mission.tools[0];
+    const initialTools=mission.tools??[];
+    if(initialTools.length){
+      const first=initialTools[0];
       mission.tools=[first];
       this.missions.save(mission);
       const result=await this.executeMissionTool(missionId,projectId,0,{},undefined,agentId,{deferVerification:true});
