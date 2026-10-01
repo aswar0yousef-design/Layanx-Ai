@@ -68,7 +68,7 @@ export class RuntimeRecoveryManager{
     if(!snapshot)throw new Error("Unknown persisted mission.");
     const readiness=new RecoveryReadinessChecker(this.core).check(snapshot,request);
     const records=snapshot.idempotency??[];
-    const resumable=["running","verifying"].includes(snapshot.executionState.status)||["running","verifying"].includes(snapshot.mission.status);
+    const resumable=["running","verifying"].includes(snapshot.executionState.status)||(snapshot.executionState.status==="failed"&&snapshot.executionState.recoverable)||["running","verifying"].includes(snapshot.mission.status);
     return{
       missionId,
       missionGoal:snapshot.mission.goal,
@@ -129,6 +129,7 @@ export class RuntimeRecoveryManager{
     }
 
     if(!["running","verifying"].includes(snapshot.executionState.status) &&
+       !(snapshot.executionState.status==="failed"&&snapshot.executionState.recoverable) &&
        !["running","verifying"].includes(snapshot.mission.status)){
       throw new Error("Mission is not resumable.");
     }
