@@ -131,6 +131,12 @@ export class RuntimeRecoveryManager{
         schemaVersion:1
       });
     }
+    if(result.ok && result.verified){
+      const persisted=await this.persistence.get(missionId);
+      if(!persisted || persisted.executionState.status!=="completed" || persisted.mission.status!=="completed"){
+        throw new Error("Post-resume state verification failed.");
+      }
+    }
     return result;
   }
 }
