@@ -25,6 +25,7 @@ import {AiMissionPlanner} from "./ai-planner.js";
 import {ExecutionRuntime} from "./runtime.js";
 import {MissionCompiler} from "./mission-compiler.js";
 import {ToolSelector} from "./tool-selection.js";
+import {MemoryEngine} from "./memory.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -43,6 +44,7 @@ export class LayanXCore{
   readonly aiPlanner=new AiMissionPlanner(this.modelExecution);
   readonly missionCompiler=new MissionCompiler();
   readonly toolSelector=new ToolSelector(this.tools);
+  readonly memory=new MemoryEngine();
   readonly executionRuntime:ExecutionRuntime;
   readonly risk=new RiskEngine();
   readonly audit=new AuditLog();
