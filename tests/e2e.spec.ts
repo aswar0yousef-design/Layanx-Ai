@@ -1,0 +1,11 @@
+import {LayanXCore} from "../src/core/orchestrator.js";
+import {MissionRunner} from "../src/core/mission-runner.js";
+const core=new LayanXCore();
+core.registerAgent({agentId:"e2e-agent",purpose:"e2e",allowedTools:["echo"],forbiddenResources:["secrets"],requiredPermission:"L1_READ",maxToolCalls:5,maxRuntimeMs:10000,successCriteria:["echo"],stopCondition:"stop"});
+core.tools.register({name:"echo",description:"echo",permission:"L1_READ",dangerous:false});
+const mission=core.startMission("E2E mission");
+const runner=new MissionRunner(core);
+const result=await runner.execute(mission,{missionId:mission.id,agentId:"e2e-agent",tool:"echo",action:"echo",permission:"L1_READ",idempotencyKey:crypto.randomUUID(),payload:"ok"},{execute:async r=>r.payload});
+if(!result.ok||!result.verified)throw new Error("E2E mission failed");
+if(core.ledger.forMission(mission.id).length===0)throw new Error("Ledger did not record mission");
+console.log("E2E mission test passed.");
