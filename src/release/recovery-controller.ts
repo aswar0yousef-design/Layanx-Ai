@@ -4,6 +4,7 @@ import {RecoveryAuditTrail} from "./recovery-audit.js";
 import type {RollbackExecutor} from "./rollback-executor.js";
 import {RecoveryPersistence, type PersistedRecoveryRecord} from "./recovery-persistence.js";
 import {RecoveryResumeEngine, type RecoveryResumePlan} from "./recovery-resume.js";
+import {createRecoveryReport, type RecoveryReport} from "./recovery-report.js";
 
 export interface RecoveryRunResult{
  decision:RecoveryDecision;
@@ -145,6 +146,15 @@ export class ProductionRecoveryController{
    metadata:{reason:halted.reason}
   });
   return{decision:halted,audit:this.audit.summarize(resource),attempts};
+ }
+
+ async report(deployment:Deployment,decision:RecoveryDecision):Promise<RecoveryReport>{
+  if(!this.persistence)throw new Error("Recovery persistence is required for a recovery report.");
+  const recoveryId=this.recoveryId??"recovery:"+deployment.version+":"+deployment.commitSha;
+  const record=await this.persistence.get(recoveryId);
+  if(!record)throw new Error("No persisted recovery record is available.");
+  const resume=this.resumeEngine.plan(record);
+  return createRecoveryReport(deployment,record,decision,this.audit.summarize(this.resource(deployment)),resume);
  }
 
  async inspectActiveRecovery():Promise<RecoveryResumePlan|undefined>{
