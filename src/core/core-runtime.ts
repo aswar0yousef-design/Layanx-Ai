@@ -16,7 +16,7 @@ export class CoreRuntime{
   constructor(private readonly core:LayanXCore,private readonly persistence?:RuntimePersistence){this.runner=new MissionRunner(core);}
 
   static withJsonPersistence(core:LayanXCore,path:string):CoreRuntime{
-    return new CoreRuntime(core,new RuntimePersistence(new JsonStorageAdapter(path)?new RuntimeStorage(new JsonStorageAdapter(path)):RuntimeStorage.json(path)));
+    return new CoreRuntime(core,new RuntimePersistence(RuntimeStorage.json(path)));
   }
 
   static withJsonStorage(path:string):CoreRuntime{
