@@ -6,6 +6,7 @@ export function createOpenAIProvider(options:{apiKey:string;baseUrl?:string;time
  return new HttpModelProvider({
   name:"openai",
   baseUrl:options.baseUrl??"https://api.openai.com/v1/responses",
+  healthUrl:(options.baseUrl??"https://api.openai.com/v1").replace(/\\/$/,"")+"/models",
   apiKey:options.apiKey,
   timeoutMs:options.timeoutMs,
   fetcher:options.fetcher,
