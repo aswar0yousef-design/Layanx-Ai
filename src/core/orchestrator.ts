@@ -168,6 +168,7 @@ export class LayanXCore{
       latest=result.data;
     }
 
+    if(processed>=maxSteps)return{missionId,results,completed:false,reason:"Adaptive execution step limit reached.",recoverable:true};
     if(!results.length)return{missionId,results,completed:false,reason:"Adaptive planner produced no executable tool.",recoverable:true};
     const finalMission=this.missions.get(missionId);
     if(!finalMission)throw new Error("Mission not found.");
