@@ -61,4 +61,5 @@ export class MissionHandoffManager{
 
  get(id:string){const h=this.handoffs.get(id);if(!h)throw new Error("Unknown mission handoff: "+id);return structuredClone(h);}
  forMission(missionId:string){return[...this.handoffs.values()].filter(h=>h.missionId===missionId).map(h=>structuredClone(h));}
+ restore(handoffs:MissionHandoff[]){for(const handoff of handoffs)this.handoffs.set(handoff.id,structuredClone(handoff));}
 }
