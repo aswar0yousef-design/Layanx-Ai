@@ -59,6 +59,7 @@ export class RuntimePersistence{
   }
 
   async saveAtomic(snapshot:RuntimeSnapshot):Promise<void>{
+    this.validate(snapshot);
     await this.storage.transaction(async tx=>{
       const current=await tx.get<RuntimeSnapshot[]>()??[];
       const next=current.filter(x=>x.mission.id!==snapshot.mission.id);
@@ -82,5 +83,24 @@ export class RuntimePersistence{
       x.mission.status==="running"||
       x.mission.status==="verifying"
     );
+  }
+
+  async cleanup(retentionMs=24*60*60*1000,now=Date.now()):Promise<{removed:number;kept:number}>{
+    if(retentionMs<0)throw new Error("Snapshot retention must be non-negative.");
+    return this.storage.transaction(async tx=>{
+      const raw=await tx.get<unknown[]>()??[];
+      const snapshots=raw.map(snapshot=>this.migrate(snapshot));
+      snapshots.forEach(snapshot=>this.validate(snapshot));
+      const cutoff=now-retentionMs;
+      const kept=snapshots.filter(snapshot=>{
+        const resumable=
+          snapshot.executionState.status==="running"||
+          snapshot.mission.status==="running"||
+          snapshot.mission.status==="verifying";
+        return resumable||Date.parse(snapshot.savedAt)>=cutoff;
+      });
+      await tx.set(kept);
+      return{removed:snapshots.length-kept.length,kept:kept.length};
+    });
   }
 }
