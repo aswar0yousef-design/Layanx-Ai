@@ -98,6 +98,7 @@ export class RuntimePersistence{
   async resumable():Promise<RuntimeSnapshot[]>{
     return(await this.list()).filter(x=>
       x.executionState.status==="running"||
+      (x.executionState.status==="failed"&&x.executionState.recoverable)||
       x.mission.status==="running"||
       x.mission.status==="verifying"
     );
@@ -123,6 +124,7 @@ export class RuntimePersistence{
       const kept=snapshots.filter(snapshot=>{
         const resumable=
           snapshot.executionState.status==="running"||
+          (snapshot.executionState.status==="failed"&&snapshot.executionState.recoverable)||
           snapshot.mission.status==="running"||
           snapshot.mission.status==="verifying";
         return resumable||Date.parse(snapshot.savedAt)>=cutoff;
