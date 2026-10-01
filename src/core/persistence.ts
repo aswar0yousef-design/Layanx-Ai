@@ -2,7 +2,7 @@ import {mkdir,readFile,rename,writeFile} from "node:fs/promises";
 import {dirname} from "node:path";
 export interface PersistedState<T>{version:number;updatedAt:string;data:T;}
 export class JsonStateStore<T>{
- constructor(private readonly path:string,private readonly version=1){}
+ constructor(private readonly path:string,private readonly version=1){}\n  lockPath():string{return this.path+".lock";}
  async load():Promise<T|undefined>{
   try{const raw=await readFile(this.path,"utf8");const state=JSON.parse(raw) as PersistedState<T>;if(state.version!==this.version)throw new Error("Unsupported state version.");return state.data;}
   catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return undefined;throw error;}
