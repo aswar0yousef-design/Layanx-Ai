@@ -24,7 +24,8 @@ await persistence.save({
   ledger:original.ledger.forMission(mission.id),
   audit:original.audit.forMission(mission.id),
   checkpoint:original.recovery.restore(mission.id),
-  savedAt:new Date().toISOString()
+  savedAt:new Date().toISOString(),
+  schemaVersion:1
 });
 
 const restoredCore=new LayanXCore();
