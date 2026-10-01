@@ -36,7 +36,7 @@ export class CoreRuntime{
     await this.persist(mission);
     let effectiveToken=capabilityTokenId;
     if(!effectiveToken&&rank[request.permission]===1){
-      effectiveToken=this.core.capabilities.issue({missionId:mission.id,agentId:request.agentId,projectId,resource:request.tool,permission:"L1_READ",expiresAt:new Date(Date.now()+60000).toISOString()});
+      effectiveToken=this.core.capabilities.issue({missionId:mission.id,agentId:request.agentId,projectId,resource:request.tool,permission:"L1_READ",expiresAt:new Date(Date.now()+60000).toISOString()}).id;
     }
     if(!effectiveToken){
       const result={ok:false,missionId:mission.id,verified:false,decision:"blocked",error:"A scoped capability token is required above L1_READ."} as CoreRunResult;
