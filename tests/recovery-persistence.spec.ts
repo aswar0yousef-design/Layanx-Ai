@@ -63,4 +63,11 @@ await persistence.save(later);
 const preserved=await persistence.get("recovery-1");
 if(!preserved||preserved.startedAt!==firstStartedAt)throw new Error("Recovery start time was overwritten.");
 
+await persistence.save({...later,state:"verified",updatedAt:"2026-01-03T00:02:00Z"});
+if(await persistence.findActive())throw new Error("Terminal recovery remained active.");
+const history=await persistence.history();
+if(history.length!==1||history[0]?.recoveryId!=="recovery-1"||history[0]?.state!=="verified")throw new Error("Terminal recovery was not moved to history.");
+if((await persistence.get("recovery-1"))?.state!=="verified")throw new Error("Historical recovery was not retrievable.");
+
+
 console.log("Recovery persistence test passed.");
