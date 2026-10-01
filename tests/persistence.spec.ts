@@ -1,0 +1,12 @@
+import {mkdtemp,rm} from "node:fs/promises";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
+import {JsonStateStore} from "../src/core/persistence.js";
+const dir=await mkdtemp(join(tmpdir(),"layanx-"));
+const path=join(dir,"state.json");
+const store=new JsonStateStore<{status:string}>(path);
+await store.save({status:"recoverable"});
+const restored=await store.load();
+if(restored?.status!=="recoverable")throw new Error("Persistent state restore failed.");
+await rm(dir,{recursive:true,force:true});
+console.log("Persistence test passed.");
