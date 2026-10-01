@@ -47,7 +47,8 @@ export class AiMissionPlanner{
   async nextTool(input:{goal:string;result:unknown;tools:ToolCatalogEntry[];requiredPermission:PermissionLevel;completedTools:string[];memory?:Array<{kind:string;summary:string;content:unknown;tags:string[]}>}):Promise<PlannedTool|null>{
     if(!input.goal.trim())throw new Error("Mission goal is empty.");
     const catalog=input.tools.map(tool=>({name:tool.name,description:tool.description,permission:tool.permission,dangerous:tool.dangerous,actions:tool.actions,tags:tool.tags}));
-    const boundedResult=JSON.stringify(input.result).slice(0,12000);\n    const boundedMemory=JSON.stringify(input.memory??[]).slice(0,8000);
+    const boundedResult=JSON.stringify(input.result).slice(0,12000);
+    const boundedMemory=JSON.stringify(input.memory??[]).slice(0,8000);
     const response=await this.models.execute({
       capability:"reasoning",
       input:[
@@ -60,7 +61,8 @@ export class AiMissionPlanner{
         "Completed tools: "+JSON.stringify(input.completedTools),
         "Available tool catalog: "+JSON.stringify(catalog),
         "Mission goal: "+input.goal,
-        "Mission memory context: "+boundedMemory,\n        "Latest tool result: "+boundedResult
+        "Mission memory context: "+boundedMemory,
+        "Latest tool result: "+boundedResult
       ].join("\n")
     });
     let value:unknown;
