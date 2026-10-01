@@ -95,12 +95,44 @@ export class RuntimeRecoveryManager{
     const readiness=new RecoveryReadinessChecker(this.core).check(snapshot,request);
     if(!readiness.ready)throw new Error("Recovery readiness failed: "+readiness.issues.map(issue=>issue.code).join(", "));
 
+    this.core.executionStates.restore(snapshot.executionState);
+    this.core.ledger.restore(snapshot.ledger);
+    this.core.audit.restore(snapshot.audit);
+    this.core.recovery.restorePersisted(snapshot.checkpoint);
+    if(snapshot.idempotency) await this.core.idempotency.restore(snapshot.idempotency);
+    if(snapshot.memory) this.core.memory.restore(snapshot.memory);
+    if(snapshot.handoffs) this.core.handoffs.restore(snapshot.handoffs);
+    if(snapshot.delegatedTasks) this.core.delegation.restore(snapshot.delegatedTasks);
+
+    const acceptedHandoff=snapshot.handoffs?.find(h=>h.status==="accepted"&&h.execution);
+    if(snapshot.mission.status==="completed" && acceptedHandoff?.execution){
+      const handoffKey=["handoff",acceptedHandoff.id,snapshot.mission.id,acceptedHandoff.toAgentId,acceptedHandoff.execution.tool,acceptedHandoff.execution.action].join(":");
+      const record=await this.core.idempotency.get(handoffKey);
+      if(record?.status==="completed"){
+        this.core.handoffs.complete(acceptedHandoff.id);
+        if(!this.core.memory.list().some(entry=>entry.kind==="handoff" && entry.content && typeof entry.content==="object" && (entry.content as Record<string,unknown>).handoffId===acceptedHandoff.id)){
+          this.core.memory.remember({
+            missionId:snapshot.mission.id,kind:"handoff",summary:acceptedHandoff.goal,
+            content:{handoffId:acceptedHandoff.id,fromAgentId:acceptedHandoff.fromAgentId,toAgentId:acceptedHandoff.toAgentId,tool:acceptedHandoff.execution.tool,action:acceptedHandoff.execution.action,verified:true},
+            confidence:1,tags:["handoff",acceptedHandoff.execution.tool]
+          });
+        }
+        await this.persistence.saveAtomic({
+          ...snapshot,
+          handoffs:this.core.handoffs.forMission(snapshot.mission.id),
+          memory:this.core.memory.list().filter(entry=>entry.missionId===snapshot.mission.id),
+          nextAction:this.core.nextAction.decide({mission:snapshot.mission,tasks:this.core.delegation.forMission(snapshot.mission.id),handoffs:this.core.handoffs.forMission(snapshot.mission.id)}),
+          savedAt:new Date().toISOString()
+        });
+        const persisted=await this.persistence.get(missionId);
+        return{ok:true,missionId,verified:true,data:record.data,recoverable:false,replayed:true};
+      }
+    }
+
     if(!["running","verifying"].includes(snapshot.executionState.status) &&
        !["running","verifying"].includes(snapshot.mission.status)){
       throw new Error("Mission is not resumable.");
     }
-
-    this.core.executionStates.restore(snapshot.executionState);
     this.core.ledger.restore(snapshot.ledger);
     this.core.audit.restore(snapshot.audit);
     this.core.recovery.restorePersisted(snapshot.checkpoint);
