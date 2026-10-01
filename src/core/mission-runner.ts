@@ -16,7 +16,10 @@ export class MissionRunner{
   let currentRequest=request;
   for(let attempt=0;attempt<2;attempt++){
    const result=await this.runtime.run(current,currentRequest,adapter,approvalId,security);
-   if(result.ok)return result;
+   if(result.ok){
+    Object.assign(mission,current);
+    return result;
+   }
    if(!result.recoverable)return result;
    const replanned=this.replanner.replan(current,{code:"EXECUTION_FAILURE",message:result.error??"Execution failed",recoverable:true});
    if(replanned===current)return result;
