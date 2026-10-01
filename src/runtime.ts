@@ -1,7 +1,7 @@
 import {LayanXCore} from "./core/orchestrator.js";
 import type {AgentContract} from "./core/contracts.js";
 import {configureProviders,providerSummary} from "./config/providers.js";
-import {registerBuiltinTools,registerHttpReadTool,registerGitHubReadTools} from "./tools/builtin.js";
+import {registerBuiltinTools,registerHttpReadTool,registerGitHubReadTools,registerToolFabric} from "./tools/builtin.js";
 import {RuntimePersistence} from "./core/runtime-persistence.js";
 import {RuntimeStorage} from "./storage/runtime-storage.js";
 import {PostgresStorageAdapter} from "./storage/postgres-adapter.js";
@@ -17,6 +17,7 @@ export function createRuntime(options:RuntimeOptions={}){
  registerBuiltinTools(core);
  registerHttpReadTool(core);
  registerGitHubReadTools(core,{token:process.env.GITHUB_TOKEN});
+ registerToolFabric(core);
  const agent:AgentContract={
   agentId:"core",
   purpose:"Safely orchestrate LayanX missions.",
