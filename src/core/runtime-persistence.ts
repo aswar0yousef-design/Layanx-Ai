@@ -99,7 +99,7 @@ export class RuntimePersistence{
   async cleanup(retentionMs=7*24*60*60*1000,now=Date.now()):Promise<{removed:number;kept:number}>{
     if(retentionMs<0)throw new Error("Snapshot retention must be non-negative.");
     return this.storage.transaction(async tx=>{
-      const raw=await tx.get<unknown[]>()??[];
+      const raw=await tx.get<unknown[]>("runtime:snapshots")??[];
       const snapshots=raw.map(snapshot=>this.migrate(snapshot));
       snapshots.forEach(snapshot=>this.validate(snapshot));
       const cutoff=now-retentionMs;
@@ -110,7 +110,7 @@ export class RuntimePersistence{
           snapshot.mission.status==="verifying";
         return resumable||Date.parse(snapshot.savedAt)>=cutoff;
       });
-      await tx.set(kept);
+      await tx.set("runtime:snapshots",kept);
       return{removed:snapshots.length-kept.length,kept:kept.length};
     });
   }
