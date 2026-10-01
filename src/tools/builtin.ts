@@ -12,7 +12,9 @@ export function registerBuiltinTools(core:LayanXCore):void {
     name:"runtime.status",
     description:"read runtime status, configured providers, and registered models",
     permission:"L1_READ",
-    dangerous:false
+    dangerous:false,
+    actions:["read runtime status","inspect runtime","runtime status"],
+    tags:["runtime","status","health","diagnostics"]
   });
   core.toolAdapters.register("runtime.status",{
     async execute():Promise<unknown>{
@@ -35,7 +37,9 @@ export function registerBuiltinTools(core:LayanXCore):void {
     name:"mission.inspect",
     description:"read the current mission status, goal, and execution steps",
     permission:"L1_READ",
-    dangerous:false
+    dangerous:false,
+    actions:["inspect mission","read mission","mission status"],
+    tags:["mission","inspect","status","progress"]
   });
   core.toolAdapters.register("mission.inspect",{
     async execute(request:ToolRequest):Promise<unknown>{
@@ -56,7 +60,9 @@ export function registerBuiltinTools(core:LayanXCore):void {
     name:"memory.recall",
     description:"read relevant non-sensitive mission memory by query",
     permission:"L1_READ",
-    dangerous:false
+    dangerous:false,
+    actions:["recall memory","search memory","read memory"],
+    tags:["memory","recall","search","context"]
   });
   core.toolAdapters.register("memory.recall",{
     async execute(request:ToolRequest):Promise<unknown>{
