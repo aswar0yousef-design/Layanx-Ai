@@ -35,6 +35,7 @@ import {MissionStore} from "./mission-store.js";
 import {ToolAdapterRegistry} from "../tools/adapters.js";
 import {AdaptiveDecisionEngine} from "./adaptive-decision.js";
 import {ProjectIsolation} from "../security/project-isolation.js";
+import {ContextFabric} from "./context-fabric.js";
 import {SkillRegistry} from "../skills/registry.js";
 import {SkillRuntime} from "../skills/runtime.js";
 
@@ -58,6 +59,7 @@ export class LayanXCore{
   readonly toolCatalog=new ToolCatalog(this.tools);
   readonly toolRequestBuilder=new ToolRequestBuilder();
   readonly memory=new MemoryEngine();
+  readonly contextFabric=new ContextFabric(this.memory);
   readonly executionRuntime:ExecutionRuntime;
   readonly persistence?:RuntimePersistence;
   readonly risk=new RiskEngine();
@@ -145,7 +147,7 @@ export class LayanXCore{
   private async recordAdaptiveStop(mission:import("./types.js").Mission,decision:import("./adaptive-decision.js").AdaptiveDecision,stepsExecuted:number,agentId:string){
     const metadata={missionId:mission.id,reason:decision.reason,stepsExecuted};
     this.audit.append({timestamp:new Date().toISOString(),actor:agentId,action:"mission.adaptive.stop",resource:mission.id,result:["tool_failure","planner_failure"].includes(decision.reason)?"failure":"success",metadata});
-    this.memory.remember({missionId:mission.id,kind:"decision",summary:"Adaptive mission stopped: "+decision.reason,content:{reason:decision.reason,detail:decision.detail,stepsExecuted},confidence:1,tags:["mission","adaptive","stop",decision.reason]});
+    this.memory.remember({missionId:mission.id,projectId:mission.projectId,kind:"decision",summary:"Adaptive mission stopped: "+decision.reason,content:{reason:decision.reason,detail:decision.detail,stepsExecuted},confidence:1,tags:["mission","adaptive","stop",decision.reason]});
     await this.executionRuntime.persist(mission);
   }
 
