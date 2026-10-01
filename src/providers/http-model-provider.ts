@@ -9,7 +9,8 @@ export interface HttpModelProviderOptions{
  timeoutMs?:number;
  fetcher?:typeof fetch;
  headers?:Record<string,string>;
- buildUrl?:(model:ModelDefinition,request:ModelRequest,operation:"health"|"generate")=>string;
+ buildUrl?:(model:ModelDefinition,request:ModelRequest)=>string;
+ buildHealthUrl?:()=>string;
  buildBody:(model:ModelDefinition,request:ModelRequest)=>unknown;
  parseResponse:(body:unknown,model:ModelDefinition)=>ModelResponse;
 }
@@ -26,7 +27,7 @@ export class HttpModelProvider implements ModelProviderAdapter{
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),Math.max(1,this.options.timeoutMs??5000));
   try{
-   const response=await this.fetcher(this.options.buildUrl?.(undefined as unknown as ModelDefinition,undefined as unknown as ModelRequest,"health")??this.options.healthUrl??this.options.baseUrl,{method:"GET",redirect:"error",signal:controller.signal,headers:this.headers()});
+   const response=await this.fetcher(this.options.buildHealthUrl?.()??this.options.healthUrl??this.options.baseUrl,{method:"GET",redirect:"error",signal:controller.signal,headers:this.headers()});
    return{provider:this.name,available:response.ok,latencyMs:Date.now()-started,reason:response.ok?undefined:"HTTP "+response.status,updatedAt:new Date().toISOString()};
   }catch(error){
    return{provider:this.name,available:false,latencyMs:Date.now()-started,reason:error instanceof Error?error.message:"Provider health check failed",updatedAt:new Date().toISOString()};
@@ -36,7 +37,7 @@ export class HttpModelProvider implements ModelProviderAdapter{
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),Math.max(1,this.options.timeoutMs??30000));
   try{
-   const response=await this.fetcher(this.options.buildUrl?.(model,request,"generate")??this.options.baseUrl,{method:"POST",redirect:"error",signal:controller.signal,headers:{"content-type":"application/json",...this.headers()},body:JSON.stringify(this.options.buildBody(model,request))});
+   const response=await this.fetcher(this.options.buildUrl?.(model,request)??this.options.baseUrl,{method:"POST",redirect:"error",signal:controller.signal,headers:{"content-type":"application/json",...this.headers()},body:JSON.stringify(this.options.buildBody(model,request))});
    if(!response.ok)throw new Error(this.name+" returned HTTP "+response.status+".");
    return this.options.parseResponse(await response.json(),model);
   }finally{clearTimeout(timer);}
