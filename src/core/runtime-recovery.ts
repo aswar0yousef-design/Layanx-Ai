@@ -7,6 +7,20 @@ import {RuntimePersistence, type RuntimeSnapshot} from "./runtime-persistence.js
 export interface RecoveryReadinessIssue{code:string;message:string;}
 export interface RecoveryReadiness{ready:boolean;issues:RecoveryReadinessIssue[];}
 
+export interface RecoveryReport{
+  missionId:string;
+  missionGoal:string;
+  missionStatus:Mission["status"];
+  executionStatus:RuntimeSnapshot["executionState"]["status"];
+  lastSavedAt:string;
+  checkpoint:{available:boolean;stepId?:string;createdAt?:string};
+  idempotency:{count:number;running:number;completed:number;failed:number};
+  ledgerEntries:number;
+  auditEntries:number;
+  nextAction:string;
+  readiness:RecoveryReadiness;
+}
+
 class RecoveryReadinessChecker{
   constructor(private readonly core:LayanXCore){}
   check(snapshot:RuntimeSnapshot,request:ToolRequest):RecoveryReadiness{
@@ -46,6 +60,32 @@ export class RuntimeRecoveryManager{
       checkpointAvailable:Boolean(s.checkpoint),
       resumeStepId:s.checkpoint?.stepId
     }));
+  }
+
+  async report(missionId:string,request:ToolRequest):Promise<RecoveryReport>{
+    const snapshot=await this.persistence.get(missionId);
+    if(!snapshot)throw new Error("Unknown persisted mission.");
+    const readiness=new RecoveryReadinessChecker(this.core).check(snapshot,request);
+    const records=snapshot.idempotency??[];
+    const resumable=["running","verifying"].includes(snapshot.executionState.status)||["running","verifying"].includes(snapshot.mission.status);
+    return{
+      missionId,
+      missionGoal:snapshot.mission.goal,
+      missionStatus:snapshot.mission.status,
+      executionStatus:snapshot.executionState.status,
+      lastSavedAt:snapshot.savedAt,
+      checkpoint:{available:Boolean(snapshot.checkpoint),stepId:snapshot.checkpoint?.stepId,createdAt:snapshot.checkpoint?.createdAt},
+      idempotency:{
+        count:records.length,
+        running:records.filter(record=>record.status==="running").length,
+        completed:records.filter(record=>record.status==="completed").length,
+        failed:records.filter(record=>record.status==="failed").length
+      },
+      ledgerEntries:snapshot.ledger.length,
+      auditEntries:snapshot.audit.length,
+      nextAction:!resumable?"No resume action: mission is not resumable.":readiness.ready?"Ready to resume from the persisted checkpoint.":"Blocked until recovery readiness issues are resolved.",
+      readiness
+    };
   }
 
   async resume(missionId:string,request:ToolRequest,adapter:ToolAdapter,approvalId?:string){
