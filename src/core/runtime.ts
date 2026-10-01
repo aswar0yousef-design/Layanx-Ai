@@ -31,7 +31,9 @@ export class ExecutionRuntime{
   if(!sentinel.allowed)return this.block(mission,request,sentinel.reason);
   const budget=this.budget.evaluate({toolCalls:state.toolCalls,runtimeMs:Date.now()-started,costUsd:state.costUsd});
   if(!budget.allowed)return this.block(mission,request,budget.reason);
-  this.core.recovery.checkpoint({missionId:mission.id,stepId:mission.steps[0]?.id??"mission",createdAt:new Date().toISOString(),state:{request}});
+  const executionStep=mission.steps.find(step=>step.description.startsWith("Execute"));
+  if(executionStep) executionStep.status="running";
+  this.core.recovery.checkpoint({missionId:mission.id,stepId:executionStep?.id??"mission",createdAt:new Date().toISOString(),state:{request}});
   const result=await this.core.executor.execute(request,adapter);
   const runtimeMs=Date.now()-started;
   this.core.executionStates.update(mission.id,{toolCalls:state.toolCalls+1,runtimeMs:state.runtimeMs+runtimeMs,status:result.ok?"completed":"failed"});
