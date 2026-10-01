@@ -34,6 +34,7 @@ import {NextActionEngine} from "./next-action.js";
 import {MissionStore} from "./mission-store.js";
 import {ToolAdapterRegistry} from "../tools/adapters.js";
 import {AdaptiveDecisionEngine} from "./adaptive-decision.js";
+import {ProjectIsolation} from "../security/project-isolation.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -72,6 +73,7 @@ export class LayanXCore{
   readonly missions=new MissionStore();
   readonly toolAdapters=new ToolAdapterRegistry();
   readonly adaptiveDecision=new AdaptiveDecisionEngine();
+  readonly projectIsolation=new ProjectIsolation();
 
   constructor(idempotency?:IdempotencyService,persistence?:RuntimePersistence){
     this.idempotency=idempotency??new IdempotencyStore();
@@ -102,7 +104,7 @@ export class LayanXCore{
     const contract=this.agents.get(agentId);
     return this.toolSelector.discover(action,contract,permission);
   }
-  prepareMissionToolRequests(mission:import("./types.js").Mission,projectId:string,agentId="core"){
+  prepareMissionToolRequests(mission:import("./types.js").Mission,projectId:string,agentId="core"){\n    this.projectIsolation.assertMissionProject(projectId,mission.projectId);
     const contract=this.agents.get(agentId);
     const catalog=this.toolCatalog.list(contract,mission.requiredPermission);
     return (mission.tools??[]).map(plan=>{
@@ -114,7 +116,7 @@ export class LayanXCore{
   async executeMissionTool(missionId:string,projectId:string,toolIndex=0,payload:unknown={},approvalId?:string,agentId="core",runtimeOptions:{deferVerification?:boolean}={}){
     const mission=this.missions.get(missionId);
     if(!mission)throw new Error("Mission not found.");
-    const plans=mission.tools??[];
+    this.projectIsolation.assertMissionProject(projectId,mission.projectId);\n    const plans=mission.tools??[];
     const plan=plans[toolIndex];
     if(!plan)throw new Error("Mission tool plan not found.");
     const contract=this.agents.get(agentId);
