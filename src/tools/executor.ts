@@ -15,10 +15,9 @@ export class ToolExecutor {
   if(!gate.allowed)return {ok:false,verified:false,error:gate.reason};
 
   const claim=this.idempotency.begin(request);
-  if(!claim.ok){
-   if(claim.record.status==="completed")return{ok:true,verified:true,data:claim.record.data,replayed:true};
-   if(claim.record.status==="running")return{ok:false,verified:false,error:"Duplicate operation is already in progress."};
-   return{ok:false,verified:false,error:claim.record.error??"A previous operation with this idempotency key failed."};
+  if(!claim.accepted){
+   if(claim.replay)return{ok:true,verified:true,data:claim.record.data,replayed:true};
+   return{ok:false,verified:false,error:claim.reason??"Duplicate operation rejected."};
   }
 
   try{
