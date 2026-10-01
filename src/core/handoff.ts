@@ -1,6 +1,8 @@
 import type {AgentContract} from "./contracts.js";
 import type {Mission} from "./types.js";
-import {DelegationManager, type DelegatedTask} from "./delegation.js";
+import {DelegationManager} from "./delegation.js";
+
+export interface HandoffExecution{action:string;tool:string;payload:unknown;}
 
 export interface MissionHandoff{
  id:string;
@@ -10,6 +12,7 @@ export interface MissionHandoff{
  goal:string;
  context:unknown;
  requiredPermission:Mission["requiredPermission"];
+ execution?:HandoffExecution;
  createdAt:string;
  status:"pending"|"accepted"|"completed"|"rejected";
 }
@@ -21,6 +24,7 @@ export interface HandoffRequest{
  goal:string;
  context:unknown;
  requiredPermission:Mission["requiredPermission"];
+ execution?:HandoffExecution;
 }
 
 export class MissionHandoffManager{
@@ -35,7 +39,7 @@ export class MissionHandoffManager{
   const handoff:MissionHandoff={
    id:crypto.randomUUID(),missionId:request.missionId,fromAgentId:request.fromAgentId,
    toAgentId:request.toAgent.agentId,goal:request.goal,context:structuredClone(request.context),
-   requiredPermission:request.requiredPermission,createdAt:new Date().toISOString(),status:"pending"
+   requiredPermission:request.requiredPermission,execution:request.execution?structuredClone(request.execution):undefined,createdAt:new Date().toISOString(),status:"pending"
   };
   this.handoffs.set(handoff.id,handoff);
   return structuredClone(handoff);
