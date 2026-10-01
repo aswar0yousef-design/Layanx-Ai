@@ -52,7 +52,7 @@ export class LayanXCore{
     const m=this.planner.create(goal);
     this.executionStates.start(m.id);
     this.ledger.append({id:crypto.randomUUID(),missionId:m.id,agentId:"core",action:"mission.create",status:"started",timestamp:new Date().toISOString(),detail:goal});
-    this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"mission.create",resource:m.id,result:"success",metadata:{goal}});
+    this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"mission.create",resource:m.id,result:"success",metadata:{goal,missionId:m.id}});
     return m;
   }
   authorize(r:import("./types.js").ToolRequest,g:import("./types.js").PermissionLevel){
