@@ -120,7 +120,17 @@ export class LayanXCore{
     const completedTools:string[]=[];
     let latest:unknown={status:"not_started"};
     const results=[];
-    for(let step=0;step<maxSteps;step++){
+    if((mission.tools??[]).length){
+      const first=mission.tools[0];
+      mission.tools=[first];
+      this.missions.save(mission);
+      const result=await this.executeMissionTool(missionId,projectId,0,{},undefined,agentId,{deferVerification:true});
+      results.push(result);
+      if(!result.ok)return{missionId,results,completed:false,reason:result.error};
+      completedTools.push(first.tool);
+      latest=result.data;
+    }
+    for(let step=results.length;step<maxSteps;step++){
       const next=await this.aiPlanner.nextTool({
         goal:mission.goal,result:latest,tools:catalog,
         requiredPermission:mission.requiredPermission,completedTools
@@ -136,6 +146,7 @@ export class LayanXCore{
       completedTools.push(next.tool);
       latest=result.data;
     }
+    if(!results.length)return{missionId,results,completed:false,reason:"Adaptive planner produced no executable tool."};
     const finalMission=this.missions.get(missionId);
     if(!finalMission)throw new Error("Mission not found.");
     const finalResult=await this.executionRuntime.finalize(finalMission,latest,agentId);
