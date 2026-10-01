@@ -12,7 +12,8 @@
     "ci": "npm run release:check",
     "test:unit": "tsx tests/*.spec.ts",
     "build": "tsc",
-    "start": "node dist/health.js"
+    "start": "node dist/health.js",
+    "layanx": "tsx src/cli.ts"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
