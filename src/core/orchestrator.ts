@@ -26,6 +26,7 @@ import {ExecutionRuntime} from "./runtime.js";
 import {MissionCompiler} from "./mission-compiler.js";
 import {ToolSelector} from "./tool-selection.js";
 import {ToolCatalog} from "./tool-catalog.js";
+import {ToolRequestBuilder} from "./tool-request-builder.js";
 import {MemoryEngine} from "./memory.js";
 import type {RuntimePersistence} from "./runtime-persistence.js";
 import {MissionHandoffManager} from "./handoff.js";
@@ -51,6 +52,7 @@ export class LayanXCore{
   readonly missionCompiler=new MissionCompiler();
   readonly toolSelector=new ToolSelector(this.tools);
   readonly toolCatalog=new ToolCatalog(this.tools);
+  readonly toolRequestBuilder=new ToolRequestBuilder();
   readonly memory=new MemoryEngine();
   readonly executionRuntime:ExecutionRuntime;
   readonly persistence?:RuntimePersistence;
@@ -84,6 +86,15 @@ export class LayanXCore{
   discoverTools(action:string,permission:import("./types.js").PermissionLevel,agentId="core"){
     const contract=this.agents.get(agentId);
     return this.toolSelector.discover(action,contract,permission);
+  }
+  prepareMissionToolRequests(mission:import("./types.js").Mission,projectId:string,agentId="core"){
+    const contract=this.agents.get(agentId);
+    const catalog=this.toolCatalog.list(contract,mission.requiredPermission);
+    return (mission.tools??[]).map(plan=>{
+      const token=this.capabilities.issue({missionId:mission.id,agentId,projectId,resource:plan.tool,permission:plan.permission,expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
+      const request=this.toolRequestBuilder.build(mission,plan,{agentId,projectId,capabilityId:token.id},catalog);
+      return{request,capabilityId:token.id,expiresAt:token.expiresAt};
+    });
   }
   async planMission(goal:string){
     const contract=this.agents.get("core");
