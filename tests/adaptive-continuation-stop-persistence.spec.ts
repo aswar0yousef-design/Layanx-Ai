@@ -25,14 +25,16 @@ mission.requiredPermission="L1_READ";
 mission.tools=[{tool:"test.tool",action:"read",permission:"L1_READ",reason:"test"}];
 core.missions.save(mission);
 
-const original=core.aiPlanner.nextTool.bind(core.aiPlanner);
-core.aiPlanner.nextTool=async (...args:Parameters<typeof core.aiPlanner.nextTool>)=>{
-  const next=await original(...args);
-  mission.status="blocked";
-  return next;
-};
+core.aiPlanner.nextTool=async ()=>({
+  tool:"test.tool",
+  action:"read",
+  permission:"L1_READ",
+  reason:"test"
+});
 
-await core.executeMissionAdaptive(mission.id,"project",3);
+const first=await core.executeMissionAdaptive(mission.id,"project",3);
+if(first.completed)throw new Error("Blocked adaptive continuation should not complete.");
+
 const snapshot=await persistence.get(mission.id);
 if(!snapshot)throw new Error("Blocked continuation snapshot was not persisted.");
 if(!snapshot.audit.some(event=>event.action==="mission.adaptive.stop"&&event.metadata?.reason==="blocked"))
