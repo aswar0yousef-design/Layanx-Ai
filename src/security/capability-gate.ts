@@ -3,7 +3,7 @@ import {CapabilityTokenService} from "./capability-token.js";
 import {CapabilityRegistry} from "./capability-registry.js";
 export class CapabilityGate{
  constructor(private readonly service=new CapabilityTokenService(),private readonly registry=new CapabilityRegistry()){}
- issue(input:Omit<CapabilityToken,"id"|"issuedAt"|"nonce"){return this.registry.issue(this.service.issue(input));}
+ issue(input:Omit<CapabilityToken,"id"|"issuedAt"|"nonce">){return this.registry.issue(this.service.issue(input));}
  authorize(tokenId:string,request:Parameters<CapabilityTokenService["validate"]>[1]){
   const token=this.registry.get(tokenId);
   if(!token||!this.registry.isActive(tokenId))return{allowed:false,reason:"Capability is missing, revoked, or expired."};
