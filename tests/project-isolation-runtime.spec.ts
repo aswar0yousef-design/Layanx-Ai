@@ -34,12 +34,17 @@ const unboundResult=await runner.execute(
 );
 if(unboundResult.ok||!String(unboundResult.error).includes("not bound to a project"))throw new Error("Unbound mission was not rejected.");
 
+const matchingMission=core.startMission("read project data","project-a");
+const matchingCapability=core.capabilities.issue({
+ missionId:matchingMission.id,agentId:agent.agentId,projectId:"project-a",resource:"echo",permission:"L1_READ",
+ expiresAt:new Date(Date.now()+60000).toISOString()
+});
 const matching=await runner.execute(
- mission,
+ matchingMission,
  {missionId:mission.id,agentId:agent.agentId,tool:"echo",action:"echo",permission:"L1_READ",idempotencyKey:"project-isolation-right",payload:"ok"},
  {async execute(){return{ok:true};}},
  undefined,
- {projectId:"project-a",capabilityId:capability.id}
+ {projectId:"project-a",capabilityId:matchingCapability.id}
 );
 if(!matching.ok)throw new Error("Matching project execution was incorrectly blocked.");
 
