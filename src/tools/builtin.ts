@@ -13,8 +13,8 @@ export function registerBuiltinTools(core:LayanXCore):void {
     description:"read runtime status, configured providers, and registered models",
     permission:"L1_READ",
     dangerous:false,
-    actions:["read runtime status","inspect runtime","runtime status"],
-    tags:["runtime","status","health","diagnostics"]
+    actions:["read runtime status","inspect runtime","runtime status","قراءة حالة النظام","فحص التشغيل"],
+    tags:["runtime","status","health","diagnostics","تشغيل","حالة","حالة النظام"]
   });
   core.toolAdapters.register("runtime.status",{
     async execute():Promise<unknown>{
@@ -38,8 +38,8 @@ export function registerBuiltinTools(core:LayanXCore):void {
     description:"read the current mission status, goal, and execution steps",
     permission:"L1_READ",
     dangerous:false,
-    actions:["inspect mission","read mission","mission status"],
-    tags:["mission","inspect","status","progress"]
+    actions:["inspect mission","read mission","mission status","فحص المهمة","قراءة المهمة"],
+    tags:["mission","inspect","status","progress","مهمة","فحص","حالة المهمة"]
   });
   core.toolAdapters.register("mission.inspect",{
     async execute(request:ToolRequest):Promise<unknown>{
@@ -61,8 +61,8 @@ export function registerBuiltinTools(core:LayanXCore):void {
     description:"read relevant non-sensitive mission memory by query",
     permission:"L1_READ",
     dangerous:false,
-    actions:["recall memory","search memory","read memory"],
-    tags:["memory","recall","search","context"]
+    actions:["recall memory","search memory","read memory","استرجاع الذاكرة","بحث في الذاكرة","قراءة الذاكرة"],
+    tags:["memory","recall","search","context","ذاكرة","استرجاع","بحث","سياق"]
   });
   core.toolAdapters.register("memory.recall",{
     async execute(request:ToolRequest):Promise<unknown>{
