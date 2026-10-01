@@ -28,7 +28,7 @@ export class VerificationEngine {
     const equality=/^result(?:\.([A-Za-z_$][\w$]*))?\s*(===|==|!==|!=)\s*(.+)$/i.exec(text);
     if(equality){
       const actual=this.readPath(result,equality[1]??"");
-      const expected=this.parseLiteral(equality[3]);
+      const expected=this.parseLiteral(equality[3]??"");
       if(!expected.supported)return{supported:false,matched:false,reason:`Unsupported success criterion: ${text}`};
       const equal=this.same(actual,expected.value);
       const matched=equality[2]==="==="||equality[2]==="=="?equal:!equal;
@@ -46,7 +46,7 @@ export class VerificationEngine {
     const contains=/^result(?:\.([A-Za-z_$][\w$]*))?\s+contains\s+(.+)$/i.exec(text);
     if(contains){
       const actual=this.readPath(result,contains[1]??"");
-      const expected=this.parseLiteral(contains[2]);
+      const expected=this.parseLiteral(contains[2]??"");
       if(!expected.supported)return{supported:false,matched:false,reason:`Unsupported success criterion: ${text}`};
       const matched=typeof actual==="string"&&typeof expected.value==="string"?actual.includes(expected.value):Array.isArray(actual)?actual.some(item=>this.same(item,expected.value)):false;
       return{supported:true,matched,reason:matched?"":`Success criterion failed: ${text}`};
