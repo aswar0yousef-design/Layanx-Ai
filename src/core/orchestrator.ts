@@ -27,6 +27,8 @@ import {MissionCompiler} from "./mission-compiler.js";
 import {ToolSelector} from "./tool-selection.js";
 import {MemoryEngine} from "./memory.js";
 import type {RuntimePersistence} from "./runtime-persistence.js";
+import {MissionHandoffManager} from "./handoff.js";
+import {NextActionEngine} from "./next-action.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -52,6 +54,8 @@ export class LayanXCore{
   readonly audit=new AuditLog();
   readonly noAction=new NoActionController();
   readonly delegation=new DelegationManager();
+  readonly handoffs=new MissionHandoffManager(this.delegation);
+  readonly nextAction=new NextActionEngine();
   readonly teams=new AgentTeam(this.delegation);
   readonly executionStates=new ExecutionStateStore();
   readonly observatory=new MissionObservatory();
