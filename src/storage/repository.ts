@@ -8,6 +8,3 @@ export interface Transaction{
 export interface StorageAdapter{
   transaction<T>(work:(tx:Transaction)=>Promise<T>):Promise<T>;
 }
-export interface TransactionalKeyValueStore{
-  transaction<T>(work:(tx:Transaction)=>Promise<T>):Promise<T>;
-}
