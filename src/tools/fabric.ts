@@ -1,4 +1,4 @@
-import {readFile,readdir,stat} from "node:fs/promises";
+import {readFile,readdir,stat,mkdir} from "node:fs/promises";
 import {resolve,relative,isAbsolute,sep} from "node:path";
 import {spawn} from "node:child_process";
 import type {ToolRequest} from "../core/types.js";
@@ -7,7 +7,7 @@ import type {ToolAdapter} from "./executor.js";
 function payload(request:ToolRequest):Record<string,unknown>{
  return request.payload&&typeof request.payload==="object"&&!Array.isArray(request.payload)?request.payload as Record<string,unknown>:{};
 }
-function sandboxPath(root:string,input:string):string{
+function workspaceFor(root:string,projectId?:string):string{\n if(!projectId)throw new Error("Project identity is required for workspace tools.");\n const safe=projectId.trim();\n if(!safe||safe==="."||safe===".."||safe.includes("/")||safe.includes("\\\\"))throw new Error("Invalid project workspace identity.");\n return resolve(root,safe);\n}\nfunction sandboxPath(root:string,input:string):string{
  if(!input||isAbsolute(input))throw new Error("Workspace paths must be relative.");
  const base=resolve(root),target=resolve(base,input),rel=relative(base,target);
  if(rel===""||(!rel.startsWith(".."+sep)&&rel!==".."))return target;
@@ -50,12 +50,12 @@ export function createTerminalToolAdapter(options:{root:string}):ToolAdapter{
   if(!allowed.some(prefix=>normalized===prefix||normalized.startsWith(prefix+" ")))throw new Error("Terminal command is not allowed.");
   if(/[;&|$<>]/.test(command)||command.includes("`"))throw new Error("Shell metacharacters are blocked.");
   return await new Promise((resolvePromise,reject)=>{
-   const child=spawn(binary,parts,{cwd:root,shell:false,env:{...process.env,CI:"1"},timeout:30000});
+   const child=spawn(binary,parts,{cwd:workspace,shell:false,env:{...process.env,CI:"1"},timeout:30000});
    let stdout="",stderr="";
    child.stdout.on("data",chunk=>{stdout+=String(chunk);if(stdout.length>128*1024)child.kill("SIGKILL");});
    child.stderr.on("data",chunk=>{stderr+=String(chunk);if(stderr.length>128*1024)child.kill("SIGKILL");});
    child.on("error",reject);
-   child.on("close",(code,signal)=>resolvePromise({command,cwd:root,exitCode:code,signal,stdout:stdout.slice(0,128*1024),stderr:stderr.slice(0,128*1024)}));
+   child.on("close",(code,signal)=>resolvePromise({command,cwd:workspace,exitCode:code,signal,stdout:stdout.slice(0,128*1024),stderr:stderr.slice(0,128*1024)}));
   });
  }};
 }
