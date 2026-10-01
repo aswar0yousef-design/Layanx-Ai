@@ -4,4 +4,6 @@ export class AuditLog{
  append(event:AuditEvent){this.events.push({...event});}
  list(){return[...this.events];}
  forResource(resource:string){return this.events.filter(e=>e.resource===resource);}
+ forMission(missionId:string){return this.events.filter(e=>e.metadata?.missionId===missionId).map(e=>structuredClone(e));}
+ restore(events:AuditEvent[]){this.events.push(...events.map(e=>structuredClone(e)));}
 }
