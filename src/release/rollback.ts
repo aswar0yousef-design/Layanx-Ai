@@ -12,6 +12,7 @@ export class RollbackController{
  private readonly deployments:Deployment[]=[];
 
  record(deployment:Deployment):void{
+  if(this.deployments.some(item=>item.commitSha===deployment.commitSha))return;
   this.deployments.push({...deployment});
  }
 
