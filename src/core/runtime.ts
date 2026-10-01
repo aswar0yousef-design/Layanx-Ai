@@ -19,7 +19,7 @@ export class ExecutionRuntime{
   this.core.executionStates.update(mission.id,{status:"running"});
   if(state.toolCalls>=contract.maxToolCalls)return this.block(mission,request,"Agent tool-call limit exceeded.");
   const risk=this.core.risk.assess(request);
-  this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:risk.requiresApproval?"denied":"allowed",metadata:{risk:risk.level}});
+  this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:risk.requiresApproval?"denied":"allowed",metadata:{risk:risk.level,missionId:mission.id}});
   if(risk.requiresApproval){
    if(!approvalId)return this.block(mission,request,"Explicit approval is required for this risk level.");
    const approval=this.approvals.authorize(approvalId,{missionId:mission.id,agentId:request.agentId,action:request.action,permission:request.permission});
@@ -39,7 +39,7 @@ export class ExecutionRuntime{
   this.core.ledger.append({id:crypto.randomUUID(),missionId:mission.id,agentId:request.agentId,action:request.action,status:result.ok?"completed":"failed",timestamp:new Date().toISOString(),detail:result.error});
   if(!result.ok){
    mission.status="failed";
-   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"failure",metadata:{error:result.error}});
+   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"failure",metadata:{error:result.error,missionId:mission.id}});
    return{ok:false,missionId:mission.id,verified:false,error:result.error,recoverable:true};
   }
   mission.status="verifying";
@@ -52,7 +52,7 @@ export class ExecutionRuntime{
   }
   mission.status="completed";
   this.approvals.revokeMission(mission.id);
-  this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"success"});
+  this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"success",metadata:{missionId:mission.id}});
   return{ok:true,missionId:mission.id,verified:true,data:result.data,recoverable:false};
  }
  private block(mission:Mission,request:ToolRequest,error:string):RuntimeResult{
