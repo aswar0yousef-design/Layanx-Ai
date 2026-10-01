@@ -85,6 +85,18 @@ export class RuntimePersistence{
       await tx.set("runtime:snapshots",next);
     });
   }
+  async health():Promise<{healthy:boolean;writable:boolean;reason:string}>{
+    try{
+      const probeKey="runtime:health:probe";
+      await this.storage.transaction(async tx=>{
+        await tx.set(probeKey,{checkedAt:new Date().toISOString()});
+      });
+      return{healthy:true,writable:true,reason:"Runtime persistence is readable and writable."};
+    }catch(error){
+      return{healthy:false,writable:false,reason:error instanceof Error?error.message:String(error)};
+    }
+  }
+
   async get(missionId:string):Promise<RuntimeSnapshot|undefined>{
     const snapshot=(await this.list()).find(x=>x.mission.id===missionId);
     if(snapshot)this.validate(snapshot);

@@ -14,6 +14,14 @@ await repo.upsert({id:"a",value:1});
 await repo.upsert({id:"b",value:2});
 if((await repo.list()).length!==2)throw new Error("Transactional repository list failed.");
 
+await Promise.all(Array.from({length:10},(_,index)=>repo.upsert({id:`parallel-${index}`,value:index})));
+const concurrentItems=await repo.list();
+if(concurrentItems.length!==12)throw new Error("Concurrent transactional writes lost data.");
+
+const restarted=new JsonStorageAdapter(join(dir,"state.json"));
+const restartedRepo=new TransactionalJsonRepository<{id:string;value:number}>(restarted,"items");
+if((await restartedRepo.get("parallel-9"))?.value!==9)throw new Error("Durable storage did not survive adapter restart.");
+
 const migrations=new MigrationRunner([
   {version:1,name:"init",up:async ctx=>{await ctx.set("initialized",true);}},
   {version:2,name:"feature",up:async ctx=>{await ctx.set("featureEnabled",true);}}
