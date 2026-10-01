@@ -38,6 +38,7 @@ import {ProjectIsolation} from "../security/project-isolation.js";
 import {ContextFabric} from "./context-fabric.js";
 import {SkillRegistry} from "../skills/registry.js";
 import {SkillRuntime} from "../skills/runtime.js";
+import {AgentTeamRuntime} from "./team-runtime.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -69,6 +70,7 @@ export class LayanXCore{
   readonly handoffs=new MissionHandoffManager(this.delegation);
   readonly nextAction=new NextActionEngine();
   readonly teams=new AgentTeam(this.delegation);
+  readonly teamRuntime:AgentTeamRuntime;
   readonly executionStates=new ExecutionStateStore();
   readonly observatory=new MissionObservatory();
   readonly lastKnownGood=new LastKnownGood();
@@ -87,6 +89,7 @@ export class LayanXCore{
     this.executor=new ToolExecutor(this.tools,this.sentinel,this.idempotency);
     this.executionRuntime=new ExecutionRuntime(this);
     this.skillRuntime=new SkillRuntime(this.skills,async(missionId,projectId,toolIndex,payload)=>this.executeMissionTool(missionId,projectId,toolIndex,payload));
+    this.teamRuntime=new AgentTeamRuntime(this.delegation,this.agents,this.projectIsolation);
   }
 
   restoreRuntimeSnapshot(snapshot:import("./runtime-persistence.js").RuntimeSnapshot){
@@ -136,6 +139,12 @@ export class LayanXCore{
     const result=await this.executionRuntime.run(mission,request,this.toolAdapters.get(plan.tool),approvalId,{projectId,capabilityId:token.id},runtimeOptions);
     this.missions.save(mission);
     return{...result,tool:plan.tool,action:plan.action,capabilityId:token.id};
+  }
+
+  async executeAgentTeam(parentMissionId:string,projectId:string,tasks:import("./delegation.js").DelegatedTask[],executor:import("./team-runtime.js").TeamTaskExecutor,maxRepairs=1){
+    const mission=this.missions.get(parentMissionId);
+    if(!mission)throw new Error("Mission not found.");
+    return this.teamRuntime.run(parentMissionId,projectId,mission.projectId,tasks,executor,maxRepairs);
   }
 
   async executeSkill(skillId:string,missionId:string,projectId:string,payloads:unknown[]=[]){
