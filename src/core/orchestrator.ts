@@ -163,7 +163,7 @@ export class LayanXCore{
     }
 
     const persistedDecision=this.adaptiveDecision.decide({
-      mission,stepsExecuted:processed,maxSteps,nextToolAvailable:processed<(mission.tools?.length??0)
+      mission,stepsExecuted:processed,maxSteps,nextToolAvailable:processed<maxSteps
     });
     if(!persistedDecision.continue){
       await this.recordAdaptiveStop(mission,persistedDecision,processed,agentId);
