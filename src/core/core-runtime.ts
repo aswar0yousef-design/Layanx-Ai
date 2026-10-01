@@ -54,10 +54,14 @@ export class CoreRuntime{
       const result={ok:false,missionId:mission.id,verified:false,decision,error:"Execution decision is "+decision} as CoreRunResult;
       await this.persist(mission);return result;
     }
-    const result=await this.runner.execute(mission,{...request,missionId:mission.id},adapter,approvalId);
-    this.core.capabilities.revoke(effectiveToken);
-    await this.persist(mission);
-    return{...result,decision};
+    try{
+      const result=await this.runner.execute(mission,{...request,missionId:mission.id},adapter,approvalId,{projectId,capabilityId:effectiveToken});
+      await this.persist(mission);
+      return{...result,decision};
+    }finally{
+      this.core.capabilities.revoke(effectiveToken);
+    }
+    
   }
 
   async restorePersistedMission(missionId:string){return this.persistence?.get(missionId);}
