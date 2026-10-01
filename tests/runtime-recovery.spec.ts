@@ -15,7 +15,7 @@ const original=new LayanXCore();
 const mission=original.startMission("resume after crash");
 const state=original.executionStates.get(mission.id);
 if(!state)throw new Error("Missing execution state.");
-original.recovery.checkpoint({missionId:mission.id,stepId:mission.steps[0]?.id??"mission",createdAt:new Date().toISOString(),state:{checkpoint:"before-crash"}});
+original.recovery.checkpoint({missionId:mission.id,stepId:mission.steps[3]?.id??"mission",createdAt:new Date().toISOString(),state:{checkpoint:"before-crash"}});
 original.ledger.append({id:"ledger-before",missionId:mission.id,agentId:"agent",action:"before.crash",status:"started",timestamp:new Date().toISOString()});
 original.audit.append({timestamp:new Date().toISOString(),actor:"agent",action:"before.crash",resource:mission.id,result:"success"});
 await persistence.save({
@@ -41,6 +41,7 @@ const result=await recovery.resume(
   {execute:async request=>{calls++;return request.payload;}}
 );
 if(!result.ok||!result.verified)throw new Error(result.error??"Recovery resume failed.");
+if(mission.steps[3]?.status!=="completed")throw new Error("Recovery did not resume through the execution step.");
 if(calls!==1)throw new Error("Recovery execution did not run exactly once.");
 
 const after=await persistence.get(mission.id);
