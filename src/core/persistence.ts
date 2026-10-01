@@ -1,9 +1,12 @@
-import {mkdir,readFile,rename,writeFile} from "node:fs/promises";
+import {mkdir,open,readFile,rename} from "node:fs/promises";
 import {dirname} from "node:path";
+
 export interface PersistedState<T>{version:number;updatedAt:string;data:T;}
+
 export class JsonStateStore<T>{
   constructor(private readonly path:string,private readonly version=1){}
   lockPath():string{return this.path+".lock";}
+
   async load():Promise<T|undefined>{
     try{
       const raw=await readFile(this.path,"utf8");
@@ -15,10 +18,26 @@ export class JsonStateStore<T>{
       throw error;
     }
   }
+
   async save(data:T):Promise<void>{
-    await mkdir(dirname(this.path),{recursive:true});
-    const temp=this.path+".tmp";
-    await writeFile(temp,JSON.stringify({version:this.version,updatedAt:new Date().toISOString(),data},null,2),"utf8");
-    await rename(temp,this.path);
+    const directory=dirname(this.path);
+    await mkdir(directory,{recursive:true});
+    const temp=this.path+`.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const payload=JSON.stringify({version:this.version,updatedAt:new Date().toISOString(),data},null,2);
+    const handle=await open(temp,"wx",0o600);
+    try{
+      await handle.writeFile(payload,"utf8");
+      await handle.sync();
+    }finally{
+      await handle.close();
+    }
+    try{
+      await rename(temp,this.path);
+      const directoryHandle=await open(directory,"r");
+      try{await directoryHandle.sync();}finally{await directoryHandle.close();}
+    }catch(error){
+      try{await (await import("node:fs/promises")).rm(temp,{force:true});}catch{}
+      throw error;
+    }
   }
 }
