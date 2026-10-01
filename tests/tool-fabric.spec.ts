@@ -7,7 +7,7 @@ const dir=await mkdtemp(join(process.cwd(),"fabric-test-"));
 await writeFile(join(dir,"hello.txt"),"LayanX fabric");
 await mkdir(join(dir,"nested"));
 
-const base:ToolRequest={missionId:"m",agentId:"core",tool:"files.read",action:"read file",permission:"L1_READ",idempotencyKey:"fabric-read"};
+const base:ToolRequest={missionId:"m",agentId:"core",projectId:"project-a",tool:"files.read",action:"read file",permission:"L1_READ",idempotencyKey:"fabric-read"};
 const files=createFileToolAdapter({root:dir});
 const read=await files.execute({...base,payload:{path:"hello.txt"}});
 if((read as {content:string}).content!=="LayanX fabric")throw new Error("File read failed.");
