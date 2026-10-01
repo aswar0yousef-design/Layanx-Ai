@@ -62,6 +62,8 @@ export class CoreRuntime{
     return{...result,decision};
   }
 
+  async restorePersistedMission(missionId:string){return this.persistence?.get(missionId);}
+
   private async persist(mission:import("./types.js").Mission):Promise<void>{
     if(!this.persistence)return;
     const executionState=this.core.executionStates.get(mission.id);
