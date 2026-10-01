@@ -55,6 +55,14 @@ export class ExecutionRuntime{
   await this.persist(mission);
   const result=await this.core.executor.execute(request,adapter);
   const runtimeMs=Date.now()-started;
+  this.core.memory.remember({
+   missionId:mission.id,
+   kind:result.ok?"experience":"failure",
+   summary:result.ok?`Tool ${request.tool} completed: ${request.action}`:`Tool ${request.tool} failed: ${request.action}`,
+   content:{tool:request.tool,action:request.action,planIndex:request.planIndex,result:result.ok?result.data:result.error},
+   confidence:result.ok?0.9:1,
+   tags:["mission","tool",request.tool,result.ok?"success":"failure"]
+  });
   this.core.executionStates.update(mission.id,{toolCalls:state.toolCalls+1,runtimeMs:state.runtimeMs+runtimeMs,status:result.ok?"completed":"failed"});
   if(executionStep) executionStep.status=result.ok?"completed":"failed";
   this.core.ledger.append({id:crypto.randomUUID(),missionId:mission.id,agentId:request.agentId,action:request.action,status:result.ok?"completed":"failed",timestamp:new Date().toISOString(),detail:result.error});
