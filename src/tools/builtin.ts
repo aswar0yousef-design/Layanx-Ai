@@ -1,6 +1,7 @@
 import type {LayanXCore} from "../core/orchestrator.js";
 import type {ToolRequest} from "../core/types.js";
 import type {ToolAdapter} from "./executor.js";
+import {createHttpReadAdapter} from "./http-read.js";
 
 function payloadRecord(request:ToolRequest):Record<string,unknown>{
   return request.payload&&typeof request.payload==="object"&&!Array.isArray(request.payload)
@@ -74,4 +75,17 @@ export function registerBuiltinTools(core:LayanXCore):void {
       return {query,entries:core.memory.recall(query,limit)};
     }
   } satisfies ToolAdapter);
+}
+
+
+export function registerHttpReadTool(core:LayanXCore):void {
+ core.tools.register({
+  name:"http.read",
+  description:"read a public HTTP or HTTPS resource with bounded response size and timeout",
+  permission:"L1_READ",
+  dangerous:false,
+  actions:["read url","fetch url","read http","read https","قراءة رابط","جلب رابط"],
+  tags:["http","https","url","web","read","رابط","ويب"]
+ });
+ core.toolAdapters.register("http.read",createHttpReadAdapter());
 }
