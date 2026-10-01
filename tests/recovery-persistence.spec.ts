@@ -56,4 +56,11 @@ if(!conflict)throw new Error("Concurrent active recovery was not rejected.");
 const active=await persistence.findActive();
 if(active?.recoveryId!=="recovery-1")throw new Error("Active recovery was not discoverable.");
 
+const firstStartedAt="2026-01-02T00:00:00Z";
+const later={...record,state:"verifying" as const,startedAt:"2026-01-03T00:00:00Z",updatedAt:"2026-01-03T00:01:00Z"};
+await persistence.save({...record,startedAt:firstStartedAt});
+await persistence.save(later);
+const preserved=await persistence.get("recovery-1");
+if(!preserved||preserved.startedAt!==firstStartedAt)throw new Error("Recovery start time was overwritten.");
+
 console.log("Recovery persistence test passed.");
