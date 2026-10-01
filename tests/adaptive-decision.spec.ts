@@ -1,0 +1,11 @@
+import {AdaptiveDecisionEngine} from "../src/core/adaptive-decision.js";
+import {MissionPlanner} from "../src/core/mission.js";
+const engine=new AdaptiveDecisionEngine();
+const mission=new MissionPlanner().create("decision test");
+if(engine.decide({mission,stepsExecuted:1,maxSteps:2,nextToolAvailable:true}).continue!==true)throw new Error("Expected continuation.");
+if(engine.decide({mission,stepsExecuted:2,maxSteps:2,nextToolAvailable:true}).reason!=="step_limit")throw new Error("Expected step limit.");
+if(engine.decide({mission,stepsExecuted:1,maxSteps:2,nextToolAvailable:false}).reason!=="planner_complete")throw new Error("Expected planner completion.");
+if(engine.decide({mission,stepsExecuted:1,maxSteps:2,nextToolAvailable:true,toolSucceeded:false}).reason!=="tool_failure")throw new Error("Expected tool failure stop.");
+mission.status="blocked";
+if(engine.decide({mission,stepsExecuted:0,maxSteps:2,nextToolAvailable:true}).reason!=="blocked")throw new Error("Expected blocked stop.");
+console.log("Adaptive decision engine passed.");
