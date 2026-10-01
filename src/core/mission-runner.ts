@@ -1,7 +1,6 @@
 import type {Mission,ToolRequest} from "./types.js";
 import type {ToolAdapter} from "../tools/executor.js";
 import type {AgentContract} from "./contracts.js";
-import type {RuntimeSecurityContext} from "./runtime.js";
 import {ToolSelector} from "./tool-selection.js";
 import {ExecutionRuntime} from "./runtime.js";
 import {Replanner} from "./replan.js";
@@ -39,6 +38,7 @@ export class MissionRunner{
    payload
   };
   const result=await this.execute(mission,request,adapter,approvalId,security);
+  step.status=result.ok?"completed":"failed";
   if(result.ok)this.core.delegation.complete(task.id);else this.core.delegation.fail(task.id);
   return{task,tool:selected.tool.name,request,result};
  }
