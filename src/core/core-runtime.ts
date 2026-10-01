@@ -63,7 +63,7 @@ export class CoreRuntime{
       mission,
       executionState,
       ledger:this.core.ledger.forMission(mission.id),
-      audit:this.core.audit.forResource(mission.id),
+      audit:this.core.audit.forMission(mission.id),
       checkpoint:this.core.recovery.restore(mission.id),
       savedAt:new Date().toISOString()
     });
