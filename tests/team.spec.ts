@@ -1,0 +1,13 @@
+import {LayanXCore} from "../src/core/orchestrator.js";
+import {DelegationManager} from "../src/core/delegation.js";
+import {AgentTeam} from "../src/core/team.js";
+const core=new LayanXCore();
+const a={agentId:"research",purpose:"research",allowedTools:[],forbiddenResources:["secrets"],requiredPermission:"L1_READ" as const,maxToolCalls:10,maxRuntimeMs:10000,successCriteria:["report"],stopCondition:"stop"};
+const b={...a,agentId:"verifier",purpose:"verify"};
+core.registerAgent(a);core.registerAgent(b);
+const mission=core.startMission("Team test");
+const d=new DelegationManager();const team=new AgentTeam(d);const tasks=team.build(mission.id,[a,b],"Investigate");
+d.complete(tasks[0].id);d.fail(tasks[1].id);
+const s=team.summarize(mission.id);
+if(s.completed!==1||s.failed!==1)throw new Error("Team test failed");
+console.log("Agent team test passed.");
