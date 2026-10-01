@@ -4,6 +4,7 @@ import type {ModelDefinition} from "../models/registry.js";
 export interface HttpModelProviderOptions{
  name:string;
  baseUrl:string;
+ healthUrl?:string;
  apiKey?:string;
  timeoutMs?:number;
  fetcher?:typeof fetch;
@@ -24,7 +25,7 @@ export class HttpModelProvider implements ModelProviderAdapter{
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),Math.max(1,this.options.timeoutMs??5000));
   try{
-   const response=await this.fetcher(this.options.baseUrl,{method:"GET",redirect:"error",signal:controller.signal,headers:this.headers()});
+   const response=await this.fetcher(this.options.healthUrl??this.options.baseUrl,{method:"GET",redirect:"error",signal:controller.signal,headers:this.headers()});
    return{provider:this.name,available:response.ok,latencyMs:Date.now()-started,reason:response.ok?undefined:"HTTP "+response.status,updatedAt:new Date().toISOString()};
   }catch(error){
    return{provider:this.name,available:false,latencyMs:Date.now()-started,reason:error instanceof Error?error.message:"Provider health check failed",updatedAt:new Date().toISOString()};
