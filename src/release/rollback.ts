@@ -23,7 +23,8 @@ export class RollbackController{
 
  decide(probe:HealthProbe):RecoveryDecision{
   if(probe.healthy){
-   const target=this.deployments.at(-1);\n   return{action:"keep",requiresVerification:false,...(target?{target}:{})};
+   const target=this.deployments.at(-1);
+   return{action:"keep",requiresVerification:false,...(target?{target}:{})};
   }
   const target=this.lastKnownGood();
   if(!target){
