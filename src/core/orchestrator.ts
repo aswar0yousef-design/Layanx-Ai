@@ -18,7 +18,7 @@ import {ExecutionStateStore} from "./execution-state.js";
 import {MissionObservatory} from "./observatory.js";
 import {LastKnownGood} from "./last-known-good.js";
 import {CapabilityGate} from "../security/capability-gate.js";
-import type {IdempotencyService} from "./transactional-idempotency.js";
+import type {IdempotencyService} from "./idempotency.js";
 import {IdempotencyStore} from "./idempotency.js";
 
 export class LayanXCore{
