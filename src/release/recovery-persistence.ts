@@ -52,7 +52,7 @@ export class RecoveryPersistence{
 
  async history(limit=50):Promise<PersistedRecoveryRecord[]>{
   if(limit<1||!Number.isInteger(limit))throw new Error("Recovery history limit must be a positive integer.");
-  const records=await this.storage.transaction(async tx=>tx.get<PersistedRecoveryRecord[]>(this.historyKey)??[]);
+  const records=(await this.storage.transaction(async tx=>tx.get<PersistedRecoveryRecord[]>(this.historyKey)))??[];
   records.forEach(record=>this.validate(record));
   return records
    .sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt))
