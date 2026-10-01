@@ -1,0 +1,13 @@
+import {mkdtemp,rm} from "node:fs/promises";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
+import {JsonStateStore} from "../src/core/persistence.js";
+import {JsonRepository} from "../src/storage/json-repository.js";
+const dir=await mkdtemp(join(tmpdir(),"layanx-storage-"));
+const repo=new JsonRepository(new JsonStateStore<{id:string;value:string}>(join(dir,"items.json")));
+await repo.upsert({id:"1",value:"ok"});
+if((await repo.get("1"))?.value!=="ok")throw new Error("Repository read failed.");
+await repo.remove("1");
+if(await repo.get("1"))throw new Error("Repository delete failed.");
+await rm(dir,{recursive:true,force:true});
+console.log("Storage abstraction test passed.");
