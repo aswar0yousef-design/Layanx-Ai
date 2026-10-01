@@ -34,9 +34,14 @@ export class JsonStorageAdapter implements StorageAdapter{
       },
       rollback:async()=>{staged.clear();closed=true;}
     };
-    try{return await work(tx);}
-    catch(error){await tx.rollback();throw error;}
-    finally{await release();}
+    try{
+      const result=await work(tx);
+      if(!closed)await tx.commit();
+      return result;
+    }catch(error){
+      await tx.rollback();
+      throw error;
+    }finally{await release();}
   }
 
   filePath(){return this.path;}
