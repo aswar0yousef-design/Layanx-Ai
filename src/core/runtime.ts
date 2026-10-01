@@ -2,11 +2,13 @@ import type {Mission,ToolRequest} from "./types.js";
 import {LayanXCore} from "./orchestrator.js";
 import type {ToolAdapter} from "../tools/executor.js";
 import {BudgetGovernor} from "./budget-governor.js";
+import {ApprovalEngine} from "../security/approval.js";
 
 export interface RuntimeResult{ok:boolean;missionId:string;verified:boolean;error?:string;data?:unknown;}
 
 export class ExecutionRuntime{
  readonly budget=new BudgetGovernor({maxToolCalls:100,maxRuntimeMs:60000,maxCostUsd:10});
+ readonly approvals=new ApprovalEngine();
  constructor(private readonly core:LayanXCore){}
  async run(mission:Mission,request:ToolRequest,adapter:ToolAdapter):Promise<RuntimeResult>{
   const state=this.core.executionStates.get(mission.id)??this.core.executionStates.start(mission.id);
