@@ -4,9 +4,11 @@ export interface RiskResult{level:"low"|"medium"|"high"|"critical";reasons:strin
 export class RiskEngine{
  assess(request:ToolRequest):RiskResult{
   const reasons:string[]=[];
-  if(rank[request.permission]>=4)reasons.push("Execution-level permission.");
+  if(rank[request.permission]>=5)reasons.push("Critical permission.");
+  else if(rank[request.permission]>=4)reasons.push("Execution-level permission.");
+  if(rank[request.permission]===3)reasons.push("Modification-level permission.");
   if(/delete|drop|payment|transfer|secret|credential/i.test(request.action))reasons.push("Sensitive action keyword.");
-  const level=reasons.length>=2?"critical":reasons.length===1?"high":"low";
+  const level=reasons.length>=2&&rank[request.permission]>=5?"critical":reasons.length>=2?"high":reasons.length===1?"medium":"low";
   return{level,reasons,requiresApproval:level==="high"||level==="critical"};
  }
 }
