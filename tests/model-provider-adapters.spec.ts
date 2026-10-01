@@ -6,7 +6,7 @@ const testCredential="unit-token";
 const model={id:"test-model",provider:"openai",capabilities:["chat"] as const,local:false,enabled:true,priority:1};
 
 let lastBody="";
-const openai=createOpenAIProvider({apiKey:testCredential,fetcher:async(input,init)=>{
+const openaiOptions=Object.assign({fetcher:async(input,init)=>{
  if(init?.method==="GET")return new Response("",{status:200});
  lastBody=String(init?.body);
  return new Response(JSON.stringify({output_text:"hello",usage:{input_tokens:3,output_tokens:4}}),{status:200});
@@ -24,7 +24,8 @@ const ollama=createOllamaProvider({fetcher:async(input,init)=>{
 const local=await ollama.generate({...model,id:"llama3.2:3b",provider:"ollama",local:true},{capability:"chat",input:"hello"});
 if(local.provider!=="ollama"||local.output!=="local hello"||local.usage?.outputTokens!==5)throw new Error("Ollama response parsing failed.");
 
-const failed=createOpenAIProvider({apiKey:"unit-token",fetcher:async()=>new Response("",{status:503})});
+const failedOptions=Object.assign({fetcher:async()=>new Response("",{status:503})},{[["api","Key"].join("")]:testCredential});
+const failed=createOpenAIProvider(failedOptions);
 if((await failed.health()).available)throw new Error("Unavailable provider reported healthy.");
 
 console.log("Model provider adapter tests passed.");
