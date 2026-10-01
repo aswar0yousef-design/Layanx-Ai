@@ -17,7 +17,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   if(request.method==="GET"&&request.url?.startsWith("/v1/missions/")){const id=request.url.slice("/v1/missions/".length);const mission=options.core.missions.get(id);if(!mission){json(response,404,{ok:false,error:"mission_not_found"});return;}json(response,200,{ok:true,mission,execution:options.core.executionStates.get(id),audit:options.core.audit.forMission(id),ledger:options.core.ledger.forMission(id)});return;}
   if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/tools$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
-   const id=request.url.split("/")[3];
+   const id=request.url.split("/")[3] as string;
    const mission=options.core.missions.get(id);
    if(!mission){json(response,404,{ok:false,error:"mission_not_found"});return;}
    try{
