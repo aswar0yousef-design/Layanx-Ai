@@ -1,27 +1,52 @@
 import {mkdtemp,rm} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {JsonStateStore} from "../src/core/persistence.js";
+import {LayanXCore} from "../src/core/orchestrator.js";
 import {RuntimePersistence} from "../src/core/runtime-persistence.js";
+import {RuntimeStorage} from "../src/storage/runtime-storage.js";
+import {JsonStorageAdapter} from "../src/storage/json-adapter.js";
+import {RuntimeRecoveryManager} from "../src/core/runtime-recovery.js";
 
 const dir=await mkdtemp(join(tmpdir(),"layanx-recovery-"));
-const store=new JsonStateStore<import("../src/core/runtime-persistence.js").RuntimeSnapshot[]>(join(dir,"runtime.json"));
-const persistence=new RuntimePersistence(store);
-const now=new Date().toISOString();
+const storage=new JsonStorageAdapter(join(dir,"runtime.json"));
+const persistence=new RuntimePersistence(new RuntimeStorage(storage));
 
+const original=new LayanXCore();
+const mission=original.startMission("resume after crash");
+const state=original.executionStates.get(mission.id);
+if(!state)throw new Error("Missing execution state.");
+original.recovery.checkpoint({missionId:mission.id,stepId:mission.steps[0]?.id??"mission",createdAt:new Date().toISOString(),state:{checkpoint:"before-crash"}});
+original.ledger.append({id:"ledger-before",missionId:mission.id,agentId:"agent",action:"before.crash",status:"started",timestamp:new Date().toISOString()});
+original.audit.append({timestamp:new Date().toISOString(),actor:"agent",action:"before.crash",resource:mission.id,result:"success"});
 await persistence.save({
-  mission:{id:"recover-me",goal:"recover",status:"running",risk:"low",requiredPermission:"L1_READ",steps:[],createdAt:now},
-  executionState:{missionId:"recover-me",startedAt:now,toolCalls:1,runtimeMs:10,costUsd:0,status:"running"},
-  ledger:[],audit:[],savedAt:now
-});
-await persistence.save({
-  mission:{id:"done",goal:"done",status:"completed",risk:"low",requiredPermission:"L1_READ",steps:[],createdAt:now},
-  executionState:{missionId:"done",startedAt:now,toolCalls:1,runtimeMs:10,costUsd:0,status:"completed"},
-  ledger:[],audit:[],savedAt:now
+  mission,
+  executionState:state,
+  ledger:original.ledger.forMission(mission.id),
+  audit:original.audit.forResource(mission.id),
+  checkpoint:original.recovery.restore(mission.id),
+  savedAt:new Date().toISOString()
 });
 
-const candidates=await persistence.resumable();
-if(candidates.length!==1||candidates[0]?.mission.id!=="recover-me")throw new Error("Resumable mission detection failed.");
+const restoredCore=new LayanXCore();
+const recovery=new RuntimeRecoveryManager(persistence,restoredCore);
+const candidates=await recovery.inspect();
+if(candidates.length!==1||candidates[0]?.missionId!==mission.id)throw new Error("Persisted recovery candidate was not discovered.");
+
+let calls=0;
+const result=await recovery.resume(
+  mission.id,
+  {missionId:mission.id,agentId:"agent",tool:"echo",action:"echo",permission:"L1_READ",idempotencyKey:"recovery-test-key",payload:"resumed"},
+  {execute:async request=>{calls++;return request.payload;}}
+);
+if(!result.ok||!result.verified)throw new Error(result.error??"Recovery resume failed.");
+if(calls!==1)throw new Error("Recovery execution did not run exactly once.");
+
+const after=await persistence.get(mission.id);
+if(!after)throw new Error("Recovered snapshot missing.");
+if(after.ledger.length<2)throw new Error("Ledger history was lost during recovery.");
+if(!after.audit.some(x=>x.action==="before.crash"))throw new Error("Audit history was lost during recovery.");
+if(after.checkpoint?.state===undefined)throw new Error("Checkpoint was not restored.");
+if(after.executionState.status!=="completed")throw new Error("Recovered execution state was not completed.");
 
 await rm(dir,{recursive:true,force:true});
-console.log("Recovery candidate test passed.");
+console.log("Runtime recovery hydration test passed.");
