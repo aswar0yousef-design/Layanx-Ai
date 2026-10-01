@@ -41,15 +41,18 @@ function compare(actual:unknown,operator:Operator,expected:unknown):boolean{
  }
 }
 
-function evaluateCriterion(result:unknown,criterion:string):{ok:boolean;check:string;failure?:string}{
+function evaluateCriterion(result:unknown,criterion:string):{ok:boolean;failure?:string}{
  const match=criterion.trim().match(/^result\.([A-Za-z0-9_.]+)\s*(==|!=|>=|<=|>|<|contains)\s*(.+)$/);
- if(!match)return{ok:false,check:criterion,failure:`Unsupported success criterion: ${criterion}. Use result.<path> <operator> <value>.`};
- const [,path,operator,rawExpected]=match;
+ if(!match)return{ok:false,failure:`Unsupported success criterion: ${criterion}. Use result.<path> <operator> <value>.`};
+ const path=match[1];
+ const operator=match[2];
+ const rawExpected=match[3];
+ if(!path||!operator||rawExpected===undefined)return{ok:false,failure:`Unsupported success criterion: ${criterion}.`};
  const actual=readPath(result,path);
- if(actual===undefined)return{ok:false,check:criterion,failure:`Success criterion path not found: result.${path}.`};
+ if(actual===undefined)return{ok:false,failure:`Success criterion path not found: result.${path}.`};
  const expected=parseLiteral(rawExpected);
- if(!compare(actual,operator as Operator,expected))return{ok:false,check:criterion,failure:`Success criterion failed: ${criterion} (actual=${JSON.stringify(actual)}).`};
- return{ok:true,check:criterion};
+ if(!compare(actual,operator as Operator,expected))return{ok:false,failure:`Success criterion failed: ${criterion} (actual=${JSON.stringify(actual)}).`};
+ return{ok:true};
 }
 
 export class VerificationEngine {
