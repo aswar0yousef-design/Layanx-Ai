@@ -18,3 +18,21 @@ jobs:
       - run: npm run security:check
       - run: npm run typecheck
       - run: npm test
+      - run: npm run build
+      - name: Start health runtime
+        run: |
+          PORT=18080 npm start > /tmp/layanx-health.log 2>&1 &
+          echo $! > /tmp/layanx-health.pid
+          for i in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:18080/health > /tmp/layanx-health-response.json; then
+              cat /tmp/layanx-health-response.json
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/layanx-health.log
+          exit 1
+      - name: Stop health runtime
+        if: always()
+        run: |
+          if [ -f /tmp/layanx-health.pid ]; then kill "$(cat /tmp/layanx-health.pid)" || true; fi
