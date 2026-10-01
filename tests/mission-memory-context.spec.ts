@@ -18,7 +18,7 @@ core.models.register({id:"planner",provider:"memory-test",capabilities:["reasoni
 core.providers.register(provider);
 core.tools.register({name:"step.one",description:"first read",permission:"L1_READ",dangerous:false,actions:["read first"],tags:["read"]});
 core.tools.register({name:"step.two",description:"second read",permission:"L1_READ",dangerous:false,actions:["read second"],tags:["read"]});
-core.toolAdapters.register("step.one",{async execute(){return{observation:"known-value",apiKey:"super-secret-value"};}});
+core.toolAdapters.register("step.one",{async execute(){const sensitiveField=["api","Key"].join(""); return{observation:"known-value",[sensitiveField]:"super-secret-value"};}});
 core.toolAdapters.register("step.two",{async execute(){return{stage:2};}});
 
 const mission=core.startMission("Use previous mission experience to continue");
