@@ -91,8 +91,8 @@ export class LayanXCore{
     const contract=this.agents.get(agentId);
     const catalog=this.toolCatalog.list(contract,mission.requiredPermission);
     return (mission.tools??[]).map(plan=>{
+      const request=this.toolRequestBuilder.build(mission,plan,{agentId,projectId,capabilityId:"pending"},catalog);
       const token=this.capabilities.issue({missionId:mission.id,agentId,projectId,resource:plan.tool,permission:plan.permission,expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
-      const request=this.toolRequestBuilder.build(mission,plan,{agentId,projectId,capabilityId:token.id},catalog);
       return{request,capabilityId:token.id,expiresAt:token.expiresAt};
     });
   }
