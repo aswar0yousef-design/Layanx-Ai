@@ -18,7 +18,7 @@ if(first.recoverable!==true)throw new Error("first step should leave mission rec
 const mid=core.missions.get(mission.id);
 if(mid?.status!=="running")throw new Error("mission should remain running after first step");
 const all=await core.executeMissionTools(mission.id,"project-test");
-if(!all.completed||all.results.length!==1)throw new Error("batch execution should report only the remaining step");
+if(!all.completed||all.results.length!==2)throw new Error("batch execution should safely replay the first step and execute the remaining step");
 const stored=core.missions.get(mission.id);
 if(stored?.status!=="completed")throw new Error("mission should complete after final step");
 console.log("Multi-step mission execution passed.");
