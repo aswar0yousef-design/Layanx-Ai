@@ -1,0 +1,17 @@
+import {startRuntimeApi} from "../src/api-server.js";
+import {LayanXCore} from "../src/core/orchestrator.js";
+const core=new LayanXCore();
+core.registerAgent({agentId:"core",purpose:"test",allowedTools:["runtime.status"],forbiddenResources:["secrets"],requiredPermission:"L1_READ",maxToolCalls:10,maxRuntimeMs:10000,successCriteria:["done"],stopCondition:"stop"});
+core.tools.register({name:"runtime.status",description:"read runtime status",permission:"L1_READ",dangerous:false,actions:["read runtime status"],tags:["runtime","status"]});
+core.toolAdapters.register("runtime.status",{async execute(){return{executed:true};}});
+const mission=core.startMission("Read runtime status");
+mission.requiredPermission="L1_READ";
+mission.tools=[{tool:"runtime.status",action:"read runtime status",permission:"L1_READ",reason:"test"}];
+const server=startRuntimeApi({core,host:"127.0.0.1",port:0});await new Promise<void>(resolve=>server.on("listening",resolve));
+const address=server.address();if(!address||typeof address==="string")throw new Error("bind failed");
+const res=await fetch("http://127.0.0.1:"+address.port+"/v1/missions/"+mission.id+"/tools/execute",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({projectId:"project-test",toolIndex:0,payload:{}})});
+if(!res.ok)throw new Error("planned execution endpoint failed: "+res.status+" "+await res.text());
+const result=await res.json() as {ok:boolean;verified:boolean;tool:string};
+if(!result.ok||!result.verified||result.tool!=="runtime.status")throw new Error("endpoint returned an invalid execution result");
+server.close();
+console.log("Planned tool execution API test passed.");
