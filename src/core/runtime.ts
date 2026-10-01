@@ -58,6 +58,7 @@ export class ExecutionRuntime{
    return{ok:false,missionId:mission.id,verified:false,error:verification.failures.join("; "),recoverable:false};
   }
   mission.status="completed";
+  this.core.memory.remember({missionId:mission.id,kind:"success",summary:mission.goal,content:{result:result.data,verified:true,tool:request.tool,action:request.action},confidence:1,tags:[request.tool]});
   this.approvals.revokeMission(mission.id);
   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"success",metadata:{missionId:mission.id}});
   return{ok:true,missionId:mission.id,verified:true,data:result.data,recoverable:false};
