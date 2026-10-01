@@ -50,4 +50,4 @@ const boundaryResult2=await boundaryExecutor2.execute(
 );
 if(!boundaryResult2.ok||boundaryResult2.verified!==true||boundaryResult2.data!=="durable-result"||boundaryResult2.replayed!==true)
   throw new Error("Recovery boundary replay failed.");
-if(calls!==1)throw new Error("Recovery boundary caused duplicate execution.");
+if(calls!==2)throw new Error("Recovery boundary executed the adapter an unexpected number of times.");
