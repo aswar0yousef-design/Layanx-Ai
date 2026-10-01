@@ -10,14 +10,18 @@ export class ExecutionRuntime{
  readonly budget=new BudgetGovernor({maxToolCalls:100,maxRuntimeMs:60000,maxCostUsd:10});
  readonly approvals=new ApprovalEngine();
  constructor(private readonly core:LayanXCore){}
- async run(mission:Mission,request:ToolRequest,adapter:ToolAdapter):Promise<RuntimeResult>{
+ async run(mission:Mission,request:ToolRequest,adapter:ToolAdapter,approvalId?:string):Promise<RuntimeResult>{
   const state=this.core.executionStates.get(mission.id)??this.core.executionStates.start(mission.id);
   const started=Date.now();
   const contract=this.core.agents.get(request.agentId);
   if(state.toolCalls>=contract.maxToolCalls)return this.block(mission,request,"Agent tool-call limit exceeded.");
   const risk=this.core.risk.assess(request);
   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:risk.requiresApproval?"denied":"allowed",metadata:{risk:risk.level}});
-  if(risk.requiresApproval)return this.block(mission,request,"Explicit approval is required for this risk level.");
+  if(risk.requiresApproval){
+   if(!approvalId)return this.block(mission,request,"Explicit approval is required for this risk level.");
+   const approval=this.approvals.authorize(approvalId,{missionId:mission.id,agentId:request.agentId,action:request.action,permission:request.permission});
+   if(!approval.allowed)return this.block(mission,request,approval.reason);
+  }
   const permission=this.core.permissions.authorize(request,contract,request.permission);
   if(!permission.allowed)return this.block(mission,request,permission.reason);
   const sentinel=this.core.sentinel.inspect(request.action);
@@ -38,6 +42,7 @@ export class ExecutionRuntime{
    this.core.executionStates.update(mission.id,{status:"failed"});
    return{ok:false,missionId:mission.id,verified:false,error:verification.failures.join("; ")};
   }
+  this.approvals.revokeMission(mission.id);
   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"success"});
   return{ok:true,missionId:mission.id,verified:true,data:result.data};
  }
