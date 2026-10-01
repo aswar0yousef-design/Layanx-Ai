@@ -36,17 +36,29 @@ export class RecoveryPersistence{
   return structuredClone(record);
  }
 
+ async findActive():Promise<PersistedRecoveryRecord|undefined>{
+  const record=await this.storage.transaction(async tx=>tx.get<PersistedRecoveryRecord>(this.key));
+  if(!record)return undefined;
+  this.validate(record);
+  if(record.state==="verified"||record.state==="halted")return undefined;
+  return structuredClone(record);
+ }
+
  async save(record:PersistedRecoveryRecord):Promise<void>{
   this.validate(record);
-  await this.storage.transaction(async tx=>tx.set(this.key,structuredClone(record)));
+  await this.storage.transaction(async tx=>{
+   const current=await tx.get<PersistedRecoveryRecord>(this.key);
+   if(current&&current.recoveryId!==record.recoveryId&&current.state!=="verified"&&current.state!=="halted"){
+    throw new Error("Another recovery operation is already active.");
+   }
+   await tx.set(this.key,structuredClone(record));
+  });
  }
 
  async clear(recoveryId:string):Promise<void>{
   await this.storage.transaction(async tx=>{
    const current=await tx.get<PersistedRecoveryRecord>(this.key);
-   if(current?.recoveryId===recoveryId){
-    await tx.set(this.key,undefined);
-   }
+   if(current?.recoveryId===recoveryId)await tx.set(this.key,undefined);
   });
  }
 
