@@ -33,6 +33,7 @@ import {MissionHandoffManager} from "./handoff.js";
 import {NextActionEngine} from "./next-action.js";
 import {MissionStore} from "./mission-store.js";
 import {ToolAdapterRegistry} from "../tools/adapters.js";
+import {AdaptiveDecisionEngine} from "./adaptive-decision.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -70,6 +71,7 @@ export class LayanXCore{
   readonly idempotency:IdempotencyService;
   readonly missions=new MissionStore();
   readonly toolAdapters=new ToolAdapterRegistry();
+  readonly adaptiveDecision=new AdaptiveDecisionEngine();
 
   constructor(idempotency?:IdempotencyService,persistence?:RuntimePersistence){
     this.idempotency=idempotency??new IdempotencyStore();
@@ -148,8 +150,11 @@ export class LayanXCore{
       latest=result.data;
     }
 
-    if(processed>=maxSteps&&processed<(mission.tools?.length??0))
-      return{missionId,results,completed:false,reason:"Adaptive execution step limit reached before the persisted plan was exhausted.",recoverable:true};
+    const persistedDecision=this.adaptiveDecision.decide({
+      mission,stepsExecuted:processed,maxSteps,nextToolAvailable:processed<(mission.tools?.length??0)
+    });
+    if(!persistedDecision.continue)
+      return{missionId,results,completed:false,reason:persistedDecision.detail,recoverable:true};
 
     for(;processed<maxSteps;processed++){
       const missionMemory=this.memory.list().filter(entry=>entry.missionId===mission.id).slice(-12).map(entry=>({
@@ -160,6 +165,10 @@ export class LayanXCore{
         requiredPermission:mission.requiredPermission,completedTools,memory:missionMemory
       });
       if(!next)break;
+      const decision=this.adaptiveDecision.decide({
+        mission,toolResult:latest,stepsExecuted:processed,maxSteps,nextToolAvailable:true,toolSucceeded:true
+      });
+      if(!decision.continue)break;
       mission.tools=mission.tools??[];
       mission.tools.push(next);
       this.missions.save(mission);
@@ -171,7 +180,8 @@ export class LayanXCore{
       latest=result.data;
     }
 
-    if(processed>=maxSteps)return{missionId,results,completed:false,reason:"Adaptive execution step limit reached.",recoverable:true};
+    const finalDecision=this.adaptiveDecision.decide({mission,stepsExecuted:processed,maxSteps,nextToolAvailable:false,toolSucceeded:true});
+    if(finalDecision.reason==="step_limit")return{missionId,results,completed:false,reason:finalDecision.detail,recoverable:true};
     if(!results.length)return{missionId,results,completed:false,reason:"Adaptive planner produced no executable tool.",recoverable:true};
     const finalMission=this.missions.get(missionId);
     if(!finalMission)throw new Error("Mission not found.");
