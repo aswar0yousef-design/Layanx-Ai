@@ -94,6 +94,7 @@ export class ProductionRecoveryController{
    const execution=await this.executor.execute(target);
    if(!execution.success){
     const halted={action:"halt" as const,target,requiresVerification:false,reason:execution.reason??"Rollback execution failed."};
+    await this.persistState(deployment,"halted",attempts,halted.reason,target);
     this.audit.record({
      timestamp:new Date().toISOString(),actor:this.actor,action:"recovery.halted",resource,result:"halted",
      metadata:{reason:halted.reason,toVersion:target.version,toCommitSha:target.commitSha,toChecksum:target.manifestChecksum}
