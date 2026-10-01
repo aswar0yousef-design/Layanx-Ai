@@ -5,7 +5,8 @@ import {RuntimeStorage} from "../src/storage/runtime-storage.js";
 import {RuntimePersistence} from "../src/core/runtime-persistence.js";
 
 const dir=await mkdtemp(join(tmpdir(),"layanx-runtime-"));
-const persistence=new RuntimePersistence(RuntimeStorage.json(join(dir,"runtime.json")));
+const storage=RuntimeStorage.json(join(dir,"runtime.json"));
+const persistence=new RuntimePersistence(storage);
 const snapshot={
   mission:{id:"m1",goal:"persist mission",status:"completed" as const,risk:"low" as const,requiredPermission:"L1_READ" as const,steps:[],createdAt:new Date().toISOString()},
   executionState:{missionId:"m1",startedAt:new Date().toISOString(),toolCalls:1,runtimeMs:12,costUsd:0,status:"completed" as const},
@@ -36,3 +37,11 @@ try{
 }catch(error){
   if(!(error instanceof Error)||!error.message.includes("mission/state mismatch")) throw error;
 }
+
+const legacyStorage=RuntimeStorage.json(join(dir,"legacy.json"));
+await legacyStorage.set([{...snapshot,schemaVersion:0}]);
+const migrated=new RuntimePersistence(legacyStorage,[{
+  from:0,to:1,up:value=>({...value as typeof snapshot,schemaVersion:1})
+}]);
+const migratedSnapshot=await migrated.get("m1");
+if(migratedSnapshot?.schemaVersion!==1)throw new Error("Legacy runtime snapshot was not migrated.");
