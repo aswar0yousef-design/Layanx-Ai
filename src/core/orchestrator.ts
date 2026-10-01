@@ -22,6 +22,8 @@ import type {IdempotencyService} from "./idempotency.js";
 import {IdempotencyStore} from "./idempotency.js";
 import {ModelProviderRegistry,ModelExecutionRouter} from "./model-execution.js";
 import {AiMissionPlanner} from "./ai-planner.js";
+import {MissionCompiler} from "./mission-compiler.js";
+import {ToolSelector} from "./tool-selection.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -38,6 +40,8 @@ export class LayanXCore{
   readonly providers=new ModelProviderRegistry();
   readonly modelExecution=new ModelExecutionRouter(this.models,this.providers);
   readonly aiPlanner=new AiMissionPlanner(this.modelExecution);
+  readonly missionCompiler=new MissionCompiler();
+  readonly toolSelector=new ToolSelector(this.tools);
   readonly risk=new RiskEngine();
   readonly audit=new AuditLog();
   readonly noAction=new NoActionController();
@@ -55,6 +59,11 @@ export class LayanXCore{
   }
 
   registerAgent(c:Parameters<AgentManager["register"]>[0]){this.agents.register(c);}
+  async planMission(goal:string){
+    const plan=await this.aiPlanner.plan(goal);
+    return this.missionCompiler.compile(plan,goal);
+  }
+
   startMission(goal:string){
     const m=this.planner.create(goal);
     this.executionStates.start(m.id);
