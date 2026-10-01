@@ -40,3 +40,5 @@ export class AiMissionPlanner{
     return{risk:v.risk as PlannedMission["risk"],requiredPermission:v.requiredPermission as PermissionLevel,steps,successCriteria,stopCondition:String(v.stopCondition)};
   }
 }
+
+// Planner output is validated before any execution path can consume it.
