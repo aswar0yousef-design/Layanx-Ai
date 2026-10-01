@@ -48,7 +48,7 @@ export class RuntimeRecoveryManager{
         mission:snapshot.mission,
         executionState:updated,
         ledger:this.core.ledger.forMission(missionId),
-        audit:this.core.audit.forResource(missionId),
+        audit:this.core.audit.forMission(missionId),
         checkpoint:this.core.recovery.restore(missionId)??snapshot.checkpoint,
         savedAt:new Date().toISOString()
       });
