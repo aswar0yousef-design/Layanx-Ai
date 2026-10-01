@@ -19,15 +19,15 @@ export class RecoveryResumeEngine{
    case "checking":
     return{recoveryId:record.recoveryId,state:record.state,action:"check",reason:"Recovery was interrupted during health checking."};
    case "recovering":
-    return{recoveryId:record.recoveryId,state:record.state,action:"check",reason:"Recovery may have executed before the process stopped; verify deployment before another rollback.",target};
+    return{recoveryId:record.recoveryId,state:record.state,action:"check",reason:"Recovery may have executed before the process stopped; verify deployment before another rollback.",...(target?{target}:{})};
    case "rolled_back":
-    return{recoveryId:record.recoveryId,state:record.state,action:"verify",reason:"Rollback was recorded; verify the target deployment before continuing.",target};
+    return{recoveryId:record.recoveryId,state:record.state,action:"verify",reason:"Rollback was recorded; verify the target deployment before continuing.",...(target?{target}:{})};
    case "verifying":
-    return{recoveryId:record.recoveryId,state:record.state,action:"verify",reason:"Recovery was interrupted during post-rollback verification.",target};
+    return{recoveryId:record.recoveryId,state:record.state,action:"verify",reason:"Recovery was interrupted during post-rollback verification.",...(target?{target}:{})};
    case "verified":
-    return{recoveryId:record.recoveryId,state:record.state,action:"complete",reason:"Recovery was already verified.",target};
+    return{recoveryId:record.recoveryId,state:record.state,action:"complete",reason:"Recovery was already verified.",...(target?{target}:{})};
    case "halted":
-    return{recoveryId:record.recoveryId,state:record.state,action:"halt",reason:"Recovery was halted and must not resume automatically.",target};
+    return{recoveryId:record.recoveryId,state:record.state,action:"halt",reason:"Recovery was halted and must not resume automatically.",...(target?{target}:{})};
    case "idle":
     return{recoveryId:record.recoveryId,state:record.state,action:"check",reason:"Recovery has not started its first health check."};
   }
