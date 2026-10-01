@@ -4,6 +4,7 @@ import type {ToolAdapter} from "../tools/executor.js";
 import {BudgetGovernor} from "./budget-governor.js";
 import {ApprovalEngine} from "../security/approval.js";
 import type {RuntimePersistence} from "./runtime-persistence.js";
+import {ProjectIsolation} from "../security/project-isolation.js";
 
 export interface RuntimeSecurityContext{projectId:string;capabilityId:string;}
 
@@ -21,7 +22,8 @@ export class ExecutionRuntime{
     return{ok:true,missionId:mission.id,verified:true,data:replay.data,recoverable:false};
    return{ok:false,missionId:mission.id,verified:false,error:"Mission is not executable in its current state.",recoverable:false};
   }
-  const state=this.core.executionStates.get(mission.id)??this.core.executionStates.start(mission.id);
+  if(!security)this.core.projectIsolation.assertMissionProject("","");
+  else this.core.projectIsolation.assertMissionProject(security.projectId,mission.projectId);\n  const state=this.core.executionStates.get(mission.id)??this.core.executionStates.start(mission.id);
   await this.persist(mission);
   const started=Date.now();
   const contract=this.core.agents.get(request.agentId);
