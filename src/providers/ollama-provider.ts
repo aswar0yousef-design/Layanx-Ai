@@ -12,7 +12,7 @@ export function createOllamaProvider(options:{baseUrl?:string;timeoutMs?:number;
   buildBody:(model,request)=>({model:model.id,prompt:request.input,stream:false}),
   parseResponse:(body,model):ModelResponse=>{
    const data=body as {response?:string;prompt_eval_count?:number;eval_count?:number};
-   return{provider:"ollama",model:model.id,modelId:model.id,output:data.response??"",usage:{inputTokens:data.prompt_eval_count,outputTokens:data.eval_count}};
+   return{provider:"ollama",modelId:model.id,output:data.response??"",usage:{inputTokens:data.prompt_eval_count,outputTokens:data.eval_count}};
   }
  });
 }
