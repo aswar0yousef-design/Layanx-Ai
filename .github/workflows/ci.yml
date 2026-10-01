@@ -16,4 +16,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm install
-      - run: npm run release:check
+      - run: npm run security:check
+      - run: npm run typecheck
+      - run: npm test
