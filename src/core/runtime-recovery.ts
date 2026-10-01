@@ -106,6 +106,7 @@ export class RuntimeRecoveryManager{
     this.core.recovery.restorePersisted(snapshot.checkpoint);
     if(snapshot.idempotency) await this.core.idempotency.restore(snapshot.idempotency);
     if(snapshot.memory) this.core.memory.restore(snapshot.memory);
+    if(snapshot.handoffs) this.core.handoffs.restore(snapshot.handoffs);
     const resumeStepId=snapshot.checkpoint?.stepId;
     if(resumeStepId){
       const resumeIndex=snapshot.mission.steps.findIndex(step=>step.id===resumeStepId);
@@ -131,6 +132,7 @@ export class RuntimeRecoveryManager{
         checkpoint:this.core.recovery.restore(missionId)??snapshot.checkpoint,
         idempotency:(await this.core.idempotency.list()).filter(record=>record.missionId===missionId),
         memory:this.core.memory.list().filter(entry=>entry.missionId===missionId),
+        handoffs:this.core.handoffs.forMission(missionId),
         savedAt:new Date().toISOString(),
         schemaVersion:1
       });
