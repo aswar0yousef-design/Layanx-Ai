@@ -4,16 +4,18 @@ import type {ToolAdapter} from "../tools/executor.js";
 import {BudgetGovernor} from "./budget-governor.js";
 import {ApprovalEngine} from "../security/approval.js";
 
-export interface RuntimeResult{ok:boolean;missionId:string;verified:boolean;error?:string;data?:unknown;}
+export interface RuntimeResult{ok:boolean;missionId:string;verified:boolean;error?:string;data?:unknown;recoverable?:boolean;}
 
 export class ExecutionRuntime{
  readonly budget=new BudgetGovernor({maxToolCalls:100,maxRuntimeMs:60000,maxCostUsd:10});
  readonly approvals=new ApprovalEngine();
  constructor(private readonly core:LayanXCore){}
  async run(mission:Mission,request:ToolRequest,adapter:ToolAdapter,approvalId?:string):Promise<RuntimeResult>{
+  if(["completed","cancelled"].includes(mission.status))return{ok:false,missionId:mission.id,verified:false,error:"Mission is not executable in its current state.",recoverable:false};
   const state=this.core.executionStates.get(mission.id)??this.core.executionStates.start(mission.id);
   const started=Date.now();
   const contract=this.core.agents.get(request.agentId);
+  mission.status="running";
   this.core.executionStates.update(mission.id,{status:"running"});
   if(state.toolCalls>=contract.maxToolCalls)return this.block(mission,request,"Agent tool-call limit exceeded.");
   const risk=this.core.risk.assess(request);
@@ -36,25 +38,27 @@ export class ExecutionRuntime{
   mission.steps[3] && (mission.steps[3].status=result.ok?"completed":"failed");
   this.core.ledger.append({id:crypto.randomUUID(),missionId:mission.id,agentId:request.agentId,action:request.action,status:result.ok?"completed":"failed",timestamp:new Date().toISOString(),detail:result.error});
   if(!result.ok){
+   mission.status="failed";
    this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"failure",metadata:{error:result.error}});
-   return{ok:false,missionId:mission.id,verified:false,error:result.error};
+   return{ok:false,missionId:mission.id,verified:false,error:result.error,recoverable:true};
   }
   mission.status="verifying";
   const verification=this.core.verifier.verify(mission);
   if(!verification.verified){
    mission.status="failed";
    this.core.executionStates.update(mission.id,{status:"failed"});
-   return{ok:false,missionId:mission.id,verified:false,error:verification.failures.join("; ")};
+   return{ok:false,missionId:mission.id,verified:false,error:verification.failures.join("; "),recoverable:false};
   }
   mission.status="completed";
   this.approvals.revokeMission(mission.id);
   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"success"});
-  return{ok:true,missionId:mission.id,verified:true,data:result.data};
+  return{ok:true,missionId:mission.id,verified:true,data:result.data,recoverable:false};
  }
  private block(mission:Mission,request:ToolRequest,error:string):RuntimeResult{
+  mission.status="blocked";
   this.core.executionStates.update(mission.id,{status:"blocked"});
   this.core.ledger.append({id:crypto.randomUUID(),missionId:mission.id,agentId:request.agentId,action:request.action,status:"blocked",timestamp:new Date().toISOString(),detail:error});
   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"denied",metadata:{reason:error}});
-  return{ok:false,missionId:mission.id,verified:false,error};
+  return{ok:false,missionId:mission.id,verified:false,error,recoverable:false};
  }
 }
