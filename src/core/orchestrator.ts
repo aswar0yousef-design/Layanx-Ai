@@ -21,6 +21,7 @@ import {CapabilityGate} from "../security/capability-gate.js";
 import type {IdempotencyService} from "./idempotency.js";
 import {IdempotencyStore} from "./idempotency.js";
 import {ModelProviderRegistry,ModelExecutionRouter} from "./model-execution.js";
+import {AiMissionPlanner} from "./ai-planner.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -36,6 +37,7 @@ export class LayanXCore{
   readonly modelRouter=new ModelRouter(this.models);
   readonly providers=new ModelProviderRegistry();
   readonly modelExecution=new ModelExecutionRouter(this.models,this.providers);
+  readonly aiPlanner=new AiMissionPlanner(this.modelExecution);
   readonly risk=new RiskEngine();
   readonly audit=new AuditLog();
   readonly noAction=new NoActionController();
