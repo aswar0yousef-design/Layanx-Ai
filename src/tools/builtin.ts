@@ -3,6 +3,7 @@ import type {ToolRequest} from "../core/types.js";
 import type {ToolAdapter} from "./executor.js";
 import {createHttpReadAdapter} from "./http-read.js";
 import {createGitHubReadAdapter} from "../connectors/github-read.js";
+import {createBrowserToolAdapter,createFileToolAdapter,createTerminalToolAdapter} from "./fabric.js";
 
 function payloadRecord(request:ToolRequest):Record<string,unknown>{
   return request.payload&&typeof request.payload==="object"&&!Array.isArray(request.payload)
@@ -103,4 +104,37 @@ export function registerGitHubReadTools(core:LayanXCore,options:{token?:string;b
   core.tools.register({name:definition.name,description:definition.description,permission:"L1_READ",dangerous:false,actions:[definition.action],tags:definition.tags});
   core.toolAdapters.register(definition.name,adapter);
  }
+}
+
+
+export function registerToolFabric(core:LayanXCore,options:{workspaceRoot?:string}={}):void {
+ const workspaceRoot=options.workspaceRoot??process.env.LAYANX_WORKSPACE_ROOT??process.cwd();
+ core.tools.register({
+  name:"browser.read",
+  description:"read a public HTTP or HTTPS web resource without browser-side execution",
+  permission:"L1_READ",
+  dangerous:false,
+  actions:["browse url","read web page","read webpage","فتح صفحة","قراءة صفحة ويب"],
+  tags:["browser","web","http","https","read","متصفح","ويب"]
+ });
+ core.toolAdapters.register("browser.read",createBrowserToolAdapter());
+
+ for(const definition of [
+  {name:"files.read",description:"read a file inside the configured project workspace",action:"read file",tags:["files","read","workspace","ملفات","قراءة"]},
+  {name:"files.list",description:"list files inside the configured project workspace",action:"list files",tags:["files","list","workspace","ملفات","قائمة"]},
+  {name:"files.stat",description:"inspect metadata for a file inside the configured project workspace",action:"stat file",tags:["files","stat","workspace","ملفات","معلومات"]}
+ ]){
+  core.tools.register({name:definition.name,description:definition.description,permission:"L1_READ",dangerous:false,actions:[definition.action],tags:definition.tags});
+  core.toolAdapters.register(definition.name,createFileToolAdapter({root:workspaceRoot}));
+ }
+
+ core.tools.register({
+  name:"terminal.exec",
+  description:"run an explicitly allowlisted diagnostic or verification command inside the configured project workspace",
+  permission:"L4_EXECUTE",
+  dangerous:true,
+  actions:["run terminal command","execute diagnostic command","تشغيل أمر طرفية","تنفيذ أمر فحص"],
+  tags:["terminal","command","diagnostic","workspace","طرفية","أوامر"]
+ });
+ core.toolAdapters.register("terminal.exec",createTerminalToolAdapter({root:workspaceRoot}));
 }
