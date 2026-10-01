@@ -5,10 +5,13 @@ import {registerBuiltinTools,registerHttpReadTool,registerGitHubReadTools} from 
 
 export function createRuntime(){
  const core=new LayanXCore();
+ registerBuiltinTools(core);
+ registerHttpReadTool(core);
+ registerGitHubReadTools(core,{token:process.env.GITHUB_TOKEN});
  const agent:AgentContract={
   agentId:"core",
   purpose:"Safely orchestrate LayanX missions.",
-  allowedTools:["runtime.status","mission.inspect","memory.recall"],
+  allowedTools:["runtime.status","mission.inspect","memory.recall","http.read","github.repo.read","github.issues.list","github.prs.list"],
   forbiddenResources:["secrets","security-controls"],
   requiredPermission:"L1_READ",
   maxToolCalls:100,

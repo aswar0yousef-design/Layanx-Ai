@@ -7,6 +7,7 @@ export interface PlannedTool{
   action:string;
   permission:PermissionLevel;
   reason:string;
+  payload?:Record<string,unknown>;
 }
 
 export interface PlannedMission{
@@ -34,7 +35,7 @@ export class AiMissionPlanner{
         "risk must be low|medium|high|critical.",
         "requiredPermission must be L1_READ|L2_ANALYZE|L3_MODIFY|L4_EXECUTE|L5_CRITICAL.",
         "steps must be an array of concise objects with description strings.",
-        "tools must be an array of objects with tool, action, permission, reason.",
+        "tools must be an array of objects with tool, action, permission, reason, and optional JSON payload.",
         "Only choose tools from the supplied catalog. Do not invent tool names or actions.",
         "Do not request secrets or bypass security controls.",
         "Available tool catalog: "+JSON.stringify(catalog),
@@ -51,7 +52,7 @@ export class AiMissionPlanner{
       capability:"reasoning",
       input:[
         "You are the LayanX adaptive mission planner.",
-        "Return ONLY valid JSON: either null when the mission is complete, or an object with tool, action, permission, reason.",
+        "Return ONLY valid JSON: either null when the mission is complete, or an object with tool, action, permission, reason, and optional payload.",
         "Choose exactly one tool from the supplied catalog.",
         "The selected permission must exactly match the catalog tool permission and must not exceed the mission permission.",
         "Do not invent tools or actions. Do not request secrets or bypass security controls.",
@@ -98,7 +99,9 @@ export class AiMissionPlanner{
       const rank=(x:PermissionLevel)=>levels.indexOf(x);
       if(rank(permission)!==rank(tool.permission))throw new Error("Planner tool permission must match the tool requirement.");
       if(rank(permission)>rank(missionPermission))throw new Error("Planner tool permission exceeds mission scope.");
-      return{tool:tool.name,action,permission,reason:typeof entry.reason==="string"?entry.reason:""};
+      const payload=entry.payload&&typeof entry.payload==="object"&&!Array.isArray(entry.payload)?entry.payload as Record<string,unknown>:undefined;
+      if(payload&&JSON.stringify(payload).length>4096)throw new Error("Planner tool payload is too large.");
+      return{tool:tool.name,action,permission,reason:typeof entry.reason==="string"?entry.reason:"",payload};
     });
   }
 }
