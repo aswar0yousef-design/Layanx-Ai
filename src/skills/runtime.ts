@@ -35,7 +35,9 @@ export class SkillRuntime{
   const plans=mission.tools??[];
   const results:unknown[]=[];
   for(let index=0;index<plans.length;index++){
-   const result=await this.execute(mission.id,projectId,index,payloads[index]??plans[index].payload??{});
+   const plan=plans[index];
+   if(!plan)throw new Error("Skill mission tool plan is missing.");
+   const result=await this.execute(mission.id,projectId,index,payloads[index]??plan.payload??{});
    results.push(result);
    if(!result.ok)return{skillId,missionId:mission.id,projectId,results,completed:false,reason:String(result.error??"skill tool execution failed")};
   }
