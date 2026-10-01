@@ -1,6 +1,6 @@
 import type {Mission} from "./types.js";
 
-export type AdaptiveStopReason="planner_complete"|"success_criteria_met"|"step_limit"|"tool_failure"|"blocked"|"no_progress";
+export type AdaptiveStopReason="continue"|"planner_complete"|"success_criteria_met"|"step_limit"|"tool_failure"|"blocked";
 
 export interface AdaptiveDecision{
   continue:boolean;
@@ -14,6 +14,6 @@ export class AdaptiveDecisionEngine{
     if(input.toolSucceeded===false)return{continue:false,reason:"tool_failure",detail:"The latest tool execution failed."};
     if(input.stepsExecuted>=input.maxSteps)return{continue:false,reason:"step_limit",detail:"Adaptive execution step limit reached."};
     if(!input.nextToolAvailable)return{continue:false,reason:"planner_complete",detail:"Adaptive planner indicated that no further tool is required."};
-    return{continue:true,reason:"no_progress",detail:"Continue with the next constrained tool."};
+    return{continue:true,reason:"continue",detail:"Continue with the next constrained tool."};
   }
 }
