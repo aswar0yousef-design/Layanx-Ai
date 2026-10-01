@@ -24,7 +24,19 @@ export class TransactionalIdempotencyStore implements IdempotencyService{
   async complete(key:string,data:unknown):Promise<void>{await this.transition(key,{status:"completed",completedAt:new Date().toISOString(),data:structuredClone(data)});}
   async fail(key:string,error:string):Promise<void>{await this.transition(key,{status:"failed",completedAt:new Date().toISOString(),error});}
   async list():Promise<IdempotencyRecord[]>{return this.storage.transaction(async tx=>structuredClone(await tx.get<IdempotencyRecord[]>(this.key)??[]));}
-  async restore(records:IdempotencyRecord[]):Promise<void>{await this.storage.transaction(async tx=>{await tx.set(this.key,structuredClone(records));});}
+  async restore(records:IdempotencyRecord[]):Promise<void>{
+    await this.storage.transaction(async tx=>{
+      const existing=await tx.get<IdempotencyRecord[]>(this.key)??[];
+      const merged=new Map(existing.map(record=>[record.key,record]));
+      for(const record of records){
+        const current=merged.get(record.key);
+        if(current && (current.missionId!==record.missionId||current.agentId!==record.agentId||current.tool!==record.tool||current.action!==record.action))
+          throw new Error("Idempotency restore conflicts with an existing operation.");
+        merged.set(record.key,structuredClone(record));
+      }
+      await tx.set(this.key,[...merged.values()]);
+    });
+  }
   async get(key:string){return this.storage.transaction(async tx=>(await tx.get<IdempotencyRecord[]>(this.key)??[]).find(x=>x.key===key));}
   private async transition(key:string,patch:Partial<IdempotencyRecord>):Promise<void>{
     await this.storage.transaction(async tx=>{
