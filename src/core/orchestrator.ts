@@ -86,7 +86,9 @@ export class LayanXCore{
     return this.toolSelector.discover(action,contract,permission);
   }
   async planMission(goal:string){
-    const plan=await this.aiPlanner.plan(goal);
+    const contract=this.agents.get("core");
+    const tools=this.toolCatalog.list(contract,contract.requiredPermission);
+    const plan=await this.aiPlanner.plan(goal,tools);
     return this.missionCompiler.compile(plan,goal);
   }
 
