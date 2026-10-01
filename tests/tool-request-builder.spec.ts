@@ -1,0 +1,22 @@
+import {LayanXCore} from "../src/core/orchestrator.js";
+const core=new LayanXCore();
+core.registerAgent({agentId:"core",purpose:"test",allowedTools:["runtime.status"],forbiddenResources:["secrets"],requiredPermission:"L1_READ",maxToolCalls:10,maxRuntimeMs:10000,successCriteria:["done"],stopCondition:"stop"});
+core.tools.register({name:"runtime.status",description:"read runtime status",permission:"L1_READ",dangerous:false,actions:["read runtime status"],tags:["runtime","status"]});
+const mission=core.startMission("Read runtime status");
+mission.requiredPermission="L1_READ";
+mission.tools=[{tool:"runtime.status",action:"read runtime status",permission:"L1_READ",reason:"test"}];
+const prepared=core.prepareMissionToolRequests(mission,"project-test");
+if(prepared.length!==1)throw new Error("request was not prepared");
+const item=prepared[0];
+if(item.request.tool!=="runtime.status"||item.request.action!=="read runtime status")throw new Error("request fields are incorrect");
+if(!item.request.idempotencyKey.startsWith("tool-"))throw new Error("idempotency key was not generated");
+if(!item.capabilityId)throw new Error("capability was not issued");
+const cap=core.capabilities.authorize(item.capabilityId,{missionId:mission.id,agentId:"core",projectId:"project-test",resource:"runtime.status",permission:"L1_READ"});
+if(!cap.allowed)throw new Error("issued capability did not authorize its request");
+const replay=core.prepareMissionToolRequests(mission,"project-test");
+if(replay[0].request.idempotencyKey!==item.request.idempotencyKey)throw new Error("idempotency key is not deterministic");
+let rejected=false;
+mission.tools=[{tool:"unknown",action:"execute unknown",permission:"L1_READ",reason:"bad"}];
+try{core.prepareMissionToolRequests(mission,"project-test");}catch(error){rejected=error instanceof Error&&error.message.includes("outside the allowed catalog");}
+if(!rejected)throw new Error("builder accepted an unknown tool");
+console.log("Tool request builder tests passed.");
