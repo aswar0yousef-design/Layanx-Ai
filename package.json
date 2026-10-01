@@ -13,7 +13,8 @@
     "test:unit": "tsx tests/*.spec.ts",
     "build": "tsc",
     "start": "node dist/health.js",
-    "layanx": "tsx src/cli.ts"
+    "layanx": "tsx src/cli.ts",
+    "smoke:ollama": "tsx scripts/ollama-smoke.ts"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
