@@ -20,7 +20,11 @@ export class ModelExecutionRouter{
     const attempts:ModelExecutionAttempt[]=[];
     for(const model of candidates){
       const provider=this.providers.get(model.provider);
-      const health=await provider.health();
+      let health;
+      try{health=await provider.health();}catch(error){
+        attempts.push({modelId:model.id,provider:model.provider,ok:false,error:"Provider health check failed."});
+        continue;
+      }
       if(!health.available){
         attempts.push({modelId:model.id,provider:model.provider,ok:false,error:health.reason??"Provider unavailable"});
         continue;
