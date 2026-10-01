@@ -1,7 +1,8 @@
 import type {LayanXCore} from "./core/orchestrator.js";
 import type {ObservatorySnapshot} from "./core/observatory.js";
+import type {ProviderHealth} from "./core/provider.js";
 
-export interface ControlCenterSnapshot extends ObservatorySnapshot{
+export interface ControlCenterSnapshot extends Omit<ObservatorySnapshot,"missions">{
  generatedAt:string;
  missions:Array<{id:string;projectId?:string;goal:string;status:string;execution:unknown;nextAction:unknown}>;
  skills:unknown[];
@@ -14,7 +15,7 @@ export class ControlCenter{
  snapshot(projectId?:string):ControlCenterSnapshot{
   const missions=this.core.missions.list().filter(m=>!projectId||m.projectId===projectId);
   const execution=missions.map(m=>this.core.executionStates.get(m.id)).filter((x):x is NonNullable<typeof x>=>Boolean(x));
-  const providers=[];
+  const providers:ProviderHealth[]=[];
   const observatory=this.core.observatory.snapshot({
    missions:execution,
    agents:this.core.agents.list().length,
