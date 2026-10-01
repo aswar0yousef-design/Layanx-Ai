@@ -17,7 +17,7 @@ const state=original.executionStates.get(mission.id);
 if(!state)throw new Error("Missing execution state.");
 original.recovery.checkpoint({missionId:mission.id,stepId:mission.steps[3]?.id??"mission",createdAt:new Date().toISOString(),state:{checkpoint:"before-crash"}});
 original.ledger.append({id:"ledger-before",missionId:mission.id,agentId:"agent",action:"before.crash",status:"started",timestamp:new Date().toISOString()});
-original.audit.append({timestamp:new Date().toISOString(),actor:"agent",action:"before.crash",resource:mission.id,result:"success"});
+original.audit.append({timestamp:new Date().toISOString(),actor:"agent",action:"before.crash",resource:mission.id,result:"success",metadata:{missionId:mission.id}});
 await persistence.save({
   mission,
   executionState:state,
@@ -31,6 +31,13 @@ const restoredCore=new LayanXCore();
 restoredCore.registerAgent({agentId:"agent",purpose:"recovery",allowedTools:["echo"],forbiddenResources:["secrets"],requiredPermission:"L1_READ",maxToolCalls:5,maxRuntimeMs:10000,successCriteria:["echo"],stopCondition:"stop"});
 restoredCore.tools.register({name:"echo",description:"recovery echo",permission:"L1_READ",dangerous:false});
 const recovery=new RuntimeRecoveryManager(persistence,restoredCore);
+const badRequest={missionId:mission.id,agentId:"missing-agent",tool:"missing-tool",action:"echo",permission:"L1_READ" as const,idempotencyKey:"bad-recovery-key",payload:"blocked"};
+try{
+  await recovery.resume(mission.id,badRequest,{execute:async request=>request.payload});
+  throw new Error("Recovery readiness accepted an unavailable agent/tool.");
+}catch(error){
+  if(!(error instanceof Error)||!error.message.includes("Recovery readiness failed"))throw error;
+}
 const candidates=await recovery.inspect();
 if(candidates.length!==1||candidates[0]?.missionId!==mission.id)throw new Error("Persisted recovery candidate was not discovered.");
 
