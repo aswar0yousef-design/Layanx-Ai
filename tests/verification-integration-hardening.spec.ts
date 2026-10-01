@@ -36,6 +36,7 @@ core.models.register({id:"failure-planner",provider:"failure-provider",capabilit
 const provider:ModelProviderAdapter={name:"failure-provider",async health(){return{provider:"failure-provider",available:true,updatedAt:new Date().toISOString()};},async generate(){calls.planner++;return{provider:"failure-provider",modelId:"failure-planner",output:"not-json"};}};
 core.providers.register(provider);
 core.tools.register({name:"test.tool",description:"test",permission:"L1_READ",dangerous:false,actions:["read"]});
+core.toolAdapters.register("test.tool",{async execute(){return{ok:true};}});
 const planned=core.startMission("planner failure");
 planned.requiredPermission="L1_READ";
 planned.tools=[{tool:"test.tool",action:"read",permission:"L1_READ",reason:"initial"}];
