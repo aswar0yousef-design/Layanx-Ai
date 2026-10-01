@@ -1,0 +1,18 @@
+import {startRuntimeApi} from "../src/api-server.js";
+import {LayanXCore} from "../src/core/orchestrator.js";
+const core=new LayanXCore();
+core.registerAgent({agentId:"core",purpose:"test",allowedTools:["runtime.status"],forbiddenResources:["secrets"],requiredPermission:"L1_READ",maxToolCalls:10,maxRuntimeMs:10000,successCriteria:["done"],stopCondition:"stop"});
+core.tools.register({name:"runtime.status",description:"read runtime status",permission:"L1_READ",dangerous:false,actions:["read runtime status"],tags:["runtime","status"]});
+const mission=core.startMission("Read runtime status");
+mission.requiredPermission="L1_READ";
+mission.tools=[{tool:"runtime.status",action:"read runtime status",permission:"L1_READ",reason:"test"}];
+const server=startRuntimeApi({core,host:"127.0.0.1",port:0});await new Promise<void>(resolve=>server.on("listening",resolve));
+const address=server.address();if(!address||typeof address==="string")throw new Error("bind failed");
+const base="http://127.0.0.1:"+address.port;
+const prepared=await fetch(base+"/v1/missions/"+mission.id+"/tools/prepare",{headers:{"x-layanx-project-id":"project-test"}});
+if(!prepared.ok)throw new Error("prepare endpoint failed: "+prepared.status);
+const body=await prepared.json() as {ok:boolean;requests:Array<{request:{tool:string;idempotencyKey:string};capabilityId:string}>};
+if(!body.ok||body.requests.length!==1||body.requests[0].request.tool!=="runtime.status")throw new Error("prepared request is incorrect");
+if(!body.requests[0].capabilityId)throw new Error("capability id missing");
+server.close();
+console.log("Tool request preparation API test passed.");
