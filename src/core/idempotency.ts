@@ -61,6 +61,9 @@ export class IdempotencyStore implements IdempotencyService{
     this.records.set(key,{...record,status:"failed",completedAt:new Date().toISOString(),error});
   }
 
+  list():IdempotencyRecord[]{return [...this.records.values()].map(record=>structuredClone(record));}
+  restore(records:IdempotencyRecord[]):void{for(const record of records)this.records.set(record.key,structuredClone(record));}
+
   get(key:string):IdempotencyRecord|undefined{
     const record=this.records.get(key);
     return record?structuredClone(record):undefined;
