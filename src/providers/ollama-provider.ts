@@ -2,7 +2,7 @@ import {HttpModelProvider} from "./http-model-provider.js";
 import type {ModelResponse} from "../models/inference.js";
 
 export function createOllamaProvider(options:{baseUrl?:string;timeoutMs?:number;fetcher?:typeof fetch}){
- const root=(options.baseUrl??"http://127.0.0.1:11434").replace(/\\/$/,"");
+ const root=(options.baseUrl??"http://127.0.0.1:11434").replace(/\/$/,"");
  return new HttpModelProvider({
   name:"ollama",
   baseUrl:root+"/api/generate",
