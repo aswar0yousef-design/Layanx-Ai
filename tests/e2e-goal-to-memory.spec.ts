@@ -69,6 +69,7 @@ const persisted=await persistence.get(mission.id);
 if(!persisted||persisted.mission.status!=="completed"||persisted.executionState.status!=="completed")throw new Error("Completed runtime state was not persisted.");
 if(!persisted.audit.some(event=>event.result==="success"&&event.metadata?.missionId===mission.id))throw new Error("Success audit event was not persisted.");
 if(!persisted.ledger.some(entry=>entry.status==="completed"))throw new Error("Completed ledger entry was not persisted.");
+if(!persisted.memory?.some(entry=>entry.missionId===mission.id&&entry.kind==="success"))throw new Error("Verified mission memory was not persisted.");
 
 await rm(dir,{recursive:true,force:true});
 console.log("LayanX end-to-end goal-to-memory integration test passed.");
