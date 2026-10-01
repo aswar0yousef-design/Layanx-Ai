@@ -39,14 +39,14 @@ export class ExecutionRuntime{
   if(!sentinel.allowed)return this.block(mission,request,sentinel.reason);
   const budget=this.budget.evaluate({toolCalls:state.toolCalls,runtimeMs:Date.now()-started,costUsd:state.costUsd});
   if(!budget.allowed)return this.block(mission,request,budget.reason);
-  const executionStep=mission.steps.find(step=>/execute|run|perform|action/i.test(step.description))??mission.steps.find(step=>step.status==="pending");
+  const executionStep=mission.steps.find(step=>/execute|run|perform|action/i.test(step.description)&&step.status!=="completed")??mission.steps.find(step=>step.status==="pending");
   if(executionStep) executionStep.status="running";
   this.core.recovery.checkpoint({missionId:mission.id,stepId:executionStep?.id??"mission",createdAt:new Date().toISOString(),state:{request}});
   await this.persist(mission);
   const result=await this.core.executor.execute(request,adapter);
   const runtimeMs=Date.now()-started;
   this.core.executionStates.update(mission.id,{toolCalls:state.toolCalls+1,runtimeMs:state.runtimeMs+runtimeMs,status:result.ok?"completed":"failed"});
-  mission.steps[3] && (mission.steps[3].status=result.ok?"completed":"failed");
+  if(executionStep) executionStep.status=result.ok?"completed":"failed";
   this.core.ledger.append({id:crypto.randomUUID(),missionId:mission.id,agentId:request.agentId,action:request.action,status:result.ok?"completed":"failed",timestamp:new Date().toISOString(),detail:result.error});
   await this.persist(mission);
   if(!result.ok){
@@ -57,7 +57,7 @@ export class ExecutionRuntime{
   }
   mission.status="verifying";
   const verification=this.core.verifier.verify(mission,result.data,contract.successCriteria);
-  if(verification.verified && mission.steps[4]) mission.steps[4].status="completed";
+  if(verification.verified){\n   const verificationStep=mission.steps.find(step=>step.id!==executionStep?.id&&/verify|validation|check/i.test(step.description)&&step.status!=="completed")\n     ??mission.steps.find(step=>step.id!==executionStep?.id&&step.status==="pending");\n   if(verificationStep) verificationStep.status="completed";\n  }
   if(!verification.verified){
    mission.status="failed";
    this.core.executionStates.update(mission.id,{status:"failed"});
