@@ -14,6 +14,7 @@ export class ExecutionRuntime{
   const state=this.core.executionStates.get(mission.id)??this.core.executionStates.start(mission.id);
   const started=Date.now();
   const contract=this.core.agents.get(request.agentId);
+  this.core.executionStates.update(mission.id,{status:"running"});
   if(state.toolCalls>=contract.maxToolCalls)return this.block(mission,request,"Agent tool-call limit exceeded.");
   const risk=this.core.risk.assess(request);
   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:risk.requiresApproval?"denied":"allowed",metadata:{risk:risk.level}});
@@ -32,16 +33,20 @@ export class ExecutionRuntime{
   const result=await this.core.executor.execute(request,adapter);
   const runtimeMs=Date.now()-started;
   this.core.executionStates.update(mission.id,{toolCalls:state.toolCalls+1,runtimeMs:state.runtimeMs+runtimeMs,status:result.ok?"completed":"failed"});
+  mission.steps[3] && (mission.steps[3].status=result.ok?"completed":"failed");
   this.core.ledger.append({id:crypto.randomUUID(),missionId:mission.id,agentId:request.agentId,action:request.action,status:result.ok?"completed":"failed",timestamp:new Date().toISOString(),detail:result.error});
   if(!result.ok){
    this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"failure",metadata:{error:result.error}});
    return{ok:false,missionId:mission.id,verified:false,error:result.error};
   }
+  mission.status="verifying";
   const verification=this.core.verifier.verify(mission);
   if(!verification.verified){
+   mission.status="failed";
    this.core.executionStates.update(mission.id,{status:"failed"});
    return{ok:false,missionId:mission.id,verified:false,error:verification.failures.join("; ")};
   }
+  mission.status="completed";
   this.approvals.revokeMission(mission.id);
   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"success"});
   return{ok:true,missionId:mission.id,verified:true,data:result.data};
