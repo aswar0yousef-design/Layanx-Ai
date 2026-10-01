@@ -20,7 +20,14 @@ export interface IdempotencyClaim{
   reason?:string;
 }
 
-export class IdempotencyStore{
+export interface IdempotencyService{
+  begin(request:ToolRequest):IdempotencyClaim|Promise<IdempotencyClaim>;
+  complete(key:string,data:unknown):void|Promise<void>;
+  fail(key:string,error:string):void|Promise<void>;
+  get(key:string):IdempotencyRecord|undefined|Promise<IdempotencyRecord|undefined>;
+}
+
+export class IdempotencyStore implements IdempotencyService{
   private readonly records=new Map<string,IdempotencyRecord>();
 
   begin(request:ToolRequest):IdempotencyClaim{
@@ -52,7 +59,10 @@ export class IdempotencyStore{
     this.records.set(key,{...record,status:"failed",completedAt:new Date().toISOString(),error});
   }
 
-  get(key:string){const record=this.records.get(key);return record?structuredClone(record):undefined;}
+  get(key:string):IdempotencyRecord|undefined{
+    const record=this.records.get(key);
+    return record?structuredClone(record):undefined;
+  }
 
   private require(key:string):IdempotencyRecord{
     const record=this.records.get(key);
