@@ -1,6 +1,6 @@
 import type {AgentContract} from "./contracts.js";
 import type {Mission} from "./types.js";
-import {DelegationManager, type DelegatedTask} from "./delegation.js";
+import {DelegationManager} from "./delegation.js";
 
 export interface MissionHandoff{
  id:string;
@@ -14,7 +14,7 @@ export interface MissionHandoff{
  status:"pending"|"accepted"|"completed"|"rejected";
 }
 
-export interface HandoffRequest{
+export interface HandoffExecution{action:string;payload:unknown;tool?:string;}\n\nexport interface HandoffRequest{
  missionId:string;
  fromAgentId:string;
  toAgent:AgentContract;
@@ -34,7 +34,7 @@ export class MissionHandoffManager{
   if(!request.toAgent.allowedTools.length)throw new Error("Handoff target agent has no allowed tools.");
   const handoff:MissionHandoff={
    id:crypto.randomUUID(),missionId:request.missionId,fromAgentId:request.fromAgentId,
-   toAgentId:request.toAgent.agentId,goal:request.goal,context:structuredClone(request.context),
+   toAgentId:request.toAgent.agentId,goal:request.goal,context:structuredClone(request.context),execution:request.execution?structuredClone(request.execution):undefined,
    requiredPermission:request.requiredPermission,createdAt:new Date().toISOString(),status:"pending"
   };
   this.handoffs.set(handoff.id,handoff);
