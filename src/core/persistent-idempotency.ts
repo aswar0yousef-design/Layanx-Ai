@@ -35,6 +35,7 @@ export class PersistentIdempotencyStore{
       const index=records.findIndex(x=>x.key===key);
       if(index<0)throw new Error("Unknown idempotency key.");
       const current=records[index];
+      if(!current)throw new Error("Unknown idempotency key.");
       if(current.status!=="running")throw new Error("Idempotency record is not running.");
       records[index]={...current,...patch};
       await this.store.save(records);
