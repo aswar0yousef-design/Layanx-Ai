@@ -96,6 +96,21 @@ export class LayanXCore{
       return{request,capabilityId:token.id,expiresAt:token.expiresAt};
     });
   }
+  async executeMissionTool(missionId:string,projectId:string,toolIndex=0,payload:unknown={},approvalId?:string,agentId="core"){
+    const mission=this.missions.get(missionId);
+    if(!mission)throw new Error("Mission not found.");
+    const plans=mission.tools??[];
+    const plan=plans[toolIndex];
+    if(!plan)throw new Error("Mission tool plan not found.");
+    const contract=this.agents.get(agentId);
+    const catalog=this.toolCatalog.list(contract,mission.requiredPermission);
+    const token=this.capabilities.issue({missionId:mission.id,agentId,projectId,resource:plan.tool,permission:plan.permission,expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
+    const request=this.toolRequestBuilder.build(mission,plan,{agentId,projectId,capabilityId:token.id,payload},catalog);
+    const result=await this.executionRuntime.run(mission,request,this.toolAdapters.get(plan.tool),approvalId,{projectId,capabilityId:token.id});
+    this.missions.save(mission);
+    return{...result,tool:plan.tool,action:plan.action,capabilityId:token.id};
+  }
+
   async planMission(goal:string){
     const contract=this.agents.get("core");
     const tools=this.toolCatalog.list(contract,contract.requiredPermission);
