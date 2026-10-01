@@ -62,10 +62,10 @@ export class RuntimePersistence{
   async saveAtomic(snapshot:RuntimeSnapshot):Promise<void>{
     this.validate(snapshot);
     await this.storage.transaction(async tx=>{
-      const current=await tx.get<RuntimeSnapshot[]>()??[];
+      const current=(await tx.get<RuntimeSnapshot[]>("runtime:snapshots"))??[];
       const next=current.filter(x=>x.mission.id!==snapshot.mission.id);
       next.push(structuredClone(snapshot));
-      await tx.set(next);
+      await tx.set("runtime:snapshots",next);
     });
   }
   async get(missionId:string):Promise<RuntimeSnapshot|undefined>{
