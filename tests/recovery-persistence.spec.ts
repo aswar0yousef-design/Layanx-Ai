@@ -44,4 +44,16 @@ try{
 }
 if(!rejected)throw new Error("Unsupported recovery record version was accepted.");
 
+await persistence.save(record);
+let conflict=false;
+try{
+ await persistence.save({...record,recoveryId:"recovery-2",state:"recovering"});
+}catch(error){
+ conflict=error instanceof Error&&error.message.includes("Another recovery operation is already active.");
+}
+if(!conflict)throw new Error("Concurrent active recovery was not rejected.");
+
+const active=await persistence.findActive();
+if(active?.recoveryId!=="recovery-1")throw new Error("Active recovery was not discoverable.");
+
 console.log("Recovery persistence test passed.");
