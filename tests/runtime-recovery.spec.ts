@@ -22,12 +22,14 @@ await persistence.save({
   mission,
   executionState:state,
   ledger:original.ledger.forMission(mission.id),
-  audit:original.audit.forResource(mission.id),
+  audit:original.audit.forMission(mission.id),
   checkpoint:original.recovery.restore(mission.id),
   savedAt:new Date().toISOString()
 });
 
 const restoredCore=new LayanXCore();
+restoredCore.registerAgent({agentId:"agent",purpose:"recovery",allowedTools:["echo"],forbiddenResources:["secrets"],requiredPermission:"L1_READ",maxToolCalls:5,maxRuntimeMs:10000,successCriteria:["echo"],stopCondition:"stop"});
+restoredCore.tools.register({name:"echo",description:"recovery echo",permission:"L1_READ",dangerous:false});
 const recovery=new RuntimeRecoveryManager(persistence,restoredCore);
 const candidates=await recovery.inspect();
 if(candidates.length!==1||candidates[0]?.missionId!==mission.id)throw new Error("Persisted recovery candidate was not discovered.");
