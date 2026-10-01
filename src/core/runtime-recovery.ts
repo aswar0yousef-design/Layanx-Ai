@@ -54,8 +54,6 @@ export class RuntimeRecoveryManager{
     const readiness=new RecoveryReadinessChecker(this.core).check(snapshot,request);
     if(!readiness.ready)throw new Error("Recovery readiness failed: "+readiness.issues.map(issue=>issue.code).join(", "));
 
-    const snapshot=await this.persistence.get(missionId);
-    if(!snapshot)throw new Error("Unknown persisted mission.");
     if(!["running","verifying"].includes(snapshot.executionState.status) &&
        !["running","verifying"].includes(snapshot.mission.status)){
       throw new Error("Mission is not resumable.");
