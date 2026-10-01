@@ -6,12 +6,14 @@ import {RuntimePersistence} from "./runtime-persistence.js";
 import {RuntimeStorage} from "../storage/runtime-storage.js";
 import {JsonStorageAdapter} from "../storage/json-adapter.js";
 import {TransactionalIdempotencyStore} from "./transactional-idempotency.js";
+import {SystemHealth,type HealthCheck} from "./health.js";
 
 export interface CoreRunResult{ok:boolean;missionId:string;verified:boolean;decision:string;error?:string;data?:unknown;}
 const rank:Record<PermissionLevel,number>={L1_READ:1,L2_ANALYZE:2,L3_MODIFY:3,L4_EXECUTE:4,L5_CRITICAL:5};
 
 export class CoreRuntime{
   private readonly runner:MissionRunner;
+  private readonly health=new SystemHealth();
   constructor(private readonly core:LayanXCore,private readonly persistence?:RuntimePersistence){
     this.runner=new MissionRunner(core);
     this.persistence?.startAutoCleanup();
@@ -54,13 +56,13 @@ export class CoreRuntime{
       const result={ok:false,missionId:mission.id,verified:false,decision,error:"Execution decision is "+decision} as CoreRunResult;
       await this.persist(mission);return result;
     }
-    const result=await this.runner.execute(mission,{...request,missionId:mission.id},adapter,approvalId);
+    const result=await this.runner.execute(mission,{...request,missionId:mission.id},adapter,approvalId,{projectId,capabilityId:effectiveToken});
     this.core.capabilities.revoke(effectiveToken);
     await this.persist(mission);
     return{...result,decision};
   }
 
-  async restorePersistedMission(missionId:string){return this.persistence?.get(missionId);}
+  async restorePersistedMission(missionId:string){return this.persistence?.get(missionId);}\n\n  health():HealthCheck[]{\n    const providers=this.core.providers.list();\n    const healthyProviders=providers.filter(provider=>provider.available).length;\n    const missionFailures=this.core.executionStates.all().filter(state=>state.status==="failed").length;\n    return this.health.check({providers:providers.length,healthyProviders,agents:this.core.agents.list().length,missionFailures});\n  }
 
   private async persist(mission:import("./types.js").Mission):Promise<void>{
     if(!this.persistence)return;
