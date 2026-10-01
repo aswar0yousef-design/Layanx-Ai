@@ -10,16 +10,18 @@ export class MissionRunner{
  private readonly runtime:ExecutionRuntime;
  private readonly selector:ToolSelector;
  private readonly replanner=new Replanner();
- constructor(private readonly core:ConstructorParameters<typeof ExecutionRuntime>[0]){this.runtime=new ExecutionRuntime(core);this.selector=new ToolSelector(core.tools);}
+ constructor(private readonly core:ConstructorParameters<typeof ExecutionRuntime>[0]){this.runtime=core.executionRuntime;this.selector=new ToolSelector(core.tools);}
  async execute(mission:Mission,request:ToolRequest,adapter:ToolAdapter,approvalId?:string,security?:RuntimeSecurityContext){
   let current=mission;
+  let currentRequest=request;
   for(let attempt=0;attempt<2;attempt++){
-   const result=await this.runtime.run(current,request,adapter,approvalId,security);
+   const result=await this.runtime.run(current,currentRequest,adapter,approvalId,security);
    if(result.ok)return result;
    if(!result.recoverable)return result;
    const replanned=this.replanner.replan(current,{code:"EXECUTION_FAILURE",message:result.error??"Execution failed",recoverable:true});
    if(replanned===current)return result;
    current=replanned;
+   currentRequest={...currentRequest,idempotencyKey:`${request.idempotencyKey}:retry:${attempt+1}`};
   }
   return{ok:false,missionId:mission.id,verified:false,error:"Mission failed after recovery attempt.",recoverable:false};
  }
