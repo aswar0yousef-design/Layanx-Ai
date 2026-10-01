@@ -10,6 +10,7 @@ export interface RecoveryCandidate{
   missionStatus:Mission["status"];
   lastSavedAt:string;
   checkpointAvailable:boolean;
+  resumeStepId?:string;
 }
 
 export class RuntimeRecoveryManager{
@@ -22,7 +23,8 @@ export class RuntimeRecoveryManager{
       status:s.executionState.status,
       missionStatus:s.mission.status,
       lastSavedAt:s.savedAt,
-      checkpointAvailable:Boolean(s.checkpoint)
+      checkpointAvailable:Boolean(s.checkpoint),
+      resumeStepId:s.checkpoint?.stepId
     }));
   }
 
@@ -38,6 +40,16 @@ export class RuntimeRecoveryManager{
     this.core.ledger.restore(snapshot.ledger);
     this.core.audit.restore(snapshot.audit);
     this.core.recovery.restorePersisted(snapshot.checkpoint);
+    const resumeStepId=snapshot.checkpoint?.stepId;
+    if(resumeStepId){
+      const resumeIndex=snapshot.mission.steps.findIndex(step=>step.id===resumeStepId);
+      if(resumeIndex>=0){
+        snapshot.mission.steps.forEach((step,index)=>{
+          if(index<resumeIndex && step.status==="pending") step.status="completed";
+          if(index===resumeIndex && step.status==="completed") step.status="running";
+        });
+      }
+    }
 
     const runner=new MissionRunner(this.core);
     const result=await runner.execute(snapshot.mission,request,adapter,approvalId);
