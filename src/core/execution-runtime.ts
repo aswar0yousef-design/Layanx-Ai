@@ -54,7 +54,7 @@ export class ExecutionRuntime{
     const contract=this.core.agents.get(request.agentId);
 
     const risk=this.core.risk.assess(request);
-    this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:risk.requiresApproval?"pending":"allowed",metadata:{risk:risk.level}});
+    this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:risk.requiresApproval?"denied":"allowed",metadata:{risk:risk.level}});
 
     const permission=this.core.permissions.authorize(request,contract,request.permission);
     if(!permission.allowed)return this.block(request,permission.reason);
