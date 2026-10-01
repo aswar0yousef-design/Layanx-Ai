@@ -46,7 +46,7 @@ export class ExecutionRuntime{
   const result=await this.core.executor.execute(request,adapter);
   const runtimeMs=Date.now()-started;
   this.core.executionStates.update(mission.id,{toolCalls:state.toolCalls+1,runtimeMs:state.runtimeMs+runtimeMs,status:result.ok?"completed":"failed"});
-  mission.steps[3] && (mission.steps[3].status=result.ok?"completed":"failed");
+  if(executionStep) executionStep.status=result.ok?"completed":"failed";
   this.core.ledger.append({id:crypto.randomUUID(),missionId:mission.id,agentId:request.agentId,action:request.action,status:result.ok?"completed":"failed",timestamp:new Date().toISOString(),detail:result.error});
   await this.persist(mission);
   if(!result.ok){
@@ -57,7 +57,10 @@ export class ExecutionRuntime{
   }
   mission.status="verifying";
   const verification=this.core.verifier.verify(mission,result.data,contract.successCriteria);
-  if(verification.verified && mission.steps[4]) mission.steps[4].status="completed";
+  if(verification.verified){
+   const verificationStep=mission.steps.find(step=>/verif|check|confirm|validate/i.test(step.description)&&step.id!==executionStep?.id);
+   if(verificationStep) verificationStep.status="completed";
+  }
   if(!verification.verified){
    mission.status="failed";
    this.core.executionStates.update(mission.id,{status:"failed"});
@@ -71,7 +74,7 @@ export class ExecutionRuntime{
   await this.persist(mission);
   return{ok:true,missionId:mission.id,verified:true,data:result.data,recoverable:false};
  }
- private async persist(mission:Mission):Promise<void>{
+ public async persist(mission:Mission):Promise<void>{
   if(!this.persistence)return;
   const executionState=this.core.executionStates.get(mission.id);
   if(!executionState)return;
