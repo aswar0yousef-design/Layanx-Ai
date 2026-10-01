@@ -59,7 +59,7 @@ export class CoreRuntime{
     if(!this.persistence)return;
     const executionState=this.core.executionStates.get(mission.id);
     if(!executionState)return;
-    await this.persistence.save({
+    await this.persistence.saveAtomic({
       mission,
       executionState,
       ledger:this.core.ledger.forMission(mission.id),
