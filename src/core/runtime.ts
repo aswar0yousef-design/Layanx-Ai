@@ -26,7 +26,7 @@ export class ExecutionRuntime{
   const started=Date.now();
   const contract=this.core.agents.get(request.agentId);
   mission.status="running";
-  this.core.executionStates.update(mission.id,{status:"running"});
+  this.core.executionStates.update(mission.id,{status:"running",recoverable:true});
   if(state.toolCalls>=contract.maxToolCalls)return this.block(mission,request,"Agent tool-call limit exceeded.");
   const risk=this.core.risk.assess(request);
   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:risk.requiresApproval?"denied":"allowed",metadata:{risk:risk.level,missionId:mission.id}});
@@ -63,7 +63,7 @@ export class ExecutionRuntime{
    confidence:result.ok?0.9:1,
    tags:["mission","tool",request.tool,result.ok?"success":"failure"]
   });
-  this.core.executionStates.update(mission.id,{toolCalls:state.toolCalls+1,runtimeMs:state.runtimeMs+runtimeMs,status:result.ok?"completed":"failed"});
+  this.core.executionStates.update(mission.id,{toolCalls:state.toolCalls+1,runtimeMs:state.runtimeMs+runtimeMs,status:result.ok?"completed":"failed",recoverable:!result.ok});
   if(executionStep) executionStep.status=result.ok?"completed":"failed";
   this.core.ledger.append({id:crypto.randomUUID(),missionId:mission.id,agentId:request.agentId,action:request.action,status:result.ok?"completed":"failed",timestamp:new Date().toISOString(),detail:result.error});
   await this.persist(mission);
@@ -91,7 +91,7 @@ export class ExecutionRuntime{
   }
   if(!verification.verified){
    mission.status="failed";
-   this.core.executionStates.update(mission.id,{status:"failed"});
+   this.core.executionStates.update(mission.id,{status:"failed",recoverable:false});
    await this.persist(mission);
    return{ok:false,missionId:mission.id,verified:false,error:verification.failures.join("; "),recoverable:false};
   }
@@ -114,7 +114,7 @@ export class ExecutionRuntime{
    return{ok:false,missionId:mission.id,verified:false,error:verification.failures.join("; "),recoverable:false};
   }
   mission.status="completed";
-  this.core.executionStates.update(mission.id,{status:"completed"});
+  this.core.executionStates.update(mission.id,{status:"completed",recoverable:false});
   this.core.memory.remember({missionId:mission.id,kind:"success",summary:mission.goal,content:{result,verified:true},confidence:1,tags:["mission"]});
   this.approvals.revokeMission(mission.id);
   this.core.audit.append({timestamp:new Date().toISOString(),actor:agentId,action:"mission.verify",resource:mission.id,result:"success",metadata:{missionId:mission.id}});
@@ -143,7 +143,7 @@ export class ExecutionRuntime{
  }
  private async block(mission:Mission,request:ToolRequest,error:string):Promise<RuntimeResult>{
   mission.status="blocked";
-  this.core.executionStates.update(mission.id,{status:"blocked"});
+  this.core.executionStates.update(mission.id,{status:"blocked",recoverable:false});
   this.core.ledger.append({id:crypto.randomUUID(),missionId:mission.id,agentId:request.agentId,action:request.action,status:"blocked",timestamp:new Date().toISOString(),detail:error});
   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"denied",metadata:{reason:error}});
   await this.persist(mission);
