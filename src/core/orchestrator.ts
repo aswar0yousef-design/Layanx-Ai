@@ -29,6 +29,7 @@ import {MemoryEngine} from "./memory.js";
 import type {RuntimePersistence} from "./runtime-persistence.js";
 import {MissionHandoffManager} from "./handoff.js";
 import {NextActionEngine} from "./next-action.js";
+import {MissionStore} from "./mission-store.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -62,6 +63,7 @@ export class LayanXCore{
   readonly lastKnownGood=new LastKnownGood();
   readonly capabilities=new CapabilityGate();
   readonly idempotency:IdempotencyService;
+  readonly missions=new MissionStore();
 
   constructor(idempotency?:IdempotencyService,persistence?:RuntimePersistence){
     this.idempotency=idempotency??new IdempotencyStore();
@@ -85,6 +87,7 @@ export class LayanXCore{
     this.executionStates.start(m.id);
     this.ledger.append({id:crypto.randomUUID(),missionId:m.id,agentId:"core",action:"mission.create",status:"started",timestamp:new Date().toISOString(),detail:goal});
     this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"mission.create",resource:m.id,result:"success",metadata:{goal,missionId:m.id}});
+    this.missions.save(m);
     return m;
   }
   startMission(goal:string){
@@ -92,6 +95,7 @@ export class LayanXCore{
     this.executionStates.start(m.id);
     this.ledger.append({id:crypto.randomUUID(),missionId:m.id,agentId:"core",action:"mission.create",status:"started",timestamp:new Date().toISOString(),detail:goal});
     this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"mission.create",resource:m.id,result:"success",metadata:{goal,missionId:m.id}});
+    this.missions.save(m);
     return m;
   }
   authorize(r:import("./types.js").ToolRequest,g:import("./types.js").PermissionLevel){

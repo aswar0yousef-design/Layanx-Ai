@@ -13,6 +13,8 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   response.setHeader("cache-control","no-store");
   if(request.method==="GET"&&request.url==="/v1/status"){json(response,200,runtimeStatus(runtimeView(options.core)));return;}
   if(request.method==="GET"&&request.url==="/v1/health"){const health=await runtimeHealth(runtimeView(options.core));json(response,health.healthy?200:503,health);return;}
+  if(request.method==="GET"&&request.url==="/v1/missions"){json(response,200,{ok:true,missions:options.core.missions.list()});return;}
+  if(request.method==="GET"&&request.url?.startsWith("/v1/missions/")){const id=request.url.slice("/v1/missions/".length);const mission=options.core.missions.get(id);if(!mission){json(response,404,{ok:false,error:"mission_not_found"});return;}json(response,200,{ok:true,mission,execution:options.core.executionStates.get(id),audit:options.core.audit.forMission(id),ledger:options.core.ledger.forMission(id)});return;}
   if(request.method==="POST"&&request.url==="/v1/missions"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{const input=await body(request,max);const goal=typeof input.goal==="string"?input.goal.trim():"";if(!goal||goal.length>4000){json(response,400,{ok:false,error:"goal_required"});return;}const mission=await options.core.planAndStartMission(goal);json(response,201,{ok:true,mission,execution:options.core.executionStates.get(mission.id)});}
