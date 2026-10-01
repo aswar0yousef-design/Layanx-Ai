@@ -15,7 +15,12 @@ export class ExecutionRuntime{
  readonly approvals=new ApprovalEngine();
  constructor(private readonly core:LayanXCore,persistence?:RuntimePersistence){this.persistence=persistence??core.persistence;}
  async run(mission:Mission,request:ToolRequest,adapter:ToolAdapter,approvalId?:string,security?:RuntimeSecurityContext):Promise<RuntimeResult>{
-  if(["completed","cancelled"].includes(mission.status))return{ok:false,missionId:mission.id,verified:false,error:"Mission is not executable in its current state.",recoverable:false};
+  if(["completed","cancelled"].includes(mission.status)){
+   const replay=await this.core.idempotency.get(request.idempotencyKey);
+   if(mission.status==="completed"&&replay?.status==="completed"&&replay.missionId===mission.id&&replay.agentId===request.agentId&&replay.tool===request.tool&&replay.action===request.action)
+    return{ok:true,missionId:mission.id,verified:true,data:replay.data,recoverable:false};
+   return{ok:false,missionId:mission.id,verified:false,error:"Mission is not executable in its current state.",recoverable:false};
+  }
   const state=this.core.executionStates.get(mission.id)??this.core.executionStates.start(mission.id);
   await this.persist(mission);
   const started=Date.now();
@@ -25,6 +30,11 @@ export class ExecutionRuntime{
   if(state.toolCalls>=contract.maxToolCalls)return this.block(mission,request,"Agent tool-call limit exceeded.");
   const risk=this.core.risk.assess(request);
   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:risk.requiresApproval?"denied":"allowed",metadata:{risk:risk.level,missionId:mission.id}});
+  const rank:Record<import("./types.js").PermissionLevel,number>={L1_READ:1,L2_ANALYZE:2,L3_MODIFY:3,L4_EXECUTE:4,L5_CRITICAL:5};
+  if(rank[request.permission]>rank[mission.requiredPermission])return this.block(mission,request,"Requested permission exceeds mission scope.");
+  if(rank[request.permission]>rank[contract.requiredPermission])return this.block(mission,request,"Requested permission exceeds agent scope.");
+  const toolDefinition=this.core.tools.get(request.tool);
+  if(rank[toolDefinition.permission]>rank[request.permission])return this.block(mission,request,"Requested permission is below the tool requirement.");
   const permission=this.core.permissions.authorize(request,contract,request.permission);
   if(!permission.allowed)return this.block(mission,request,permission.reason);
   if(!security)return this.block(mission,request,"Capability context is required.");

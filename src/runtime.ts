@@ -1,13 +1,14 @@
 import {LayanXCore} from "./core/orchestrator.js";
 import type {AgentContract} from "./core/contracts.js";
 import {configureProviders,providerSummary} from "./config/providers.js";
+import {registerBuiltinTools} from "./tools/builtin.js";
 
 export function createRuntime(){
  const core=new LayanXCore();
  const agent:AgentContract={
   agentId:"core",
   purpose:"Safely orchestrate LayanX missions.",
-  allowedTools:[],
+  allowedTools:["runtime.status","mission.inspect","memory.recall"],
   forbiddenResources:["secrets","security-controls"],
   requiredPermission:"L1_READ",
   maxToolCalls:100,
