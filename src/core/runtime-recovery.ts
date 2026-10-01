@@ -1,5 +1,6 @@
 import type {Mission,ToolRequest} from "./types.js";
 import type {ToolAdapter} from "../tools/executor.js";
+import type {RuntimeSecurityContext} from "./runtime.js";
 import {LayanXCore} from "./orchestrator.js";
 import {MissionRunner} from "./mission-runner.js";
 import {RuntimePersistence, type RuntimeSnapshot} from "./runtime-persistence.js";
@@ -88,7 +89,7 @@ export class RuntimeRecoveryManager{
     };
   }
 
-  async resume(missionId:string,request:ToolRequest,adapter:ToolAdapter,approvalId?:string){
+  async resume(missionId:string,request:ToolRequest,adapter:ToolAdapter,approvalId?:string,security?:RuntimeSecurityContext){
     const snapshot=await this.persistence.get(missionId);
     if(!snapshot)throw new Error("Unknown persisted mission.");
     const readiness=new RecoveryReadinessChecker(this.core).check(snapshot,request);
@@ -116,7 +117,8 @@ export class RuntimeRecoveryManager{
     }
 
     const runner=new MissionRunner(this.core);
-    const result=await runner.execute(snapshot.mission,request,adapter,approvalId);
+    if(!security)throw new Error("Recovery security context is required.");
+    const result=await runner.execute(snapshot.mission,request,adapter,approvalId,security);
     const updated=this.core.executionStates.get(missionId);
     if(updated){
       await this.persistence.saveAtomic({
