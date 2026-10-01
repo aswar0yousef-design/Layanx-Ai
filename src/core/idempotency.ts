@@ -25,6 +25,8 @@ export interface IdempotencyService{
   complete(key:string,data:unknown):void|Promise<void>;
   fail(key:string,error:string):void|Promise<void>;
   get(key:string):IdempotencyRecord|undefined|Promise<IdempotencyRecord|undefined>;
+  list():IdempotencyRecord[]|Promise<IdempotencyRecord[]>;
+  restore(records:IdempotencyRecord[]):void|Promise<void>;
 }
 
 export class IdempotencyStore implements IdempotencyService{
