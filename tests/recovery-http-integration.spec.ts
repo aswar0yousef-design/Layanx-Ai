@@ -22,9 +22,16 @@ const executor=new HttpRollbackExecutor({
  }
 });
 const persistence=new RecoveryPersistence(new JsonStorageAdapter("/tmp/layanx-http-recovery.json"));
+const rollback=new RollbackController();
+rollback.record({
+ version:"1.0.0",
+ commitSha:"known-good",
+ manifestChecksum:"a".repeat(64),
+ deployedAt:"2026-01-01T00:00:00Z"
+});
 const controller=new ProductionRecoveryController(
  probe,
- new RollbackController(),
+ rollback,
  new RecoveryAuditTrail(),
  executor,
  {maxAttempts:1,persistence,recoveryId:"http-recovery-integration"}
@@ -38,9 +45,11 @@ const result=await controller.evaluate({
 });
 
 if(result.decision.action!=="keep")throw new Error("HTTP recovery flow did not finish verified.");
-if(result.decision.target?.version!=="2.0.0")throw new Error("HTTP recovery flow selected the wrong target.");
+if(result.decision.target?.version!=="1.0.0")throw new Error("HTTP recovery flow did not select the known-good deployment.");
 if(result.attempts!==1)throw new Error("HTTP recovery flow did not perform exactly one rollback attempt.");
 if(rollbackCalls!==1)throw new Error("HTTP rollback provider was not called exactly once.");
-if(!rollbackPayload.includes("new-deployment"))throw new Error("HTTP rollback payload did not include the deployment identity.");
+if(!rollbackPayload.includes("known-good"))throw new Error("HTTP rollback payload did not include the known-good deployment.");
+if(!result.audit.started||!result.audit.rollback||!result.audit.verified||!result.audit.complete)
+ throw new Error("HTTP recovery flow did not produce a complete audit trail.");
 
 console.log("HTTP deployment recovery integration passed.");
