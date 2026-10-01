@@ -22,21 +22,13 @@ core.tools.register({name:"test.tool",description:"test",permission:"L1_READ",da
 core.toolAdapters.register("test.tool",{execute:async()=>({ok:true})});
 const mission=core.startMission("blocked adaptive continuation");
 mission.requiredPermission="L1_READ";
+mission.status="blocked";
 mission.tools=[];
 core.missions.save(mission);
 
-core.aiPlanner.nextTool=async ()=>{
-  mission.status="blocked";
-  return {
-    tool:"test.tool",
-    action:"read",
-    permission:"L1_READ",
-    reason:"test"
-  };
-};
-
 const first=await core.executeMissionAdaptive(mission.id,"project",3);
-if(first.completed)throw new Error("Blocked adaptive continuation should not complete.");
+if(first.completed||first.reason!=="Mission is blocked by a security or policy gate.")
+  throw new Error("Expected blocked adaptive stop.");
 
 const snapshot=await persistence.get(mission.id);
 if(!snapshot)throw new Error("Blocked continuation snapshot was not persisted.");
