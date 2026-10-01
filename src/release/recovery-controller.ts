@@ -2,6 +2,8 @@ import {ReleaseHealthProbe} from "./health-probe.js";
 import {RollbackController, type Deployment, type RecoveryDecision} from "./rollback.js";
 import {RecoveryAuditTrail} from "./recovery-audit.js";
 import type {RollbackExecutor} from "./rollback-executor.js";
+import {RecoveryPersistence, type PersistedRecoveryRecord} from "./recovery-persistence.js";
+import {RecoveryResumeEngine, type RecoveryResumePlan} from "./recovery-resume.js";
 
 export interface RecoveryRunResult{
  decision:RecoveryDecision;
@@ -17,7 +19,7 @@ export interface RecoveryControllerOptions{
 export class ProductionRecoveryController{
  private readonly actor:string;
  private readonly maxAttempts:number;
- private readonly executor:RollbackExecutor;
+ private readonly executor:RollbackExecutor;\n private readonly persistence?:RecoveryPersistence;\n private readonly recoveryId?:string;\n private readonly resumeEngine=new RecoveryResumeEngine();
 
  constructor(
   private readonly healthProbe:ReleaseHealthProbe,
