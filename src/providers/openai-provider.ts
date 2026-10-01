@@ -13,7 +13,7 @@ export function createOpenAIProvider(options:{apiKey:string;baseUrl?:string;heal
   buildBody:(model,request)=>({model:model.id,input:request.input,max_output_tokens:request.maxOutputTokens}),
   parseResponse:(body,model):ModelResponse=>{
    const data=body as {output_text?:string;usage?:{input_tokens?:number;output_tokens?:number}};
-   return{provider:"openai",model:model.id,modelId:model.id,output:data.output_text??"",usage:{inputTokens:data.usage?.input_tokens,outputTokens:data.usage?.output_tokens}};
+   return{provider:"openai",modelId:model.id,output:data.output_text??"",usage:{inputTokens:data.usage?.input_tokens,outputTokens:data.usage?.output_tokens}};
   }
  });
 }
