@@ -24,6 +24,15 @@ export class RuntimePersistence{
     next.push(structuredClone(snapshot));
     await this.storage.set(next);
   }
+
+  async saveAtomic(snapshot:RuntimeSnapshot):Promise<void>{
+    await this.storage.transaction(async tx=>{
+      const current=await tx.get<RuntimeSnapshot[]>()??[];
+      const next=current.filter(x=>x.mission.id!==snapshot.mission.id);
+      next.push(structuredClone(snapshot));
+      await tx.set(next);
+    });
+  }
   async get(missionId:string):Promise<RuntimeSnapshot|undefined>{
     return (await this.list()).find(x=>x.mission.id===missionId);
   }
