@@ -7,6 +7,7 @@ core.registerAgent(agent);
 core.tools.register({name:"terminal.run",description:"Run command",permission:"L4_EXECUTE",dangerous:true});
 
 const mission=core.startMission("Run command");
+mission.requiredPermission="L4_EXECUTE";
 const runner=new MissionRunner(core);
 const tasks=runner.buildTeam(mission,[agent]);
 if(tasks.length!==1)throw new Error("Agent team was not built.");
