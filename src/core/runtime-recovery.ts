@@ -2,7 +2,6 @@ import type {Mission,ToolRequest} from "./types.js";
 import type {ToolAdapter} from "../tools/executor.js";
 import {LayanXCore} from "./orchestrator.js";
 import {MissionRunner} from "./mission-runner.js";
-import {JsonStateStore} from "./persistence.js";
 import {RuntimePersistence, type RuntimeSnapshot} from "./runtime-persistence.js";
 
 export interface RecoveryCandidate{
@@ -35,8 +34,10 @@ export class RuntimeRecoveryManager{
       throw new Error("Mission is not resumable.");
     }
 
-    const current=this.core.executionStates.get(missionId);
-    if(!current)this.core.executionStates.start(missionId);
+    this.core.executionStates.restore(snapshot.executionState);
+    this.core.ledger.restore(snapshot.ledger);
+    this.core.audit.restore(snapshot.audit);
+    this.core.recovery.restorePersisted(snapshot.checkpoint);
 
     const runner=new MissionRunner(this.core);
     const result=await runner.execute(snapshot.mission,request,adapter,approvalId);
