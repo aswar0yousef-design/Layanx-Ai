@@ -1,7 +1,8 @@
 import {readFile} from "node:fs/promises";
 import {readdir} from "node:fs/promises";
 const roots=["src","tests"];
-const forbidden=/(api[_ -]?key|secret[_ -]?key|private[_ -]?key|password)\\s*[:=]\\s*["'`][^"'\\`]{8,}["'`]/i;\nlet failures=[];
+const forbidden=/(api[_ -]?key|secret[_ -]?key|private[_ -]?key|password)\s*[:=]\s*["'`][^"'`]{8,}["'`]/i;
+let failures=[];
 async function walk(dir){
  for(const entry of await readdir(dir,{withFileTypes:true})){
   const path=dir+"/"+entry.name;
