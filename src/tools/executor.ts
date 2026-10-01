@@ -26,6 +26,8 @@ export class ToolExecutor {
    return {ok:true,verified:false,data};
   }catch(error){
    const message=error instanceof Error?error.message:String(error);
+   const current=await this.idempotency.get(request.idempotencyKey);
+   if(current?.status==="completed") return {ok:true,verified:true,data:current.data,replayed:true};
    await this.idempotency.fail(request.idempotencyKey,message);
    return {ok:false,verified:false,error:message};
   }
