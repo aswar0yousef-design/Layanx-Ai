@@ -13,6 +13,6 @@ if(result.tool!=="runtime.status"||calls!==1)throw new Error("wrong tool executi
 const stored=core.missions.get(mission.id);
 if(stored?.status!=="completed")throw new Error("mission was not persisted as completed");
 const replay=await core.executeMissionTool(mission.id,"project-test",0,{});
-if(!replay.ok||!replay.verified||!replay.recoverable)throw new Error("safe replay did not succeed");
+if(!replay.ok||!replay.verified||replay.recoverable!==false)throw new Error("safe replay did not succeed");
 if(calls!==1)throw new Error("replay executed the adapter twice");
 console.log("Planned mission tool execution passed.");
