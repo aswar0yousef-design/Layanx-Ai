@@ -34,6 +34,7 @@ for(const [criteria,result] of [
 for(const [criteria,result] of [
  ["result.status === "ok"",{status:"failed"}],
  ["result.count > 5",{count:2}],
+ ["result.count < 3",{count:3}],
  ["result.message contains "done"",{message:"pending"}],
  ["result.items.length === 2",{items:["a"]}],
  ["result.status matches "ok"",{status:"ok"}]
