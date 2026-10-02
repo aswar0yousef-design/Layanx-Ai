@@ -9,16 +9,8 @@ export type MissionEventType =
  | "mission.blocked" | "mission.cancelled" | "runtime.event";
 
 export interface MissionEvent{
- id:string;
- missionId:string;
- projectId:string;
- timestamp:string;
- type:MissionEventType;
- actor:string;
- tool?:string;
- action?:string;
- stepIndex?:number;
- message?:string;
+ id:string; missionId:string; projectId:string; timestamp:string; type:MissionEventType; actor:string;
+ tool?:string; action?:string; stepIndex?:number; message?:string;
 }
 
 function typeFor(event:AuditEvent):MissionEventType{
@@ -37,10 +29,10 @@ function typeFor(event:AuditEvent):MissionEventType{
  return event.result==="success"?"tool.completed":"runtime.event";
 }
 
-function toEvent(event:AuditEvent,index:number):MissionEvent|null{
+function toEvent(event:AuditEvent,index:number,projectIds:Record<string,string>):MissionEvent|null{
  const metadata=event.metadata??{};
  const missionId=typeof metadata.missionId==="string"?metadata.missionId:"";
- const projectId=typeof metadata.projectId==="string"?metadata.projectId:"";
+ const projectId=typeof metadata.projectId==="string"?metadata.projectId:projectIds[missionId]??"";
  if(!missionId||!projectId)return null;
  const id=createHash("sha256").update(JSON.stringify([missionId,index,event.timestamp,event.actor,event.action,event.result])).digest("hex").slice(0,24);
  const tool=typeof event.resource==="string"&&!event.resource.startsWith("mission")?event.resource:undefined;
@@ -53,9 +45,9 @@ export class MissionEventStream{
  private readonly events=new Map<string,MissionEvent[]>();
  private readonly maxPerMission=200;
 
- sync(audit:AuditEvent[]):void{
+ sync(audit:AuditEvent[],projectIds:Record<string,string>={}):void{
   audit.forEach((event,index)=>{
-   const mapped=toEvent(event,index);
+   const mapped=toEvent(event,index,projectIds);
    if(!mapped)return;
    const list=this.events.get(mapped.missionId)??[];
    if(list.some(item=>item.id===mapped.id))return;
