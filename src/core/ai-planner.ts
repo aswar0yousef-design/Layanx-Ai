@@ -1,6 +1,7 @@
 import type {ModelExecutionRouter} from "./model-execution.js";
 import type {PermissionLevel} from "./types.js";
 import type {ToolCatalogEntry} from "./tool-catalog.js";
+import type {ModelRoutingOptions} from "../models/inference.js";
 
 export interface PlannedTool{
   tool:string;
@@ -21,7 +22,7 @@ export interface PlannedMission{
 
 export class AiMissionPlanner{
   constructor(private readonly models:ModelExecutionRouter){}
-  async plan(goal:string,tools:ToolCatalogEntry[]=[],projectContext?:unknown):Promise<PlannedMission>{
+  async plan(goal:string,tools:ToolCatalogEntry[]=[],projectContext?:unknown,routing?:ModelRoutingOptions):Promise<PlannedMission>{
     if(!goal.trim())throw new Error("Mission goal is empty.");
     const catalog=tools.length?tools.map(tool=>({
       name:tool.name,description:tool.description,permission:tool.permission,
@@ -29,6 +30,7 @@ export class AiMissionPlanner{
     })):[];
     const response=await this.models.execute({
       capability:"reasoning",
+      routing,
       input:[
         "You are the LayanX mission planner.",
         "Return ONLY valid JSON with keys: risk, requiredPermission, steps, successCriteria, stopCondition, tools.",
@@ -45,13 +47,14 @@ export class AiMissionPlanner{
     });
     return this.parse(response.output,tools);
   }
-  async nextTool(input:{goal:string;result:unknown;tools:ToolCatalogEntry[];requiredPermission:PermissionLevel;completedTools:string[];memory?:Array<{kind:string;summary:string;content:unknown;tags:string[]}>;projectContext?:unknown}):Promise<PlannedTool|null>{
+  async nextTool(input:{goal:string;result:unknown;tools:ToolCatalogEntry[];requiredPermission:PermissionLevel;completedTools:string[];memory?:Array<{kind:string;summary:string;content:unknown;tags:string[]}>;projectContext?:unknown;routing?:ModelRoutingOptions}):Promise<PlannedTool|null>{
     if(!input.goal.trim())throw new Error("Mission goal is empty.");
     const catalog=input.tools.map(tool=>({name:tool.name,description:tool.description,permission:tool.permission,dangerous:tool.dangerous,actions:tool.actions,tags:tool.tags}));
     const boundedResult=JSON.stringify(input.result).slice(0,12000);
     const boundedMemory=JSON.stringify(input.memory??[]).slice(0,8000);
     const response=await this.models.execute({
       capability:"reasoning",
+      routing:input.routing,
       input:[
         "You are the LayanX adaptive mission planner.",
         "Return ONLY valid JSON: either null when the mission is complete, or an object with tool, action, permission, reason, and optional payload.",
