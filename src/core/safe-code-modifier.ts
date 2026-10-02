@@ -1,4 +1,5 @@
-import {readFile,writeFile,mkdir,rename,rm,realpath,stat} from "node:fs/promises";
+import {readFile,writeFile,mkdir,rm} from "node:fs/promises";
+import {createHash} from "node:crypto";
 import {createHash} from "node:crypto";
 import {resolve,relative,sep,isAbsolute,dirname} from "node:path";
 import type {LayanXCore} from "./orchestrator.js";
@@ -11,6 +12,7 @@ export interface CodeChange{
 export interface SafeModificationRequest{
   projectId:string;
   missionId:string;
+  agentId?:string;
   changes:CodeChange[];
   approvalId?:string;
   runTests?:boolean;
@@ -44,8 +46,15 @@ export class SafeCodeModifier{
     const impact=this.core.impactAnalyzer.analyze(graph,validated.map(change=>change.path).join(" "));
     mission.impactAnalysis=impact;
     mission.selectedTests=this.core.testSelector.select(graph,impact).tests;
-    if(["high","critical"].includes(impact.risk)&&!request.approvalId)
-      throw new Error("Explicit approval is required for high or critical modification impact.");
+    if(["high","critical"].includes(impact.risk)){
+      if(!request.approvalId)throw new Error("Explicit approval is required for high or critical modification impact.");
+      const approvalHash=createHash("sha256").update(JSON.stringify(validated)).digest("hex");
+      const approval=this.core.executionRuntime.approvals.authorize(request.approvalId,{
+        missionId:request.missionId,agentId:request.agentId??"core",tool:"code",action:"modify",
+        permission:"L3_MODIFY",payloadHash:approvalHash
+      });
+      if(!approval.allowed)throw new Error(approval.reason);
+    }
     const backupId=crypto.randomUUID();
     const workspace=this.workspace(projectId);
     const backupDir=resolve(workspace,".layanx","backups",backupId);
