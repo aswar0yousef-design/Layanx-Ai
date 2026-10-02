@@ -294,7 +294,8 @@ export class LayanXCore{
     for(let attempt=1;attempt<=limit;attempt++){
       const current=this.missions.get(missionId);
       if(!current)throw new Error("Mission not found.");
-      if(current.status==="blocked")return{missionId,completed:false,attempts:attempt-1,repaired,exhausted:false,blocked:true,results,reason:failure.error};
+      const activeFailure=failure??{attempt:attempt-1,ok:false,error:"Previous repair attempt failed."};
+      if(current.status==="blocked")return{missionId,completed:false,attempts:attempt-1,repaired,exhausted:false,blocked:true,results,reason:activeFailure.error};
       current.status="running";
       this.executionStates.update(missionId,{status:"running",recoverable:true});
       this.missions.save(current);
@@ -308,7 +309,7 @@ export class LayanXCore{
       try{
         next=await this.aiPlanner.nextTool({
           goal:current.goal,
-          result:{failure:failure.error,previousResult:latest,attempt},
+          result:{failure:activeFailure.error,previousResult:latest,attempt},
           tools:catalog,
           requiredPermission:current.requiredPermission,
           completedTools:results.filter(item=>item.ok&&item.tool).map(item=>item.tool as string),
@@ -352,7 +353,7 @@ export class LayanXCore{
         failure=undefined;
       }else{
         failure=results[results.length-1];
-        if(current.status==="blocked")return{missionId,completed:false,attempts:attempt,repaired,exhausted:false,blocked:true,results,reason:result.error};
+        if(this.missions.get(missionId)?.status==="blocked")return{missionId,completed:false,attempts:attempt,repaired,exhausted:false,blocked:true,results,reason:result.error};
       }
     }
     return{missionId,completed:false,attempts:limit,repaired,exhausted:true,blocked:false,results,reason:failure?.error??"Repair attempts exhausted."};
