@@ -81,3 +81,27 @@ export function createTerminalToolAdapter(options:{root:string}):ToolAdapter{
   });
  }};
 }
+
+export function createProjectVerifyToolAdapter(options:{root:string}):ToolAdapter{
+ const root=resolve(options.root);
+ const scripts=["test","typecheck","build"];
+ return{async execute(request){
+  const workspace=workspaceFor(root,request.projectId);await mkdir(workspace,{recursive:true});
+  const input=payload(request),requested=typeof input.script==="string"?input.script.trim():"";
+  if(!requested||!scripts.includes(requested))throw new Error("Verification script must be one of: test, typecheck, build.");
+  const packagePath=resolve(workspace,"package.json");
+  let packageData:Record<string,unknown>;
+  try{packageData=JSON.parse(await readFile(packagePath,"utf8")) as Record<string,unknown>;}catch{throw new Error("Project package.json is required for verification.");}
+  const packageScripts=packageData.scripts&&typeof packageData.scripts==="object"&&!Array.isArray(packageData.scripts)
+    ?packageData.scripts as Record<string,unknown>:{};
+  if(typeof packageScripts[requested]!=="string")throw new Error("Project does not define the requested verification script.");
+  return await new Promise((resolvePromise,reject)=>{
+   const child=spawn("npm",["run",requested],{cwd:workspace,shell:false,env:{...process.env,CI:"1"},timeout:60000});
+   let stdout="",stderr="";
+   child.stdout.on("data",chunk=>{stdout+=String(chunk);if(stdout.length>128*1024)child.kill("SIGKILL");});
+   child.stderr.on("data",chunk=>{stderr+=String(chunk);if(stderr.length>128*1024)child.kill("SIGKILL");});
+   child.on("error",reject);
+   child.on("close",(code,signal)=>resolvePromise({script:requested,cwd:workspace,exitCode:code,signal,passed:code===0,stdout:stdout.slice(0,128*1024),stderr:stderr.slice(0,128*1024)}));
+  });
+ }};
+}
