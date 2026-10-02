@@ -12,6 +12,7 @@ export interface VoiceProvider {
   status():VoiceStatus;
   transcribe(audio:Buffer,mimeType:string,filename:string,language?:string):Promise<string>;
   speak(text:string,format?:"mp3"|"wav"|"opus"):Promise<{audio:Buffer;contentType:string}>;
+  createRealtimeClientSecret?(options?:{model?:string;voice?:string;instructions?:string}):Promise<{value:string;expiresAt?:number;session?:unknown}>;
 }
 
 function audioBaseUrl():string{
@@ -69,6 +70,7 @@ export class VoiceService{
   status(){return this.provider.status();}
   transcribe(...args:Parameters<VoiceProvider["transcribe"]>){return this.provider.transcribe(...args);}
   speak(...args:Parameters<VoiceProvider["speak"]>){return this.provider.speak(...args);}
+  createRealtimeClientSecret(options:{model?:string;voice?:string;instructions?:string}={}){if(!this.provider.createRealtimeClientSecret)throw new Error("Realtime voice is not supported by the configured voice provider.");return this.provider.createRealtimeClientSecret(options);}
 
   async createRealtimeClientSecret(options:{model?:string;voice?:string;instructions?:string}={}):Promise<{value:string;expiresAt?:number;session?:unknown}>{
     if(!this.apiKey)throw new Error("OpenAI voice is not configured: OPENAI_API_KEY is required.");
@@ -105,5 +107,3 @@ export class VoiceService{
     if(typeof payload.value!=="string"||!payload.value)throw new Error("Realtime client secret returned no value.");
     return{value:payload.value,expiresAt:typeof payload.expires_at==="number"?payload.expires_at:undefined,session:payload.session};
   }
-
-}
