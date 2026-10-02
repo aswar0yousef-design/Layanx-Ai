@@ -154,6 +154,12 @@ export class LayanXCore{
     this.memory.remember({missionId:"decomposition:"+crypto.randomUUID(),projectId,kind:"decision",summary:"Mission tasks decomposed and routed",content:{decomposition,assignments},confidence:1,tags:["mission","decomposition","routing"]});
     return{...decomposition,assignments};
   }
+  async executeTaskDecomposition(goal:string,projectId="default",maxConcurrency=3,projectContext?:unknown){
+    const prepared=await this.prepareTaskDecomposition(goal,projectId,projectContext);
+    const result=await this.taskRuntime.run(prepared,prepared.assignments,projectId,maxConcurrency);
+    this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"mission.task.execute",resource:goal.slice(0,120),result:result.completed?"success":"failure",metadata:{projectId,tasks:prepared.tasks.length,maxConcurrency}});
+    return{...prepared,result};
+  }
 
   async prepareChangeImpact(mission:import("./types.js").Mission,projectId:string,request?:{tool?:string;action?:string}){
     this.projectIsolation.assertMissionProject(projectId,mission.projectId);
