@@ -261,9 +261,22 @@ export class LayanXCore{
       const result=await this.executeMissionTool(missionId,projectId,index,next.payload??{},undefined,agentId,{deferVerification:true});
       results.push(result);
       if(!result.ok){
+        const repair=this.autonomousRepair.run(mission,result,{
+          planner:this.aiPlanner,
+          tools:catalog,
+          memory:missionMemory,
+          projectContext:await this.projectIntelligence.scan(projectId).then(i=>({summary:i.summary,markers:i.markers,package:i.package,files:i.files.slice(0,80).map(f=>f.path)})).catch(()=>undefined),
+          execute:async(repairPlan)=>{
+            mission.tools=mission.tools??[];
+            mission.tools.push(repairPlan);
+            const repairIndex=mission.tools.length-1;
+            return this.executeMissionTool(missionId,projectId,repairIndex,repairPlan.payload??{},undefined,agentId,{deferVerification:true});
+          }
+        },3);
+        if(repair.completed)return{missionId,results:[...results,...repair.results],completed:true,repaired:true,repairAttempts:repair.attempts};
         const decision=this.adaptiveDecision.decide({mission,toolResult:result.data,stepsExecuted:processed+1,maxSteps,nextToolAvailable:true,toolSucceeded:false});
         await this.recordAdaptiveStop(mission,decision,processed+1,agentId);
-        return{missionId,results,completed:false,reason:result.error,recoverable:result.recoverable};
+        return{missionId,results:[...results,...repair.results],completed:false,reason:repair.reason??result.error,recoverable:result.repaired||result.recoverable};
       }
       completedTools.push(next.tool);
       latest=result.data;
