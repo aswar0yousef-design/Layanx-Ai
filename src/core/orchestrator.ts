@@ -109,6 +109,7 @@ export class LayanXCore{
   readonly eventEngine:EventMissionEngine;
   readonly missionDependencies:MissionDependencyManager;
   readonly autonomousRetry=new AutonomousRetryPolicy();
+  readonly failureLearning=new FailureLearning(this.memory);
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
