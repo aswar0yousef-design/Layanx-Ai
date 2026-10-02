@@ -34,7 +34,7 @@ export class EventMissionEngine{
  }
  remove(id:string){if(!this.triggers.delete(id))throw new Error("Unknown event trigger.");}
  setEnabled(id:string,enabled:boolean){const trigger=this.require(id);trigger.enabled=enabled;return structuredClone(trigger);}
- list(){return [...this.triggers.values()].map(structuredClone);}
+ list(){return [...this.triggers.values()].map(item=>structuredClone(item));}
  async emit(event:RuntimeEvent){
   const matches=[...this.triggers.values()].filter(trigger=>trigger.enabled&&!this.active.has(trigger.id)&&trigger.eventType===event.type&&trigger.projectId===event.projectId&&this.matches(trigger.match,event.payload));
   return Promise.all(matches.map(trigger=>this.fire(trigger,event)));
