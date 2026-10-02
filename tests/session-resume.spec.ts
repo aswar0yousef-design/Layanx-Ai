@@ -1,0 +1,10 @@
+import {RuntimePersistence} from "../src/core/runtime-persistence.js";
+import {RuntimeStorage} from "../src/storage/runtime-storage.js";
+const storage=new RuntimeStorage();
+const persistence=new RuntimePersistence(storage);
+const mission={id:"resume-test",goal:"resume",status:"running",risk:"low",requiredPermission:"L1_READ",steps:[],tools:[],createdAt:new Date().toISOString(),projectId:"p"};
+const executionState={missionId:"resume-test",startedAt:new Date().toISOString(),toolCalls:2,runtimeMs:120,costUsd:0,status:"running",recoverable:true};
+await persistence.saveAtomic({mission,executionState,ledger:[],audit:[],savedAt:new Date().toISOString(),schemaVersion:1});
+const state=await persistence.get("resume-test");
+if(!state||!(await persistence.resumable()).length)throw new Error("Running snapshot was not resumable.");
+console.log("Session persistence resume test passed.");
