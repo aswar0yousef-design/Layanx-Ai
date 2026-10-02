@@ -207,3 +207,10 @@ Release APIs:
 - `GET /v1/release`
 - `POST /v1/release`
 - `POST /v1/release/:id/transition`
+## Runtime tracing
+
+LayanX already had Observability, Audit, Event Stream, and Execution State; this layer does not duplicate them. `RuntimeTracer` adds only correlated `traceId`/`spanId`/`parentSpanId` data for execution chains, with bounded in-memory inspection and sensitive-attribute sanitization.
+
+- `GET /v1/traces` exposes current traces to the local control/API layer.
+- Tool execution now creates a trace span and records duration/status.
+- Existing Observatory remains the aggregate operational view; Audit/Event Stream remain the event/history layers.
