@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "LayanX Remote",
+    "slug": "layanx-remote",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "android": {
+      "package": "com.layanx.remote",
+      "versionCode": 1
+    },
+    "ios": {
+      "bundleIdentifier": "com.layanx.remote"
+    }
+  }
+}
