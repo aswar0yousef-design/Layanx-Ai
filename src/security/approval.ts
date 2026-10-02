@@ -14,13 +14,6 @@ export class ApprovalEngine{
   if(request.missionId!==context.missionId||request.agentId!==context.agentId||request.tool!==context.tool||request.action!==context.action||request.permission!==context.permission||request.payloadHash!==context.payloadHash)return{allowed:false,reason:"Approval scope mismatch."};
   return{allowed:true,reason:"Approval valid."};
  }
- authorize(id:string,context:{missionId:string;agentId:string;tool:string;action:string;permission:PermissionLevel;payloadHash:string}){
-  return this.validate(id,context);
- }
-  const request=this.get(id);
-  if(!this.isApproved(id))return{allowed:false,reason:"Approval missing, revoked, or expired."};
-  if(request.missionId!==context.missionId||request.agentId!==context.agentId||request.tool!==context.tool||request.action!==context.action||request.permission!==context.permission||request.payloadHash!==context.payloadHash)return{allowed:false,reason:"Approval scope mismatch."};
-  return{allowed:true,reason:"Approval valid."};
- }
+ authorize(id:string,context:{missionId:string;agentId:string;tool:string;action:string;permission:PermissionLevel;payloadHash:string}){return this.validate(id,context);}
  revokeMission(missionId:string){for(const [id,r] of this.requests)if(r.missionId===missionId)this.approved.delete(id);}
 }
