@@ -32,8 +32,18 @@ export class ExecutionRuntime{
   this.core.executionStates.update(mission.id,{status:"running",recoverable:true});
   if(state.toolCalls>=contract.maxToolCalls)return this.block(mission,request,"Agent tool-call limit exceeded.");
   const risk=this.core.risk.assess(request);
-  this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:risk.requiresApproval?"denied":"allowed",metadata:{risk:risk.level,missionId:mission.id}});
   const rank:Record<import("./types.js").PermissionLevel,number>={L1_READ:1,L2_ANALYZE:2,L3_MODIFY:3,L4_EXECUTE:4,L5_CRITICAL:5};
+  if(rank[request.permission]>=3){
+   let impact;
+   try{
+    impact=await this.core.prepareChangeImpact(mission,security.projectId,{tool:request.tool,action:request.action});
+   }catch(error){
+    return this.block(mission,request,error instanceof Error?"Change impact analysis failed: "+error.message:"Change impact analysis failed.");
+   }
+   if(["high","critical"].includes(impact.impact.risk)&&!approvalId)
+    return this.block(mission,request,"Explicit approval is required for this change impact risk level.");
+  }
+  this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:risk.requiresApproval?"denied":"allowed",metadata:{risk:risk.level,missionId:mission.id}});
   if(rank[request.permission]>rank[mission.requiredPermission])return this.block(mission,request,"Requested permission exceeds mission scope.");
   if(rank[request.permission]>rank[contract.requiredPermission])return this.block(mission,request,"Requested permission exceeds agent scope.");
   const toolDefinition=this.core.tools.get(request.tool);
