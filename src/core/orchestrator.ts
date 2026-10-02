@@ -108,6 +108,7 @@ export class LayanXCore{
   readonly scheduler:MissionScheduler;
   readonly eventEngine:EventMissionEngine;
   readonly missionDependencies:MissionDependencyManager;
+  readonly autonomousRetry=new AutonomousRetryPolicy();
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
@@ -197,10 +198,20 @@ export class LayanXCore{
     const catalog=this.toolCatalog.list(contract,mission.requiredPermission);
     const pendingRequest=this.toolRequestBuilder.build(mission,plan,{agentId,projectId,capabilityId:"pending",payload,planIndex:toolIndex},catalog);
     const token=this.capabilities.issue({missionId:mission.id,agentId,projectId,resource:plan.tool,permission:plan.permission,expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
-    const request={...pendingRequest,capabilityId:token.id};
-    const result=await this.executionRuntime.run(mission,request,this.toolAdapters.get(plan.tool),approvalId,{projectId,capabilityId:token.id},runtimeOptions);
+    let result=await this.executionRuntime.run(mission,{...pendingRequest,capabilityId:token.id},this.toolAdapters.get(plan.tool),approvalId,{projectId,capabilityId:token.id},runtimeOptions);
+    let retryAttempt=1;
+    while(!result.ok){
+      const decision=this.autonomousRetry.decide(plan,result,retryAttempt);
+      this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"mission.retry.evaluate",resource:mission.id,result:decision.retry?"allowed":"skipped",metadata:{missionId:mission.id,tool:plan.tool,action:plan.action,attempt:retryAttempt,reason:decision.reason}});
+      if(!decision.retry)break;
+      if(decision.delayMs>0)await new Promise(resolve=>setTimeout(resolve,decision.delayMs));
+      const retryToken=this.capabilities.issue({missionId:mission.id,agentId,projectId,resource:plan.tool,permission:plan.permission,expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
+      const retryRequest=this.toolRequestBuilder.build(mission,plan,{agentId,projectId,capabilityId:retryToken.id,payload,planIndex:toolIndex,retryAttempt},catalog);
+      result=await this.executionRuntime.run(mission,{...retryRequest,capabilityId:retryToken.id},this.toolAdapters.get(plan.tool),approvalId,{projectId,capabilityId:retryToken.id},runtimeOptions);
+      retryAttempt++;
+    }
     this.missions.save(mission);
-    return{...result,tool:plan.tool,action:plan.action,capabilityId:token.id};
+    return{...result,tool:plan.tool,action:plan.action,capabilityId:token.id,retryAttempts:Math.max(0,retryAttempt-1)};
   }
 
   async executeAgentTeam(parentMissionId:string,projectId:string,tasks:import("./delegation.js").DelegatedTask[],executor:import("./team-runtime.js").TeamTaskExecutor,maxRepairs=1){
