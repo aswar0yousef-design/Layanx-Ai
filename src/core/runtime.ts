@@ -41,7 +41,7 @@ export class ExecutionRuntime{
   if(!permission.allowed)return this.block(mission,request,permission.reason);
   const capability=this.core.capabilities.authorize(security.capabilityId,{missionId:mission.id,agentId:request.agentId,projectId:security.projectId,resource:request.tool,permission:request.permission});
   if(!capability.allowed)return this.block(mission,request,capability.reason);
-  if(risk.requiresApproval){
+  if(risk.requiresApproval||toolDefinition.dangerous){
    if(!approvalId)return this.block(mission,request,"Explicit approval is required for this risk level.");
    const approval=this.approvals.authorize(approvalId,{missionId:mission.id,agentId:request.agentId,action:request.action,permission:request.permission});
    if(!approval.allowed)return this.block(mission,request,approval.reason);
