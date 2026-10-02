@@ -18,7 +18,7 @@ function audioBaseUrl():string{
   const configured=process.env.OPENAI_AUDIO_BASE_URL?.trim();
   if(configured)return configured.replace(/\/$/,"");
   const base=(process.env.OPENAI_BASE_URL??"https://api.openai.com/v1/responses").replace(/\/$/,"");
-  return base.replace(/\/responses$/," ").trim();
+  return base.replace(/\/responses$/,"").trim();
 }
 
 export class OpenAIVoiceProvider implements VoiceProvider{
