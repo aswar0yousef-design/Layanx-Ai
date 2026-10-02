@@ -4,6 +4,7 @@ import {execFile} from "node:child_process";
 import {promisify} from "node:util";
 import {createFileWriteToolAdapter} from "../src/tools/fabric.js";
 import {createGitToolAdapter} from "../src/tools/git.js";
+import {ApprovalEngine} from "../src/security/approval.js";
 import type {ToolRequest} from "../src/core/types.js";
 
 const exec=promisify(execFile);
@@ -28,6 +29,11 @@ const previous=process.env.LAYANX_ALLOW_MAIN_PUSH;
 delete process.env.LAYANX_ALLOW_MAIN_PUSH;
 await git.execute({...base,tool:"git.push",action:"git push",permission:"L4_EXECUTE",idempotencyKey:"git-push",payload:{remote:"origin",branch:"main"}}).then(()=>{throw new Error("Main push was not blocked.");}).catch(error=>{if(!String(error).includes("main/master"))throw error;});
 if(previous!==undefined)process.env.LAYANX_ALLOW_MAIN_PUSH=previous;
+
+const approvals=new ApprovalEngine();
+const approval=approvals.create({missionId:"m",agentId:"core",tool:"git.commit",action:"git commit",permission:"L4_EXECUTE",payloadHash:"approved-payload",reason:"commit",expiresAt:new Date(Date.now()+60000).toISOString()});
+approvals.approve(approval.id);
+if(approvals.authorize(approval.id,{missionId:"m",agentId:"core",tool:"git.commit",action:"git commit",permission:"L4_EXECUTE",payloadHash:"changed-payload"}).allowed)throw new Error("Approval payload binding was bypassed.");
 
 await rm(dir,{recursive:true,force:true});
 console.log("Project agent tool tests passed.");
