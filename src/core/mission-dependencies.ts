@@ -43,7 +43,7 @@ export class MissionDependencyManager{
     return structuredClone(record);
   }
 
-  remove(missionId:string){this.dependencies.delete(missionId);}
+  remove(missionId:string){this.dependencies.delete(missionId);const mission=this.core.missions.get(missionId);if(mission){this.core.missions.save({...mission,dependencies:undefined});}}
 
   get(missionId:string):MissionDependency|undefined{
     const value=this.dependencies.get(missionId);
@@ -51,9 +51,15 @@ export class MissionDependencyManager{
   }
 
   list(projectId?:string){
-    return [...this.dependencies.values()]
-      .filter(item=>!projectId||item.projectId===this.core.projectIsolation.normalize(projectId))
-      .map(item=>structuredClone(item));
+    const normalized=projectId?this.core.projectIsolation.normalize(projectId):undefined;
+    const records=new Map<string,MissionDependency>();
+    for(const item of this.dependencies.values())if(!normalized||item.projectId===normalized)records.set(item.missionId,structuredClone(item));
+    for(const mission of this.core.missions.list()){
+      if(!mission.dependencies?.length)continue;
+      if(normalized&&mission.projectId!==normalized)continue;
+      if(!records.has(mission.id))records.set(mission.id,{missionId:mission.id,dependsOn:[...mission.dependencies],projectId:mission.projectId!,createdAt:mission.createdAt});
+    }
+    return [...records.values()];
   }
 
   status(missionId:string):MissionDependencySnapshot{
