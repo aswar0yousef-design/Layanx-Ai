@@ -110,6 +110,7 @@ export class LayanXCore{
   readonly missionDependencies:MissionDependencyManager;
   readonly autonomousRetry=new AutonomousRetryPolicy();
   readonly failureLearning=new FailureLearning(this.memory);
+  readonly safeCodeModifier:SafeCodeModifier;
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
@@ -124,6 +125,7 @@ export class LayanXCore{
     this.scheduler=new MissionScheduler(this);
     this.eventEngine=new EventMissionEngine(this,this.scheduler);
     this.missionDependencies=new MissionDependencyManager(this);
+    this.safeCodeModifier=new SafeCodeModifier(this);
   }
 
   restoreRuntimeSnapshot(snapshot:import("./runtime-persistence.js").RuntimeSnapshot){
@@ -148,6 +150,7 @@ export class LayanXCore{
     const contract=this.agents.get(agentId);
     return this.toolSelector.discover(action,contract,permission);
   }
+  async applySafeCodeModification(request:import("./safe-code-modifier.js").SafeModificationRequest){return this.safeCodeModifier.apply(request);}
   registerMissionDependencies(missionId:string,dependsOn:string[],projectId="default"){return this.missionDependencies.register(missionId,dependsOn,projectId);}
   missionDependencyStatus(missionId:string){return this.missionDependencies.status(missionId);}
   async runDependentMission(missionId:string,projectId="default",maxSteps=10,agentId="core"){return this.missionDependencies.runWhenReady(missionId,projectId,maxSteps,agentId);}
