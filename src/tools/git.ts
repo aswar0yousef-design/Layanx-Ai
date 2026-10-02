@@ -34,6 +34,13 @@ export function createGitToolAdapter(options:{root:string}):ToolAdapter{
   const input=payload(request);
   switch(request.action){
    case "git status": return run(workspace,["status","--short"]);
+   case "git checkpoint": return run(workspace,["rev-parse","HEAD"]);
+   case "git branch": {
+    const branch=typeof input.branch==="string"?input.branch.trim():"";
+    if(!/^[A-Za-z0-9._/-]+$/.test(branch)||branch.startsWith("-")||branch.includes("..")||branch.includes("//"))throw new Error("Invalid Git branch name.");
+    if(branch==="main"||branch==="master"||branch.startsWith("main/")||branch.startsWith("master/"))throw new Error("Protected branch name cannot be created by the agent.");
+    return run(workspace,["switch","-c",branch]);
+   }
    case "git diff": return run(workspace,["diff","--"]);
    case "git log": return run(workspace,["log","-n","20","--oneline","--decorate"]);
    case "git add": return run(workspace,["add","--",safePath(input.path,workspace)]);
@@ -41,6 +48,14 @@ export function createGitToolAdapter(options:{root:string}):ToolAdapter{
     const message=typeof input.message==="string"?input.message.trim():"";
     if(!message||message.length>200)throw new Error("Commit message is required and must be <= 200 characters.");
     return run(workspace,["commit","-m",message]);
+   }
+   case "git rollback": {
+    const sha=typeof input.commit==="string"?input.commit.trim():"";
+    if(!/^[0-9a-fA-F]{40}$/.test(sha))throw new Error("Rollback requires an exact 40-character commit SHA.");
+    const current=await run(workspace,["branch","--show-current"]) as {stdout?:string};
+    const branch=(current.stdout??"").trim();
+    if(branch==="main"||branch==="master")throw new Error("Rollback on protected main/master branches is blocked.");
+    return run(workspace,["reset","--hard",sha]);
    }
    case "git push":{
     const remote=typeof input.remote==="string"&&input.remote.trim()?input.remote.trim():"origin";
