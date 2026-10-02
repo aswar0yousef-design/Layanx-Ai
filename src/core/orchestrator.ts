@@ -115,6 +115,7 @@ export class LayanXCore{
   readonly gitCommits:GitCommitGenerator;
   readonly codeReview:CodeReviewAgent;
   readonly securityReview:SecurityReviewAgent;
+  readonly prGenerator:PullRequestGenerator;
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
@@ -134,6 +135,7 @@ export class LayanXCore{
     this.gitCommits=new GitCommitGenerator();
     this.codeReview=new CodeReviewAgent();
     this.securityReview=new SecurityReviewAgent();
+    this.prGenerator=new PullRequestGenerator();
   }
 
   restoreRuntimeSnapshot(snapshot:import("./runtime-persistence.js").RuntimeSnapshot){
@@ -164,6 +166,7 @@ export class LayanXCore{
   reviewCurrentCommit(baseRef="HEAD~1"){return this.codeReview.review(baseRef);}
   reviewCurrentCommitSecurity(baseRef="HEAD~1"){return this.securityReview.review(baseRef);}
   commitMissionChanges(options:import("./git-commit-generator.js").GitCommitOptions){return this.gitCommits.commit(options);}
+  generatePullRequest(options:import("./pr-generator.js").PullRequestOptions){return this.prGenerator.generate(options);}
   async applySafeCodeModification(request:import("./safe-code-modifier.js").SafeModificationRequest){return this.safeCodeModifier.apply(request);}
   registerMissionDependencies(missionId:string,dependsOn:string[],projectId="default"){return this.missionDependencies.register(missionId,dependsOn,projectId);}
   missionDependencyStatus(missionId:string){return this.missionDependencies.status(missionId);}
