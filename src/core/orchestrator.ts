@@ -118,6 +118,7 @@ export class LayanXCore{
   readonly prGenerator:PullRequestGenerator;
   readonly releaseState=new ReleaseStateMachine();
   readonly releaseManager:ReleaseManager;
+  readonly tracer=new RuntimeTracer();
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
