@@ -131,7 +131,7 @@ export class ProjectIntelligence{
       packageJson:files.some(file=>file.path==="package.json"),
       tsconfig:files.some(file=>file.path==="tsconfig.json"||file.path==="tsconfig.base.json"),
       readme:files.some(file=>/^README(?:\\..+)?$/i.test(file.path)),
-      git:files.some(file=>file.path===".git/HEAD"),
+      git:await this.exists(resolve(workspace,".git")),
       tests:files.some(file=>/(^|\\/)(test|tests|__tests__)\\//i.test(file.path)||/\\.(spec|test)\\.[^.]+$/i.test(file.path)),
       src:files.some(file=>/^src\\//i.test(file.path)),
       entryPoints:files.filter(file=>/^(src\\/)?(index|main|server|app)\\.(ts|tsx|js|jsx|mjs|cjs)$/i.test(file.path)).slice(0,20).map(file=>file.path)
@@ -156,6 +156,10 @@ export class ProjectIntelligence{
     const safe=projectId.trim();
     if(!safe||safe==="."||safe===".."||safe.includes("/")||safe.includes("\\\\"))throw new Error("Invalid project workspace identity.");
     return resolve(this.root,safe);
+  }
+
+  private async exists(path:string):Promise<boolean>{
+    try{await stat(path);return true;}catch{return false;}
   }
 
   private async markerFingerprint(workspace:string):Promise<string>{
