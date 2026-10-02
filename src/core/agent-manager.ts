@@ -1,4 +1,4 @@
-import type {AgentContract} from "./contracts.js";
+import type {AgentContract,AgentProfile} from "./contracts.js";
 
 export class AgentManager {
   private readonly contracts=new Map<string,AgentContract>();
@@ -15,4 +15,8 @@ export class AgentManager {
   }
 
   list():AgentContract[]{return [...this.contracts.values()];}
+
+  profile(agentId:string):AgentProfile|undefined{return this.get(agentId).profile;}
+
+  findByRole(role:AgentProfile["role"]):AgentContract[]{return this.list().filter(agent=>agent.profile?.role===role);}
 }
