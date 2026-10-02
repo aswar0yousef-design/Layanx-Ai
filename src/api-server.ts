@@ -352,7 +352,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"approval failed"});}
    return;
   }
-  if(request.method==="GET"&&request.url==="/v1/missions"){json(response,200,{ok:true,missions:options.core.missions.list()});return;}
+  if(request.method==="GET"&&request.url==="/v1/missions"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}json(response,200,{ok:true,missions:options.core.missions.list()});return;}
    if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/tools\/execute-adaptive$/)){
     if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
     const id=request.url.split("/")[3] as string;
