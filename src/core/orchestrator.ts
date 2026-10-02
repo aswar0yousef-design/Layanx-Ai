@@ -116,6 +116,8 @@ export class LayanXCore{
   readonly codeReview:CodeReviewAgent;
   readonly securityReview:SecurityReviewAgent;
   readonly prGenerator:PullRequestGenerator;
+  readonly releaseState=new ReleaseStateMachine();
+  readonly releaseManager:ReleaseManager;
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
@@ -136,6 +138,7 @@ export class LayanXCore{
     this.codeReview=new CodeReviewAgent();
     this.securityReview=new SecurityReviewAgent();
     this.prGenerator=new PullRequestGenerator();
+    this.releaseManager=new ReleaseManager();
   }
 
   restoreRuntimeSnapshot(snapshot:import("./runtime-persistence.js").RuntimeSnapshot){
@@ -167,6 +170,11 @@ export class LayanXCore{
   reviewCurrentCommitSecurity(baseRef="HEAD~1"){return this.securityReview.review(baseRef);}
   commitMissionChanges(options:import("./git-commit-generator.js").GitCommitOptions){return this.gitCommits.commit(options);}
   generatePullRequest(options:import("./pr-generator.js").PullRequestOptions){return this.prGenerator.generate(options);}
+  createReleaseRecord(input:Omit<import("./release-state-machine.js").ReleaseRecord,"stage"|"createdAt"|"updatedAt"|"blockers">){return this.releaseState.create(input);}
+  releaseRecord(id:string){return this.releaseState.get(id);}
+  releaseRecords(){return this.releaseState.list();}
+  transitionRelease(id:string,next:import("./release-state-machine.js").ReleaseStage,blockers:string[]=[]){const record=this.releaseState.transition(id,next,blockers);this.audit.append({timestamp:new Date().toISOString(),actor:"release-manager",action:"release.transition",resource:id,result:"success",metadata:{missionId:record.missionId,projectId:record.projectId,stage:record.stage}});return record;}
+  prepareRelease(record:import("./release-state-machine.js").ReleaseRecord,pr:import("./pr-generator.js").PullRequestDraft){return this.releaseManager.prepare(record,pr);}
   async applySafeCodeModification(request:import("./safe-code-modifier.js").SafeModificationRequest){return this.safeCodeModifier.apply(request);}
   registerMissionDependencies(missionId:string,dependsOn:string[],projectId="default"){return this.missionDependencies.register(missionId,dependsOn,projectId);}
   missionDependencyStatus(missionId:string){return this.missionDependencies.status(missionId);}
