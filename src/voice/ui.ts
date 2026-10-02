@@ -29,43 +29,102 @@ audio{width:100%;margin-top:14px}
 <audio id="player" controls></audio>
 <script>
 const mic=document.getElementById('mic'),status=document.getElementById('status'),project=document.getElementById('project'),token=document.getElementById('token'),transcript=document.getElementById('transcript'),resultBox=document.getElementById('result'),player=document.getElementById('player');
-let recorder,chunks=[],stream,recognition;
+let pc=null,dc=null,localStream=null,realtime=false,recorder,chunks=[],stream,recognition;
 function headers(){const t=token.value.trim();return t?{'Authorization':'Bearer '+t}:{}}
+function setStatus(text){status.textContent=text}
+function send(event){if(dc&&dc.readyState==='open')dc.send(JSON.stringify(event))}
 async function executeText(text,localSpeech=false){
- transcript.textContent=text;status.textContent='أنفّذ المهمة...';
- let r=await fetch('/v1/agent/gateway',{method:'POST',headers:{...headers(),'content-type':'application/json'},body:JSON.stringify({goal:text,projectId:project.value.trim()||'default',maxSteps:10})});
+ transcript.textContent=text;setStatus('تنفيذ المهمة...');
+ const r=await fetch('/v1/agent/gateway',{method:'POST',headers:{...headers(),'content-type':'application/json'},body:JSON.stringify({goal:text,projectId:project.value.trim()||'default',maxSteps:10})});
  const data=await r.json();if(!r.ok&&r.status!==202)throw new Error(data.error||JSON.stringify(data));resultBox.textContent=JSON.stringify(data,null,2);
  const reply=data.paused?'المهمة متوقفة وتحتاج إلى موافقتك.':data.completed?'تم تنفيذ المهمة بنجاح.':'انتهى التنفيذ ولم تكتمل المهمة. راجع التفاصيل في لوحة LayanX.';
- if(localSpeech&&'speechSynthesis' in window){speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(reply);u.lang='ar-SA';speechSynthesis.speak(u);status.textContent='جاهز';return}
- status.textContent='أجهز الرد الصوتي...';
- r=await fetch('/v1/voice/speak',{method:'POST',headers:{...headers(),'content-type':'application/json'},body:JSON.stringify({text:reply})});
- if(!r.ok)throw new Error(await r.text());player.src=URL.createObjectURL(await r.blob());await player.play().catch(()=>{});
- status.textContent='جاهز';
+ if(localSpeech&&'speechSynthesis' in window){speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(reply);u.lang='ar-SA';speechSynthesis.speak(u);setStatus('جاهز');return}
+ setStatus('تجهيز الرد الصوتي...');
+ const audio=await fetch('/v1/voice/speak',{method:'POST',headers:{...headers(),'content-type':'application/json'},body:JSON.stringify({text:reply})});
+ if(!audio.ok)throw new Error(await audio.text());player.src=URL.createObjectURL(await audio.blob());await player.play().catch(()=>{});
+ setStatus('جاهز');
+}
+async function handleRealtimeEvent(event){
+ let data;try{data=JSON.parse(event.data)}catch{return}
+ if(data.type==='input_audio_buffer.speech_started'){setStatus('أستمع...');return}
+ if(data.type==='input_audio_buffer.speech_stopped'){setStatus('أفكر...');return}
+ if(data.type==='response.created'){setStatus('أفكر...');return}
+ if(data.type==='response.output_audio_transcript.delta'){transcript.textContent+=(data.delta||'');return}
+ if(data.type==='response.output_audio_transcript.done'){if(data.transcript)transcript.textContent=data.transcript;return}
+ if(data.type==='response.done'){
+   const outputs=data.response?.output||[];
+   for(const item of outputs){
+     if(item.type!=='function_call'||item.name!=='layanx_execute')continue;
+     setStatus('أنفّذ المهمة عبر LayanX...');
+     let args;
+     try{args=JSON.parse(item.arguments||'{}')}catch{args={goal:item.arguments||''}}
+     const goal=typeof args.goal==='string'?args.goal.trim():'';
+     const projectId=typeof args.projectId==='string'&&args.projectId.trim()?args.projectId.trim():(project.value.trim()||'default');
+     const maxSteps=Number.isInteger(args.maxSteps)?Math.min(Math.max(args.maxSteps,1),25):10;
+     if(!goal){
+       send({type:'conversation.item.create',item:{type:'function_call_output',call_id:item.call_id,output:JSON.stringify({ok:false,error:'goal is required'})}});
+       send({type:'response.create'});continue;
+     }
+     try{
+       const r=await fetch('/v1/agent/gateway',{method:'POST',headers:{...headers(),'content-type':'application/json'},body:JSON.stringify({goal,projectId,maxSteps})});
+       const result=await r.json();
+       resultBox.textContent=JSON.stringify(result,null,2);
+       send({type:'conversation.item.create',item:{type:'function_call_output',call_id:item.call_id,output:JSON.stringify(result)}});
+       send({type:'response.create'});
+       setStatus(result.paused?'بانتظار الموافقة...':'أتحدث...');
+     }catch(error){
+       const failure={ok:false,error:String(error)};
+       resultBox.textContent=JSON.stringify(failure,null,2);
+       send({type:'conversation.item.create',item:{type:'function_call_output',call_id:item.call_id,output:JSON.stringify(failure)}});
+       send({type:'response.create'});setStatus('تعذر تنفيذ المهمة');
+     }
+   }
+   return;
+ }
+ if(data.type==='error'){setStatus('خطأ صوتي: '+(data.error?.message||'غير معروف'))}
+}
+async function connectRealtime(){
+ if(realtime)return;
+ setStatus('الاتصال الصوتي...');
+ const response=await fetch('/v1/voice/realtime-token',{method:'POST',headers:{...headers(),'content-type':'application/json'},body:JSON.stringify({projectId:project.value.trim()||'default'})});
+ const tokenData=await response.json();if(!response.ok)throw new Error(tokenData.error||JSON.stringify(tokenData));
+ const ephemeralKey=tokenData.value;
+ pc=new RTCPeerConnection();
+ pc.ontrack=e=>{player.srcObject=e.streams[0];player.play().catch(()=>{})};
+ pc.onconnectionstatechange=()=>{if(pc.connectionState==='connected'){realtime=true;mic.classList.add('listening');setStatus('جاهز — تحدث الآن')}if(['failed','closed','disconnected'].includes(pc.connectionState)){realtime=false;mic.classList.remove('listening');setStatus('انقطع الاتصال الصوتي')}}
+ dc=pc.createDataChannel('oai-events');
+ dc.addEventListener('open',()=>{setStatus('جاهز — تحدث الآن')});
+ dc.addEventListener('message',handleRealtimeEvent);
+ localStream=await navigator.mediaDevices.getUserMedia({audio:true});
+ localStream.getTracks().forEach(track=>pc.addTrack(track,localStream));
+ const offer=await pc.createOffer();await pc.setLocalDescription(offer);
+ const sdp=await fetch('https://api.openai.com/v1/realtime/calls',{method:'POST',headers:{Authorization:'Bearer '+ephemeralKey,'Content-Type':'application/sdp'},body:offer.sdp});
+ if(!sdp.ok)throw new Error('Realtime WebRTC connection failed: '+await sdp.text());
+ await pc.setRemoteDescription({type:'answer',sdp:await sdp.text()});
+}
+function disconnectRealtime(){
+ realtime=false;dc?.close();dc=null;pc?.close();pc=null;localStream?.getTracks().forEach(t=>t.stop());localStream=null;mic.classList.remove('listening');setStatus('تم إيقاف الصوت');
 }
 async function startBrowserRecognition(){
- const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
- if(!SR)return false;
+ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR)return false;
  recognition=new SR();recognition.lang='ar-SA';recognition.interimResults=false;recognition.continuous=false;
- recognition.onstart=()=>{mic.classList.add('listening');status.textContent='أستمع... تحدث الآن'};
- recognition.onerror=e=>{mic.classList.remove('listening');status.textContent='خطأ في التعرف الصوتي: '+e.error};
+ recognition.onstart=()=>{mic.classList.add('listening');setStatus('أستمع... تحدث الآن')};
+ recognition.onerror=e=>{mic.classList.remove('listening');setStatus('خطأ في التعرف الصوتي: '+e.error)};
  recognition.onend=()=>mic.classList.remove('listening');
- recognition.onresult=async e=>{try{await executeText(e.results[0][0].transcript,true)}catch(err){status.textContent='حدث خطأ';resultBox.textContent=String(err)}};
+ recognition.onresult=async e=>{try{await executeText(e.results[0][0].transcript,true)}catch(err){setStatus('حدث خطأ');resultBox.textContent=String(err)}};
  recognition.start();return true;
 }
-async function startRecorder(){stream=await navigator.mediaDevices.getUserMedia({audio:true});recorder=new MediaRecorder(stream);chunks=[];recorder.ondataavailable=e=>e.data.size&&chunks.push(e.data);recorder.onstop=finishRecorder;recorder.start();mic.classList.add('listening');status.textContent='أستمع... تحدث الآن'}
-async function stopRecorder(){if(recorder&&recorder.state!=='inactive')recorder.stop();mic.classList.remove('listening');status.textContent='أحوّل الصوت إلى نص...'}
-async function finishRecorder(){stream.getTracks().forEach(t=>t.stop());const blob=new Blob(chunks,{type:recorder.mimeType||'audio/webm'});try{
- const h={...headers(),'content-type':blob.type||'audio/webm','x-layanx-filename':'voice.webm','x-layanx-language':'ar'};
- const r=await fetch('/v1/voice/transcribe',{method:'POST',headers:h,body:blob});if(!r.ok)throw new Error(await r.text());const tr=await r.json();await executeText(tr.text,false);
-}catch(e){status.textContent='حدث خطأ';resultBox.textContent=String(e)}}
-mic.onclick=async()=>{
- try{
-  if(recognition){recognition.stop();recognition=null;return}
-  if(recorder&&recorder.state==='recording'){await stopRecorder();return}
-  if(await startBrowserRecognition())return;
-  await startRecorder();
- }catch(e){status.textContent='تعذر الوصول إلى الميكروفون';resultBox.textContent=String(e)}
-};
+async function startRecorder(){stream=await navigator.mediaDevices.getUserMedia({audio:true});recorder=new MediaRecorder(stream);chunks=[];recorder.ondataavailable=e=>e.data.size&&chunks.push(e.data);recorder.onstop=finishRecorder;recorder.start();mic.classList.add('listening');setStatus('أستمع... تحدث الآن')}
+async function stopRecorder(){if(recorder&&recorder.state!=='inactive')recorder.stop();mic.classList.remove('listening');setStatus('أحوّل الصوت إلى نص...')}
+async function finishRecorder(){stream.getTracks().forEach(t=>t.stop());const blob=new Blob(chunks,{type:recorder.mimeType||'audio/webm'});try{const r=await fetch('/v1/voice/transcribe',{method:'POST',headers:{...headers(),'content-type':blob.type||'audio/webm','x-layanx-filename':'voice.webm','x-layanx-language':'ar'},body:blob});if(!r.ok)throw new Error(await r.text());const tr=await r.json();await executeText(tr.text,false)}catch(e){setStatus('حدث خطأ');resultBox.textContent=String(e)}}
+mic.onclick=async()=>{try{
+ if(realtime){disconnectRealtime();return}
+ await connectRealtime();
+}catch(e){
+ resultBox.textContent=String(e);
+ try{if(await startBrowserRecognition())return}catch{}
+ try{await startRecorder()}catch(f){setStatus('تعذر الوصول إلى الميكروفون');resultBox.textContent=String(f)}
+}};
 token.value=localStorage.getItem('layanx.voice.token')||'';token.onchange=()=>localStorage.setItem('layanx.voice.token',token.value);
 </script></main></body></html>`;
 }
