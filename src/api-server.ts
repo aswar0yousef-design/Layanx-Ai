@@ -47,6 +47,23 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"agent gateway failed"});}
    return;
   }
+  if(request.method==="GET"&&request.url?.match(/^\/v1\/missions\/[^/]+\/events$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const missionId=request.url.split("/")[3] as string;
+   const mission=options.core.missions.get(missionId);
+   if(!mission){json(response,404,{ok:false,error:"mission_not_found"});return;}
+   const parsed=new URL(request.url,"http://localhost");
+   const projectId=parsed.searchParams.get("projectId")?.trim()??"";
+   const after=parsed.searchParams.get("after")?.trim()||undefined;
+   if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
+   try{
+    options.core.projectIsolation.assertMissionProject(projectId,mission.projectId);
+    options.core.eventStream.sync(options.core.audit.forMission(missionId),{[missionId]:mission.projectId??""});
+    const events=options.core.eventStream.list(projectId,missionId,after);
+    json(response,200,{ok:true,missionId,projectId,events});
+   }catch(error){json(response,403,{ok:false,error:error instanceof Error?error.message:"event stream access denied"});}
+   return;
+  }
   if(request.method==="GET"&&request.url?.startsWith("/v1/control-center")){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const parsed=new URL(request.url,"http://localhost");
