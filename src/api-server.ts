@@ -109,7 +109,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   if(request.method==="GET"&&request.url==="/v1/tools"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const contract=options.core.agents.get("core");
-   json(response,200,{ok:true,tools:options.core.toolCatalog.list(contract,"L1_READ")});
+   json(response,200,{ok:true,tools:options.core.toolCatalog.list(contract,"L4_EXECUTE")});
    return;
   }
   if(request.method==="GET"&&request.url?.startsWith("/v1/tools/discover")){
