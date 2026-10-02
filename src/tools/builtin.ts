@@ -80,6 +80,28 @@ export function registerBuiltinTools(core:LayanXCore):void {
   } satisfies ToolAdapter);
 
   core.tools.register({
+    name:"development.prepare",
+    description:"prepare a bounded development session with project state and explicit approval requirements",
+    permission:"L2_ANALYZE",
+    dangerous:false,
+    actions:["prepare development session","plan development session","تحضير جلسة التطوير","خطة التطوير"],
+    tags:["development","session","planning","verification","git"]
+  });
+  core.toolAdapters.register("development.prepare",{
+    async execute(request:ToolRequest):Promise<unknown>{
+      if(!request.projectId)throw new Error("Project identity is required.");
+      const intelligence=await core.projectIntelligence.scan(request.projectId);
+      return {
+        projectId:request.projectId,
+        project:{summary:intelligence.summary,markers:intelligence.markers,package:intelligence.package},
+        verification:{supported:["test","typecheck","build"],available:intelligence.package?.scripts.filter(script=>["test","typecheck","build"].includes(script))??[],requiresApproval:true},
+        dangerousActions:{branch:"git.branch",verify:"project.verify",rollback:"git.rollback",commit:"git.commit"},
+        safety:"Preparation only; no dangerous action is executed."
+      };
+    }
+  } satisfies ToolAdapter);
+
+  core.tools.register({
     name:"project.inspect",
     description:"build a bounded static inventory of the current project workspace without executing project code",
     permission:"L2_ANALYZE",
