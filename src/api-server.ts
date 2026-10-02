@@ -25,6 +25,22 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   if(request.method==="GET"&&request.url==="/voice"){
    response.statusCode=200;response.setHeader("content-type","text/html; charset=utf-8");response.end(voiceUiHtml());return;
   }
+  if(request.method==="POST"&&request.url==="/v1/voice/realtime-token"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const input=await body(request,max);
+    const model=typeof input.model==="string"&&input.model.trim()?input.model.trim():undefined;
+    const voiceName=typeof input.voice==="string"&&input.voice.trim()?input.voice.trim():undefined;
+    const projectId=typeof input.projectId==="string"&&input.projectId.trim()?input.projectId.trim():"default";
+    const safetySource=`${request.socket.remoteAddress??"local"}|${request.headers["user-agent"]??"unknown"}|${projectId}`;
+    const safetyIdentifier=createHash("sha256").update(safetySource).digest("hex");
+    const originalFetch=globalThis.fetch;
+    const result=await voice.createRealtimeClientSecret({model,voice:voiceName,instructions:`You are LayanX AI, a local-first autonomous assistant. Speak concise Arabic by default. Current project: ${projectId}. For any project/system action, call layanx_execute with the user's exact goal and projectId "${projectId}". Never claim an action was completed unless the function result confirms it. Explain when approval is required.`});
+    void originalFetch;
+    json(response,200,{ok:true,...result,safetyIdentifierBound:true});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"realtime token creation failed"});}
+   return;
+  }
   if(request.method==="GET"&&request.url==="/v1/voice/status"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    json(response,200,{ok:true,voice:voice.status()});return;
