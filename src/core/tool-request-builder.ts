@@ -7,7 +7,7 @@ export interface ToolRequestBuildContext{
   agentId:string;
   projectId:string;
   capabilityId:string;
-  payload?:unknown; planIndex?:number;
+  payload?:unknown; planIndex?:number; retryAttempt?:number;
 }
 
 export class ToolRequestBuilder{
@@ -19,7 +19,7 @@ export class ToolRequestBuilder{
     if(rank[plan.permission]<rank[definition.permission])throw new Error("Tool plan permission is below the tool requirement.");
     if(rank[plan.permission]>rank[mission.requiredPermission])throw new Error("Tool plan permission exceeds mission scope.");
     if(!context.agentId||!context.projectId||!context.capabilityId)throw new Error("Execution context is incomplete.");
-    const idempotencyKey=this.key(mission.id,context.agentId,plan.tool,plan.action,context.planIndex);
+    const idempotencyKey=this.key(mission.id,context.agentId,plan.tool,plan.action,context.planIndex,context.retryAttempt);
     return{
       missionId:mission.id,
       agentId:context.agentId,
@@ -37,8 +37,8 @@ export class ToolRequestBuilder{
     return (mission.tools??[]).map(plan=>this.build(mission,plan,context,catalog));
   }
 
-  private key(missionId:string,agentId:string,tool:string,action:string,planIndex?:number):string{
-    const raw=[missionId,agentId,tool,action,planIndex??0].join(":").toLowerCase();
+  private key(missionId:string,agentId:string,tool:string,action:string,planIndex?:number,retryAttempt?:number):string{
+    const raw=[missionId,agentId,tool,action,planIndex??0,"retry",retryAttempt??0].join(":").toLowerCase();
     let hash=2166136261;
     for(let i=0;i<raw.length;i++){hash^=raw.charCodeAt(i);hash=Math.imul(hash,16777619);}
     return "tool-"+(hash>>>0).toString(16);
