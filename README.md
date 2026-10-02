@@ -27,7 +27,7 @@ The present target is to run the full runtime on the user's own computer with lo
 
 LayanX now includes a voice layer on top of the existing Runtime. It provides microphone-friendly local UI at `/voice`, speech-to-text at `/v1/voice/transcribe`, text-to-speech at `/v1/voice/speak`, and voice provider status at `/v1/voice/status`. Voice commands are sent through the existing `/v1/agent/gateway`, so planning, permissions, tools, verification, recovery, memory, and audit remain in the same runtime path.
 
-The first voice adapter uses OpenAI audio endpoints when `OPENAI_API_KEY` is configured. The adapter is isolated behind `VoiceService`, so a local STT/TTS provider can be added later without changing the mission engine. Current OpenAI documentation also exposes dedicated transcription and real-time audio capabilities.
+The first voice adapter uses OpenAI audio endpoints when `OPENAI_API_KEY` is configured. The adapter is isolated behind `VoiceService`, so a local STT/TTS provider can be added later without changing the mission engine. Realtime voice is available through WebRTC using short-lived ephemeral client secrets; the browser never receives the long-lived API key. Realtime function calling exposes `layanx_execute`, which routes project/system actions back into the existing LayanX Agent Gateway. Current OpenAI documentation also exposes dedicated transcription and real-time audio capabilities.
 
 Open the local voice UI after starting the API:
 
