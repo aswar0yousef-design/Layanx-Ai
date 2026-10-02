@@ -36,7 +36,7 @@ export function createFileWriteToolAdapter(options:{root:string}):ToolAdapter{
   if(!path)throw new Error("File path is required.");
   if(content.length>2*1024*1024)throw new Error("File content exceeds the 2 MiB write limit.");
   const target=sandboxPath(workspace,path);
-  if(request.action==="write file"){
+  if(request.action==="write file"||request.action==="modify file"){
    await mkdir(resolve(target,".."),{recursive:true});
    await writeFile(target,content,"utf8");
    return{path,bytes:Buffer.byteLength(content,"utf8"),written:true};
