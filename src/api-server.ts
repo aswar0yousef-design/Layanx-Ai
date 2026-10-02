@@ -375,6 +375,24 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"approval failed"});}
    return;
   }
+  if(request.method==="GET"&&request.url==="/v1/git/branch"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{json(response,200,{ok:true,status:await options.core.gitBranchStatus()});}
+   catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"git status failed"});}
+   return;
+  }
+  if(request.method==="POST"&&request.url==="/v1/git/branch"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const input=await body(request,max);
+    const branchName=typeof input.branchName==="string"?input.branchName.trim():"";
+    const baseRef=typeof input.baseRef==="string"&&input.baseRef.trim()?input.baseRef.trim():undefined;
+    if(!branchName){json(response,400,{ok:false,error:"branchName is required"});return;}
+    const status=await options.core.createGitBranch(branchName,baseRef,input.requireClean!==false);
+    json(response,201,{ok:true,status});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"git branch creation failed"});}
+   return;
+  }
   if(request.method==="GET"&&request.url==="/v1/mission-dependencies"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const parsed=new URL(request.url,"http://localhost");
