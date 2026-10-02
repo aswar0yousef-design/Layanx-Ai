@@ -17,7 +17,8 @@ export function startRuntimeApi(options:RuntimeApiOptions){
  const control=new ControlCenter(options.core);
  const server=createServer(async(request,response)=>{
   response.setHeader("cache-control","no-store");
-  if(requireToken&&!authorized(request,options.token)&&request.url!=="/v1/health"){json(response,401,{ok:false,error:"unauthorized"});return;}\n  if(request.method==="POST"&&request.url==="/mcp"){
+  if(requireToken&&!authorized(request,options.token)&&request.url!=="/v1/health"){json(response,401,{ok:false,error:"unauthorized"});return;}
+  if(request.method==="POST"&&request.url==="/mcp"){
    if(!authorized(request,options.token)){json(response,401,{jsonrpc:"2.0",error:{code:-32001,message:"Unauthorized"}});return;}
    try{
     const input=await body(request,max);
