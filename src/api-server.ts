@@ -375,6 +375,33 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"approval failed"});}
    return;
   }
+  if(request.method==="GET"&&request.url==="/v1/release"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   json(response,200,{ok:true,releases:options.core.releaseRecords()});return;
+  }
+  if(request.method==="POST"&&request.url==="/v1/release"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const input=await body(request,max);
+    const required=["id","missionId","projectId","branch","baseBranch","commit","title"];
+    if(required.some(key=>typeof input[key]!=="string"||!(input[key] as string).trim())){json(response,400,{ok:false,error:"id, missionId, projectId, branch, baseBranch, commit, and title are required"});return;}
+    const release=options.core.createReleaseRecord({id:input.id as string,missionId:input.missionId as string,projectId:input.projectId as string,branch:input.branch as string,baseBranch:input.baseBranch as string,commit:input.commit as string,title:input.title as string});
+    json(response,201,{ok:true,release});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"release creation failed"});}
+   return;
+  }
+  if(request.method==="POST"&&request.url?.match(/^\/v1\/release\/[^/]+\/transition$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const id=request.url.split("/")[3] as string;
+    const input=await body(request,max);
+    const next=typeof input.stage==="string"?input.stage as import("./core/release-state-machine.js").ReleaseStage:"BLOCKED";
+    const blockers=Array.isArray(input.blockers)?input.blockers.filter((v):v is string=>typeof v==="string"): [];
+    const release=options.core.transitionRelease(id,next,blockers);
+    json(response,200,{ok:true,release});
+   }catch(error){json(response,409,{ok:false,error:error instanceof Error?error.message:"release transition failed"});}
+   return;
+  }
   if(request.method==="POST"&&request.url==="/v1/git/pr-draft"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{
