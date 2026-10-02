@@ -321,6 +321,16 @@ export class LayanXCore{
         break;
       }
       if(!next){
+        if(repaired){
+          const finalMission=this.missions.get(missionId);
+          if(!finalMission)throw new Error("Mission not found.");
+          const finalResult=await this.executionRuntime.finalize(finalMission,latest,agentId);
+          this.missions.save(finalMission);
+          if(finalResult.ok)return{missionId,completed:true,attempts:attempt,repaired,exhausted:false,blocked:false,results};
+          failure={attempt,ok:false,error:finalResult.error??"Verification failed after repair."};
+          results.push(failure);
+          continue;
+        }
         failure={attempt,ok:false,error:"Repair planner produced no corrective action."};
         results.push(failure);
         break;
@@ -340,12 +350,6 @@ export class LayanXCore{
       if(result.ok){
         repaired=true;
         failure=undefined;
-        const final=current;
-        const finalResult=await this.executionRuntime.finalize(final,latest,agentId);
-        this.missions.save(final);
-        if(finalResult.ok)return{missionId,completed:true,attempts:attempt,repaired,exhausted:false,blocked:false,results};
-        failure={attempt,ok:false,error:finalResult.error??"Verification failed after repair."};
-        results.push(failure);
       }else{
         failure=results[results.length-1];
         if(current.status==="blocked")return{missionId,completed:false,attempts:attempt,repaired,exhausted:false,blocked:true,results,reason:result.error};
