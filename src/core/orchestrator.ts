@@ -46,6 +46,7 @@ import {AutomaticTestSelector} from "./test-selection.js";
 import {AutonomousRepairLoop} from "./autonomous-repair.js";
 import {createHash} from "node:crypto";
 import {MissionEventStream} from "./event-stream.js";
+import {AutomaticTestRunner, type TestRunResult} from "./test-runner.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -93,6 +94,7 @@ export class LayanXCore{
   readonly testSelector=new AutomaticTestSelector();
   readonly autonomousRepair=new AutonomousRepairLoop();
   readonly eventStream=new MissionEventStream();
+  readonly testRunner=new AutomaticTestRunner({root:process.env.LAYANX_WORKSPACE_ROOT??process.cwd()});
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
@@ -177,6 +179,14 @@ export class LayanXCore{
     const mission=this.missions.get(missionId);
     if(!mission)throw new Error("Mission not found.");
     return this.skillRuntime.run(skillId,mission,projectId,payloads);
+  }
+
+  async runSelectedTests(mission:import("./types.js").Mission,projectId:string,tests=mission.selectedTests??[]):Promise<TestRunResult>{
+    this.projectIsolation.assertMissionProject(projectId,mission.projectId);
+    const result=await this.testRunner.run(tests);
+    this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"tests.run",resource:mission.id,result:result.ok?"success":"failure",metadata:{missionId:mission.id,projectId,tests:result.tests,passed:result.passed,failed:result.failed,timedOut:result.timedOut,durationMs:result.durationMs}});
+    this.memory.remember({missionId:mission.id,projectId,kind:result.ok?"experience":"failure",summary:result.ok?"Selected tests passed":"Selected tests failed",content:{tests:result.tests,passed:result.passed,failed:result.failed,exitCode:result.exitCode,signal:result.signal,timedOut:result.timedOut,stdout:result.stdout,stderr:result.stderr,error:result.error},confidence:1,tags:["tests","verification",result.ok?"success":"failure"]});
+    return result;
   }
 
   private async recordAdaptiveStop(mission:import("./types.js").Mission,decision:import("./adaptive-decision.js").AdaptiveDecision,stepsExecuted:number,agentId:string){
@@ -280,6 +290,36 @@ export class LayanXCore{
       }
       completedTools.push(next.tool);
       latest=result.data;
+
+      const permissionRank:Record<import("./types.js").PermissionLevel,number>={L1_READ:1,L2_ANALYZE:2,L3_MODIFY:3,L4_EXECUTE:4,L5_CRITICAL:5};
+      if(result.ok&&permissionRank[next.permission]>=3&&mission.selectedTests?.length){
+        const tests=await this.runSelectedTests(mission,projectId,mission.selectedTests);
+        if(!tests.ok){
+          const testFailure:import("./runtime.js").RuntimeResult={
+            ok:false,missionId:mission.id,verified:false,recoverable:true,
+            error:[tests.error??"Selected tests failed.",tests.stderr,tests.stdout].filter(Boolean).join("\n"),
+            data:{tests:tests.tests,failed:tests.failed,exitCode:tests.exitCode,timedOut:tests.timedOut}
+          };
+          const repair=this.autonomousRepair.run(mission,testFailure,{
+            planner:this.aiPlanner,
+            tools:catalog,
+            memory:missionMemory,
+            projectContext:await this.projectIntelligence.scan(projectId).then(i=>({summary:i.summary,markers:i.markers,package:i.package,files:i.files.slice(0,80).map(f=>f.path)})).catch(()=>undefined),
+            execute:async(repairPlan)=>{
+              mission.tools=mission.tools??[];
+              mission.tools.push(repairPlan);
+              const repairIndex=mission.tools.length-1;
+              const repairResult=await this.executeMissionTool(missionId,projectId,repairIndex,repairPlan.payload??{},undefined,agentId,{deferVerification:true});
+              if(!repairResult.ok)return repairResult;
+              const retest=await this.runSelectedTests(mission,projectId,mission.selectedTests??[]);
+              return {...repairResult,verified:retest.ok,error:retest.ok?undefined:[retest.error??"Retest failed.",retest.stderr,retest.stdout].filter(Boolean).join("\n"),data:{repair:repairResult.data,retest}};
+            }
+          },3);
+          if(repair.completed)return{missionId,results:[...results,...repair.results],completed:true,repaired:true,repairAttempts:repair.attempts};
+          await this.recordAdaptiveStop(mission,{continue:false,reason:"tool_failure",detail:repair.reason??"Selected tests failed after repair attempts."},processed+1,agentId);
+          return{missionId,results:[...results,...repair.results],completed:false,reason:repair.reason??testFailure.error,recoverable:true};
+        }
+      }
     }
 
     const finalDecision=this.adaptiveDecision.decide({mission,stepsExecuted:processed,maxSteps,nextToolAvailable:false,toolSucceeded:true});
