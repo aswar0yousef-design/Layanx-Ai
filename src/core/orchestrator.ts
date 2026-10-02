@@ -360,6 +360,30 @@ export class LayanXCore{
     return{missionId,completed:false,attempts:limit,repaired,exhausted:true,blocked:false,results,reason:failure?.error??"Repair attempts exhausted."};
   }
 
+  async getDevelopmentSessionState(missionId:string,projectId:string,agentId="core"){
+    const mission=this.missions.get(missionId);
+    if(mission)this.projectIsolation.assertMissionProject(projectId,mission.projectId);
+    const snapshot=await this.persistence?.get(missionId);
+    if(!snapshot)return{missionId,exists:false,resumable:false};
+    if(snapshot.mission.projectId!==projectId)throw new Error("Project isolation violation.");
+    const pending=(snapshot.mission.tools??[]).findIndex((_,index)=>!snapshot.executionState.completedTools?.includes((snapshot.mission.tools??[])[index]?.tool??""));
+    return{
+      missionId,exists:true,resumable:(await this.persistence?.resumable()??[]).some(item=>item.mission.id===missionId),
+      missionStatus:snapshot.mission.status,executionStatus:snapshot.executionState.status,
+      recoverable:snapshot.executionState.recoverable,pendingToolIndex:pending>=0?pending:null,
+      toolCalls:snapshot.executionState.toolCalls,runtimeMs:snapshot.executionState.runtimeMs,
+      nextAction:snapshot.nextAction,checkpoint:snapshot.checkpoint,
+      savedAt:snapshot.savedAt,agentId
+    };
+  }
+
+  async resumeDevelopmentSession(missionId:string,projectId:string,approvalIds:Record<number,string>={},agentId="core"){
+    const state=await this.getDevelopmentSessionState(missionId,projectId,agentId);
+    if(!state.exists)throw new Error("No persisted development session found.");
+    if(!state.resumable)throw new Error("Development session is not resumable.");
+    return this.executeDevelopmentSession(missionId,projectId,approvalIds,agentId);
+  }
+
   async executeDevelopmentSession(missionId:string,projectId:string,approvalIds:Record<number,string>={},agentId="core"){
     const mission=this.missions.get(missionId);
     if(!mission)throw new Error("Mission not found.");
