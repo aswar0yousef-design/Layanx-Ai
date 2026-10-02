@@ -197,3 +197,13 @@ LayanX can now prepare a PR draft only after the current commit has matching cod
 - verifies both reviews match the current HEAD and branch
 - generates a structured PR body with mission, project, commit, files, and validation status
 - never merges or releases automatically
+## Release state machine
+
+LayanX now separates PR readiness from release readiness with an explicit state machine:
+`DRAFT -> REVIEWED -> SECURITY_APPROVED -> PR_READY -> HUMAN_APPROVAL -> MERGE_ALLOWED -> RELEASE_CANDIDATE -> RELEASE_APPROVED -> RELEASED`.
+Any gate can move the release to `BLOCKED`, and a blocked transition records its reason. The Release Manager verifies branch and commit identity before preparing a release. No merge or release operation is performed automatically.
+
+Release APIs:
+- `GET /v1/release`
+- `POST /v1/release`
+- `POST /v1/release/:id/transition`
