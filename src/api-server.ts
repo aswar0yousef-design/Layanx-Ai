@@ -65,6 +65,19 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }
    return;
   }
+  if(request.method==="GET"&&request.url?.match(/^\/v1\/projects\/[^/]+\/intelligence$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const parts=request.url.split("/");
+   const projectId=decodeURIComponent(parts[3]??"").trim();
+   if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
+   try{
+    const intelligence=await options.core.projectIntelligence.scan(projectId);
+    json(response,200,{ok:true,intelligence});
+   }catch(error){
+    json(response,422,{ok:false,error:error instanceof Error?error.message:"project intelligence scan failed"});
+   }
+   return;
+  }
   if(request.method==="GET"&&request.url?.startsWith("/v1/context")){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const parsed=new URL(request.url,"http://localhost");
@@ -267,7 +280,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   }
   if(request.method==="POST"&&request.url==="/v1/missions"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
-   try{const input=await body(request,max);const goal=typeof input.goal==="string"?input.goal.trim():"";if(!goal||goal.length>4000){json(response,400,{ok:false,error:"goal_required"});return;}const mission=await options.core.planAndStartMission(goal);json(response,201,{ok:true,mission,execution:options.core.executionStates.get(mission.id)});}
+   try{const input=await body(request,max);const goal=typeof input.goal==="string"?input.goal.trim():"";if(!goal||goal.length>4000){json(response,400,{ok:false,error:"goal_required"});return;}const projectId=typeof input.projectId==="string"&&input.projectId.trim()?input.projectId.trim():"default";const mission=await options.core.planAndStartMission(goal,projectId);json(response,201,{ok:true,mission,execution:options.core.executionStates.get(mission.id)});}
    catch(error){const message=error instanceof Error?error.message:"mission_failed";json(response,422,{ok:false,error:message});}
    return;
   }

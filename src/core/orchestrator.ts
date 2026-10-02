@@ -39,6 +39,7 @@ import {ContextFabric} from "./context-fabric.js";
 import {SkillRegistry} from "../skills/registry.js";
 import {SkillRuntime} from "../skills/runtime.js";
 import {AgentTeamRuntime} from "./team-runtime.js";
+import {ProjectIntelligence} from "./project-intelligence.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -80,6 +81,7 @@ export class LayanXCore{
   readonly toolAdapters=new ToolAdapterRegistry();
   readonly adaptiveDecision=new AdaptiveDecisionEngine();
   readonly projectIsolation=new ProjectIsolation();
+  readonly projectIntelligence=new ProjectIntelligence({root:process.env.LAYANX_WORKSPACE_ROOT??process.cwd()});
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
@@ -205,7 +207,8 @@ export class LayanXCore{
       try{
         next=await this.aiPlanner.nextTool({
           goal:mission.goal,result:latest,tools:catalog,
-          requiredPermission:mission.requiredPermission,completedTools,memory:missionMemory
+          requiredPermission:mission.requiredPermission,completedTools,memory:missionMemory,
+          projectContext:await this.projectIntelligence.scan(projectId).then(intelligence=>({summary:intelligence.summary,markers:intelligence.markers,package:intelligence.package,files:intelligence.files.slice(0,80).map(file=>file.path)})).catch(error=>({unavailable:true,reason:error instanceof Error?error.message:"project intelligence unavailable"}))
         });
       }catch(error){
         const decision=this.adaptiveDecision.decide({
@@ -273,16 +276,24 @@ export class LayanXCore{
     return{missionId,results,completed:results.length===plans.length&&results.every(result=>result.ok)};
   }
 
-  async planMission(goal:string){
+  async planMission(goal:string,projectId="default"){
     const contract=this.agents.get("core");
     const tools=this.toolCatalog.list(contract,contract.requiredPermission);
-    const plan=await this.aiPlanner.plan(goal,tools);
+    let projectContext:unknown=null;
+    try{
+      const intelligence=await this.projectIntelligence.scan(this.projectIsolation.normalize(projectId));
+      projectContext={summary:intelligence.summary,markers:intelligence.markers,package:intelligence.package,files:intelligence.files.slice(0,80).map(file=>file.path)};
+    }catch(error){
+      projectContext={unavailable:true,reason:error instanceof Error?error.message:"project intelligence unavailable"};
+    }
+    const plan=await this.aiPlanner.plan(goal,tools,projectContext);
     return this.missionCompiler.compile(plan,goal);
   }
 
   async planAndStartMission(goal:string,projectId="default"){
-    const m=await this.planMission(goal);
-    m.projectId=this.projectIsolation.normalize(projectId);
+    const normalizedProjectId=this.projectIsolation.normalize(projectId);
+    const m=await this.planMission(goal,normalizedProjectId);
+    m.projectId=normalizedProjectId;
     this.executionStates.start(m.id);
     this.ledger.append({id:crypto.randomUUID(),missionId:m.id,agentId:"core",action:"mission.create",status:"started",timestamp:new Date().toISOString(),detail:goal});
     this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"mission.create",resource:m.id,result:"success",metadata:{goal,missionId:m.id}});
