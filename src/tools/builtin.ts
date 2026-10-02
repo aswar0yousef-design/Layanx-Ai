@@ -96,7 +96,6 @@ export function registerBuiltinTools(core:LayanXCore):void {
       return core.projectIntelligence.scan(request.projectId);
     }
   } satisfies ToolAdapter);
-
 }
 
 
