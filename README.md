@@ -161,3 +161,17 @@ Git branch isolation is available through the runtime branch manager. Autonomous
 Git APIs:
 - `GET /v1/git/branch`
 - `POST /v1/git/branch` with `branchName`, optional `baseRef`, and optional `requireClean`
+
+## Autonomous commit and code review
+
+After safe code modification, LayanX can inspect the Git working tree and create a scoped commit. The commit layer verifies the expected branch, rejects unexpected files when a scope is supplied, stages only the selected files, and rejects unsafe autonomous commit messages.
+
+Code review is available before promotion:
+- `POST /v1/git/review`
+- detects potential credentials/private keys
+- flags `eval()` and shell execution patterns
+- reports changed files and missing test-file changes
+- returns an approval signal without automatically merging or releasing code
+
+Git commit:
+- `POST /v1/git/commit` with `missionId`, `projectId`, `message`, optional `expectedBranch` and `paths`
