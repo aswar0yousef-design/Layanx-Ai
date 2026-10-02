@@ -29,10 +29,13 @@ audio{width:100%;margin-top:14px}
 <audio id="player" controls></audio>
 <script>
 const mic=document.getElementById('mic'),status=document.getElementById('status'),project=document.getElementById('project'),token=document.getElementById('token'),transcript=document.getElementById('transcript'),resultBox=document.getElementById('result'),player=document.getElementById('player');
-let pc=null,dc=null,localStream=null,realtime=false,recorder,chunks=[],stream,recognition;
+let pc=null,dc=null,localStream=null,realtime=false,assistantSpeaking=false,executionWatch=null,recorder,chunks=[],stream,recognition;
 function headers(){const t=token.value.trim();return t?{'Authorization':'Bearer '+t}:{}}
 function setStatus(text){status.textContent=text}
 function send(event){if(dc&&dc.readyState==='open')dc.send(JSON.stringify(event))}
+function stopAssistantSpeech(){if(!realtime||!assistantSpeaking)return;assistantSpeaking=false;send({type:'response.cancel'});send({type:'output_audio_buffer.clear'});setStatus('توقفت — أستمع لك...')}
+async function watchExecution(projectId,knownMissionIds){let missionId=null,lastEventId=undefined;const started=Date.now();executionWatch={stopped:false};const watch=executionWatch;while(!watch.stopped&&Date.now()-started<120000){try{const r=await fetch('/v1/missions',{headers:headers(),cache:'no-store'});if(r.ok){const data=await r.json();const missions=Array.isArray(data.missions)?data.missions:[];const candidate=missions.find(m=>m&&m.projectId===projectId&&!knownMissionIds.has(m.id));if(candidate){missionId=candidate.id;knownMissionIds.add(candidate.id);resultBox.textContent='بدأت المهمة '+candidate.id+'\n';}}if(missionId){const r=await fetch('/v1/missions/'+encodeURIComponent(missionId)+'/events?projectId='+encodeURIComponent(projectId)+(lastEventId?'&after='+encodeURIComponent(lastEventId):''),{headers:headers(),cache:'no-store'});if(r.ok){const data=await r.json();for(const event of Array.isArray(data.events)?data.events:[]){lastEventId=event.id??lastEventId;const label=event.type??event.event??'event';const detail=typeof event.message==='string'?event.message:typeof event.action==='string'?event.action:JSON.stringify(event);resultBox.textContent+='\n['+label+'] '+detail;}}}}catch{}await new Promise(resolve=>setTimeout(resolve,700));}}
+function stopExecutionWatch(){if(executionWatch)executionWatch.stopped=true;executionWatch=null}
 async function executeText(text,localSpeech=false){
  transcript.textContent=text;setStatus('تنفيذ المهمة...');
  const r=await fetch('/v1/agent/gateway',{method:'POST',headers:{...headers(),'content-type':'application/json'},body:JSON.stringify({goal:text,projectId:project.value.trim()||'default',maxSteps:10})});
@@ -46,16 +49,21 @@ async function executeText(text,localSpeech=false){
 }
 async function handleRealtimeEvent(event){
  let data;try{data=JSON.parse(event.data)}catch{return}
- if(data.type==='input_audio_buffer.speech_started'){setStatus('أستمع...');return}
+ if(data.type==='input_audio_buffer.speech_started'){stopAssistantSpeech();setStatus('أستمع...');return}
  if(data.type==='input_audio_buffer.speech_stopped'){setStatus('أفكر...');return}
- if(data.type==='response.created'){setStatus('أفكر...');return}
- if(data.type==='response.output_audio_transcript.delta'){transcript.textContent+=(data.delta||'');return}
- if(data.type==='response.output_audio_transcript.done'){if(data.transcript)transcript.textContent=data.transcript;return}
+ if(data.type==='response.created'){assistantSpeaking=false;setStatus('أفكر...');return}
+ if(data.type==='response.output_audio_transcript.delta'){assistantSpeaking=true;setStatus('أتحدث...');transcript.textContent+=(data.delta||'');return}
+ if(data.type==='response.output_audio_transcript.done'){assistantSpeaking=false;if(data.transcript)transcript.textContent=data.transcript;return}
  if(data.type==='response.done'){
+   assistantSpeaking=false;
    const outputs=data.response?.output||[];
    for(const item of outputs){
      if(item.type!=='function_call'||item.name!=='layanx_execute')continue;
      setStatus('أنفّذ المهمة عبر LayanX...');
+     stopExecutionWatch();
+     const knownMissionIds=new Set();
+     try{const snapshot=await fetch('/v1/missions',{headers:headers(),cache:'no-store'});if(snapshot.ok){const payload=await snapshot.json();for(const mission of Array.isArray(payload.missions)?payload.missions:[])if(mission?.id)knownMissionIds.add(mission.id);}}catch{}
+     watchExecution(project.value.trim()||'default',knownMissionIds);
      let args;
      try{args=JSON.parse(item.arguments||'{}')}catch{args={goal:item.arguments||''}}
      const goal=typeof args.goal==='string'?args.goal.trim():'';
@@ -68,15 +76,17 @@ async function handleRealtimeEvent(event){
      try{
        const r=await fetch('/v1/agent/gateway',{method:'POST',headers:{...headers(),'content-type':'application/json'},body:JSON.stringify({goal,projectId,maxSteps})});
        const result=await r.json();
+       stopExecutionWatch();
        resultBox.textContent=JSON.stringify(result,null,2);
        send({type:'conversation.item.create',item:{type:'function_call_output',call_id:item.call_id,output:JSON.stringify(result)}});
        send({type:'response.create'});
+       assistantSpeaking=true;
        setStatus(result.paused?'بانتظار الموافقة...':'أتحدث...');
      }catch(error){
        const failure={ok:false,error:String(error)};
        resultBox.textContent=JSON.stringify(failure,null,2);
        send({type:'conversation.item.create',item:{type:'function_call_output',call_id:item.call_id,output:JSON.stringify(failure)}});
-       send({type:'response.create'});setStatus('تعذر تنفيذ المهمة');
+       send({type:'response.create'});assistantSpeaking=true;setStatus('تعذر تنفيذ المهمة');
      }
    }
    return;
@@ -103,6 +113,7 @@ async function connectRealtime(){
  await pc.setRemoteDescription({type:'answer',sdp:await sdp.text()});
 }
 function disconnectRealtime(){
+ stopExecutionWatch();assistantSpeaking=false;
  realtime=false;dc?.close();dc=null;pc?.close();pc=null;localStream?.getTracks().forEach(t=>t.stop());localStream=null;mic.classList.remove('listening');setStatus('تم إيقاف الصوت');
 }
 async function startBrowserRecognition(){
