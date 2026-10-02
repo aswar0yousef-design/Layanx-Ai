@@ -1,5 +1,5 @@
 import {mkdir} from "node:fs/promises";
-import {resolve} from "node:path";
+import {resolve,relative,sep} from "node:path";
 import {spawn} from "node:child_process";
 import type {ToolRequest} from "../core/types.js";
 import type {ToolAdapter} from "./executor.js";
@@ -20,9 +20,11 @@ function run(cwd:string,args:string[],timeout=30000):Promise<unknown>{
   child.on("close",(code,signal)=>resolvePromise({command:["git",...args].join(" "),cwd,exitCode:code,signal,stdout:stdout.slice(0,128*1024),stderr:stderr.slice(0,128*1024)}));
  });
 }
-function safePath(value:unknown):string{
+function safePath(value:unknown,cwd:string):string{
  const p=typeof value==="string"?value.trim():"";
  if(!p||p.startsWith("-")||p.includes("\0"))throw new Error("Invalid Git path.");
+ const target=resolve(cwd,p),rel=relative(cwd,target);
+ if(rel===".."||rel.startsWith(".."+sep)||rel.includes("\0"))throw new Error("Git path escapes the project workspace.");
  return p;
 }
 export function createGitToolAdapter(options:{root:string}):ToolAdapter{
@@ -34,7 +36,7 @@ export function createGitToolAdapter(options:{root:string}):ToolAdapter{
    case "git status": return run(workspace,["status","--short"]);
    case "git diff": return run(workspace,["diff","--"]);
    case "git log": return run(workspace,["log","-n","20","--oneline","--decorate"]);
-   case "git add": return run(workspace,["add","--",safePath(input.path)]);
+   case "git add": return run(workspace,["add","--",safePath(input.path,workspace)]);
    case "git commit":{
     const message=typeof input.message==="string"?input.message.trim():"";
     if(!message||message.length>200)throw new Error("Commit message is required and must be <= 200 characters.");
@@ -45,6 +47,7 @@ export function createGitToolAdapter(options:{root:string}):ToolAdapter{
     const branch=typeof input.branch==="string"&&input.branch.trim()?input.branch.trim():"";
     if(!/^[A-Za-z0-9._-]+$/.test(remote)||remote.startsWith("-"))throw new Error("Invalid Git remote.");
     if(!branch||!/^[A-Za-z0-9._\/-]+$/.test(branch)||branch.startsWith("-")||branch.includes(".."))throw new Error("Invalid Git branch.");
+    if((branch==="main"||branch==="master")&&process.env.LAYANX_ALLOW_MAIN_PUSH!=="true")throw new Error("Pushing to main/master is disabled unless LAYANX_ALLOW_MAIN_PUSH=true.");
     return run(workspace,["push",remote,"HEAD:"+branch],60000);
    }
    default: throw new Error("Unsupported Git action.");
