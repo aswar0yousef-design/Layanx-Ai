@@ -177,6 +177,22 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }
    return;
   }
+  if(request.method==="POST"&&request.url?.match(/^\/v1\/projects\/[^/]+\/impact$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const parts=request.url.split("/");
+   const projectId=decodeURIComponent(parts[3]??"").trim();
+   if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
+   try{
+    const input=await body(request,max);
+    const query=typeof input.query==="string"?input.query.trim():"";
+    if(!query){json(response,400,{ok:false,error:"query_required"});return;}
+    const graph=await options.core.projectGraph.scan(projectId);
+    const impact=options.core.impactAnalyzer.analyze(graph,query);
+    const tests=options.core.testSelector.select(graph,impact);
+    json(response,200,{ok:true,impact,selectedTests:tests.tests});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"impact analysis failed"});}
+   return;
+  }
   if(request.method==="GET"&&request.url?.match(/^\/v1\/projects\/[^/]+\/intelligence$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const parts=request.url.split("/");
