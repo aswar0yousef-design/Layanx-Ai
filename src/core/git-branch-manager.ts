@@ -29,6 +29,10 @@ export class GitBranchManager{
     await this.git(["switch",branchName]);
     return this.status();
   }
+  async currentCommit(){return(await this.git(["rev-parse","HEAD"])).stdout.trim();}
+  async diffNameOnly(baseRef="HEAD~1"){
+    return(await this.git(["diff","--name-only",baseRef,"HEAD"])).stdout.split("\n").filter(Boolean);
+  }
   async branchExists(branchName:string){
     this.validateBranch(branchName);
     const result=await this.git(["show-ref","--verify","--quiet","refs/heads/"+branchName],true);
