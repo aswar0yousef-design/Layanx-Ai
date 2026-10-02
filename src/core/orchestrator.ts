@@ -458,7 +458,7 @@ export class LayanXCore{
 
   async runAgentGateway(goal:string,projectId="default",maxSteps=10,approvalIds:Record<number,string>={},agentId="core",routing?:ModelRoutingOptions){
     const mission=await this.planAndStartMission(goal,projectId,routing);
-    const result=await this.executeAgentLoop(mission.id,projectId,maxSteps,approvalIds,agentId);
+    const result=await this.executeAgentLoop(mission.id,projectId,maxSteps,approvalIds,agentId,routing);
     return{goal:mission.goal,projectId,agentId,...result,missionId:mission.id};
   }
 
@@ -504,7 +504,7 @@ export class LayanXCore{
           return{missionId,completed:false,status:"awaiting_approval",paused:true,steps,nextToolIndex:actualIndex,results};
         const repair=this.aiPlanner.nextTool({
           goal:current.goal,result:{failure:result.error,latest},tools:this.toolCatalog.list(this.agents.get(agentId),current.requiredPermission),
-          requiredPermission:current.requiredPermission,completedTools:results.map(item=>(item as {tool?:string}).tool??""),
+          requiredPermission:current.requiredPermission,routing,completedTools:results.map(item=>(item as {tool?:string}).tool??""),
           projectContext:{repairAfterFailure:true}
         });
         const recoveryPlan=await repair;
