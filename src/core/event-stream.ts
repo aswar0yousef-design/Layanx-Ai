@@ -18,7 +18,7 @@ function typeFor(event:AuditEvent):MissionEventType{
  if(a==="mission.create"||a==="mission.created")return "mission.created";
  if(a.includes("plan")&&event.result==="allowed")return "planning.started";
  if(a.includes("plan")&&event.result==="success")return "planning.completed";
- if(a.includes("approval"))return "approval.required";
+ if(a.includes("approval")||(/approval|required/i.test(String(event.metadata?.reason??""))&&event.result==="denied"))return "approval.required";
  if(a.includes("verify")&&event.result==="success")return "verification.completed";
  if(a.includes("verify"))return "verification.started";
  if(event.result==="failure")return a.includes("replan")?"replanning.started":"tool.failed";
