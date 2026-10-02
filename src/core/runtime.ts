@@ -2,6 +2,7 @@ import type {Mission,ToolRequest} from "./types.js";
 import {LayanXCore} from "./orchestrator.js";
 import type {ToolAdapter} from "../tools/executor.js";
 import {BudgetGovernor} from "./budget-governor.js";
+import {createHash} from "node:crypto";
 import {ApprovalEngine} from "../security/approval.js";
 import type {RuntimePersistence} from "./runtime-persistence.js";
 
@@ -41,9 +42,9 @@ export class ExecutionRuntime{
   if(!permission.allowed)return this.block(mission,request,permission.reason);
   const capability=this.core.capabilities.authorize(security.capabilityId,{missionId:mission.id,agentId:request.agentId,projectId:security.projectId,resource:request.tool,permission:request.permission});
   if(!capability.allowed)return this.block(mission,request,capability.reason);
-  if(risk.requiresApproval){
+  if(risk.requiresApproval||toolDefinition.dangerous){
    if(!approvalId)return this.block(mission,request,"Explicit approval is required for this risk level.");
-   const approval=this.approvals.authorize(approvalId,{missionId:mission.id,agentId:request.agentId,action:request.action,permission:request.permission});
+   const approval=this.approvals.authorize(approvalId,{missionId:mission.id,agentId:request.agentId,tool:request.tool,action:request.action,permission:request.permission,payloadHash:createHash("sha256").update(JSON.stringify(request.payload??null)).digest("hex")});
    if(!approval.allowed)return this.block(mission,request,approval.reason);
   }
   const sentinel=this.core.sentinel.inspect(request.action);
