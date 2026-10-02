@@ -365,11 +365,10 @@ export class LayanXCore{
     if(!mission)throw new Error("Mission not found.");
     this.projectIsolation.assertMissionProject(projectId,mission.projectId);
     if(["completed","cancelled"].includes(mission.status))return{missionId,status:mission.status,completed:mission.status==="completed",blocked:false,paused:false,nextToolIndex:null,results:[]};
-    const contract=this.agents.get(agentId);
     const plans=mission.tools??[];
     const missing:number[]=[];
     for(let index=0;index<plans.length;index++){
-      const plan=plans[index];
+      const plan=plans[index]!;
       const request={missionId,agentId,tool:plan.tool,action:plan.action,permission:plan.permission,idempotencyKey:"session-preflight-"+missionId+"-"+index,payload:plan.payload??{},planIndex:index};
       const tool=this.tools.get(plan.tool);
       const risk=this.risk.assess(request);
@@ -391,13 +390,14 @@ export class LayanXCore{
     }
     const results:unknown[]=[];
     for(let index=0;index<plans.length;index++){
-      const result=await this.executeMissionTool(missionId,projectId,index,plans[index].payload??{},approvalIds[index],agentId,{deferVerification:true});
+      const plan=plans[index]!;
+      const result=await this.executeMissionTool(missionId,projectId,index,plan.payload??{},approvalIds[index],agentId,{deferVerification:true});
       results.push(result);
       if(!result.ok)return{missionId,status:this.missions.get(missionId)?.status??"failed",completed:false,blocked:result.error==="Explicit approval is required for this risk level.",paused:false,nextToolIndex:index,results};
     }
     const finalMission=this.missions.get(missionId);
     if(!finalMission)throw new Error("Mission not found.");
-    const final=await this.executionRuntime.finalize(finalMission,results[results.length-1],agentId);
+    const final=await this.executionRuntime.finalize(finalMission,results[results.length-1]!,agentId);
     this.missions.save(finalMission);
     return{missionId,status:final.ok?"completed":finalMission.status,completed:final.ok,blocked:false,paused:false,nextToolIndex:null,results,final};
   }
