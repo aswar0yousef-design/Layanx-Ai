@@ -425,6 +425,11 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"event trigger creation failed"});}
    return;
   }
+  if(request.method==="DELETE"&&request.url?.match(/^\/v1\/events\/triggers\/[^/]+$/)){
+   try{options.core.eventEngine.remove(decodeURIComponent(request.url.split("/")[4]??""));json(response,200,{ok:true});}
+   catch(error){json(response,404,{ok:false,error:error instanceof Error?error.message:"event trigger not found"});}
+   return;
+  }
   if(request.method==="POST"&&request.url==="/v1/events/emit"){
    try{
     const input=await body(request,max);
