@@ -40,6 +40,7 @@ import {SkillRegistry} from "../skills/registry.js";
 import {SkillRuntime} from "../skills/runtime.js";
 import {AgentTeamRuntime} from "./team-runtime.js";
 import {ProjectIntelligence} from "./project-intelligence.js";
+import {ProjectGraph} from "./project-graph.js";
 import {AutonomousRepairLoop} from "./autonomous-repair.js";
 import {createHash} from "node:crypto";
 import {MissionEventStream} from "./event-stream.js";
@@ -85,6 +86,7 @@ export class LayanXCore{
   readonly adaptiveDecision=new AdaptiveDecisionEngine();
   readonly projectIsolation=new ProjectIsolation();
   readonly projectIntelligence=new ProjectIntelligence({root:process.env.LAYANX_WORKSPACE_ROOT??process.cwd()});
+  readonly projectGraph=new ProjectGraph({root:process.env.LAYANX_WORKSPACE_ROOT??process.cwd()});
   readonly autonomousRepair=new AutonomousRepairLoop();
   readonly eventStream=new MissionEventStream();
   readonly skills=new SkillRegistry();
