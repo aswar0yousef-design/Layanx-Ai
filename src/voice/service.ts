@@ -69,4 +69,41 @@ export class VoiceService{
   status(){return this.provider.status();}
   transcribe(...args:Parameters<VoiceProvider["transcribe"]>){return this.provider.transcribe(...args);}
   speak(...args:Parameters<VoiceProvider["speak"]>){return this.provider.speak(...args);}
+
+  async createRealtimeClientSecret(options:{model?:string;voice?:string;instructions?:string}={}):Promise<{value:string;expiresAt?:number;session?:unknown}>{
+    if(!this.apiKey)throw new Error("OpenAI voice is not configured: OPENAI_API_KEY is required.");
+    const session={
+      type:"realtime",
+      model:options.model??process.env.OPENAI_REALTIME_MODEL??"gpt-realtime-2.1",
+      audio:{
+        input:{turn_detection:{type:"semantic_vad"}},
+        output:{voice:options.voice??process.env.OPENAI_REALTIME_VOICE??"marin"}
+      },
+      instructions:options.instructions??"You are LayanX voice interface. Speak concise Arabic by default. For project or system actions, use the layanx_execute function. Never claim an action was completed unless the function result confirms it.",
+      tools:[{
+        type:"function",
+        name:"layanx_execute",
+        description:"Execute a user-authorized task through the LayanX Runtime. Use this for project inspection, coding, testing, Git, tools, or other system actions.",
+        parameters:{
+          type:"object",
+          properties:{
+            goal:{type:"string",description:"The user's requested task."},
+            projectId:{type:"string",description:"LayanX project identifier. Use the current project when known."},
+            maxSteps:{type:"integer",minimum:1,maximum:25,description:"Maximum autonomous execution steps."}
+          },
+          required:["goal","projectId"]
+        }
+      }]
+    };
+    const response=await fetch(`${this.baseUrl}/realtime/client_secrets`,{
+      method:"POST",
+      headers:{...this.headers(),"content-type":"application/json"},
+      body:JSON.stringify({expires_after:{anchor:"created_at",seconds:300},session})
+    });
+    if(!response.ok)throw new Error(`Realtime client secret failed (${response.status}): ${await response.text()}`);
+    const payload=await response.json() as {value?:unknown;expires_at?:unknown;session?:unknown};
+    if(typeof payload.value!=="string"||!payload.value)throw new Error("Realtime client secret returned no value.");
+    return{value:payload.value,expiresAt:typeof payload.expires_at==="number"?payload.expires_at:undefined,session:payload.session};
+  }
+
 }
