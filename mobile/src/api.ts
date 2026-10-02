@@ -7,5 +7,5 @@ export class LayanXApi{
   }
   session(projectId:string,missionId?:string){const q=new URLSearchParams({projectId});if(missionId)q.set("missionId",missionId);return this.request<Record<string,unknown>>(`/v1/control-center/session?${q}`)}
   events(projectId:string,missionId:string,after?:string){const q=new URLSearchParams({projectId});if(after)q.set("after",after);return this.request<{ok:true;missionId:string;projectId:string;events:MissionEvent[]}>(`/v1/missions/${encodeURIComponent(missionId)}/events?${q}`)}
-  cancel(projectId:string,missionId:string){return this.request(`/v1/missions/${encodeURIComponent(missionId)}/cancel`,{method:"POST",body:JSON.stringify({projectId})})}
+  cancel(projectId:string,missionId:string){return this.request(`/v1/control-center/missions/${encodeURIComponent(missionId)}/cancel`,{method:"POST",body:JSON.stringify({projectId})})}
 }
