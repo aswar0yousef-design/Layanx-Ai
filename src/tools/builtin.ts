@@ -167,10 +167,13 @@ export function registerToolFabric(core:LayanXCore,options:{workspaceRoot?:strin
 
  for(const definition of [
   {name:"git.status",description:"inspect the current project Git status",action:"git status",permission:"L2_ANALYZE" as const,dangerous:false},
+  {name:"git.checkpoint",description:"read the exact current Git commit for a rollback checkpoint",action:"git checkpoint",permission:"L2_ANALYZE" as const,dangerous:false},
+  {name:"git.branch",description:"create an isolated non-protected repair branch",action:"git branch",permission:"L4_EXECUTE" as const,dangerous:true},
   {name:"git.diff",description:"inspect unstaged project changes",action:"git diff",permission:"L2_ANALYZE" as const,dangerous:false},
   {name:"git.log",description:"inspect recent project commits",action:"git log",permission:"L2_ANALYZE" as const,dangerous:false},
   {name:"git.add",description:"stage one explicit project path for a commit",action:"git add",permission:"L4_EXECUTE" as const,dangerous:true},
   {name:"git.commit",description:"create a Git commit in the project workspace",action:"git commit",permission:"L4_EXECUTE" as const,dangerous:true},
+  {name:"git.rollback",description:"restore a non-protected project branch to an exact commit checkpoint",action:"git rollback",permission:"L4_EXECUTE" as const,dangerous:true},
   {name:"git.push",description:"push the current project HEAD to an explicit remote branch",action:"git push",permission:"L4_EXECUTE" as const,dangerous:true}
  ]){
   core.tools.register({...definition,tags:["git","repository","project","version-control"]});
