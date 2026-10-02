@@ -141,3 +141,23 @@ API:
 Autonomous retry is bounded and conservative. Only recoverable transient failures on L1/L2 read/analyze operations are retried automatically. Permission, approval, scope, verification, and modification/execution failures are not automatically retried. Each retry receives a distinct idempotency key and uses bounded exponential backoff.
 
 Failure learning normalizes runtime failures into categories and stores sanitized failure signatures in the existing project-scoped memory engine. Similar failures can be recalled for future planning without introducing another memory subsystem.
+
+## Repository intelligence and safe code modification
+
+Repository intelligence provides bounded project/file metadata and a dependency graph used by impact analysis and automatic test selection.
+
+Safe code modification is transactional:
+1. validate project-relative paths and protected directories
+2. rebuild project graph and change impact
+3. select affected tests
+4. require explicit approval for high/critical impact
+5. create a local backup
+6. apply all requested files
+7. run selected tests
+8. rollback all changes if verification fails
+
+Git branch isolation is available through the runtime branch manager. Autonomous branch creation and switching require a clean working tree by default and reject unsafe Git branch names.
+
+Git APIs:
+- `GET /v1/git/branch`
+- `POST /v1/git/branch` with `branchName`, optional `baseRef`, and optional `requireClean`
