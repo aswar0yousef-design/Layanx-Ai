@@ -375,6 +375,47 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"approval failed"});}
    return;
   }
+  if(request.method==="GET"&&request.url==="/v1/mission-dependencies"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const parsed=new URL(request.url,"http://localhost");
+   const projectId=parsed.searchParams.get("projectId")?.trim()||undefined;
+   json(response,200,{ok:true,dependencies:options.core.missionDependencies.list(projectId)});
+   return;
+  }
+  if(request.method==="POST"&&request.url==="/v1/mission-dependencies"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const input=await body(request,max);
+    const missionId=typeof input.missionId==="string"?input.missionId.trim():"";
+    const projectId=typeof input.projectId==="string"?input.projectId.trim():"";
+    const dependsOn=Array.isArray(input.dependsOn)?input.dependsOn.filter((id):id is string=>typeof id==="string"&&id.trim()).map(id=>id.trim()):[];
+    if(!missionId||!projectId){json(response,400,{ok:false,error:"missionId and projectId are required"});return;}
+    const dependency=options.core.registerMissionDependencies(missionId,dependsOn,projectId);
+    json(response,201,{ok:true,dependency,status:options.core.missionDependencyStatus(missionId)});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"mission dependency registration failed"});}
+   return;
+  }
+  if(request.method==="GET"&&request.url?.match(/^\/v1\/mission-dependencies\/[^/]+$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const missionId=decodeURIComponent(request.url.split("/")[3]??"");
+   try{json(response,200,{ok:true,status:options.core.missionDependencyStatus(missionId)});}
+   catch(error){json(response,404,{ok:false,error:error instanceof Error?error.message:"mission not found"});}
+   return;
+  }
+  if(request.method==="POST"&&request.url?.match(/^\/v1\/mission-dependencies\/[^/]+\/run$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const missionId=decodeURIComponent(request.url.split("/")[3]??"");
+   try{
+    const input=await body(request,max);
+    const projectId=typeof input.projectId==="string"?input.projectId.trim():"";
+    const maxSteps=typeof input.maxSteps==="number"&&Number.isInteger(input.maxSteps)?Math.min(Math.max(input.maxSteps,1),25):10;
+    const agentId=typeof input.agentId==="string"&&input.agentId.trim()?input.agentId.trim():"core";
+    if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
+    const result=await options.core.runDependentMission(missionId,projectId,maxSteps,agentId);
+    json(response,result.completed?200:202,result);
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"dependent mission execution failed"});}
+   return;
+  }
   if(request.method==="GET"&&request.url==="/v1/scheduler"){
    json(response,200,{ok:true,schedules:options.core.scheduler.list()});return;
   }
