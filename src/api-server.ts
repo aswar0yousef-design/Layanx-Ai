@@ -164,6 +164,19 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }
    return;
   }
+  if(request.method==="GET"&&request.url?.match(/^\/v1\/projects\/[^/]+\/graph$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const parts=request.url.split("/");
+   const projectId=decodeURIComponent(parts[3]??"").trim();
+   if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
+   try{
+    const graph=await options.core.projectGraph.scan(projectId);
+    json(response,200,{ok:true,graph});
+   }catch(error){
+    json(response,422,{ok:false,error:error instanceof Error?error.message:"project graph scan failed"});
+   }
+   return;
+  }
   if(request.method==="GET"&&request.url?.match(/^\/v1\/projects\/[^/]+\/intelligence$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const parts=request.url.split("/");
