@@ -375,6 +375,68 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"approval failed"});}
    return;
   }
+  if(request.method==="GET"&&request.url==="/v1/scheduler"){
+   json(response,200,{ok:true,schedules:options.core.scheduler.list()});return;
+  }
+  if(request.method==="POST"&&request.url==="/v1/scheduler/schedules"){
+   try{
+    const input=await body(request,max);
+    const goal=typeof input.goal==="string"?input.goal.trim():"";
+    const projectId=typeof input.projectId==="string"?input.projectId.trim():"";
+    const trigger=input.trigger&&typeof input.trigger==="object"&&!Array.isArray(input.trigger)?input.trigger as import("./core/scheduler.js").ScheduleTrigger:null;
+    if(!goal||!projectId||!trigger){json(response,400,{ok:false,error:"goal, projectId, and trigger are required"});return;}
+    const schedule=options.core.scheduler.register({goal,projectId,trigger,maxSteps:typeof input.maxSteps==="number"?Math.min(Math.max(Math.floor(input.maxSteps),1),25):10,agentId:typeof input.agentId==="string"&&input.agentId.trim()?input.agentId.trim():"core",enabled:input.enabled!==false});
+    json(response,201,{ok:true,schedule});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"schedule creation failed"});}
+   return;
+  }
+  if(request.method==="POST"&&request.url?.match(/^\/v1\/scheduler\/[^/]+\/enable$/)){
+   try{
+    const id=decodeURIComponent(request.url.split("/")[3]??"");
+    const input=await body(request,max);
+    const schedule=options.core.scheduler.setEnabled(id,input.enabled!==false);
+    json(response,200,{ok:true,schedule});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"schedule update failed"});}
+   return;
+  }
+  if(request.method==="DELETE"&&request.url?.match(/^\/v1\/scheduler\/[^/]+$/)){
+   try{options.core.scheduler.unregister(decodeURIComponent(request.url.split("/")[3]??""));json(response,200,{ok:true});}
+   catch(error){json(response,404,{ok:false,error:error instanceof Error?error.message:"schedule not found"});}
+   return;
+  }
+  if(request.method==="POST"&&request.url==="/v1/scheduler/tick"){
+   try{const runs=await options.core.scheduler.tick();json(response,200,{ok:true,runs});}
+   catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"scheduler tick failed"});}
+   return;
+  }
+  if(request.method==="GET"&&request.url==="/v1/events/triggers"){
+   json(response,200,{ok:true,triggers:options.core.eventEngine.list()});return;
+  }
+  if(request.method==="POST"&&request.url==="/v1/events/triggers"){
+   try{
+    const input=await body(request,max);
+    const eventType=typeof input.eventType==="string"?input.eventType.trim():"";
+    const projectId=typeof input.projectId==="string"?input.projectId.trim():"";
+    const goal=typeof input.goal==="string"?input.goal.trim():"";
+    const match=input.match&&typeof input.match==="object"&&!Array.isArray(input.match)?input.match as Record<string,unknown>:undefined;
+    if(!eventType||!projectId||!goal){json(response,400,{ok:false,error:"eventType, projectId, and goal are required"});return;}
+    const trigger=options.core.eventEngine.register({eventType,projectId,goal,match,maxSteps:typeof input.maxSteps==="number"?Math.min(Math.max(Math.floor(input.maxSteps),1),25):10,agentId:typeof input.agentId==="string"&&input.agentId.trim()?input.agentId.trim():"core",enabled:input.enabled!==false});
+    json(response,201,{ok:true,trigger});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"event trigger creation failed"});}
+   return;
+  }
+  if(request.method==="POST"&&request.url==="/v1/events/emit"){
+   try{
+    const input=await body(request,max);
+    const type=typeof input.type==="string"?input.type.trim():"";
+    const projectId=typeof input.projectId==="string"?input.projectId.trim():"";
+    const payload=input.payload&&typeof input.payload==="object"&&!Array.isArray(input.payload)?input.payload as Record<string,unknown>:{};
+    if(!type||!projectId){json(response,400,{ok:false,error:"type and projectId are required"});return;}
+    const results=await options.core.eventEngine.emit({id:crypto.randomUUID(),type,projectId,timestamp:new Date().toISOString(),actor:"api",payload});
+    json(response,200,{ok:true,triggered:results.length,results});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"event emission failed"});}
+   return;
+  }
   if(request.method==="GET"&&request.url==="/v1/missions"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}json(response,200,{ok:true,missions:options.core.missions.list()});return;}
    if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/tools\/execute-adaptive$/)){
     if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
