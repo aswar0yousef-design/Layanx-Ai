@@ -39,10 +39,20 @@ export class MemoryEngine{
   }
 
   recall(query:string,limit=10,projectId?:string){
-    const terms=query.toLowerCase().split(/[^a-z0-9]+/).filter(term=>term.length>2);
+    const terms=query.toLowerCase().split(/[^a-z0-9_]+/).filter(term=>term.length>2);
+    const now=Date.now();
     return [...this.entries.values()]
       .filter(entry=>!projectId||entry.projectId===projectId)
-      .map(entry=>({entry,score:terms.filter(term=>(entry.summary+" "+entry.tags.join(" ")).toLowerCase().includes(term)).length}))
+      .map(entry=>{
+        const haystack=(entry.summary+" "+entry.tags.join(" ")+" "+JSON.stringify(entry.content)).toLowerCase();
+        const matched=new Set(terms.filter(term=>haystack.includes(term)));
+        const lexical=matched.size;
+        const kindBoost=entry.kind==="decision"||entry.kind==="failure"||entry.kind==="success"?1.5:1;
+        const confidence=Math.max(0,Math.min(1,entry.confidence));
+        const ageDays=Math.max(0,(now-Date.parse(entry.createdAt))/86400000);
+        const recencyBoost=1/(1+ageDays/30);
+        return{entry,score:lexical*kindBoost*confidence*recencyBoost};
+      })
       .filter(item=>item.score>0)
       .sort((a,b)=>b.score-a.score)
       .slice(0,limit)
