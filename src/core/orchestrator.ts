@@ -111,6 +111,7 @@ export class LayanXCore{
   readonly autonomousRetry=new AutonomousRetryPolicy();
   readonly failureLearning=new FailureLearning(this.memory);
   readonly safeCodeModifier:SafeCodeModifier;
+  readonly gitBranches:GitBranchManager;
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
@@ -126,6 +127,7 @@ export class LayanXCore{
     this.eventEngine=new EventMissionEngine(this,this.scheduler);
     this.missionDependencies=new MissionDependencyManager(this);
     this.safeCodeModifier=new SafeCodeModifier(this);
+    this.gitBranches=new GitBranchManager({root:process.env.LAYANX_WORKSPACE_ROOT??process.cwd()});
   }
 
   restoreRuntimeSnapshot(snapshot:import("./runtime-persistence.js").RuntimeSnapshot){
@@ -150,6 +152,9 @@ export class LayanXCore{
     const contract=this.agents.get(agentId);
     return this.toolSelector.discover(action,contract,permission);
   }
+  gitBranchStatus(){return this.gitBranches.status();}
+  createGitBranch(branchName:string,baseRef?:string,requireClean=true){return this.gitBranches.createBranch(branchName,baseRef,requireClean);}
+  switchGitBranch(branchName:string,requireClean=true){return this.gitBranches.switchBranch(branchName,requireClean);}
   async applySafeCodeModification(request:import("./safe-code-modifier.js").SafeModificationRequest){return this.safeCodeModifier.apply(request);}
   registerMissionDependencies(missionId:string,dependsOn:string[],projectId="default"){return this.missionDependencies.register(missionId,dependsOn,projectId);}
   missionDependencyStatus(missionId:string){return this.missionDependencies.status(missionId);}
