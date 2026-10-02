@@ -375,6 +375,23 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"approval failed"});}
    return;
   }
+  if(request.method==="POST"&&request.url==="/v1/git/pr-draft"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const input=await body(request,max);
+    const missionId=typeof input.missionId==="string"?input.missionId.trim():"";
+    const projectId=typeof input.projectId==="string"?input.projectId.trim():"";
+    const baseBranch=typeof input.baseBranch==="string"?input.baseBranch.trim():"";
+    const title=typeof input.title==="string"?input.title.trim():"";
+    const goal=typeof input.goal==="string"?input.goal.trim():"";
+    const baseRef=typeof input.reviewBaseRef==="string"&&input.reviewBaseRef.trim()?input.reviewBaseRef.trim():"HEAD~1";
+    if(!missionId||!projectId||!baseBranch||!title||!goal){json(response,400,{ok:false,error:"missionId, projectId, baseBranch, title, and goal are required"});return;}
+    const [codeReview,securityReview]=await Promise.all([options.core.reviewCurrentCommit(baseRef),options.core.reviewCurrentCommitSecurity(baseRef)]);
+    const draft=await options.core.generatePullRequest({missionId,projectId,baseBranch,title,goal,codeReview,securityReview});
+    json(response,draft.ready?200:409,{ok:true,draft});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"pull request draft failed"});}
+   return;
+  }
   if(request.method==="POST"&&request.url==="/v1/git/security-review"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{
