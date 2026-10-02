@@ -360,6 +360,65 @@ export class LayanXCore{
     return{missionId,completed:false,attempts:limit,repaired,exhausted:true,blocked:false,results,reason:failure?.error??"Repair attempts exhausted."};
   }
 
+  async executeAgentLoop(missionId:string,projectId:string,maxSteps=10,approvalIds:Record<number,string>={},agentId="core"){
+    const mission=this.missions.get(missionId);
+    if(!mission)throw new Error("Mission not found.");
+    this.projectIsolation.assertMissionProject(projectId,mission.projectId);
+    const limit=Math.min(Math.max(Math.floor(maxSteps),1),25);
+    const results:unknown[]=[];
+    let latest:unknown={status:"not_started"};
+    let steps=0;
+    while(steps<limit){
+      const current=this.missions.get(missionId);
+      if(!current)throw new Error("Mission not found.");
+      if(["completed","cancelled"].includes(current.status))return{missionId,completed:current.status==="completed",status:current.status,steps,results};
+      const plans=current.tools??[];
+      const index=steps<plans.length?steps:-1;
+      let plan=index>=0?plans[index]:undefined;
+      if(!plan){
+        const catalog=this.toolCatalog.list(this.agents.get(agentId),current.requiredPermission);
+        const context=await this.projectIntelligence.scan(projectId).then(i=>({summary:i.summary,markers:i.markers,package:i.package,files:i.files.slice(0,80).map(f=>f.path)})).catch(error=>({unavailable:true,reason:error instanceof Error?error.message:"project intelligence unavailable"}));
+        plan=await this.aiPlanner.nextTool({
+          goal:current.goal,result:latest,tools:catalog,requiredPermission:current.requiredPermission,
+          completedTools:plans.slice(0,index<0?plans.length:index).map(item=>item.tool),
+          memory:this.contextFabric.build({projectId,mission:current,query:current.goal,limit:8,maxChars:6000}).memories.map(e=>({kind:e.kind,summary:e.summary,content:e.content,tags:e.tags})),
+          projectContext:context
+        })??undefined;
+        if(!plan)break;
+        current.tools=current.tools??[];
+        current.tools.push(plan);
+        this.missions.save(current);
+        plan=current.tools[current.tools.length-1]!;
+      }
+      const toolIndex=(this.missions.get(missionId)?.tools??[]).findIndex(item=>item===plan);
+      const actualIndex=toolIndex>=0?toolIndex:(this.missions.get(missionId)?.tools?.length??1)-1;
+      const result=await this.executeMissionTool(missionId,projectId,actualIndex,plan.payload??{},approvalIds[actualIndex],agentId,{deferVerification:true});
+      results.push(result);
+      steps++;
+      latest=result.ok?result.data:result.error;
+      if(!result.ok){
+        if(result.error==="Explicit approval is required for this risk level."||result.error==="Approval missing, revoked, or expired."||result.error==="Approval scope mismatch.")
+          return{missionId,completed:false,status:"awaiting_approval",paused:true,steps,nextToolIndex:actualIndex,results};
+        const repair=this.aiPlanner.nextTool({
+          goal:current.goal,result:{failure:result.error,latest},tools:this.toolCatalog.list(this.agents.get(agentId),current.requiredPermission),
+          requiredPermission:current.requiredPermission,completedTools:results.map(item=>(item as {tool?:string}).tool??""),
+          projectContext:{repairAfterFailure:true}
+        });
+        const recoveryPlan=await repair;
+        if(!recoveryPlan)return{missionId,completed:false,status:"failed",steps,results,reason:result.error};
+        current.tools=current.tools??[];
+        current.tools.push(recoveryPlan);
+        this.missions.save(current);
+      }
+    }
+    const finalMission=this.missions.get(missionId);
+    if(!finalMission)throw new Error("Mission not found.");
+    if(!results.length)return{missionId,completed:false,status:finalMission.status,steps,results,reason:"Agent loop produced no executable result."};
+    const final=await this.executionRuntime.finalize(finalMission,latest,agentId);
+    this.missions.save(finalMission);
+    return{missionId,completed:final.ok,status:finalMission.status,steps,results,final};
+  }
+
   async getDevelopmentSessionState(missionId:string,projectId:string,agentId="core"){
     const mission=this.missions.get(missionId);
     if(mission)this.projectIsolation.assertMissionProject(projectId,mission.projectId);
