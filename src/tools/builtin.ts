@@ -78,9 +78,21 @@ export function registerBuiltinTools(core:LayanXCore):void {
       return {query,entries:core.memory.recall(query,limit)};
     }
   } satisfies ToolAdapter);
-}
 
-
+  core.tools.register({
+    name:"project.inspect",
+    description:"build a bounded static inventory of the current project workspace without executing project code",
+    permission:"L2_ANALYZE",
+    dangerous:false,
+    actions:["inspect project","analyze project","project intelligence","فحص المشروع","تحليل المشروع","ذكاء المشروع"],
+    tags:["project","intelligence","inventory","architecture","analysis","مشروع","تحليل"]
+  });
+  core.toolAdapters.register("project.inspect",{
+    async execute(request:ToolRequest):Promise<unknown>{
+      if(!request.projectId)throw new Error("Project identity is required.");
+      return core.projectIntelligence.scan(request.projectId);
+    }
+  } satisfies ToolAdapter);
 
 }
 
