@@ -188,3 +188,12 @@ LayanX now has a deterministic security review layer:
 - returns `approved=false` for high/critical findings
 
 Security review is intentionally separate from ordinary code review so a future PR generator can require both gates independently.
+## Pull request generation gate
+
+LayanX can now prepare a PR draft only after the current commit has matching code and security review results:
+- `POST /v1/git/pr-draft`
+- verifies head/base separation
+- verifies both review gates are approved
+- verifies both reviews match the current HEAD and branch
+- generates a structured PR body with mission, project, commit, files, and validation status
+- never merges or releases automatically
