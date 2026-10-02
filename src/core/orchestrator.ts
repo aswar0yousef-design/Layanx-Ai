@@ -48,7 +48,7 @@ import {createHash} from "node:crypto";
 import {MissionEventStream} from "./event-stream.js";
 import {AutomaticTestRunner, type TestRunResult} from "./test-runner.js";
 import {TaskDecomposer} from "./task-decomposition.js";
-import {TaskRouter, type TaskAssignment} from "./task-router.js";
+import {TaskRouter} from "./task-router.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
