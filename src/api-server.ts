@@ -6,8 +6,11 @@ import {providerSummary} from "./config/providers.js";
 import {McpGateway} from "./mcp-gateway.js";
 import {ControlCenter} from "./control-center.js";
 import {createHash} from "node:crypto";
+import {VoiceService} from "./voice/service.js";
+import {voiceUiHtml} from "./voice/ui.js";
 export interface RuntimeApiOptions{core:LayanXCore;persistence?:RuntimePersistence;host?:string;port?:number;maxBodyBytes?:number;token?:string;requireToken?:boolean;}
 function json(response:ServerResponse,status:number,body:unknown){response.statusCode=status;response.setHeader("content-type","application/json; charset=utf-8");response.end(JSON.stringify(body));}
+async function rawBody(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}return Buffer.concat(chunks);}
 async function body(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}const raw=Buffer.concat(chunks).toString("utf8");if(!raw)return{};try{return JSON.parse(raw) as Record<string,unknown>;}catch{throw new Error("invalid_json");}}
 function authorized(request:IncomingMessage,token?:string){return !token||request.headers.authorization==="Bearer "+token;}
 function runtimeView(core:LayanXCore,persistence?:RuntimePersistence){return {core,models:core.models,providers:core.providers,providerSummary:providerSummary(),persistence};}
@@ -15,9 +18,42 @@ export function startRuntimeApi(options:RuntimeApiOptions){
  const host=options.host??process.env.LAYANX_API_HOST??"127.0.0.1";const port=options.port??Number(process.env.LAYANX_API_PORT??3000);const max=options.maxBodyBytes??65536;const requireToken=options.requireToken??(process.env.LAYANX_API_REQUIRE_TOKEN==="true");const remoteHost=host!=="127.0.0.1"&&host!=="localhost"&&host!=="::1";if((requireToken||remoteHost)&&!options.token)throw new Error("LAYANX_API_TOKEN is required for remote API access");
  const mcp=new McpGateway(options.core);
  const control=new ControlCenter(options.core);
+ const voice=new VoiceService();
  const server=createServer(async(request,response)=>{
   response.setHeader("cache-control","no-store");
   if(requireToken&&!authorized(request,options.token)&&request.url!=="/v1/health"){json(response,401,{ok:false,error:"unauthorized"});return;}
+  if(request.method==="GET"&&request.url==="/voice"){
+   response.statusCode=200;response.setHeader("content-type","text/html; charset=utf-8");response.end(voiceUiHtml());return;
+  }
+  if(request.method==="GET"&&request.url==="/v1/voice/status"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   json(response,200,{ok:true,voice:voice.status()});return;
+  }
+  if(request.method==="POST"&&request.url==="/v1/voice/transcribe"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const contentType=typeof request.headers["content-type"]==="string"?request.headers["content-type"]:"audio/webm";
+    const filename=typeof request.headers["x-layanx-filename"]==="string"?request.headers["x-layanx-filename"]:"voice.webm";
+    const language=typeof request.headers["x-layanx-language"]==="string"?request.headers["x-layanx-language"]:undefined;
+    const audio=await rawBody(request,Math.max(max,16*1024*1024));
+    if(!audio.length){json(response,400,{ok:false,error:"audio body is required"});return;}
+    const text=await voice.transcribe(audio,contentType.split(";")[0]??"audio/webm",filename,language);
+    json(response,200,{ok:true,text,provider:voice.status().provider});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"voice transcription failed"});}
+   return;
+  }
+  if(request.method==="POST"&&request.url==="/v1/voice/speak"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const input=await body(request,max);
+    const textValue=typeof input.text==="string"?input.text.trim():"";
+    const format=input.format==="wav"||input.format==="opus"?"${input.format}":"mp3";
+    if(!textValue){json(response,400,{ok:false,error:"text is required"});return;}
+    const result=await voice.speak(textValue,format);
+    response.statusCode=200;response.setHeader("content-type",result.contentType);response.setHeader("cache-control","no-store");response.end(result.audio);
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"voice synthesis failed"});}
+   return;
+  }
   if(request.method==="POST"&&request.url==="/mcp"){
    if(!authorized(request,options.token)){json(response,401,{jsonrpc:"2.0",error:{code:-32001,message:"Unauthorized"}});return;}
    try{
