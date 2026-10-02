@@ -4,7 +4,7 @@ import type {ToolAdapter} from "./executor.js";
 import {createHttpReadAdapter} from "./http-read.js";
 import {createGitHubReadAdapter} from "../connectors/github-read.js";
 import {createGitToolAdapter} from "./git.js";
-import {createBrowserToolAdapter,createFileToolAdapter,createFileWriteToolAdapter,createTerminalToolAdapter} from "./fabric.js";
+import {createBrowserToolAdapter,createFileToolAdapter,createFileWriteToolAdapter,createTerminalToolAdapter,createProjectVerifyToolAdapter} from "./fabric.js";
 
 function payloadRecord(request:ToolRequest):Record<string,unknown>{
   return request.payload&&typeof request.payload==="object"&&!Array.isArray(request.payload)
