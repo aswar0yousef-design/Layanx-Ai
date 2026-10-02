@@ -377,7 +377,6 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   }
   if(request.method==="GET"&&request.url==="/v1/traces"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
-   const url=new URL(request.url??"/v1/traces","http://127.0.0.1");
    json(response,200,{ok:true,traces:options.core.tracer.list()});return;
   }
   if(request.method==="GET"&&request.url==="/v1/release"){
