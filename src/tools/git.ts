@@ -30,7 +30,7 @@ function safePath(value:unknown,cwd:string):string{
 export function createGitToolAdapter(options:{root:string}):ToolAdapter{
  const root=resolve(options.root);
  return{async execute(request:ToolRequest){
-  const workspace=workspaceFor(root,request.projectId);await mkdir(workspace,{recursive:true});
+  const workspace=workspaceFor(root,typeof request.projectId==="string"?request.projectId:"");await mkdir(workspace,{recursive:true});
   const input=payload(request);
   switch(request.action){
    case "git status": return run(workspace,["status","--short"]);
