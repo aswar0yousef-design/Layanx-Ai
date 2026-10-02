@@ -1,6 +1,5 @@
 import {readFile,writeFile,mkdir,rm} from "node:fs/promises";
 import {createHash} from "node:crypto";
-import {createHash} from "node:crypto";
 import {resolve,relative,sep,isAbsolute,dirname} from "node:path";
 import type {LayanXCore} from "./orchestrator.js";
 
@@ -57,7 +56,7 @@ export class SafeCodeModifier{
     }
     const backupId=crypto.randomUUID();
     const workspace=this.workspace(projectId);
-    const backupDir=resolve(workspace,".layanx","backups",backupId);
+    const backupDir=resolve(this.root,".layanx-backups",projectId,backupId);
     await mkdir(backupDir,{recursive:true});
     const originals:{path:string;exists:boolean;content?:string}[]=[];
     try{
