@@ -18,7 +18,7 @@ export interface VoiceProvider {
   status():VoiceStatus;
   transcribe(audio:Buffer,mimeType:string,filename:string,language?:string):Promise<string>;
   speak(text:string,format?:"mp3"|"wav"|"opus"):Promise<{audio:Buffer;contentType:string}>;
-  createRealtimeClientSecret?(options?:{model?:string;voice?:string;instructions?:string}):Promise<RealtimeClientSecret>;
+  createRealtimeClientSecret?(options?:{model?:string;voice?:string;instructions?:string;safetyIdentifier?:string}):Promise<RealtimeClientSecret>;
 }
 
 function audioBaseUrl():string{
@@ -70,7 +70,7 @@ export class OpenAIVoiceProvider implements VoiceProvider{
     return{audio:Buffer.from(await response.arrayBuffer()),contentType:format==="wav"?"audio/wav":format==="opus"?"audio/ogg; codecs=opus":"audio/mpeg"};
   }
 
-  async createRealtimeClientSecret(options:{model?:string;voice?:string;instructions?:string}={}):Promise<RealtimeClientSecret>{
+  async createRealtimeClientSecret(options:{model?:string;voice?:string;instructions?:string;safetyIdentifier?:string}={}):Promise<RealtimeClientSecret>{
     if(!this.apiKey)throw new Error("OpenAI voice is not configured: OPENAI_API_KEY is required.");
     const session={
       type:"realtime",
@@ -97,7 +97,7 @@ export class OpenAIVoiceProvider implements VoiceProvider{
     };
     const response=await fetch(`${this.baseUrl}/realtime/client_secrets`,{
       method:"POST",
-      headers:{...this.headers(),"content-type":"application/json"},
+      headers:{...this.headers(),"content-type":"application/json",...(options.safetyIdentifier?{"OpenAI-Safety-Identifier":options.safetyIdentifier}:{})},
       body:JSON.stringify({expires_after:{anchor:"created_at",seconds:300},session})
     });
     if(!response.ok)throw new Error(`Realtime client secret failed (${response.status}): ${await response.text()}`);
@@ -112,7 +112,7 @@ export class VoiceService{
   status(){return this.provider.status();}
   transcribe(...args:Parameters<VoiceProvider["transcribe"]>){return this.provider.transcribe(...args);}
   speak(...args:Parameters<VoiceProvider["speak"]>){return this.provider.speak(...args);}
-  createRealtimeClientSecret(options:{model?:string;voice?:string;instructions?:string}={}){
+  createRealtimeClientSecret(options:{model?:string;voice?:string;instructions?:string;safetyIdentifier?:string}={}){
     if(!this.provider.createRealtimeClientSecret)throw new Error("Realtime voice is not supported by the configured voice provider.");
     return this.provider.createRealtimeClientSecret(options);
   }
