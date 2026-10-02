@@ -360,6 +360,12 @@ export class LayanXCore{
     return{missionId,completed:false,attempts:limit,repaired,exhausted:true,blocked:false,results,reason:failure?.error??"Repair attempts exhausted."};
   }
 
+  async runAgentGateway(goal:string,projectId="default",maxSteps=10,approvalIds:Record<number,string>={},agentId="core"){
+    const mission=await this.planAndStartMission(goal,projectId);
+    const result=await this.executeAgentLoop(mission.id,projectId,maxSteps,approvalIds,agentId);
+    return{missionId:mission.id,goal:mission.goal,projectId,agentId,...result};
+  }
+
   async executeAgentLoop(missionId:string,projectId:string,maxSteps=10,approvalIds:Record<number,string>={},agentId="core"){
     const mission=this.missions.get(missionId);
     if(!mission)throw new Error("Mission not found.");
