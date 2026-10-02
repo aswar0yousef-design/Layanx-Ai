@@ -49,6 +49,8 @@ import {MissionEventStream} from "./event-stream.js";
 import {AutomaticTestRunner, type TestRunResult} from "./test-runner.js";
 import {TaskDecomposer} from "./task-decomposition.js";
 import {TaskRouter} from "./task-router.js";
+import {TaskRuntime} from "./task-runtime.js";
+import type {ModelRoutingOptions} from "../models/inference.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -99,6 +101,7 @@ export class LayanXCore{
   readonly testRunner=new AutomaticTestRunner({root:process.env.LAYANX_WORKSPACE_ROOT??process.cwd()});
   readonly taskDecomposer=new TaskDecomposer(this.modelExecution);
   readonly taskRouter=new TaskRouter(this.agents,this.modelRouter);
+  readonly taskRuntime:TaskRuntime;
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
@@ -109,6 +112,7 @@ export class LayanXCore{
     this.executionRuntime=new ExecutionRuntime(this);
     this.skillRuntime=new SkillRuntime(this.skills,async(missionId,projectId,toolIndex,payload)=>this.executeMissionTool(missionId,projectId,toolIndex,payload));
     this.teamRuntime=new AgentTeamRuntime(this.delegation,this.agents,this.projectIsolation);
+    this.taskRuntime=new TaskRuntime(this);
   }
 
   restoreRuntimeSnapshot(snapshot:import("./runtime-persistence.js").RuntimeSnapshot){
@@ -446,13 +450,13 @@ export class LayanXCore{
     return{missionId,completed:false,attempts:limit,repaired,exhausted:true,blocked:false,results,reason:failure?.error??"Repair attempts exhausted."};
   }
 
-  async runAgentGateway(goal:string,projectId="default",maxSteps=10,approvalIds:Record<number,string>={},agentId="core"){
-    const mission=await this.planAndStartMission(goal,projectId);
+  async runAgentGateway(goal:string,projectId="default",maxSteps=10,approvalIds:Record<number,string>={},agentId="core",routing?:ModelRoutingOptions){
+    const mission=await this.planAndStartMission(goal,projectId,routing);
     const result=await this.executeAgentLoop(mission.id,projectId,maxSteps,approvalIds,agentId);
     return{goal:mission.goal,projectId,agentId,...result,missionId:mission.id};
   }
 
-  async executeAgentLoop(missionId:string,projectId:string,maxSteps=10,approvalIds:Record<number,string>={},agentId="core"){
+  async executeAgentLoop(missionId:string,projectId:string,maxSteps=10,approvalIds:Record<number,string>={},agentId="core",routing?:ModelRoutingOptions){
     const mission=this.missions.get(missionId);
     if(!mission)throw new Error("Mission not found.");
     this.projectIsolation.assertMissionProject(projectId,mission.projectId);
@@ -472,6 +476,7 @@ export class LayanXCore{
         const context=await this.projectIntelligence.scan(projectId).then(i=>({summary:i.summary,markers:i.markers,package:i.package,files:i.files.slice(0,80).map(f=>f.path)})).catch(error=>({unavailable:true,reason:error instanceof Error?error.message:"project intelligence unavailable"}));
         plan=await this.aiPlanner.nextTool({
           goal:current.goal,result:latest,tools:catalog,requiredPermission:current.requiredPermission,
+          routing,
           completedTools:plans.slice(0,index<0?plans.length:index).map(item=>item.tool),
           memory:this.contextFabric.build({projectId,mission:current,query:current.goal,limit:8,maxChars:6000}).memories.map(e=>({kind:e.kind,summary:e.summary,content:e.content,tags:e.tags})),
           projectContext:context
@@ -592,7 +597,7 @@ export class LayanXCore{
     return{missionId,results,completed:results.length===plans.length&&results.every(result=>result.ok)};
   }
 
-  async planMission(goal:string,projectId="default"){
+  async planMission(goal:string,projectId="default",routing?:ModelRoutingOptions){
     const contract=this.agents.get("core");
     const tools=this.toolCatalog.list(contract,contract.requiredPermission);
     let projectContext:unknown=null;
@@ -602,13 +607,13 @@ export class LayanXCore{
     }catch(error){
       projectContext={unavailable:true,reason:error instanceof Error?error.message:"project intelligence unavailable"};
     }
-    const plan=await this.aiPlanner.plan(goal,tools,projectContext);
+    const plan=await this.aiPlanner.plan(goal,tools,projectContext,routing);
     return this.missionCompiler.compile(plan,goal);
   }
 
-  async planAndStartMission(goal:string,projectId="default"){
+  async planAndStartMission(goal:string,projectId="default",routing?:ModelRoutingOptions){
     const normalizedProjectId=this.projectIsolation.normalize(projectId);
-    const m=await this.planMission(goal,normalizedProjectId);
+    const m=await this.planMission(goal,normalizedProjectId,routing);
     m.projectId=normalizedProjectId;
     this.executionStates.start(m.id);
     this.ledger.append({id:crypto.randomUUID(),missionId:m.id,agentId:"core",action:"mission.create",status:"started",timestamp:new Date().toISOString(),detail:goal});
