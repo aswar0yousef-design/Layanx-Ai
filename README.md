@@ -23,6 +23,18 @@ The present target is to run the full runtime on the user's own computer with lo
 - Bounded Agent Teams and repair
 - LayanX Control Center
 
+## Scheduler and event-driven missions
+
+LayanX now includes an in-process Scheduler and Event Mission Engine:
+
+- One-time and interval mission schedules.
+- Bounded scheduler tick loop with duplicate-run protection.
+- Event triggers scoped by project.
+- Optional exact payload matching for event triggers.
+- Scheduled/event missions enter the same Agent Gateway and therefore retain permissions, risk controls, approvals, verification, recovery, audit, and memory.
+- API endpoints expose schedule/trigger registration and manual event emission.
+- Scheduler state is currently process-local; durable scheduling belongs to the later PostgreSQL/operations phase.
+
 ## Dependency-aware task runtime
 
 Task decomposition is now executable through a dependency-aware runtime:
