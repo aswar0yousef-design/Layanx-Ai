@@ -90,7 +90,7 @@ export class ProjectGraph{
       let match:RegExpExecArray|null;
       while((match=IMPORT_RE.exec(source))!==null){
         const specifier=match[2];
-        if(!specifier.startsWith("."))continue;
+        if(typeof specifier!=="string"||!specifier.startsWith("."))continue;
         const target=this.resolveImport(path,specifier,fileSet);
         if(target)edges.push({from:path,to:target,kind:"import"});
       }
