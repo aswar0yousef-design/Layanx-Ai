@@ -22,7 +22,7 @@ await write.execute({...base,payload:{path:"../escape.ts",content:"blocked"}}).t
 
 const git=createGitToolAdapter({root:dir});
 const status=await git.execute({...base,tool:"git.status",action:"git status",permission:"L2_ANALYZE",idempotencyKey:"git-status",payload:{}});
-if(!String((status as {stdout:string}).stdout).includes("project-a"))throw new Error("Git status did not inspect the project workspace.");
+if(!String((status as {stdout:string}).stdout).includes("src/"))throw new Error("Git status did not inspect the project workspace.");
 await git.execute({...base,tool:"git.add",action:"git add",permission:"L4_EXECUTE",idempotencyKey:"git-add",payload:{path:"../outside"}}).then(()=>{throw new Error("Git path traversal was not blocked.");}).catch(error=>{if(!String(error).includes("escapes"))throw error;});
 const previous=process.env.LAYANX_ALLOW_MAIN_PUSH;
 delete process.env.LAYANX_ALLOW_MAIN_PUSH;
