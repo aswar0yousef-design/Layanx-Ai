@@ -78,6 +78,23 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }
    return;
   }
+  if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/repair$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const missionId=request.url.split("/")[3] as string;
+   if(!options.core.missions.get(missionId)){json(response,404,{ok:false,error:"mission_not_found"});return;}
+   try{
+    const input=await body(request,max);
+    const projectId=typeof input.projectId==="string"?input.projectId.trim():"";
+    const attempts=typeof input.maxRepairAttempts==="number"?input.maxRepairAttempts:3;
+    const agentId=typeof input.agentId==="string"&&input.agentId.trim()?input.agentId.trim():"core";
+    if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
+    const result=await options.core.executeMissionRepair(missionId,projectId,attempts,agentId);
+    json(response,result.completed?200:result.blocked?403:422,result);
+   }catch(error){
+    json(response,422,{ok:false,error:error instanceof Error?error.message:"autonomous repair failed"});
+   }
+   return;
+  }
   if(request.method==="GET"&&request.url?.startsWith("/v1/context")){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const parsed=new URL(request.url,"http://localhost");

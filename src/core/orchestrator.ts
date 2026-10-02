@@ -40,6 +40,7 @@ import {SkillRegistry} from "../skills/registry.js";
 import {SkillRuntime} from "../skills/runtime.js";
 import {AgentTeamRuntime} from "./team-runtime.js";
 import {ProjectIntelligence} from "./project-intelligence.js";
+import {AutonomousRepairLoop} from "./autonomous-repair.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -82,6 +83,7 @@ export class LayanXCore{
   readonly adaptiveDecision=new AdaptiveDecisionEngine();
   readonly projectIsolation=new ProjectIsolation();
   readonly projectIntelligence=new ProjectIntelligence({root:process.env.LAYANX_WORKSPACE_ROOT??process.cwd()});
+  readonly autonomousRepair=new AutonomousRepairLoop();
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
@@ -259,6 +261,102 @@ export class LayanXCore{
     const finalResult=await this.executionRuntime.finalize(finalMission,latest,agentId);
     this.missions.save(finalMission);
     return{missionId,results,completed:finalResult.ok,finalResult};
+  }
+
+  async executeMissionRepair(missionId:string,projectId:string,maxRepairAttempts=3,agentId="core"){
+    const mission=this.missions.get(missionId);
+    if(!mission)throw new Error("Mission not found.");
+    this.projectIsolation.assertMissionProject(projectId,mission.projectId);
+    if(["completed","cancelled"].includes(mission.status))return{missionId,completed:mission.status==="completed",attempts:0,repaired:false,exhausted:false,blocked:false,results:[],reason:"Mission is already terminal."};
+    const limit=this.autonomousRepair.normalizeAttempts(maxRepairAttempts);
+    const results:import("./autonomous-repair.js").RepairAttempt[]=[];
+    let latest:unknown={status:"not_started"};
+    let repaired=false;
+
+    for(let index=0;index<(mission.tools?.length??0);index++){
+      const plan=mission.tools?.[index];
+      if(!plan)break;
+      const result=await this.executeMissionTool(missionId,projectId,index,plan.payload??{},undefined,agentId,{deferVerification:true});
+      results.push({attempt:0,tool:plan.tool,action:plan.action,ok:result.ok,error:result.error,data:result.data});
+      latest=result.data??result.error;
+      if(!result.ok)break;
+    }
+
+    let failure=results.find(item=>!item.ok);
+    if(!failure){
+      const finalMission=this.missions.get(missionId);
+      if(!finalMission)throw new Error("Mission not found.");
+      const finalResult=await this.executionRuntime.finalize(finalMission,latest,agentId);
+      this.missions.save(finalMission);
+      return{missionId,completed:finalResult.ok,attempts:0,repaired:false,exhausted:false,blocked:false,results,reason:finalResult.error};
+    }
+
+    for(let attempt=1;attempt<=limit;attempt++){
+      const current=this.missions.get(missionId);
+      if(!current)throw new Error("Mission not found.");
+      const activeFailure=failure??{attempt:attempt-1,ok:false,error:"Previous repair attempt failed."};
+      if(current.status==="blocked")return{missionId,completed:false,attempts:attempt-1,repaired,exhausted:false,blocked:true,results,reason:activeFailure.error};
+      current.status="running";
+      this.executionStates.update(missionId,{status:"running",recoverable:true});
+      this.missions.save(current);
+
+      const context=await this.projectIntelligence.scan(projectId).then(intelligence=>({
+        summary:intelligence.summary,markers:intelligence.markers,package:intelligence.package,
+        files:intelligence.files.slice(0,80).map(file=>file.path)
+      })).catch(error=>({unavailable:true,reason:error instanceof Error?error.message:"project intelligence unavailable"}));
+      const catalog=this.toolCatalog.list(this.agents.get(agentId),current.requiredPermission);
+      let next;
+      try{
+        next=await this.aiPlanner.nextTool({
+          goal:current.goal,
+          result:{failure:activeFailure.error,previousResult:latest,attempt},
+          tools:catalog,
+          requiredPermission:current.requiredPermission,
+          completedTools:results.filter(item=>item.ok&&item.tool).map(item=>item.tool as string),
+          memory:this.contextFabric.build({projectId,mission:current,query:current.goal,limit:12,maxChars:8000}).memories.map(entry=>({kind:entry.kind,summary:entry.summary,content:entry.content,tags:entry.tags})),
+          projectContext:context
+        });
+      }catch(error){
+        failure={attempt,ok:false,error:error instanceof Error?error.message:"repair planner failed"};
+        results.push(failure);
+        break;
+      }
+      if(!next){
+        if(repaired){
+          const finalMission=this.missions.get(missionId);
+          if(!finalMission)throw new Error("Mission not found.");
+          const finalResult=await this.executionRuntime.finalize(finalMission,latest,agentId);
+          this.missions.save(finalMission);
+          if(finalResult.ok)return{missionId,completed:true,attempts:attempt,repaired,exhausted:false,blocked:false,results};
+          failure={attempt,ok:false,error:finalResult.error??"Verification failed after repair."};
+          results.push(failure);
+          continue;
+        }
+        failure={attempt,ok:false,error:"Repair planner produced no corrective action."};
+        results.push(failure);
+        break;
+      }
+      if(!this.autonomousRepair.isSafeRepairPermission(next.permission)){
+        failure={attempt,tool:next.tool,action:next.action,ok:false,error:"Repair action exceeds the autonomous repair permission boundary."};
+        results.push(failure);
+        break;
+      }
+      current.tools=current.tools??[];
+      current.tools.push(next);
+      this.missions.save(current);
+      const toolIndex=current.tools.length-1;
+      const result=await this.executeMissionTool(missionId,projectId,toolIndex,next.payload??{},undefined,agentId,{deferVerification:true});
+      results.push({attempt,tool:next.tool,action:next.action,ok:result.ok,error:result.error,data:result.data});
+      latest=result.data??result.error;
+      if(result.ok){
+        repaired=true;
+        failure=undefined;
+      }else{
+        failure=results[results.length-1];
+        if(this.missions.get(missionId)?.status==="blocked")return{missionId,completed:false,attempts:attempt,repaired,exhausted:false,blocked:true,results,reason:result.error};
+      }
+    }
+    return{missionId,completed:false,attempts:limit,repaired,exhausted:true,blocked:false,results,reason:failure?.error??"Repair attempts exhausted."};
   }
 
   async executeMissionTools(missionId:string,projectId:string,payloads:unknown[]=[] ,approvalId?:string,agentId="core"){
