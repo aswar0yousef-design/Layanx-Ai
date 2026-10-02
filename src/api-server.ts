@@ -329,7 +329,14 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     if(!contract.allowedTools.includes(plan.tool)||!catalog.some(entry=>entry.name===plan.tool)){json(response,403,{ok:false,error:"Tool is not authorized for the agent"});return;}
     const requestData={missionId:id,agentId,tool:plan.tool,action:plan.action,permission:plan.permission,idempotencyKey:"approval-"+crypto.randomUUID(),payload:plan.payload};
     const risk=options.core.risk.assess(requestData);
-    if(!risk.requiresApproval&&!tool.dangerous){json(response,400,{ok:false,error:"This tool does not require explicit approval"});return;}
+    let impactRisk:"low"|"medium"|"high"|"critical"="low";
+    try{
+      const impact=await options.core.prepareChangeImpact(mission,projectId,{tool:plan.tool,action:plan.action});
+      impactRisk=impact.impact.risk;
+    }catch(error){
+      json(response,422,{ok:false,error:error instanceof Error?"change impact analysis failed: "+error.message:"change impact analysis failed"});return;
+    }
+    if(!risk.requiresApproval&&!tool.dangerous&&!["high","critical"].includes(impactRisk)){json(response,400,{ok:false,error:"This tool does not require explicit approval"});return;}
     const approval=options.core.executionRuntime.approvals.create({
       missionId:id,agentId,tool:plan.tool,action:plan.action,permission:plan.permission,payloadHash:createHash("sha256").update(JSON.stringify(plan.payload??null)).digest("hex"),
       reason:risk.reasons.join("; ")||"Dangerous tool execution",
