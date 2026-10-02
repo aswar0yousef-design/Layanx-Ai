@@ -1,4 +1,4 @@
-import {readFile,readdir,stat,mkdir} from "node:fs/promises";
+import {readFile,readdir,stat,mkdir,writeFile} from "node:fs/promises";
 import {resolve,relative,isAbsolute,sep} from "node:path";
 import {spawn} from "node:child_process";
 import type {ToolRequest} from "../core/types.js";
@@ -27,6 +27,24 @@ export function createFileToolAdapter(options:{root:string}):ToolAdapter{
   throw new Error("Unsupported file action.");
  }};
 }
+
+export function createFileWriteToolAdapter(options:{root:string}):ToolAdapter{
+ const root=resolve(options.root);
+ return{async execute(request){
+  const workspace=workspaceFor(root,request.projectId);await mkdir(workspace,{recursive:true});
+  const input=payload(request),path=typeof input.path==="string"?input.path:"",content=typeof input.content==="string"?input.content:"";
+  if(!path)throw new Error("File path is required.");
+  if(content.length>2*1024*1024)throw new Error("File content exceeds the 2 MiB write limit.");
+  const target=sandboxPath(workspace,path);
+  if(request.action==="write file"){
+   await mkdir(resolve(target,".."),{recursive:true});
+   await writeFile(target,content,"utf8");
+   return{path,bytes:Buffer.byteLength(content,"utf8"),written:true};
+  }
+  throw new Error("Unsupported file write action.");
+ }};
+}
+
 function validateUrl(raw:string):URL{
  const url=new URL(raw);
  if(!["http:","https:"].includes(url.protocol))throw new Error("Browser supports HTTP(S) URLs only.");
