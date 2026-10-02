@@ -1,5 +1,14 @@
 import type {PermissionLevel} from "./types.js";
 
+export type AgentRole="orchestrator"|"developer"|"researcher"|"security"|"devops"|"analyst"|"general";
+
+export interface AgentProfile {
+  role:AgentRole;
+  description:string;
+  preferredCapabilities:string[];
+  memoryTags:string[];
+}
+
 export interface AgentContract {
   agentId:string;
   purpose:string;
@@ -10,6 +19,7 @@ export interface AgentContract {
   maxRuntimeMs:number;
   successCriteria:string[];
   stopCondition:string;
+  profile?:AgentProfile;
 }
 
 export interface ExecutionContext {
