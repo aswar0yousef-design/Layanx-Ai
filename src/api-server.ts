@@ -36,6 +36,19 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    json(response,200,{ok:true,control:control.snapshot(projectId)});
    return;
   }
+  if(request.method==="GET"&&request.url?.startsWith("/v1/control-center/session")){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const parsed=new URL(request.url,"http://localhost");
+   const projectId=parsed.searchParams.get("projectId")?.trim()||"";
+   const missionId=parsed.searchParams.get("missionId")?.trim()||"";
+   if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
+   try{
+    const missions=options.core.missions.list().filter(m=>m.projectId===projectId).filter(m=>!missionId||m.id===missionId);
+    const sessions=options.persistence?await Promise.all(missions.map(m=>options.core.getDevelopmentSessionState(m.id,projectId))):[];
+    json(response,200,{ok:true,projectId,missions:missions.map(m=>({id:m.id,goal:m.goal,status:m.status})),sessions});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"remote session state failed"});}
+   return;
+  }
   if(request.method==="POST"&&request.url?.match(/^\/v1\/control-center\/missions\/[^/]+\/cancel$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const id=request.url.split("/")[4] as string;
