@@ -8,7 +8,7 @@ export class ApprovalEngine{
  revoke(id:string){this.approved.delete(id);}
  get(id:string){const request=this.requests.get(id);if(!request)throw new Error("Unknown approval request.");return request;}
  isApproved(id:string){const request=this.get(id);return this.approved.has(id)&&Date.parse(request.expiresAt)>Date.now();}
- authorize(id:string,context:{missionId:string;agentId:string;tool:string;action:string;permission:PermissionLevel;payloadHash:string}){
+ validate(id:string,context:{missionId:string;agentId:string;tool:string;action:string;permission:PermissionLevel;payloadHash:string}){
   const request=this.get(id);
   if(!this.isApproved(id))return{allowed:false,reason:"Approval missing, revoked, or expired."};
   if(request.missionId!==context.missionId||request.agentId!==context.agentId||request.tool!==context.tool||request.action!==context.action||request.permission!==context.permission||request.payloadHash!==context.payloadHash)return{allowed:false,reason:"Approval scope mismatch."};
