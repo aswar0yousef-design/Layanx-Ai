@@ -28,8 +28,8 @@ export class ContextFabric{
   const limit=Math.min(Math.max(request.limit??8,1),50);
   const maxChars=Math.min(Math.max(request.maxChars??12000,500),50000);
   const memories=this.memory.recall(request.query,limit,projectId);
-  const sections:string[]=[];
-  for(const memory of memories){
+  const prioritized=[...memories].sort((a,b)=>{\n   const rank=(kind:MemoryEntry["kind"])=>kind==="decision"?5:kind==="failure"?4:kind==="success"?3:kind==="fact"?2:1;\n   return rank(b.kind)-rank(a.kind);\n  });\n  const sections:string[]=[];
+  for(const memory of prioritized){
    const serialized=JSON.stringify({kind:memory.kind,summary:memory.summary,content:memory.content,tags:memory.tags});
    sections.push(serialized);
   }
@@ -40,6 +40,6 @@ export class ContextFabric{
    if(next.length>maxChars){truncated=true;break;}
    text=next;
   }
-  return{projectId,missionId:request.mission.id,query:request.query,memories:memories.filter(memory=>text.includes(memory.summary)),text,truncated};
+  const included=prioritized.filter(memory=>text.includes(memory.summary));\n  return{projectId,missionId:request.mission.id,query:request.query,memories:included,text,truncated};
  }
 }
