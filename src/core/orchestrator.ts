@@ -47,6 +47,7 @@ import {AutonomousRepairLoop} from "./autonomous-repair.js";
 import {createHash} from "node:crypto";
 import {MissionEventStream} from "./event-stream.js";
 import {AutomaticTestRunner, type TestRunResult} from "./test-runner.js";
+import {TaskDecomposer} from "./task-decomposition.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -95,6 +96,7 @@ export class LayanXCore{
   readonly autonomousRepair=new AutonomousRepairLoop();
   readonly eventStream=new MissionEventStream();
   readonly testRunner=new AutomaticTestRunner({root:process.env.LAYANX_WORKSPACE_ROOT??process.cwd()});
+  readonly taskDecomposer=new TaskDecomposer(this.modelExecution);
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
