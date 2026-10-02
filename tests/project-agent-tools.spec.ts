@@ -9,8 +9,9 @@ import type {ToolRequest} from "../src/core/types.js";
 const exec=promisify(execFile);
 const dir=await mkdtemp(join(process.cwd(),"project-agent-test-"));
 await exec("git",["init","-q"],{cwd:dir});
-await exec("git",["config","user.email","test@example.com"],{cwd:dir});
-await exec("git",["config","user.name","LayanX Test"],{cwd:dir});
+await exec("git",["init","-q"],{cwd:join(dir,"project-a")});
+await exec("git",["config","user.email","test@example.com"],{cwd:join(dir,"project-a")});
+await exec("git",["config","user.name","LayanX Test"],{cwd:join(dir,"project-a")});
 
 const base:ToolRequest={missionId:"m",agentId:"core",projectId:"project-a",tool:"files.write",action:"write file",permission:"L3_MODIFY",idempotencyKey:"write-1"};
 const write=createFileWriteToolAdapter({root:dir});
