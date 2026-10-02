@@ -52,6 +52,7 @@ import {TaskRouter} from "./task-router.js";
 import {TaskRuntime} from "./task-runtime.js";
 import {MissionScheduler} from "./scheduler.js";
 import {EventMissionEngine} from "./event-engine.js";
+import {MissionDependencyManager} from "./mission-dependencies.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
 
 export class LayanXCore{
@@ -106,6 +107,7 @@ export class LayanXCore{
   readonly taskRuntime:TaskRuntime;
   readonly scheduler:MissionScheduler;
   readonly eventEngine:EventMissionEngine;
+  readonly missionDependencies:MissionDependencyManager;
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
@@ -119,6 +121,7 @@ export class LayanXCore{
     this.taskRuntime=new TaskRuntime(this);
     this.scheduler=new MissionScheduler(this);
     this.eventEngine=new EventMissionEngine(this,this.scheduler);
+    this.missionDependencies=new MissionDependencyManager(this);
   }
 
   restoreRuntimeSnapshot(snapshot:import("./runtime-persistence.js").RuntimeSnapshot){
@@ -143,6 +146,9 @@ export class LayanXCore{
     const contract=this.agents.get(agentId);
     return this.toolSelector.discover(action,contract,permission);
   }
+  registerMissionDependencies(missionId:string,dependsOn:string[],projectId="default"){return this.missionDependencies.register(missionId,dependsOn,projectId);}
+  missionDependencyStatus(missionId:string){return this.missionDependencies.status(missionId);}
+  async runDependentMission(missionId:string,projectId="default",maxSteps=10,agentId="core"){return this.missionDependencies.runWhenReady(missionId,projectId,maxSteps,agentId);}
   prepareMissionToolRequests(mission:import("./types.js").Mission,projectId:string,agentId="core" ){
     this.projectIsolation.assertMissionProject(projectId,mission.projectId);
     const contract=this.agents.get(agentId);
