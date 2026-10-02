@@ -363,7 +363,7 @@ export class LayanXCore{
   async runAgentGateway(goal:string,projectId="default",maxSteps=10,approvalIds:Record<number,string>={},agentId="core"){
     const mission=await this.planAndStartMission(goal,projectId);
     const result=await this.executeAgentLoop(mission.id,projectId,maxSteps,approvalIds,agentId);
-    return{missionId:mission.id,goal:mission.goal,projectId,agentId,...result};
+    return{goal:mission.goal,projectId,agentId,...result,missionId:mission.id};
   }
 
   async executeAgentLoop(missionId:string,projectId:string,maxSteps=10,approvalIds:Record<number,string>={},agentId="core"){
