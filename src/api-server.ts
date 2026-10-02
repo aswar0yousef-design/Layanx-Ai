@@ -34,9 +34,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     const projectId=typeof input.projectId==="string"&&input.projectId.trim()?input.projectId.trim():"default";
     const safetySource=`${request.socket.remoteAddress??"local"}|${request.headers["user-agent"]??"unknown"}|${projectId}`;
     const safetyIdentifier=createHash("sha256").update(safetySource).digest("hex");
-    const originalFetch=globalThis.fetch;
-    const result=await voice.createRealtimeClientSecret({model,voice:voiceName,instructions:`You are LayanX AI, a local-first autonomous assistant. Speak concise Arabic by default. Current project: ${projectId}. For any project/system action, call layanx_execute with the user's exact goal and projectId "${projectId}". Never claim an action was completed unless the function result confirms it. Explain when approval is required.`});
-    void originalFetch;
+    const result=await voice.createRealtimeClientSecret({model,voice:voiceName,safetyIdentifier,instructions:`You are LayanX AI, a local-first autonomous assistant. Speak concise Arabic by default. Current project: ${projectId}. For any project/system action, call layanx_execute with the user's exact goal and projectId "${projectId}". Never claim an action was completed unless the function result confirms it. Explain when approval is required.`});
     json(response,200,{ok:true,...result,safetyIdentifierBound:true});
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"realtime token creation failed"});}
    return;
