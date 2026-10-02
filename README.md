@@ -23,6 +23,22 @@ The present target is to run the full runtime on the user's own computer with lo
 - Bounded Agent Teams and repair
 - LayanX Control Center
 
+## Dependency-aware task runtime
+
+Task decomposition is now executable through a dependency-aware runtime:
+
+- Independent tasks can run in parallel with a bounded concurrency limit.
+- A task starts only after all declared dependencies complete successfully.
+- Dependency results are passed into downstream task context as untrusted data.
+- Failed or blocked dependencies prevent downstream execution.
+- Task assignments preserve the selected agent and model metadata.
+- Model routing is applied to the mission planner only when the selected model also supports reasoning; otherwise the planner selects a compatible reasoning model using the task/agent tags.
+- Execution still passes through the existing mission gateway, permissions, risk controls, approvals, verification, recovery, audit, and memory.
+
+Programmatic entry point:
+
+`LayanXCore.executeTaskDecomposition(goal, projectId, maxConcurrency, projectContext)`
+
 ## Voice interface
 
 LayanX now includes a voice layer on top of the existing Runtime. It provides microphone-friendly local UI at `/voice`, speech-to-text at `/v1/voice/transcribe`, text-to-speech at `/v1/voice/speak`, and voice provider status at `/v1/voice/status`. Voice commands are sent through the existing `/v1/agent/gateway`, so planning, permissions, tools, verification, recovery, memory, and audit remain in the same runtime path.
