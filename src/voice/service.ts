@@ -41,7 +41,7 @@ export class OpenAIVoiceProvider implements VoiceProvider{
 
   async transcribe(audio:Buffer,mimeType:string,filename:string,language?:string):Promise<string>{
     const form=new FormData();
-    form.append("file",new Blob([audio],{type:mimeType||"audio/webm"}),filename||"voice.webm");
+    form.append("file",new Blob([new Uint8Array(audio)],{type:mimeType||"audio/webm"}),filename||"voice.webm");
     form.append("model",this.transcriptionModel);
     if(language?.trim())form.append("language",language.trim());
     const response=await fetch(`${this.baseUrl}/audio/transcriptions`,{method:"POST",headers:this.headers(),body:form});
