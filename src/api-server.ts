@@ -375,6 +375,16 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"approval failed"});}
    return;
   }
+  if(request.method==="POST"&&request.url==="/v1/git/review"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const input=await body(request,max);
+    const baseRef=typeof input.baseRef==="string"&&input.baseRef.trim()?input.baseRef.trim():"HEAD~1";
+    const review=await options.core.reviewCurrentCommit(baseRef);
+    json(response,200,{ok:true,review});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"code review failed"});}
+   return;
+  }
   if(request.method==="POST"&&request.url==="/v1/git/commit"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{
