@@ -27,6 +27,7 @@ export class ExecutionRuntime{
   const state=this.core.executionStates.get(mission.id)??this.core.executionStates.start(mission.id);
   await this.persist(mission);
   const started=Date.now();
+  const trace=this.core.tracer.start("mission-tool","tool",{missionId:mission.id,projectId:security.projectId,agentId:request.agentId,tool:request.tool,action:request.action});
   const contract=this.core.agents.get(request.agentId);
   mission.status="running";
   this.core.executionStates.update(mission.id,{status:"running",recoverable:true});
@@ -65,8 +66,10 @@ export class ExecutionRuntime{
   if(executionStep) executionStep.status="running";
   this.core.recovery.checkpoint({missionId:mission.id,stepId:executionStep?.id??"mission",createdAt:new Date().toISOString(),state:{request}});
   await this.persist(mission);
-  const result=await this.core.executor.execute(request,adapter);
+  let result;
+  try{result=await this.core.executor.execute(request,adapter);}catch(error){this.core.tracer.end(trace,"failure",{error:error instanceof Error?error.message:"tool execution failed"});throw error;}
   const runtimeMs=Date.now()-started;
+  this.core.tracer.end(trace,result.ok?"success":"failure",{runtimeMs,ok:result.ok});
   this.core.memory.remember({
    missionId:mission.id,
    projectId:security.projectId,
