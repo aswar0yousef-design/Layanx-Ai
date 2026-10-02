@@ -175,3 +175,16 @@ Code review is available before promotion:
 
 Git commit:
 - `POST /v1/git/commit` with `missionId`, `projectId`, `message`, optional `expectedBranch` and `paths`
+
+## Security review gate
+
+LayanX now has a deterministic security review layer:
+- `POST /v1/git/security-review`
+- scans the committed diff for credential/private-key exposure
+- flags dynamic code execution and shell execution
+- checks traversal patterns and sensitive configuration files
+- flags plain HTTP and credential-handling patterns for review
+- reports dependency manifest/lockfile changes
+- returns `approved=false` for high/critical findings
+
+Security review is intentionally separate from ordinary code review so a future PR generator can require both gates independently.
