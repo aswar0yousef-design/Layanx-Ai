@@ -48,6 +48,7 @@ import {createHash} from "node:crypto";
 import {MissionEventStream} from "./event-stream.js";
 import {AutomaticTestRunner, type TestRunResult} from "./test-runner.js";
 import {TaskDecomposer} from "./task-decomposition.js";
+import {TaskRouter, type TaskAssignment} from "./task-router.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -97,6 +98,7 @@ export class LayanXCore{
   readonly eventStream=new MissionEventStream();
   readonly testRunner=new AutomaticTestRunner({root:process.env.LAYANX_WORKSPACE_ROOT??process.cwd()});
   readonly taskDecomposer=new TaskDecomposer(this.modelExecution);
+  readonly taskRouter=new TaskRouter(this.agents,this.modelRouter);
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
@@ -143,9 +145,10 @@ export class LayanXCore{
   }
   async prepareTaskDecomposition(goal:string,projectId="default",projectContext?:unknown){
     const decomposition=await this.taskDecomposer.decompose(goal,projectContext);
+    const assignments=this.taskRouter.assign(decomposition);
     this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"mission.task.decompose",resource:goal.slice(0,120),result:"success",metadata:{projectId,tasks:decomposition.tasks.length,taskIds:decomposition.tasks.map(task=>task.id)}});
-    this.memory.remember({missionId:"decomposition:"+crypto.randomUUID(),projectId,kind:"decision",summary:"Mission task decomposition prepared",content:decomposition,confidence:1,tags:["mission","decomposition","planning"]});
-    return decomposition;
+    this.memory.remember({missionId:"decomposition:"+crypto.randomUUID(),projectId,kind:"decision",summary:"Mission tasks decomposed and routed",content:{decomposition,assignments},confidence:1,tags:["mission","decomposition","routing"]});
+    return{...decomposition,assignments};
   }
 
   async prepareChangeImpact(mission:import("./types.js").Mission,projectId:string,request?:{tool?:string;action?:string}){
