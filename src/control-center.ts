@@ -1,7 +1,6 @@
 import type {LayanXCore} from "./core/orchestrator.js";
 import type {ObservatorySnapshot} from "./core/observatory.js";
 import type {ProviderHealth} from "./core/provider.js";
-import {MissionEventStream} from "./core/event-stream.js";
 
 export interface ControlCenterSnapshot extends Omit<ObservatorySnapshot,"missions">{
  generatedAt:string;
@@ -12,7 +11,7 @@ export interface ControlCenterSnapshot extends Omit<ObservatorySnapshot,"mission
 }
 
 export class ControlCenter{
- private readonly eventStream=new MissionEventStream();
+
  constructor(private readonly core:LayanXCore){}
 
  snapshot(projectId?:string):ControlCenterSnapshot{
@@ -20,7 +19,7 @@ export class ControlCenter{
   const execution=missions.map(m=>this.core.executionStates.get(m.id)).filter((x):x is NonNullable<typeof x>=>Boolean(x));
   const providers:ProviderHealth[] = this.core.providers.list().map(provider => ({provider:provider.name,available:true,updatedAt:new Date().toISOString()}));
   const projectIds=Object.fromEntries(missions.map(m=>[m.id,m.projectId??""]));
-  this.eventStream.sync(this.core.audit.list(),projectIds);
+  this.core.eventStream.sync(this.core.audit.list(),projectIds);
   const observatory=this.core.observatory.snapshot({
    missions:execution,
    agents:this.core.agents.list().length,
@@ -35,11 +34,11 @@ export class ControlCenter{
     id:mission.id,projectId:mission.projectId,goal:mission.goal,status:mission.status,
     execution:this.core.executionStates.get(mission.id),
     nextAction:this.core.nextAction.decide({mission,tasks:this.core.delegation.forMission(mission.id),handoffs:this.core.handoffs.forMission(mission.id)}),
-    events:this.eventStream.list(mission.projectId??"",mission.id)
+    events:this.core.eventStream.list(mission.projectId??"",mission.id)
    })),
    skills:this.core.skills.list().filter(skill=>!projectId||skill.status==="enabled"),
    tools:this.core.toolCatalog.list(this.core.agents.get("core"),"L1_READ"),
-   events:projectId?this.eventStream.list(projectId):[]
+   events:projectId?this.core.eventStream.list(projectId):[]
   };
  }
 
