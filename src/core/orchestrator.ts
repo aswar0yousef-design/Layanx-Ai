@@ -312,7 +312,7 @@ export class LayanXCore{
           tools:catalog,
           requiredPermission:current.requiredPermission,
           completedTools:results.filter(item=>item.ok&&item.tool).map(item=>item.tool as string),
-          memory:this.contextFabric.build({projectId,current,query:current.goal,limit:12,maxChars:8000}).memories.map(entry=>({kind:entry.kind,summary:entry.summary,content:entry.content,tags:entry.tags})),
+          memory:this.contextFabric.build({projectId,mission:current,query:current.goal,limit:12,maxChars:8000}).memories.map(entry=>({kind:entry.kind,summary:entry.summary,content:entry.content,tags:entry.tags})),
           projectContext:context
         });
       }catch(error){
