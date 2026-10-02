@@ -1,0 +1,15 @@
+import {mkdtemp,rm,mkdir,writeFile} from "node:fs/promises";
+import {join} from "node:path";
+import {LayanXCore} from "../src/core/orchestrator.js";
+import {registerBuiltinTools,registerToolFabric} from "../src/tools/builtin.js";
+const root=await mkdtemp(join(process.cwd(),"dev-session-test-"));
+await mkdir(join(root,"p"),{recursive:true});
+await writeFile(join(root,"p","package.json"),JSON.stringify({scripts:{test:"echo test",typecheck:"echo typecheck"}}),"utf8");
+const core=new LayanXCore();
+registerBuiltinTools(core); registerToolFabric(core,{workspaceRoot:root});
+const agent=core.agents.get("core");
+const mission=core.planner.create("Prepare development session","p");
+const plan=mission.tools?.find(x=>x.tool==="development.prepare");
+if(plan) throw new Error("Development preparation should be planner-selected, not pre-seeded.");
+await rm(root,{recursive:true,force:true});
+console.log("Development session safety test passed.");
