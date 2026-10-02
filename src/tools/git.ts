@@ -44,7 +44,7 @@ export function createGitToolAdapter(options:{root:string}):ToolAdapter{
    }
    case "git push":{
     const remote=typeof input.remote==="string"&&input.remote.trim()?input.remote.trim():"origin";
-    const branch=typeof input.branch==="string"&&input.branch.trim()?input.branch.trim():"";
+    const branch=typeof input.branch==="string"?input.branch.trim():"";
     if(!/^[A-Za-z0-9._-]+$/.test(remote)||remote.startsWith("-"))throw new Error("Invalid Git remote.");
     if(!branch||!/^[A-Za-z0-9._\/-]+$/.test(branch)||branch.startsWith("-")||branch.includes(".."))throw new Error("Invalid Git branch.");
     if((branch==="main"||branch==="master")&&process.env.LAYANX_ALLOW_MAIN_PUSH!=="true")throw new Error("Pushing to main/master is disabled unless LAYANX_ALLOW_MAIN_PUSH=true.");
