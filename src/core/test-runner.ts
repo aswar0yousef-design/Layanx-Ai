@@ -91,7 +91,7 @@ export class AutomaticTestRunner{
 
   private async validateTestPath(test:string):Promise<string>{
     if(isAbsolute(test))throw new Error("Absolute test paths are not allowed.");
-    const normalized=test.replaceAll("\","/");
+    const normalized=test.replaceAll("\\","/");
     if(normalized.startsWith("../")||normalized.includes("/../")||normalized==="..")throw new Error("Test path escapes the project workspace.");
     if(!/(^|\/)(tests?|__tests__)(\/|$)/i.test(normalized))throw new Error("Only project test paths may be executed.");
     if(!/\.(spec|test)\.(c|m)?tsx?$|\.(spec|test)\.(c|m)?js$/i.test(normalized))throw new Error("Selected path is not a supported test file.");
