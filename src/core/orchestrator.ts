@@ -114,6 +114,7 @@ export class LayanXCore{
   readonly gitBranches:GitBranchManager;
   readonly gitCommits:GitCommitGenerator;
   readonly codeReview:CodeReviewAgent;
+  readonly securityReview:SecurityReviewAgent;
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
@@ -132,6 +133,7 @@ export class LayanXCore{
     this.gitBranches=new GitBranchManager({root:process.env.LAYANX_WORKSPACE_ROOT??process.cwd()});
     this.gitCommits=new GitCommitGenerator();
     this.codeReview=new CodeReviewAgent();
+    this.securityReview=new SecurityReviewAgent();
   }
 
   restoreRuntimeSnapshot(snapshot:import("./runtime-persistence.js").RuntimeSnapshot){
@@ -160,6 +162,7 @@ export class LayanXCore{
   createGitBranch(branchName:string,baseRef?:string,requireClean=true){return this.gitBranches.createBranch(branchName,baseRef,requireClean);}
   switchGitBranch(branchName:string,requireClean=true){return this.gitBranches.switchBranch(branchName,requireClean);}
   reviewCurrentCommit(baseRef="HEAD~1"){return this.codeReview.review(baseRef);}
+  reviewCurrentCommitSecurity(baseRef="HEAD~1"){return this.securityReview.review(baseRef);}
   commitMissionChanges(options:import("./git-commit-generator.js").GitCommitOptions){return this.gitCommits.commit(options);}
   async applySafeCodeModification(request:import("./safe-code-modifier.js").SafeModificationRequest){return this.safeCodeModifier.apply(request);}
   registerMissionDependencies(missionId:string,dependsOn:string[],projectId="default"){return this.missionDependencies.register(missionId,dependsOn,projectId);}
