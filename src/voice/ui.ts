@@ -29,22 +29,43 @@ audio{width:100%;margin-top:14px}
 <audio id="player" controls></audio>
 <script>
 const mic=document.getElementById('mic'),status=document.getElementById('status'),project=document.getElementById('project'),token=document.getElementById('token'),transcript=document.getElementById('transcript'),resultBox=document.getElementById('result'),player=document.getElementById('player');
-let recorder,chunks=[],stream;
+let recorder,chunks=[],stream,recognition;
 function headers(){const t=token.value.trim();return t?{'Authorization':'Bearer '+t}:{}}
-async function start(){stream=await navigator.mediaDevices.getUserMedia({audio:true});recorder=new MediaRecorder(stream);chunks=[];recorder.ondataavailable=e=>e.data.size&&chunks.push(e.data);recorder.onstop=finish;recorder.start();mic.classList.add('listening');status.textContent='أستمع... تحدث الآن';}
-async function stop(){if(recorder&&recorder.state!=='inactive')recorder.stop();mic.classList.remove('listening');status.textContent='أحوّل الصوت إلى نص...';}
-async function finish(){stream.getTracks().forEach(t=>t.stop());const blob=new Blob(chunks,{type:recorder.mimeType||'audio/webm'});try{
- const h={...headers(),'content-type':blob.type||'audio/webm','x-layanx-filename':'voice.webm','x-layanx-language':'ar'};
- let r=await fetch('/v1/voice/transcribe',{method:'POST',headers:h,body:blob});if(!r.ok)throw new Error(await r.text());const tr=await r.json();transcript.textContent=tr.text;status.textContent='أنفّذ المهمة...';
- r=await fetch('/v1/agent/gateway',{method:'POST',headers:{...headers(),'content-type':'application/json'},body:JSON.stringify({goal:tr.text,projectId:project.value.trim()||'default',maxSteps:10})});
+async function executeText(text,localSpeech=false){
+ transcript.textContent=text;status.textContent='أنفّذ المهمة...';
+ let r=await fetch('/v1/agent/gateway',{method:'POST',headers:{...headers(),'content-type':'application/json'},body:JSON.stringify({goal:text,projectId:project.value.trim()||'default',maxSteps:10})});
  const data=await r.json();if(!r.ok&&r.status!==202)throw new Error(data.error||JSON.stringify(data));resultBox.textContent=JSON.stringify(data,null,2);
- status.textContent=data.paused?'المهمة متوقفة بانتظار الموافقة.':'أجهز الرد الصوتي...';
  const reply=data.paused?'المهمة متوقفة وتحتاج إلى موافقتك.':data.completed?'تم تنفيذ المهمة بنجاح.':'انتهى التنفيذ ولم تكتمل المهمة. راجع التفاصيل في لوحة LayanX.';
+ if(localSpeech&&'speechSynthesis' in window){speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(reply);u.lang='ar-SA';speechSynthesis.speak(u);status.textContent='جاهز';return}
+ status.textContent='أجهز الرد الصوتي...';
  r=await fetch('/v1/voice/speak',{method:'POST',headers:{...headers(),'content-type':'application/json'},body:JSON.stringify({text:reply})});
  if(!r.ok)throw new Error(await r.text());player.src=URL.createObjectURL(await r.blob());await player.play().catch(()=>{});
- status.textContent='جاهز';}
-catch(e){status.textContent='حدث خطأ';resultBox.textContent=String(e)}}
-mic.onclick=()=>recorder&&recorder.state==='recording'?stop():start();
+ status.textContent='جاهز';
+}
+async function startBrowserRecognition(){
+ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+ if(!SR)return false;
+ recognition=new SR();recognition.lang='ar-SA';recognition.interimResults=false;recognition.continuous=false;
+ recognition.onstart=()=>{mic.classList.add('listening');status.textContent='أستمع... تحدث الآن'};
+ recognition.onerror=e=>{mic.classList.remove('listening');status.textContent='خطأ في التعرف الصوتي: '+e.error};
+ recognition.onend=()=>mic.classList.remove('listening');
+ recognition.onresult=async e=>{try{await executeText(e.results[0][0].transcript,true)}catch(err){status.textContent='حدث خطأ';resultBox.textContent=String(err)}};
+ recognition.start();return true;
+}
+async function startRecorder(){stream=await navigator.mediaDevices.getUserMedia({audio:true});recorder=new MediaRecorder(stream);chunks=[];recorder.ondataavailable=e=>e.data.size&&chunks.push(e.data);recorder.onstop=finishRecorder;recorder.start();mic.classList.add('listening');status.textContent='أستمع... تحدث الآن'}
+async function stopRecorder(){if(recorder&&recorder.state!=='inactive')recorder.stop();mic.classList.remove('listening');status.textContent='أحوّل الصوت إلى نص...'}
+async function finishRecorder(){stream.getTracks().forEach(t=>t.stop());const blob=new Blob(chunks,{type:recorder.mimeType||'audio/webm'});try{
+ const h={...headers(),'content-type':blob.type||'audio/webm','x-layanx-filename':'voice.webm','x-layanx-language':'ar'};
+ const r=await fetch('/v1/voice/transcribe',{method:'POST',headers:h,body:blob});if(!r.ok)throw new Error(await r.text());const tr=await r.json();await executeText(tr.text,false);
+}catch(e){status.textContent='حدث خطأ';resultBox.textContent=String(e)}}
+mic.onclick=async()=>{
+ try{
+  if(recognition){recognition.stop();recognition=null;return}
+  if(recorder&&recorder.state==='recording'){await stopRecorder();return}
+  if(await startBrowserRecognition())return;
+  await startRecorder();
+ }catch(e){status.textContent='تعذر الوصول إلى الميكروفون';resultBox.textContent=String(e)}
+};
 token.value=localStorage.getItem('layanx.voice.token')||'';token.onchange=()=>localStorage.setItem('layanx.voice.token',token.value);
 </script></main></body></html>`;
 }
