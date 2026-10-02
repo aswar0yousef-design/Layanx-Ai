@@ -127,3 +127,17 @@ Stabilize and verify the existing local foundation before adding another archite
 ### Automatic Test Verification
 
 LayanX can automatically execute the tests selected by Change Impact Analysis after L3+ modifications. The test runner is workspace-confined, uses the local project `tsx` executable without a shell, enforces time/output limits, and records test results in Audit and Memory. When selected tests fail, the Agent Loop passes the failure back to the bounded Autonomous Repair Loop and retests after each repair attempt (up to 3 attempts).
+
+## Mission dependencies, autonomous retry, and failure learning
+
+Mission dependencies are distinct from task dependencies. A mission may depend on other missions in the same project; dependency cycles and cross-project dependencies are rejected. A downstream mission remains pending until all dependencies complete and becomes blocked when a dependency fails.
+
+API:
+- `GET /v1/mission-dependencies?projectId=...`
+- `POST /v1/mission-dependencies` with `missionId`, `projectId`, and `dependsOn`
+- `GET /v1/mission-dependencies/:missionId`
+- `POST /v1/mission-dependencies/:missionId/run`
+
+Autonomous retry is bounded and conservative. Only recoverable transient failures on L1/L2 read/analyze operations are retried automatically. Permission, approval, scope, verification, and modification/execution failures are not automatically retried. Each retry receives a distinct idempotency key and uses bounded exponential backoff.
+
+Failure learning normalizes runtime failures into categories and stores sanitized failure signatures in the existing project-scoped memory engine. Similar failures can be recalled for future planning without introducing another memory subsystem.
