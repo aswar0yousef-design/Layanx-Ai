@@ -21,7 +21,7 @@ export interface PlannedMission{
 
 export class AiMissionPlanner{
   constructor(private readonly models:ModelExecutionRouter){}
-  async plan(goal:string,tools:ToolCatalogEntry[]=[]):Promise<PlannedMission>{
+  async plan(goal:string,tools:ToolCatalogEntry[]=[],projectContext?:unknown):Promise<PlannedMission>{
     if(!goal.trim())throw new Error("Mission goal is empty.");
     const catalog=tools.length?tools.map(tool=>({
       name:tool.name,description:tool.description,permission:tool.permission,
@@ -39,12 +39,13 @@ export class AiMissionPlanner{
         "Only choose tools from the supplied catalog. Do not invent tool names or actions.",
         "Do not request secrets or bypass security controls.",
         "Available tool catalog: "+JSON.stringify(catalog),
+        "Project intelligence context: "+JSON.stringify(projectContext??null).slice(0,8000),
         "Goal: "+goal
       ].join("\n")
     });
     return this.parse(response.output,tools);
   }
-  async nextTool(input:{goal:string;result:unknown;tools:ToolCatalogEntry[];requiredPermission:PermissionLevel;completedTools:string[];memory?:Array<{kind:string;summary:string;content:unknown;tags:string[]}>}):Promise<PlannedTool|null>{
+  async nextTool(input:{goal:string;result:unknown;tools:ToolCatalogEntry[];requiredPermission:PermissionLevel;completedTools:string[];memory?:Array<{kind:string;summary:string;content:unknown;tags:string[]}>;projectContext?:unknown}):Promise<PlannedTool|null>{
     if(!input.goal.trim())throw new Error("Mission goal is empty.");
     const catalog=input.tools.map(tool=>({name:tool.name,description:tool.description,permission:tool.permission,dangerous:tool.dangerous,actions:tool.actions,tags:tool.tags}));
     const boundedResult=JSON.stringify(input.result).slice(0,12000);
@@ -60,6 +61,7 @@ export class AiMissionPlanner{
         "Prefer a tool that advances the goal using the latest result.",
         "Completed tools: "+JSON.stringify(input.completedTools),
         "Available tool catalog: "+JSON.stringify(catalog),
+        "Project intelligence context: "+JSON.stringify(input.projectContext??null).slice(0,6000),
         "Mission goal: "+input.goal,
         "Mission memory context: "+boundedMemory,
         "Latest tool result: "+boundedResult
