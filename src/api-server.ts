@@ -6,18 +6,18 @@ import {providerSummary} from "./config/providers.js";
 import {McpGateway} from "./mcp-gateway.js";
 import {ControlCenter} from "./control-center.js";
 import {createHash} from "node:crypto";
-export interface RuntimeApiOptions{core:LayanXCore;persistence?:RuntimePersistence;host?:string;port?:number;maxBodyBytes?:number;token?:string;}
+export interface RuntimeApiOptions{core:LayanXCore;persistence?:RuntimePersistence;host?:string;port?:number;maxBodyBytes?:number;token?:string;requireToken?:boolean;}
 function json(response:ServerResponse,status:number,body:unknown){response.statusCode=status;response.setHeader("content-type","application/json; charset=utf-8");response.end(JSON.stringify(body));}
 async function body(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}const raw=Buffer.concat(chunks).toString("utf8");if(!raw)return{};try{return JSON.parse(raw) as Record<string,unknown>;}catch{throw new Error("invalid_json");}}
-function authorized(request:IncomingMessage,token?:string){return !token||request.headers.authorization==="Bearer "+token;}
+function authorized(request:IncomingMessage,token?:string){return !!token&&request.headers.authorization==="Bearer "+token;}
 function runtimeView(core:LayanXCore,persistence?:RuntimePersistence){return {core,models:core.models,providers:core.providers,providerSummary:providerSummary(),persistence};}
 export function startRuntimeApi(options:RuntimeApiOptions){
- const host=options.host??process.env.LAYANX_API_HOST??"127.0.0.1";const port=options.port??Number(process.env.LAYANX_API_PORT??3000);const max=options.maxBodyBytes??65536;
+ const host=options.host??process.env.LAYANX_API_HOST??"127.0.0.1";const port=options.port??Number(process.env.LAYANX_API_PORT??3000);const max=options.maxBodyBytes??65536;const requireToken=options.requireToken??(process.env.LAYANX_API_REQUIRE_TOKEN==="true");const remoteHost=host!=="127.0.0.1"&&host!=="localhost"&&host!=="::1";if((requireToken||remoteHost)&&!options.token)throw new Error("LAYANX_API_TOKEN is required for remote API access");
  const mcp=new McpGateway(options.core);
  const control=new ControlCenter(options.core);
  const server=createServer(async(request,response)=>{
   response.setHeader("cache-control","no-store");
-  if(request.method==="POST"&&request.url==="/mcp"){
+  if(requireToken&&!authorized(request,options.token)&&request.url!=="/v1/health"){json(response,401,{ok:false,error:"unauthorized"});return;}\n  if(request.method==="POST"&&request.url==="/mcp"){
    if(!authorized(request,options.token)){json(response,401,{jsonrpc:"2.0",error:{code:-32001,message:"Unauthorized"}});return;}
    try{
     const input=await body(request,max);
