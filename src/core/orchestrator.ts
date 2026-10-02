@@ -41,6 +41,7 @@ import {SkillRuntime} from "../skills/runtime.js";
 import {AgentTeamRuntime} from "./team-runtime.js";
 import {ProjectIntelligence} from "./project-intelligence.js";
 import {AutonomousRepairLoop} from "./autonomous-repair.js";
+import {createHash} from "node:crypto";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -357,6 +358,48 @@ export class LayanXCore{
       }
     }
     return{missionId,completed:false,attempts:limit,repaired,exhausted:true,blocked:false,results,reason:failure?.error??"Repair attempts exhausted."};
+  }
+
+  async executeDevelopmentSession(missionId:string,projectId:string,approvalIds:Record<number,string>={},agentId="core"){
+    const mission=this.missions.get(missionId);
+    if(!mission)throw new Error("Mission not found.");
+    this.projectIsolation.assertMissionProject(projectId,mission.projectId);
+    if(["completed","cancelled"].includes(mission.status))return{missionId,status:mission.status,completed:mission.status==="completed",blocked:false,paused:false,nextToolIndex:null,results:[]};
+    const plans=mission.tools??[];
+    const missing:number[]=[];
+    for(let index=0;index<plans.length;index++){
+      const plan=plans[index]!;
+      const request={missionId,agentId,tool:plan.tool,action:plan.action,permission:plan.permission,idempotencyKey:"session-preflight-"+missionId+"-"+index,payload:plan.payload??{},planIndex:index};
+      const tool=this.tools.get(plan.tool);
+      const risk=this.risk.assess(request);
+      if(risk.requiresApproval||tool.dangerous){
+        const approvalId=approvalIds[index];
+        if(!approvalId){
+          missing.push(index);
+          continue;
+        }
+        const check=this.executionRuntime.approvals.validate(approvalId,{
+          missionId,agentId,tool:plan.tool,action:plan.action,permission:plan.permission,
+          payloadHash:createHash("sha256").update(JSON.stringify(request.payload??null)).digest("hex")
+        });
+        if(!check.allowed)missing.push(index);
+      }
+    }
+    if(missing.length){
+      return{missionId,status:"awaiting_approval",completed:false,blocked:false,paused:true,nextToolIndex:missing[0],missingApprovals:missing,results:[]};
+    }
+    const results:unknown[]=[];
+    for(let index=0;index<plans.length;index++){
+      const plan=plans[index]!;
+      const result=await this.executeMissionTool(missionId,projectId,index,plan.payload??{},approvalIds[index],agentId,{deferVerification:true});
+      results.push(result);
+      if(!result.ok)return{missionId,status:this.missions.get(missionId)?.status??"failed",completed:false,blocked:result.error==="Explicit approval is required for this risk level.",paused:false,nextToolIndex:index,results};
+    }
+    const finalMission=this.missions.get(missionId);
+    if(!finalMission)throw new Error("Mission not found.");
+    const final=await this.executionRuntime.finalize(finalMission,results[results.length-1]!,agentId);
+    this.missions.save(finalMission);
+    return{missionId,status:final.ok?"completed":finalMission.status,completed:final.ok,blocked:false,paused:false,nextToolIndex:null,results,final};
   }
 
   async executeMissionTools(missionId:string,projectId:string,payloads:unknown[]=[] ,approvalId?:string,agentId="core"){

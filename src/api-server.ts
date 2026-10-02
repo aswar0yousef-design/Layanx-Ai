@@ -95,6 +95,24 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }
    return;
   }
+  if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/development-session$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const missionId=request.url.split("/")[3] as string;
+   const mission=options.core.missions.get(missionId);
+   if(!mission){json(response,404,{ok:false,error:"mission_not_found"});return;}
+   try{
+    const input=await body(request,max);
+    const projectId=typeof input.projectId==="string"?input.projectId.trim():"";
+    const agentId=typeof input.agentId==="string"&&input.agentId.trim()?input.agentId.trim():"core";
+    const raw=input.approvalIds&&typeof input.approvalIds==="object"&&!Array.isArray(input.approvalIds)?input.approvalIds as Record<string,unknown>:{};
+    const approvalIds:Record<number,string>={};
+    for(const [key,value] of Object.entries(raw)){const index=Number(key);if(Number.isInteger(index)&&index>=0&&typeof value==="string"&&value.trim())approvalIds[index]=value.trim();}
+    if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
+    const result=await options.core.executeDevelopmentSession(missionId,projectId,approvalIds,agentId);
+    json(response,result.completed?200:result.paused?202:422,result);
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"development session failed"});}
+   return;
+  }
   if(request.method==="GET"&&request.url?.startsWith("/v1/context")){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const parsed=new URL(request.url,"http://localhost");
