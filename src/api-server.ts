@@ -122,6 +122,49 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    json(response,200,{ok:true,action,permission,tools});
    return;
   }
+  if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/approvals$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const id=request.url.split("/")[3] as string;
+   const mission=options.core.missions.get(id);
+   if(!mission){json(response,404,{ok:false,error:"mission_not_found"});return;}
+   try{
+    const input=await body(request,max);
+    const projectId=typeof input.projectId==="string"?input.projectId.trim():"";
+    const toolIndex=typeof input.toolIndex==="number"&&Number.isInteger(input.toolIndex)?input.toolIndex:-1;
+    const agentId=typeof input.agentId==="string"&&input.agentId.trim()?input.agentId.trim():"core";
+    if(!projectId||toolIndex<0){json(response,400,{ok:false,error:"projectId and a non-negative toolIndex are required"});return;}
+    options.core.projectIsolation.assertMissionProject(projectId,mission.projectId);
+    const plan=mission.tools?.[toolIndex];
+    if(!plan){json(response,404,{ok:false,error:"mission_tool_plan_not_found"});return;}
+    const contract=options.core.agents.get(agentId);
+    const catalog=options.core.toolCatalog.list(contract,mission.requiredPermission);
+    const tool=options.core.tools.get(plan.tool);
+    if(!contract.allowedTools.includes(plan.tool)||!catalog.some(entry=>entry.name===plan.tool)){json(response,403,{ok:false,error:"Tool is not authorized for the agent"});return;}
+    const requestData={missionId:id,agentId,tool:plan.tool,action:plan.action,permission:plan.permission,idempotencyKey:"approval-"+crypto.randomUUID(),payload:plan.payload};
+    const risk=options.core.risk.assess(requestData);
+    if(!risk.requiresApproval&&!tool.dangerous){json(response,400,{ok:false,error:"This tool does not require explicit approval"});return;}
+    const approval=options.core.executionRuntime.approvals.create({
+      missionId:id,agentId,action:plan.action,permission:plan.permission,
+      reason:risk.reasons.join("; ")||"Dangerous tool execution",
+      expiresAt:new Date(Date.now()+15*60*1000).toISOString()
+    });
+    json(response,201,{ok:true,approval});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"approval creation failed"});}
+   return;
+  }
+  if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/approvals\/[^/]+\/approve$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const parts=request.url.split("/");
+   const missionId=parts[3] as string,approvalId=parts[5] as string;
+   if(!options.core.missions.get(missionId)){json(response,404,{ok:false,error:"mission_not_found"});return;}
+   try{
+    const approval=options.core.executionRuntime.approvals.get(approvalId);
+    if(approval.missionId!==missionId){json(response,403,{ok:false,error:"approval scope mismatch"});return;}
+    options.core.executionRuntime.approvals.approve(approvalId);
+    json(response,200,{ok:true,approvalId});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"approval failed"});}
+   return;
+  }
   if(request.method==="GET"&&request.url==="/v1/missions"){json(response,200,{ok:true,missions:options.core.missions.list()});return;}
    if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/tools\/execute-adaptive$/)){
     if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
