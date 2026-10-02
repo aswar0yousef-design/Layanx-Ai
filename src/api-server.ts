@@ -375,6 +375,21 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"approval failed"});}
    return;
   }
+  if(request.method==="POST"&&request.url==="/v1/git/commit"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const input=await body(request,max);
+    const missionId=typeof input.missionId==="string"?input.missionId.trim():"";
+    const projectId=typeof input.projectId==="string"?input.projectId.trim():"";
+    const message=typeof input.message==="string"?input.message.trim():"";
+    const expectedBranch=typeof input.expectedBranch==="string"&&input.expectedBranch.trim()?input.expectedBranch.trim():undefined;
+    const paths=Array.isArray(input.paths)?input.paths.filter((p):p is string=>typeof p==="string").map(p=>p.trim()).filter(Boolean):undefined;
+    if(!missionId||!projectId||!message){json(response,400,{ok:false,error:"missionId, projectId, and message are required"});return;}
+    const result=await options.core.commitMissionChanges({missionId,projectId,message,expectedBranch,paths,requireCleanAfterCommit:input.requireCleanAfterCommit!==false});
+    json(response,result.committed?201:200,{ok:true,result});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"git commit failed"});}
+   return;
+  }
   if(request.method==="GET"&&request.url==="/v1/git/branch"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{json(response,200,{ok:true,status:await options.core.gitBranchStatus()});}
