@@ -41,7 +41,7 @@ export class MissionScheduler{
  }
  unregister(id:string){const schedule=this.schedules.get(id);if(!schedule)throw new Error("Unknown schedule.");this.schedules.delete(id);this.core.audit.append({timestamp:new Date().toISOString(),actor:"scheduler",action:"schedule.delete",resource:id,result:"success"});}
  setEnabled(id:string,enabled:boolean){const schedule=this.require(id);schedule.enabled=enabled;schedule.nextRunAt=enabled?this.nextTime(schedule.trigger,new Date())?.toISOString():undefined;this.core.audit.append({timestamp:new Date().toISOString(),actor:"scheduler",action:"schedule.toggle",resource:id,result:"success",metadata:{enabled}});return structuredClone(schedule);}
- list(){return [...this.schedules.values()].map(structuredClone);}
+ list(){return [...this.schedules.values()].map(item=>structuredClone(item));}
  get(id:string){const schedule=this.schedules.get(id);return schedule?structuredClone(schedule):undefined;}
  start(){if(this.timer)return;this.timer=setInterval(()=>void this.tick(),this.tickMs);void this.tick();}
  stop(){if(this.timer){clearInterval(this.timer);this.timer=undefined;}}
