@@ -21,7 +21,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
  const voice=new VoiceService();
  const server=createServer(async(request,response)=>{
   response.setHeader("cache-control","no-store");
-  if(requireToken&&!authorized(request,options.token)&&request.url!=="/v1/health"){json(response,401,{ok:false,error:"unauthorized"});return;}
+  if(requireToken&&!authorized(request,options.token)&&request.url!=="/v1/health"&&request.url!=="/voice"){json(response,401,{ok:false,error:"unauthorized"});return;}
   if(request.method==="GET"&&request.url==="/voice"){
    response.statusCode=200;response.setHeader("content-type","text/html; charset=utf-8");response.end(voiceUiHtml());return;
   }
@@ -47,7 +47,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    try{
     const input=await body(request,max);
     const textValue=typeof input.text==="string"?input.text.trim():"";
-    const format=input.format==="wav"||input.format==="opus"?"${input.format}":"mp3";
+    const format=input.format==="wav"||input.format==="opus"?input.format:"mp3";
     if(!textValue){json(response,400,{ok:false,error:"text is required"});return;}
     const result=await voice.speak(textValue,format);
     response.statusCode=200;response.setHeader("content-type",result.contentType);response.setHeader("cache-control","no-store");response.end(result.audio);
