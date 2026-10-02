@@ -28,7 +28,7 @@ export interface ProjectGraphResult{
 const SKIP=new Set([".git","node_modules","dist","build","coverage",".next",".turbo",".cache",".idea",".vscode"]);
 const EXT=new Set([".ts",".tsx",".js",".jsx",".mjs",".cjs",".json",".css",".scss",".html",".md",".mdx",".sql",".py",".go",".rs",".java",".kt",".swift",".yml",".yaml",".sh"]);
 const CODE_EXT=new Set([".ts",".tsx",".js",".jsx",".mjs",".cjs"]);
-const IMPORT_RE=/(?:import\\s+(?:[^'"]+?\\s+from\\s+)?|export\\s+(?:[^'"]+?\\s+from\\s+)?|require\\s*\\(|import\\s*\\()(['"])([^'"]+)\\1/g;
+const IMPORT_RE=/(?:import\s+(?:[^'"]+?\s+from\s+)?|export\s+(?:[^'"]+?\s+from\s+)?|require\s*\(|import\s*\()(['"])([^'"]+)\1/g;
 
 export class ProjectGraph{
   private readonly root:string;
@@ -65,11 +65,11 @@ export class ProjectGraph{
     const nodes:ProjectGraphNode[]=files.map(path=>{
       const lower=path.toLowerCase();
       const category=extname(path).toLowerCase()||"other";
-      const kind:ProjectGraphNode["kind"]=/(^|\\/)(test|tests|__tests__)(\\/)|\\.(spec|test)\\./i.test(path)
+      const kind:ProjectGraphNode["kind"]=/(^|\/)(test|tests|__tests__)(\/)|\.(spec|test)\./i.test(path)
         ?"test"
-        :/^(tsconfig(?:\\..*)?\\.json|package(-lock)?\\.json|pnpm-lock\\.yaml|yarn\\.lock|vite\\.config\\.[^/]+|next\\.config\\.[^/]+)$/i.test(path)
+        :/^(tsconfig(?:\..*)?\.json|package(-lock)?\.json|pnpm-lock\.yaml|yarn\.lock|vite\.config\.[^/]+|next\.config\.[^/]+)$/i.test(path)
           ?"config"
-          :/^(src\\/)?(index|main|server|app)\\.(ts|tsx|js|jsx|mjs|cjs)$/i.test(path)
+          :/^(src\/)?(index|main|server|app)\.(ts|tsx|js|jsx|mjs|cjs)$/i.test(path)
             ?"entry":"file";
       return{id:path,kind,path,category};
     });
@@ -95,16 +95,16 @@ export class ProjectGraph{
         if(target)edges.push({from:path,to:target,kind:"import"});
       }
       IMPORT_RE.lastIndex=0;
-      if(/(?:app|router|route|api).{0,80}(?:get|post|put|patch|delete|options|head)\\s*\\(/i.test(source)||
-         /(?:app|router)\\.(?:get|post|put|patch|delete)\\s*\\(/i.test(source)){
+      if(/(?:app|router|route|api).{0,80}(?:get|post|put|patch|delete|options|head)\s*\(/i.test(source)||
+         /(?:app|router)\\.(?:get|post|put|patch|delete)\s*\(/i.test(source)){
         nodes.push({id:"route:"+path,kind:"route",path,category:"route"});
         routes.push(path);
       }
     }
 
     for(const test of tests){
-      const testBase=test.replace(/\\.(spec|test)(?=\\.[^.]+$)/i,"");
-      const candidate=files.find(file=>file===testBase||file.startsWith(testBase+"/")||file.replace(/\\.[^.]+$/,"")===testBase);
+      const testBase=test.replace(/\.(spec|test)(?=\.[^.]+$)/i,"");
+      const candidate=files.find(file=>file===testBase||file.startsWith(testBase+"/")||file.replace(/\.[^.]+$/,"")===testBase);
       if(candidate&&candidate!==test)edges.push({from:test,to:candidate,kind:"test"});
     }
 
@@ -134,7 +134,7 @@ export class ProjectGraph{
 
   private workspaceFor(projectId:string):string{
     const safe=projectId.trim();
-    if(!safe||safe==="."||safe===".."||safe.includes("/")||safe.includes("\\\\"))throw new Error("Invalid project workspace identity.");
+    if(!safe||safe==="."||safe===".."||safe.includes("/")||safe.includes("\\"))throw new Error("Invalid project workspace identity.");
     return resolve(this.root,safe);
   }
 }
