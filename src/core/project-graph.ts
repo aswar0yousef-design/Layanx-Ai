@@ -127,7 +127,8 @@ export class ProjectGraph{
   private resolveImport(from:string,specifier:string,files:Set<string>):string|undefined{
     const base=resolve("/",from).replace(/\\/g,"/").replace(/^\//,"");
     const candidateBase=resolve("/",base.substring(0,base.lastIndexOf("/")+1),specifier).replace(/\\/g,"/").replace(/^\//,"");
-    const candidates=[candidateBase,...[".ts",".tsx",".js",".jsx",".mjs",".cjs"].map(ext=>candidateBase+ext),...["index.ts","index.tsx","index.js","index.jsx","index.mjs","index.cjs"].map(name=>candidateBase+"/"+name)];
+    const sourceLike=candidateBase.replace(/\\.(?:js|jsx|mjs|cjs)$/,"");
+    const candidates=[candidateBase,sourceLike,...[".ts",".tsx",".js",".jsx",".mjs",".cjs"].flatMap(ext=>[candidateBase+ext,sourceLike+ext]),...["index.ts","index.tsx","index.js","index.jsx","index.mjs","index.cjs"].map(name=>candidateBase+"/"+name),...["index.ts","index.tsx","index.js","index.jsx","index.mjs","index.cjs"].map(name=>sourceLike+"/"+name)];
     return candidates.find(candidate=>files.has(candidate));
   }
 
