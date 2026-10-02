@@ -40,7 +40,7 @@ export class VerificationEngine {
       const expected=Number(comparison[3]);
       if(typeof actual!=="number"||!Number.isFinite(actual))return{supported:true,matched:false,reason:`Success criterion failed: ${text} (actual is not numeric)`};
       const op=comparison[2];
-      const matched=op===">"?actual>expected:op===">="?actual>=expected:op===">"?actual>expected:actual<=expected;
+      const matched=op===">"?actual>expected:op===">="?actual>=expected:op==="<"?actual<expected:actual<=expected;
       return{supported:true,matched,reason:matched?"":`Success criterion failed: ${text} (actual=${actual})`};
     }
     const contains=/^result(?:\.([A-Za-z_$][\w$]*))?\s+contains\s+(.+)$/i.exec(text);
