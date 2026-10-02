@@ -50,6 +50,8 @@ import {AutomaticTestRunner, type TestRunResult} from "./test-runner.js";
 import {TaskDecomposer} from "./task-decomposition.js";
 import {TaskRouter} from "./task-router.js";
 import {TaskRuntime} from "./task-runtime.js";
+import {MissionScheduler} from "./scheduler.js";
+import {EventMissionEngine} from "./event-engine.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
 
 export class LayanXCore{
@@ -102,6 +104,8 @@ export class LayanXCore{
   readonly taskDecomposer=new TaskDecomposer(this.modelExecution);
   readonly taskRouter=new TaskRouter(this.agents,this.modelRouter);
   readonly taskRuntime:TaskRuntime;
+  readonly scheduler:MissionScheduler;
+  readonly eventEngine:EventMissionEngine;
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
@@ -113,6 +117,8 @@ export class LayanXCore{
     this.skillRuntime=new SkillRuntime(this.skills,async(missionId,projectId,toolIndex,payload)=>this.executeMissionTool(missionId,projectId,toolIndex,payload));
     this.teamRuntime=new AgentTeamRuntime(this.delegation,this.agents,this.projectIsolation);
     this.taskRuntime=new TaskRuntime(this);
+    this.scheduler=new MissionScheduler(this);
+    this.eventEngine=new EventMissionEngine(this,this.scheduler);
   }
 
   restoreRuntimeSnapshot(snapshot:import("./runtime-persistence.js").RuntimeSnapshot){
