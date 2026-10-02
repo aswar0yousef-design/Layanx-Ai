@@ -39,6 +39,7 @@ import {ContextFabric} from "./context-fabric.js";
 import {SkillRegistry} from "../skills/registry.js";
 import {SkillRuntime} from "../skills/runtime.js";
 import {AgentTeamRuntime} from "./team-runtime.js";
+import {ProjectIntelligence} from "./project-intelligence.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -80,6 +81,7 @@ export class LayanXCore{
   readonly toolAdapters=new ToolAdapterRegistry();
   readonly adaptiveDecision=new AdaptiveDecisionEngine();
   readonly projectIsolation=new ProjectIsolation();
+  readonly projectIntelligence=new ProjectIntelligence({root:process.env.LAYANX_WORKSPACE_ROOT??process.cwd()});
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
