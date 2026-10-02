@@ -141,6 +141,13 @@ export class LayanXCore{
       return{request,capabilityId:token.id,expiresAt:token.expiresAt};
     });
   }
+  async prepareTaskDecomposition(goal:string,projectId="default",projectContext?:unknown){
+    const decomposition=await this.taskDecomposer.decompose(goal,projectContext);
+    this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"mission.task.decompose",resource:goal.slice(0,120),result:"success",metadata:{projectId,tasks:decomposition.tasks.length,taskIds:decomposition.tasks.map(task=>task.id)}});
+    this.memory.remember({missionId:"decomposition:"+crypto.randomUUID(),projectId,kind:"decision",summary:"Mission task decomposition prepared",content:decomposition,confidence:1,tags:["mission","decomposition","planning"]});
+    return decomposition;
+  }
+
   async prepareChangeImpact(mission:import("./types.js").Mission,projectId:string,request?:{tool?:string;action?:string}){
     this.projectIsolation.assertMissionProject(projectId,mission.projectId);
     const graph=await this.projectGraph.scan(projectId);
