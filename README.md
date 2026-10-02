@@ -95,3 +95,7 @@ That future migration should add tenant identity, tenant-scoped storage, authent
 ## Development principle
 
 Stabilize and verify the existing local foundation before adding another architectural layer. Production or SaaS claims must be backed by executable evidence.
+
+### Automatic Test Verification
+
+LayanX can automatically execute the tests selected by Change Impact Analysis after L3+ modifications. The test runner is workspace-confined, uses the local project `tsx` executable without a shell, enforces time/output limits, and records test results in Audit and Memory. When selected tests fail, the Agent Loop passes the failure back to the bounded Autonomous Repair Loop and retests after each repair attempt (up to 3 attempts).
