@@ -21,12 +21,12 @@ export function createRuntime(options:RuntimeOptions={}){
  const agent:AgentContract={
   agentId:"core",
   purpose:"Safely orchestrate LayanX missions.",
-  allowedTools:["runtime.status","mission.inspect","memory.recall","http.read","github.repo.read","github.issues.list","github.prs.list","browser.read","files.read","files.list","files.stat","terminal.exec"],
+  allowedTools:["runtime.status","mission.inspect","memory.recall","http.read","github.repo.read","github.issues.list","github.prs.list","browser.read","files.read","files.list","files.stat","files.write","terminal.exec","git.status","git.diff","git.log","git.add","git.commit","git.push"],
   forbiddenResources:["secrets","security-controls"],
-  requiredPermission:"L1_READ",
+  requiredPermission:"L4_EXECUTE",
   maxToolCalls:100,
   maxRuntimeMs:30000,
-  successCriteria:["mission created","execution auditable"],
+  successCriteria:["mission created","execution auditable","requested project operation completed"],
   stopCondition:"Stop on policy denial or Sentinel block."
  };
  core.registerAgent(agent);
