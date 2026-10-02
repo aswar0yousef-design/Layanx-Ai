@@ -375,6 +375,11 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"approval failed"});}
    return;
   }
+  if(request.method==="GET"&&request.url==="/v1/traces"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const url=new URL(request.url??"/v1/traces","http://127.0.0.1");
+   json(response,200,{ok:true,traces:options.core.tracer.list()});return;
+  }
   if(request.method==="GET"&&request.url==="/v1/release"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    json(response,200,{ok:true,releases:options.core.releaseRecords()});return;
