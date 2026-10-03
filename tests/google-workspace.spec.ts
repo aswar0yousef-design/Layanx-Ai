@@ -1,0 +1,11 @@
+import assert from "node:assert/strict";
+import {createGoogleWorkspaceAdapter} from "../src/connectors/google-workspace.js";
+const calls:string[]=[];
+const fetcher=async(url:string,init:RequestInit={})=>{calls.push(url);if(url.includes("oauth2.googleapis.com"))return new Response(JSON.stringify({access_token:"tok",expires_in:3600}),{status:200});return new Response(JSON.stringify({messages:[{id:"m1"}]}),{status:200});};
+const a=createGoogleWorkspaceAdapter({clientId:"id",clientSecret:"secret",refreshToken:"refresh",fetcher});
+const out=await a.execute({toolName:"google.gmail.search",action:"search emails",payload:{query:"from:test@example.com",limit:5},missionId:"m",requestId:"r"} as any);
+assert.deepEqual(out,{messages:[{id:"m1"}]});
+assert.ok(calls.some(x=>x.includes("/gmail/v1/users/me/messages")));
+const b=createGoogleWorkspaceAdapter({accessToken:"x",fetcher:async()=>new Response("{}",{status:200})});
+await assert.rejects(()=>b.execute({toolName:"x",action:"delete everything",payload:{},missionId:"m",requestId:"r"} as any),/Unsupported Google action/);
+console.log("google-workspace.spec.ts passed");
