@@ -40,6 +40,13 @@ export function createRuntime(options:RuntimeOptions={}){
  return{core,...configured,providerSummary:providerSummary(),persistence};
 }
 
+export async function restoreRuntime(runtime:ReturnType<typeof createRuntime>):Promise<{restored:number}>{
+ if(!runtime.persistence)return{restored:0};
+ const snapshots=await runtime.persistence.list();
+ for(const snapshot of snapshots)runtime.core.restoreRuntimeSnapshot(snapshot);
+ return{restored:snapshots.length};
+}
+
 export function runtimeStatus(runtime=createRuntime()){
  return{
   system:"LayanX AI",
