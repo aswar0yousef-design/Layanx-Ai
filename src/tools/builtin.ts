@@ -5,6 +5,7 @@ import {createHttpReadAdapter} from "./http-read.js";
 import {createGitHubReadAdapter} from "../connectors/github-read.js";
 import {createGitToolAdapter} from "./git.js";
 import {createBrowserToolAdapter,createFileToolAdapter,createFileWriteToolAdapter,createTerminalToolAdapter,createProjectVerifyToolAdapter} from "./fabric.js";
+import {createDesktopControlToolAdapter} from "./desktop-control.js";
 
 function payloadRecord(request:ToolRequest):Record<string,unknown>{
   return request.payload&&typeof request.payload==="object"&&!Array.isArray(request.payload)
@@ -200,5 +201,21 @@ export function registerToolFabric(core:LayanXCore,options:{workspaceRoot?:strin
  ]){
   core.tools.register({...definition,tags:["git","repository","project","version-control"]});
   core.toolAdapters.register(definition.name,createGitToolAdapter({root:workspaceRoot}));
+ }
+}
+
+export function registerDesktopControlTools(core:LayanXCore):void {
+ const adapter=createDesktopControlToolAdapter();
+ const definitions=[
+  {name:"desktop.status",description:"inspect whether the current machine exposes a supported desktop-control backend",action:"desktop status",permission:"L1_READ" as const,dangerous:false,tags:["desktop","computer","status","computer-use"]},
+  {name:"desktop.mouse.move",description:"move the local mouse cursor to an exact screen coordinate",action:"desktop move mouse",permission:"L4_EXECUTE" as const,dangerous:true,tags:["desktop","computer","mouse","computer-use"]},
+  {name:"desktop.mouse.click",description:"click the local mouse at an exact screen coordinate",action:"desktop click",permission:"L4_EXECUTE" as const,dangerous:true,tags:["desktop","computer","mouse","click","computer-use"]},
+  {name:"desktop.keyboard.type",description:"type bounded text into the currently focused local application",action:"desktop type",permission:"L4_EXECUTE" as const,dangerous:true,tags:["desktop","computer","keyboard","computer-use"]},
+  {name:"desktop.keyboard.press",description:"press one allowlisted keyboard key in the currently focused local application",action:"desktop press key",permission:"L4_EXECUTE" as const,dangerous:true,tags:["desktop","computer","keyboard","computer-use"]},
+  {name:"desktop.screenshot",description:"capture the local primary display as a bounded PNG for computer-use inspection",action:"desktop screenshot",permission:"L2_ANALYZE" as const,dangerous:false,tags:["desktop","computer","screen","vision","computer-use"]}
+ ];
+ for(const definition of definitions){
+  core.tools.register(definition);
+  core.toolAdapters.register(definition.name,adapter);
  }
 }
