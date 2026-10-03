@@ -2,8 +2,9 @@ import type {LayanXCore} from "../core/orchestrator.js";
 import type {ToolAdapter} from "../tools/executor.js";
 import type {BusinessManager} from "./manager.js";
 import type {AdsManager} from "./ads.js";
+import type {MediaManager} from "./media.js";
 
-export function registerBusinessTools(core:LayanXCore,business:BusinessManager,ads:AdsManager){
+export function registerBusinessTools(core:LayanXCore,business:BusinessManager,ads:AdsManager,media?:MediaManager){
  const defs=[
   ["ads.snapshot","read paid advertising state","L1_READ",false],
   ["ads.account.create","create an advertising account connection","L3_MODIFY",false],
@@ -21,6 +22,7 @@ export function registerBusinessTools(core:LayanXCore,business:BusinessManager,a
   ["commerce.product.publish","publish a product to its connected store","L4_EXECUTE",true],
   ["commerce.orders.sync","sync orders from a connected store","L3_MODIFY",false],
   ["media.add","register an externally hosted media asset","L3_MODIFY",false],
+  ["media.inspect","inspect remote media reachability and metadata","L1_READ",false],
   ["content.generate","generate a first-draft product post","L2_ANALYZE",false],
   ["content.publish","publish approved content to configured social accounts","L4_EXECUTE",true],
   ["content.schedule","schedule approved content for publication","L3_MODIFY",false],
@@ -45,6 +47,7 @@ export function registerBusinessTools(core:LayanXCore,business:BusinessManager,a
   "commerce.product.publish":p=>business.publishProduct(String(p.productId)),
   "commerce.orders.sync":p=>business.syncOrders(String(p.storeId)),
   "media.add":p=>business.addMedia(p),
+  "media.inspect":p=>{if(!media)throw new Error("media_manager_not_configured");return media.inspect(String(p.url));},
   "content.generate":p=>business.generateProductContentAI(String(p.productId),p.platforms),
   "content.publish":p=>business.publishContent(String(p.contentId)),
   "content.schedule":p=>business.scheduleContent(String(p.contentId),String(p.scheduledAt)),
