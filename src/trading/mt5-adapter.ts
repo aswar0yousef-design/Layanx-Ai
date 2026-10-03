@@ -80,7 +80,7 @@ export function filterCompletedMt5Candles(
 
   let completedEnd = candles.length;
   while (completedEnd > 0) {
-    const lastTime = Date.parse(candles[completedEnd - 1].timestamp);
+    const lastTime = Date.parse(candles[completedEnd - 1]!.timestamp);
     if (!Number.isFinite(lastTime) || lastTime + intervalMs > snapshotTime) completedEnd -= 1;
     else break;
   }
