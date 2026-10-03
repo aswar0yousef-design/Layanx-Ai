@@ -33,11 +33,11 @@ function buildResult(data: HistoricalCandleSource, options: Mt5HistoricalImportO
     c.bidHigh !== undefined && c.bidLow !== undefined && c.askHigh !== undefined && c.askLow !== undefined
   ).length;
   const intrabarPercentage = data.candles.length === 0 ? 0 : (candlesWithBidAskExtremes / data.candles.length) * 100;
-  return { ...data, quality, { candlesWithBidAsk, candlesWithoutBidAsk, percentage },
+  return { ...data, quality, quoteCoverage: { candlesWithBidAsk, candlesWithoutBidAsk, percentage },
     readyForBacktest: quality.issues.every(issue => issue.type !== "duplicate" && issue.type !== "non-monotonic" && issue.type !== "invalid-range") &&
       data.candles.length >= 31 &&
       (!options.requireBidAsk || candlesWithBidAsk === data.candles.length),
-    diagnostics, sessions };
+    diagnostics, sessions, quoteAwareIntrabarCoverage: { candlesWithBidAskExtremes, percentage: intrabarPercentage } };
 }
 
 export function importMt5HistoricalCsv(csv: string, options: Mt5HistoricalImportOptions): Mt5HistoricalImportResult {
