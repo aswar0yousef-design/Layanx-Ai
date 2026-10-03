@@ -37,13 +37,18 @@ console.log("binance-market-data-adapter: ok");
 
 {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => new Response(JSON.stringify({orderId:42,clientOrderId:"cid",status:"NEW"}), {status:200})) as typeof fetch;
+  let observedMethod = "";
+  globalThis.fetch = (async (_input, init) => {
+    observedMethod = String(init?.method ?? "GET");
+    return new Response(JSON.stringify({orderId:42,clientOrderId:"cid",status:"NEW"}), {status:200});
+  }) as typeof fetch;
   try {
     const client = new BinanceSpotClient({baseUrl:"https://api.binance.com",allowTrading:true,liveTradingEnabled:true,apiKey:"k",apiSecret:"s"});
     const result = await client.placeOrder({symbol:"BTCUSDT",side:"BUY",type:"MARKET",quantity:0.001,clientOrderId:"cid"});
     assert.equal(result.submitted,true);
     assert.equal(result.testnet,false);
     assert.equal(result.orderId,42);
+    assert.equal(observedMethod,"POST");
   } finally { globalThis.fetch = originalFetch; }
 }
 console.log("binance-production-order-client: ok");
