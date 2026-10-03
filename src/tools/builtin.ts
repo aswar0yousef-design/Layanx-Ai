@@ -6,10 +6,46 @@ import {createGitHubReadAdapter} from "../connectors/github-read.js";
 import {createGitToolAdapter} from "./git.js";
 import {createBrowserToolAdapter,createFileToolAdapter,createFileWriteToolAdapter,createTerminalToolAdapter,createProjectVerifyToolAdapter,createProjectBootstrapToolAdapter} from "./fabric.js";
 import {createDesktopControlToolAdapter} from "./desktop-control.js";
+import type {PaperTradingEngine} from "../trading/paper.js";
+import type {StrategyRegistry} from "../trading/strategy.js";
+import {backtest} from "../trading/backtest.js";
+import {optimizeStrategy,walkForward,monteCarlo} from "../trading/evaluation.js";
+
 
 function payloadRecord(request:ToolRequest):Record<string,unknown>{
   return request.payload&&typeof request.payload==="object"&&!Array.isArray(request.payload)
     ? request.payload as Record<string,unknown> : {};
+}
+
+export function registerTradingTools(core:LayanXCore,engine:PaperTradingEngine,strategies:StrategyRegistry):void {
+
+ core.tools.register({name:"trading.strategy.list",description:"list registered trading strategies",permission:"L1_READ",dangerous:false,actions:["list trading strategies"],tags:["trading","strategy","research"]});
+ core.toolAdapters.register("trading.strategy.list",{async execute(){return strategies.list().map(strategy=>({id:strategy.id,name:strategy.name,description:strategy.description,timeframe:strategy.timeframe}));}});
+ core.tools.register({name:"trading.strategy.backtest",description:"backtest a registered trading strategy against supplied OHLCV candles",permission:"L2_ANALYZE",dangerous:false,actions:["backtest trading strategy"],tags:["trading","strategy","backtest","research"]});
+ core.tools.register({name:"trading.strategy.optimize",description:"optimize a registered parameterized strategy on historical candles",permission:"L2_ANALYZE",dangerous:false,actions:["optimize trading strategy"],tags:["trading","strategy","optimization","research"]});
+ core.tools.register({name:"trading.strategy.walk_forward",description:"run walk-forward evaluation using training optimization and out-of-sample windows",permission:"L2_ANALYZE",dangerous:false,actions:["walk forward trading strategy"],tags:["trading","strategy","walk-forward","research"]});
+ core.tools.register({name:"trading.strategy.monte_carlo",description:"run Monte Carlo resampling over a completed trade series",permission:"L2_ANALYZE",dangerous:false,actions:["monte carlo trading strategy"],tags:["trading","strategy","monte-carlo","research"]});
+ core.toolAdapters.register("trading.strategy.backtest",{async execute(request){const input=payloadRecord(request);if(typeof input.strategyId!=="string")throw new Error("strategyId is required.");if(!Array.isArray(input.candles))throw new Error("candles array is required.");const candles=input.candles as any[];return backtest(strategies.get(input.strategyId),candles as any,typeof input.startingEquity==="number"?input.startingEquity:100000,typeof input.riskFraction==="number"?input.riskFraction:.002,(input.costs&&typeof input.costs==="object"?input.costs:{} ) as any);}});
+ core.toolAdapters.register("trading.strategy.optimize",{async execute(request){const input=payloadRecord(request);if(typeof input.strategyId!=="string"||!Array.isArray(input.candles))throw new Error("strategyId and candles are required.");const base=strategies.get(input.strategyId);if(!base.withParameters)throw new Error("Strategy does not expose optimization parameters.");const grid=input.grid&&typeof input.grid==="object"?input.grid as Record<string,number[]>:{};return optimizeStrategy(input.candles as any[],p=>base.withParameters!(p),grid,typeof input.startingEquity==="number"?input.startingEquity:100000,typeof input.riskFraction==="number"?input.riskFraction:.002,(input.costs&&typeof input.costs==="object"?input.costs:{} ) as any).slice(0,20);}});
+ core.toolAdapters.register("trading.strategy.walk_forward",{async execute(request){const input=payloadRecord(request);if(typeof input.strategyId!=="string"||!Array.isArray(input.candles))throw new Error("strategyId and candles are required.");const base=strategies.get(input.strategyId);if(!base.withParameters)throw new Error("Strategy does not expose optimization parameters.");return walkForward(input.candles as any[],p=>base.withParameters!(p),input.grid as Record<string,number[]>,Number(input.trainBars),Number(input.testBars),typeof input.startingEquity==="number"?input.startingEquity:100000,typeof input.riskFraction==="number"?input.riskFraction:.002,(input.costs&&typeof input.costs==="object"?input.costs:{} ) as any);}});
+ core.toolAdapters.register("trading.strategy.monte_carlo",{async execute(request){const input=payloadRecord(request);if(!Array.isArray(input.trades))throw new Error("trades are required.");return monteCarlo(input.trades as {pnl:number}[],typeof input.runs==="number"?input.runs:1000);}});
+ const tools=[
+  {name:"trading.account",description:"read the paper trading account and open positions",permission:"L1_READ" as const,dangerous:false,action:"read trading account",tags:["trading","account","paper"]},
+  {name:"trading.quote",description:"read a configured paper trading quote",permission:"L1_READ" as const,dangerous:false,action:"read market quote",tags:["trading","quote","market","paper"]},
+  {name:"trading.order.place",description:"place a paper market buy or sell order",permission:"L4_EXECUTE" as const,dangerous:true,action:"place paper trading order",tags:["trading","order","execute","paper"]},
+  {name:"trading.position.close",description:"close an existing paper trading position",permission:"L4_EXECUTE" as const,dangerous:true,action:"close paper trading position",tags:["trading","position","execute","paper"]}
+ ];
+ for(const definition of tools){
+  core.tools.register({...definition,actions:[definition.action]});
+  core.toolAdapters.register(definition.name,{async execute(request){
+   const input=payloadRecord(request);
+   if(definition.name==="trading.account")return{account:engine.accountSnapshot(),positions:engine.positions()};
+   if(definition.name==="trading.quote"){if(typeof input.symbol!=="string")throw new Error("symbol is required.");return engine.quote(input.symbol);}
+   if(definition.name==="trading.order.place"){const symbol=typeof input.symbol==="string"?input.symbol:"";const side=input.side==="sell"?"sell":"buy";const quantity=typeof input.quantity==="number"?input.quantity:NaN;const stopLoss=typeof input.stopLoss==="number"?input.stopLoss:undefined;const takeProfit=typeof input.takeProfit==="number"?input.takeProfit:undefined;return engine.placeMarket({symbol,side,quantity,stopLoss,takeProfit});}
+   if(typeof input.orderId!=="string")throw new Error("orderId is required.");
+   const price=typeof input.price==="number"?input.price:undefined;return engine.closePosition(input.orderId,price);
+  }});
+ }
 }
 
 export function registerBuiltinTools(core:LayanXCore):void {
