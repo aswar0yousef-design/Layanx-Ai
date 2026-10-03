@@ -373,7 +373,7 @@ export class LayanXCore{
         if(repair.completed)return{missionId,results:[...results,...repair.results],completed:true,repaired:true,repairAttempts:repair.attempts};
         const decision=this.adaptiveDecision.decide({mission,toolResult:result.data,stepsExecuted:processed+1,maxSteps,nextToolAvailable:true,toolSucceeded:false});
         await this.recordAdaptiveStop(mission,decision,processed+1,agentId);
-        return{missionId,results:[...results,...repair.results],completed:false,reason:repair.reason??result.error,recoverable:result.repaired||result.recoverable};
+        return{missionId,results:[...results,...repair.results],completed:false,reason:repair.reason??result.error,recoverable:result.recoverable};
       }
       completedTools.push(next.tool);
       latest=result.data;
@@ -387,7 +387,7 @@ export class LayanXCore{
             error:[tests.error??"Selected tests failed.",tests.stderr,tests.stdout].filter(Boolean).join("\n"),
             data:{tests:tests.tests,failed:tests.failed,exitCode:tests.exitCode,timedOut:tests.timedOut}
           };
-          const repair=this.autonomousRepair.run(mission,testFailure,{
+          const repair=await this.autonomousRepair.run(mission,testFailure,{
             planner:this.aiPlanner,
             tools:catalog,
             memory:missionMemory,
