@@ -50,9 +50,13 @@ export class BusinessStore{
  private persistRemote(snapshot:BusinessSnapshot):void{
   if(!this.postgres)return;
   this.writeQueue=this.writeQueue.then(async()=>{
-   await this.postgres!.transaction(async tx=>{
-    await tx.set("business:snapshot",snapshot);
-   });
+   try{
+    await this.postgres!.transaction(async tx=>{await tx.set("business:snapshot",snapshot);});
+    this.persistenceError=undefined;
+   }catch(error){
+    this.persistenceError=error instanceof Error?error.message:"business_persistence_failed";
+    console.error(`[LayanX] ${this.persistenceError}`);
+   }
   });
  }
 
