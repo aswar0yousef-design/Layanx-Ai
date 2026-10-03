@@ -12,6 +12,7 @@ const PROVIDER_DEFAULTS:Partial<Record<OAuthProvider,Partial<OAuthConfig>>>={
  google:{authorize:"https://accounts.google.com/o/oauth2/v2/auth",token:"https://oauth2.googleapis.com/token"},
  youtube:{authorize:"https://accounts.google.com/o/oauth2/v2/auth",token:"https://oauth2.googleapis.com/token"},
  linkedin:{authorize:"https://www.linkedin.com/oauth/v2/authorization",token:"https://www.linkedin.com/oauth/v2/accessToken"},
+ pinterest:{authorize:"https://www.pinterest.com/oauth/",token:"https://api.pinterest.com/v5/oauth/token"} ,
 };
 export class OAuthConnectionCenter{
  private readonly vault=new LocalSecretVault();
@@ -30,7 +31,7 @@ export class OAuthConnectionCenter{
   const clientId=env(p,"CLIENT_ID")??"";const clientSecret=localSecret(`${provider}.oauth.client_secret`,env(p,"CLIENT_SECRET"));
   const redirectUri=env(p,"REDIRECT_URI")??process.env.LAYANX_OAUTH_REDIRECT_URI??"";
   const authorize=env(p,"AUTHORIZE_URL")??d.authorize??"";const token=env(p,"TOKEN_URL")??d.token??"";
-  const scopes=(env(p,"SCOPES")??(provider==="google"?"https://www.googleapis.com/auth/adwords":provider==="youtube"?"https://www.googleapis.com/auth/youtube.upload":"user.info.basic")).split(/[ ,]+/).filter(Boolean);
+  const scopes=(env(p,"SCOPES")??(provider==="google"?"https://www.googleapis.com/auth/adwords":provider==="youtube"?"https://www.googleapis.com/auth/youtube.upload":provider==="pinterest"?"boards:read,boards:write,pins:read,pins:write":provider==="linkedin"?"openid,profile,r_ads,r_ads_reporting":"user.info.basic")).split(/[ ,]+/).filter(Boolean);
   if(!clientId||!redirectUri||!authorize||!token)throw new Error(`oauth_${provider}_not_configured`);
   return {authorize,token,clientId,clientSecret,redirectUri,scopes,usePkce:provider==="tiktok"||env(p,"USE_PKCE")==="true",extra:env(p,"EXTRA_JSON")?JSON.parse(env(p,"EXTRA_JSON")!):undefined};
  }
@@ -46,8 +47,9 @@ export class OAuthConnectionCenter{
  async callback(state:string,code:string){
   const p=this.pending.get(state);if(!p||Date.now()-p.createdAt>10*60_000){this.pending.delete(state);throw new Error("oauth_state_invalid_or_expired");}
   this.pending.delete(state);const c=this.config(p.provider);
-  const form=new URLSearchParams({client_id:c.clientId,code,grant_type:"authorization_code",redirect_uri:p.redirectUri});if(c.clientSecret)form.set("client_secret",c.clientSecret);if(p.codeVerifier)form.set("code_verifier",p.codeVerifier);
-  const response=await fetch(c.token,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:form});const raw=await response.text();let d:any={};try{d=JSON.parse(raw);}catch{d={raw};}if(!response.ok)throw new Error(`oauth_token_exchange_${response.status}`);
+  const form=new URLSearchParams({client_id:c.clientId,code,grant_type:"authorization_code",redirect_uri:p.redirectUri});if(c.clientSecret&&p.provider!=="pinterest")form.set("client_secret",c.clientSecret);if(p.codeVerifier)form.set("code_verifier",p.codeVerifier);
+  const headers:Record<string,string>={"content-type":"application/x-www-form-urlencoded"};if(p.provider==="pinterest"&&c.clientSecret)headers.Authorization=`Basic ${Buffer.from(`${c.clientId}:${c.clientSecret}`).toString("base64")}`;
+  const response=await fetch(c.token,{method:"POST",headers,body:form});const raw=await response.text();let d:any={};try{d=JSON.parse(raw);}catch{d={raw};}if(!response.ok)throw new Error(`oauth_token_exchange_${response.status}`);
   const token=String(d.access_token??"");if(!token)throw new Error("oauth_access_token_missing");
   const id=randomUUID(),secret=`${p.provider}.oauth.access.${id}`;this.vault.set(secret,token);this.syncProviderToken(p.provider,token);
   let refreshSecret:string|undefined;if(d.refresh_token){refreshSecret=`${p.provider}.oauth.refresh.${id}`;this.vault.set(refreshSecret,String(d.refresh_token));}
@@ -60,8 +62,8 @@ export class OAuthConnectionCenter{
   if(value&&(!connection.expiresAt||Date.parse(connection.expiresAt)>Date.now()+60_000))return value;
   if(!connection.refreshTokenSecret)throw new Error("oauth_access_token_expired");
   const refresh=this.vault.get(connection.refreshTokenSecret);if(!refresh)throw new Error("oauth_refresh_token_missing");
-  const c=this.config(connection.provider);const form=new URLSearchParams({client_id:c.clientId,refresh_token:refresh,grant_type:"refresh_token"});if(c.clientSecret)form.set("client_secret",c.clientSecret);
-  const response=await fetch(c.token,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:form});const raw=await response.text();let d:any={};try{d=JSON.parse(raw);}catch{d={raw};}if(!response.ok)throw new Error(`oauth_refresh_${response.status}`);
+  const c=this.config(connection.provider);const form=new URLSearchParams({client_id:c.clientId,refresh_token:refresh,grant_type:"refresh_token"});if(c.clientSecret&&c.clientId&&connection.provider!=="pinterest")form.set("client_secret",c.clientSecret);const headers:Record<string,string>={"content-type":"application/x-www-form-urlencoded"};if(connection.provider==="pinterest"&&c.clientSecret)headers.Authorization=`Basic ${Buffer.from(`${c.clientId}:${c.clientSecret}`).toString("base64")}`;
+  const response=await fetch(c.token,{method:"POST",headers,body:form});const raw=await response.text();let d:any={};try{d=JSON.parse(raw);}catch{d={raw};}if(!response.ok)throw new Error(`oauth_refresh_${response.status}`);
   const access=String(d.access_token??"");if(!access)throw new Error("oauth_access_token_missing");
   this.vault.set(connection.tokenSecret,access);this.syncProviderToken(connection.provider,access);connection.expiresAt=typeof d.expires_in==="number"?new Date(Date.now()+d.expires_in*1000).toISOString():undefined;connection.updatedAt=new Date().toISOString();
   if(d.refresh_token)this.vault.set(connection.refreshTokenSecret,String(d.refresh_token));this.persist();return access;
@@ -109,9 +111,39 @@ export class OAuthConnectionCenter{
     const user=u?.data;
     return {provider:"x",accounts:user?.id?[{platform:"x",externalId:String(user.id),name:String(user.name??user.username??user.id)}]:[]};
    }
+   case "pinterest":{
+    const user=await request("https://api.pinterest.com/v5/user_account");
+    const boards=await request("https://api.pinterest.com/v5/boards?page_size=250");
+    return {provider:"pinterest",user:user?.username?{externalId:String(user.username),name:String(user.business_name??user.username)}:undefined,accounts:(Array.isArray(boards?.items)?boards.items:[]).map((x:any)=>({platform:"pinterest",externalId:String(x.id),name:String(x.name??x.id)}))};
+   }
    default: throw new Error(`oauth_discovery_not_implemented:${connection.provider}`);
   }
+ } async discoverAds(id:string){
+  const connection=this.get(id);
+  const access=await this.token(connection);
+  const headers:Record<string,string>={Authorization:`Bearer ${access}`,Accept:"application/json"};
+  const get=async(url:string,extra:Record<string,string>={})=>{const r=await fetch(url,{headers:{...headers,...extra}});const t=await r.text();let d:any={};try{d=t?JSON.parse(t):{}}catch{d={raw:t}}if(!r.ok)throw new Error(`oauth_ads_discovery_http_${r.status}`);return d;};
+  switch(connection.provider){
+   case "google":{
+    const d=await get("https://googleads.googleapis.com/v25/customers:listAccessibleCustomers");
+    return {provider:"google",accounts:(d.resourceNames??[]).map((x:string)=>({platform:"google",externalId:x.split("/").pop()??x,name:x}))};
+   }
+   case "linkedin":{
+    const d=await get("https://api.linkedin.com/rest/adAccounts?q=search&search.status.values[0]=ACTIVE&search.test=false",{ "Linkedin-Version":process.env.LAYANX_LINKEDIN_API_VERSION??"202604","X-Restli-Protocol-Version":"2.0.0"});
+    return {provider:"linkedin",accounts:(d.elements??[]).map((x:any)=>({platform:"linkedin",externalId:String(x.id),name:String(x.name??x.id),currency:String(x.currency??"USD")}))};
+   }
+   case "meta":{
+    const d=await get("https://graph.facebook.com/v24.0/me/adaccounts?fields=id,name,currency,account_status");
+    return {provider:"meta",accounts:(d.data??[]).map((x:any)=>({platform:"meta",externalId:String(x.id),name:String(x.name??x.id),currency:String(x.currency??"USD")}))};
+   }
+   case "tiktok":{
+    const d=await get("https://business-api.tiktok.com/open_api/v1.3/oauth2/advertiser/get/");
+    return {provider:"tiktok",accounts:(d.data?.list??d.data?.advertiser_list??[]).map((x:any)=>({platform:"tiktok",externalId:String(x.advertiser_id??x.id),name:String(x.advertiser_name??x.name??x.advertiser_id),currency:String(x.currency??"USD")}))};
+   }
+   default: throw new Error(`oauth_ads_discovery_not_implemented:${connection.provider}`);
+  }
  }
+
  revoke(connection:OAuthConnection){this.vault.delete(connection.tokenSecret);if(connection.refreshTokenSecret)this.vault.delete(connection.refreshTokenSecret);for(const key of [connection.provider==="meta"?"meta.social.token":undefined,connection.provider==="meta"?"facebook.social.token":undefined,connection.provider==="meta"?"instagram.social.token":undefined,`${connection.provider}.social.token`,`${connection.provider}.ads.token`].filter(Boolean) as string[])this.vault.delete(key);this.connections=this.connections.filter(x=>x.id!==connection.id);this.persist();}
  status(connection:OAuthConnection){return {id:connection.id,provider:connection.provider,accountId:connection.accountId,accountName:connection.accountName,scopes:connection.scopes,expiresAt:connection.expiresAt,configured:true};}
 }
