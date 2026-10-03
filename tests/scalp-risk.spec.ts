@@ -1,0 +1,11 @@
+import {ScalpRiskController} from "../src/trading/scalp-risk.js";
+import type {TradingSignal} from "../src/trading/strategy.js";
+const controller=new ScalpRiskController();
+const signal:TradingSignal={strategyId:"scalp-sweep-v1",timestamp:100,side:"long",entry:100,stopLoss:99,takeProfit:100.8,reason:["test"],confidence:.68};
+const allowed=controller.evaluate(signal,{equity:100000,spread:.02,atr:.5,timestamp:100,dailyPnl:0,consecutiveLosses:0,openPositions:0});
+if(!allowed.allowed||allowed.riskFraction!==.001)throw new Error("Valid scalp setup was rejected.");
+const blocked=controller.evaluate(signal,{equity:100000,spread:.2,atr:.5,timestamp:100,dailyPnl:0,consecutiveLosses:0,openPositions:0});
+if(blocked.allowed)throw new Error("Wide-spread scalp setup was allowed.");
+const lossBlocked=controller.evaluate(signal,{equity:100000,spread:.02,atr:.5,timestamp:100,dailyPnl:-2000,consecutiveLosses:0,openPositions:0});
+if(lossBlocked.allowed)throw new Error("Daily loss limit was not enforced.");
+console.log(JSON.stringify({ok:true,allowed,blocked,lossBlocked}));
