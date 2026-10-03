@@ -1,0 +1,87 @@
+{
+  "name": "layanx-agent",
+  "displayName": "LayanX AI Agent",
+  "description": "Use the LayanX local-first agent directly inside Visual Studio Code.",
+  "version": "0.1.0",
+  "publisher": "layanx",
+  "license": "MIT",
+  "engines": { "vscode": "^1.95.0" },
+  "categories": ["AI", "Other"],
+  "activationEvents": [
+    "onCommand:layanx.openAgent",
+    "onCommand:layanx.runGoal",
+    "onCommand:layanx.explainSelection",
+    "onCommand:layanx.fixSelection",
+    "onCommand:layanx.health",
+    "onCommand:layanx.startRuntime",
+    "onCommand:layanx.setApiToken"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "layanx.openAgent", "title": "LayanX: Open Agent" },
+      { "command": "layanx.runGoal", "title": "LayanX: Run Goal" },
+      { "command": "layanx.explainSelection", "title": "LayanX: Explain Selection" },
+      { "command": "layanx.fixSelection", "title": "LayanX: Fix Selection" },
+      { "command": "layanx.health", "title": "LayanX: Health Check" },
+      { "command": "layanx.startRuntime", "title": "LayanX: Start Local Runtime" },
+      { "command": "layanx.setApiToken", "title": "LayanX: Set API Token" }
+    ],
+    "menus": {
+      "editor/context": [
+        { "command": "layanx.explainSelection", "when": "editorHasSelection" },
+        { "command": "layanx.fixSelection", "when": "editorHasSelection" }
+      ]
+    },
+    "configuration": {
+      "title": "LayanX AI",
+      "properties": {
+        "layanx.apiBaseUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:3000",
+          "description": "Local LayanX API base URL."
+        },
+        "layanx.projectId": {
+          "type": "string",
+          "default": "",
+          "description": "LayanX project ID. Empty uses the current workspace folder name."
+        },
+        "layanx.runtimePath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the LayanX-Ai runtime repository. Empty uses the current workspace folder."
+        },
+        "layanx.runtimeCommand": {
+          "type": "string",
+          "default": "npm run api",
+          "description": "Command used by LayanX: Start Local Runtime."
+        },
+        "layanx.maxSteps": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 25,
+          "description": "Maximum agent steps per request."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "layanx",
+          "title": "LayanX",
+          "icon": "resources/layanx.svg"
+        }
+      ]
+    },
+    "views": {
+      "layanx": [
+        {
+          "id": "layanx.agent",
+          "name": "Agent",
+          "type": "webview"
+        }
+      ]
+    }
+  }
+}
