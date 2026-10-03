@@ -31,7 +31,7 @@ function structuralPass(runtime:Runtime):ReadinessCheck[]{
 
   checks.push({id:"core-ready",ok:runtime.core.isReady(),blocking:true,detail:runtime.core.isReady()?"Core agent is registered.":"Core agent is not registered."});
   checks.push({id:"providers-present",ok:providers.length>0,blocking:true,detail:providers.length?providers.length+" provider(s) registered.":"No model providers are registered."});
-  checks.push({id:"models-present",ok:models.length>0,blocking:true,detail:models.length+" model(s) registered.":"No models are registered."});
+  checks.push({id:"models-present",ok:models.length>0,blocking:true,detail:models.length?models.length+" model(s) registered.":"No models are registered."});
   checks.push({id:"unique-provider-identities",ok:!duplicateProviders,blocking:true,detail:duplicateProviders?"Duplicate provider names detected.":"Provider identities are unique."});
   checks.push({id:"unique-model-identities",ok:!duplicateModels,blocking:true,detail:duplicateModels?"Duplicate model ids detected.":"Model identities are unique."});
   checks.push({id:"model-provider-links",ok:missingProviderModels.length===0,blocking:true,detail:missingProviderModels.length?("Models reference missing providers: "+missingProviderModels.map(model=>model.id).join(", ")): "Every model has a registered provider."});
