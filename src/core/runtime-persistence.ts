@@ -141,7 +141,8 @@ export class RuntimePersistence{
           snapshot.executionState.status==="running"||
           (snapshot.executionState.status==="failed"&&snapshot.executionState.recoverable)||
           snapshot.mission.status==="running"||
-          snapshot.mission.status==="verifying";
+          snapshot.mission.status==="verifying"||
+          (snapshot.mission.status==="blocked"&&snapshot.approvals?.requests.some(request=>Date.parse(request.expiresAt)>Date.now()&&!snapshot.approvals?.approvedIds.includes(request.id)));
         return resumable||Date.parse(snapshot.savedAt)>=cutoff;
       });
       await tx.set("runtime:snapshots",kept);
