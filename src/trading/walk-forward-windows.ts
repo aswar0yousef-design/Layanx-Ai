@@ -21,40 +21,23 @@ export interface WalkForwardWindowSummary {
 export function summarizeWalkForwardWindows(
   windows: WalkForwardWindow[],
 ): WalkForwardWindowSummary {
-  if (windows.length < 2) {
-    return {
-      windows: windows.length,
-      testOverlap: false,
-      testOverlapCandles: 0,
-      testCoveredCandles: windows[0]?.test.length ?? 0,
-    };
-  }
+  const seen = new Set<string>();
+  let totalTestCandles = 0;
+  let duplicateTestCandles = 0;
 
-  const testIntervals = windows.map(window => ({
-    start: Date.parse(window.testStart),
-    end: Date.parse(window.testEnd),
-    length: window.test.length,
-  })).sort((a, b) => a.start - b.start);
-
-  let overlapCandles = 0;
-  let coveredCandles = 0;
-  let previousEnd = Number.NaN;
-
-  for (const interval of testIntervals) {
-    if (Number.isNaN(interval.start) || Number.isNaN(interval.end)) {
-      throw new Error("Invalid walk-forward test timestamp.");
+  for (const window of windows) {
+    for (const candle of window.test) {
+      if (seen.has(candle.timestamp)) duplicateTestCandles += 1;
+      else seen.add(candle.timestamp);
+      totalTestCandles += 1;
     }
-    const overlap = Number.isFinite(previousEnd) && interval.start <= previousEnd;
-    if (overlap) overlapCandles += Math.min(interval.length, 1);
-    coveredCandles += interval.length;
-    previousEnd = Math.max(previousEnd, interval.end);
   }
 
   return {
     windows: windows.length,
-    testOverlap: overlapCandles > 0,
-    testOverlapCandles: overlapCandles,
-    testCoveredCandles: coveredCandles - overlapCandles,
+    testOverlap: duplicateTestCandles > 0,
+    testOverlapCandles: duplicateTestCandles,
+    testCoveredCandles: seen.size,
   };
 }
 
