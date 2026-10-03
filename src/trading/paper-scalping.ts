@@ -39,6 +39,8 @@ export interface PaperTrade {
   entrySpread: number;
   entrySlippage: number;
   entryAtr: number;
+  entryTrendRegime: ReturnType<typeof classifyMarketRegime>["trend"];
+  entryVolatilityRegime: ReturnType<typeof classifyMarketRegime>["volatility"];
 }
 
 export interface PaperTradingResult {
@@ -279,6 +281,8 @@ export function runPaperScalping(
           session: detectTradingSession(openTrade.openedAt),
           trendRegime: regime.trend,
           volatilityRegime: regime.volatility,
+          entryTrendRegime: openTrade.entryTrendRegime,
+          entryVolatilityRegime: openTrade.entryVolatilityRegime,
           commission: commissionPerUnit * openTrade.quantity,
           swap: (config.swapPerUnit ?? (openTrade.side === "long"
             ? config.brokerSymbol?.swapLongPerUnit
@@ -318,6 +322,7 @@ export function runPaperScalping(
       : signal.action === "long"
         ? entryReference + spread / 2 + entrySlippage
         : entryReference - spread / 2 - entrySlippage;
+    const entryRegime = classifyMarketRegime(history);
     const stop = stopPrice(signal.action, entry, config.stopLossDistance);
     const target = targetPrice(signal.action, entry, config.takeProfitDistance);
 
@@ -367,6 +372,8 @@ export function runPaperScalping(
       entrySpread: spread,
       entrySlippage,
       entryAtr: signal.indicators.atr,
+      entryTrendRegime: entryRegime.trend,
+      entryVolatilityRegime: entryRegime.volatility,
     };
   }
 
