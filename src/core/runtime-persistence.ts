@@ -114,7 +114,8 @@ export class RuntimePersistence{
       x.executionState.status==="running"||
       (x.executionState.status==="failed"&&x.executionState.recoverable)||
       x.mission.status==="running"||
-      x.mission.status==="verifying"
+      x.mission.status==="verifying"||
+      (x.mission.status==="blocked"&&x.approvals?.requests.some(request=>Date.parse(request.expiresAt)>Date.now()&&!x.approvals?.approvedIds.includes(request.id)))
     );
   }
 
