@@ -1,0 +1,25 @@
+import type {ToolAdapter} from "../tools/executor.js";
+import type {ToolRequest} from "../core/types.js";
+type Json=Record<string,unknown>;
+const ROOT="https://www.googleapis.com"; const MAX=50;
+function rec(r:ToolRequest):Json{return r.payload&&typeof r.payload==="object"&&!Array.isArray(r.payload)?r.payload as Json:{}}
+function str(v:unknown,n:string){if(typeof v!=="string"||!v.trim())throw new Error(n+" is required.");return v.trim()}
+function lim(v:unknown){return typeof v==="number"&&Number.isInteger(v)?Math.min(Math.max(v,1),MAX):20}
+export interface GoogleAuthOptions{accessToken?:string;clientId?:string;clientSecret?:string;refreshToken?:string;fetcher?:typeof fetch}
+export function createGoogleWorkspaceAdapter(o:GoogleAuthOptions={}):ToolAdapter{
+ const fetcher=o.fetcher??fetch; let cached:{token:string;expiresAt:number}|undefined;
+ async function token(){if(o.accessToken)return o.accessToken;if(cached&&cached.expiresAt>Date.now()+60000)return cached.token;if(!o.clientId||!o.clientSecret||!o.refreshToken)throw new Error("Google OAuth is not configured. Set GOOGLE_ACCESS_TOKEN or GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REFRESH_TOKEN.");const body=new URLSearchParams({client_id:o.clientId,client_secret:o.clientSecret,refresh_token:o.refreshToken,grant_type:"refresh_token"});const r=await fetcher("https://oauth2.googleapis.com/token",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body});const t=await r.text();if(!r.ok)throw new Error("Google OAuth token refresh failed ("+r.status+").");const j=JSON.parse(t) as {access_token?:string;expires_in?:number};if(!j.access_token)throw new Error("Google OAuth response did not contain an access token.");cached={token:j.access_token,expiresAt:Date.now()+(j.expires_in??3600)*1000};return cached.token}
+ async function call(path:string,init:RequestInit={}):Promise<unknown>{const r=await fetcher(ROOT+path,{...init,redirect:"error",headers:{"accept":"application/json","authorization":"Bearer "+await token(),...(init.headers??{})}});const t=await r.text();if(!r.ok)throw new Error("Google API request failed ("+r.status+").");return t?JSON.parse(t):{ok:true,status:r.status}}
+ return {async execute(request){const i=rec(request),a=request.action.toLowerCase();
+  if(a==="list emails"||a==="search emails"){const p=new URLSearchParams({maxResults:String(lim(i.limit))});if(typeof i.query==="string"&&i.query)p.set("q",i.query);return call("/gmail/v1/users/me/messages?"+p)}
+  if(a==="read email")return call("/gmail/v1/users/me/messages/"+encodeURIComponent(str(i.messageId,"messageId"))+"?format=full");
+  if(a==="send email"){const to=str(i.to,"to"),subject=str(i.subject,"subject"),body=str(i.body,"body");const raw=Buffer.from("To: "+to+"\r\nSubject: "+subject+"\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n"+body).toString("base64url");return call("/gmail/v1/users/me/messages/send",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({raw})})}
+  if(a==="list drive"){const p=new URLSearchParams({pageSize:String(lim(i.limit)),fields:"files(id,name,mimeType,modifiedTime,parents),nextPageToken"});if(typeof i.query==="string"&&i.query)p.set("q",i.query);return call("/drive/v3/files?"+p)}
+  if(a==="create drive folder"){const name=str(i.name,"name");const b:{name:string;mimeType:string;parents?:string[]}={name,mimeType:"application/vnd.google-apps.folder"};if(Array.isArray(i.parents))b.parents=i.parents.filter((x):x is string=>typeof x==="string");return call("/drive/v3/files",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(b)})}
+  if(a==="create spreadsheet")return call("/v4/spreadsheets",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({properties:{title:str(i.title,"title")}})});
+  if(a==="append sheet rows"){if(!Array.isArray(i.values))throw new Error("values must be an array of rows.");return call("/v4/spreadsheets/"+encodeURIComponent(str(i.spreadsheetId,"spreadsheetId"))+"/values/"+encodeURIComponent(str(i.range,"range"))+":append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({values:i.values})})}
+  if(a==="calendar upcoming"){const p=new URLSearchParams({calendarId:"primary",maxResults:String(lim(i.limit)),singleEvents:"true",orderBy:"startTime",timeMin:typeof i.timeMin==="string"?i.timeMin:new Date().toISOString()});return call("/calendar/v3/calendars/primary/events?"+p)}
+  if(a==="merchant accounts")return call("/merchant/api/accounts/v1beta/accounts");
+  if(a==="merchant products"){const p=new URLSearchParams({pageSize:String(lim(i.limit))});return call("/merchant/api/products/v1beta/accounts/"+encodeURIComponent(str(i.accountId,"accountId"))+"/products?"+p)}
+  throw new Error("Unsupported Google action.");}}
+}
