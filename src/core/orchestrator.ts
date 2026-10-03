@@ -64,7 +64,6 @@ import {PullRequestGenerator} from "./pr-generator.js";
 import {ReleaseStateMachine} from "./release-state-machine.js";
 import {ReleaseManager} from "./release-manager.js";
 import {RuntimeTracer} from "./runtime-tracer.js";
-import {registerPaperTradingAgentTool,registerBinanceMarketDataTool,registerBinanceLiveOrderTool} from "../trading/agent-integration.js";
 import {SkillLearningEngine,type LearningTrace} from "../skills/learning.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
 import {PaperTradingEngine} from "../trading/paper.js";
@@ -170,9 +169,6 @@ export class LayanXCore{
     this.releaseManager=new ReleaseManager();
     this.strategies.register(new HtfStructureLiquidityStrategy());
     this.strategies.register(new ScalpingSweepStrategy());
-    registerPaperTradingAgentTool(this.tools,this.toolAdapters);
-    registerBinanceMarketDataTool(this.tools,this.toolAdapters);
-    registerBinanceLiveOrderTool(this.tools,this.toolAdapters);
     this.restoreLearnedSkills();
   }
 
