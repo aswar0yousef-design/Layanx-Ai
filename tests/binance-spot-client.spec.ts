@@ -52,6 +52,15 @@ console.log("binance-market-data-adapter: ok");
   } finally { globalThis.fetch = originalFetch; }
 }
 console.log("binance-production-order-client: ok");
+{
+  const unsafe = new BinanceSpotClient({baseUrl:"http://127.0.0.1:9999",allowTrading:true,liveTradingEnabled:true,apiKey:"k",apiSecret:"s"});
+  await assert.rejects(
+    unsafe.placeOrder({symbol:"BTCUSDT",side:"BUY",type:"MARKET",quantity:0.001}),
+    /HTTPS api\.binance\.com/,
+  );
+}
+console.log("binance-endpoint-safety: ok");
+
 
 
 {
