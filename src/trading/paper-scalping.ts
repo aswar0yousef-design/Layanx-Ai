@@ -61,13 +61,8 @@ function targetPrice(side: TradeSide, entry: number, distance?: number): number 
   return side === "long" ? entry + distance : entry - distance;
 }
 
-function currentSpread(
-  spread: PaperTradingConfig["spread"],
-  candle: MarketCandle,
-): number {
-  if (candle.bid !== undefined && candle.ask !== undefined) {
-    return candle.ask - candle.bid;
-  }
+function currentSpread(spread: PaperTradingConfig["spread"], candle: MarketCandle): number {
+  if (candle.bid !== undefined && candle.ask !== undefined) return candle.ask - candle.bid;
   return typeof spread === "function" ? spread(candle) : spread;
 }
 
@@ -79,133 +74,10 @@ function currentSlippage(
   const value = typeof slippage === "function" ? slippage(candle, side) : slippage ?? 0;
   if (value < 0) throw new Error("Slippage must be non-negative.");
   return value;
-}
-
-mport type { TradeSide } from "./execution-quality.js";
-import type { MarketCandle } from "./scalping-signal.js";
-import { generateScalpingSignal } from "./scalping-signal.js";
-import { analyzeTradeRecord, type TradeRecord } from "./trade-record.js";
-import { evaluateScalpingDecision } from "./scalping-decision.js";
-import { detectTradingSession } from "./session.js";
-import { classifyMarketRegime } from "./market-regime.js";
-import type { BrokerSymbolSpecification } from "./broker-symbol-spec.js";
-import { simulateExit, type IntrabarResolution } from "./intrabar-execution.js";
-
-export interface PaperTradingConfig {
-  symbol: string;
-  timeframe: string;
-  initialBalance: number;
-  riskPercent: number;
-  stopLossDistance: number;
-  takeProfitDistance?: number;
-  spread: number | ((candle: MarketCandle) => number);
-  slippage?: number | ((candle: MarketCandle, side: TradeSide) => number);
-  commissionPerUnit?: number;
-  swapPerUnit?: number;
-  trailingStopDistance?: number;
-  pointValue?: number;
-  minimumQuantity?: number;
-  maximumQuantity?: number;
-  quantityStep?: number;
-  brokerSymbol?: BrokerSymbolSpecification;
-  intrabarResolution?: IntrabarResolution;
-}
-
-export interface PaperTrade {
-  id: string;
-  side: TradeSide;
-  quantity: number;
-  entryPrice: number;
-  stopLossPrice: number;
-  takeProfitPrice?: number;
-  openedAt: string;
-  entrySpread: number;
-  entrySlippage: number;
-  entryAtr: number;
-}
-
-export interface PaperTradingResult {
-  initialBalance: number;
-  finalBalance: number;
-  trades: TradeRecord[];
-  analyses: ReturnType<typeof analyzeTradeRecord>[];
-  blockedSignals: number;
-}
-
-function stopPrice(side: TradeSide, entry: number, distance: number): number {
-  return side === "long" ? entry - distance : entry + distance;
-}
-
-function targetPrice(side: TradeSide, entry: number, distance?: number): number | undefined {
-  if (distance === undefined) return undefined;
-  return side === "long" ? entry + distance : entry - distance;
-}
-
-function currentSpread(
-  spread: PaperTradingConfig["spread"],
-  candle: MarketCandle,
-): number {
-  return typeof spread === "function" ? spread(candle) : spread;
-}
-
-function currentSlippage(
-  slippage: PaperTradingConfig["slippage"],
-  candle: MarketCandle,
-  side: TradeSide,
-): number {
-  const value = typeof slippage === "function" ? slippage(candle, side) : slippage ?? 0;
-  if (value < 0) throw new Error("Slippage must be non-negative.");
-  return value;
-}
-
-function exitPrice(
-  trade: PaperTrade,
-  candle: MarketCandle,
-  spread: number,
-  slippage: number,
-): { price: number; referencePrice: number; reason: "stop-loss" | "take-profit" | "trailing-stop" } | null {
-  if (trade.side === "long") {
-    if (candle.low <= trade.stopLossPrice) {
-      const referencePrice = trade.stopLossPrice;
-      return {
-        price: referencePrice - spread / 2 - slippage,
-        referencePrice,
-        reason: "stop-loss",
-      };
-    }
-    if (trade.takeProfitPrice !== undefined && candle.high >= trade.takeProfitPrice) {
-      const referencePrice = trade.takeProfitPrice;
-      return {
-        price: referencePrice - spread / 2 - slippage,
-        referencePrice,
-        reason: "take-profit",
-      };
-    }
-    return null;
-  }
-
-  if (candle.high >= trade.stopLossPrice) {
-    const referencePrice = trade.stopLossPrice;
-    return {
-      price: referencePrice + spread / 2 + slippage,
-      referencePrice,
-      reason: "stop-loss",
-    };
-  }
-  if (trade.takeProfitPrice !== undefined && candle.low <= trade.takeProfitPrice) {
-    const referencePrice = trade.takeProfitPrice;
-    return {
-      price: referencePrice + spread / 2 + slippage,
-      referencePrice,
-      reason: "take-profit",
-    };
-  }
-  return null;
 }
 
 function updateTrailingStop(trade: PaperTrade, candle: MarketCandle, distance?: number): void {
   if (distance === undefined) return;
-
   if (trade.side === "long") {
     const candidate = candle.high - distance;
     if (candidate > trade.stopLossPrice) trade.stopLossPrice = candidate;
@@ -226,7 +98,7 @@ export function runPaperScalping(
   if (config.brokerSymbol && config.brokerSymbol.symbol !== config.symbol) {
     throw new Error("Broker symbol specification does not match paper trading symbol.");
   }
-  if (config.stopLossDistance <= 0 || typeof config.spread === "number" && config.spread < 0) {
+  if (config.stopLossDistance <= 0 || (typeof config.spread === "number" && config.spread < 0)) {
     throw new Error("Stop-loss distance must be positive and spread must be non-negative.");
   }
 
@@ -243,14 +115,22 @@ export function runPaperScalping(
   for (let i = 30; i < candles.length; i += 1) {
     const history = candles.slice(0, i + 1);
     const candle = candles[i];
+
     if (candle.bid !== undefined && candle.ask !== undefined) candlesWithBidAsk += 1;
     else candlesWithoutBidAsk += 1;
+
     const spread = currentSpread(config.spread, candle);
     if (spread < 0) throw new Error("Spread must be non-negative.");
 
     if (openTrade) {
       const slippage = currentSlippage(config.slippage, candle, openTrade.side);
-      const exit = simulateExit(openTrade, candle, spread, slippage, config.intrabarResolution ?? "conservative");
+      const exit = simulateExit(
+        openTrade,
+        candle,
+        spread,
+        slippage,
+        config.intrabarResolution ?? "conservative",
+      );
 
       if (exit) {
         const regime = classifyMarketRegime(history);
@@ -262,8 +142,8 @@ export function runPaperScalping(
           entry: {
             fillPrice: openTrade.entryPrice,
             referencePrice: openTrade.side === "long"
-              ? openTrade.entryPrice + openTrade.entrySpread / 2
-              : openTrade.entryPrice - openTrade.entrySpread / 2,
+              ? openTrade.entryPrice - openTrade.entrySlippage
+              : openTrade.entryPrice + openTrade.entrySlippage,
             spread: openTrade.entrySpread,
             atr: openTrade.entryAtr,
             slippage: openTrade.entrySlippage,
@@ -284,21 +164,23 @@ export function runPaperScalping(
           entryTrendRegime: openTrade.entryTrendRegime,
           entryVolatilityRegime: openTrade.entryVolatilityRegime,
           commission: commissionPerUnit * openTrade.quantity,
-          swap: (config.swapPerUnit ?? (openTrade.side === "long"
-            ? config.brokerSymbol?.swapLongPerUnit
-            : config.brokerSymbol?.swapShortPerUnit) ?? 0) * openTrade.quantity,
+          swap: (config.swapPerUnit ?? (
+            openTrade.side === "long"
+              ? config.brokerSymbol?.swapLongPerUnit
+              : config.brokerSymbol?.swapShortPerUnit
+          ) ?? 0) * openTrade.quantity,
           metadata: {
             exitReason: exit.reason,
             intrabarAmbiguous: exit.intrabarAmbiguous,
             gapThrough: exit.gapThrough,
           },
         };
+
         const analysis = analyzeTradeRecord(record);
         balance += analysis.trueNetPnl;
         trades.push(record);
         openTrade = null;
       } else {
-        // Trailing updates use the completed candle only for the next bar.
         updateTrailingStop(openTrade, candle, config.trailingStopDistance);
       }
       continue;
@@ -315,6 +197,7 @@ export function runPaperScalping(
       : signal.action === "short" && candle.bid !== undefined
         ? candle.bid
         : candle.close;
+
     const entrySlippage = currentSlippage(config.slippage, candle, signal.action);
     const hasHistoricalQuote = candle.bid !== undefined && candle.ask !== undefined;
     const entry = hasHistoricalQuote
@@ -322,6 +205,7 @@ export function runPaperScalping(
       : signal.action === "long"
         ? entryReference + spread / 2 + entrySlippage
         : entryReference - spread / 2 - entrySlippage;
+
     const entryRegime = classifyMarketRegime(history);
     const stop = stopPrice(signal.action, entry, config.stopLossDistance);
     const target = targetPrice(signal.action, entry, config.takeProfitDistance);
@@ -386,7 +270,9 @@ export function runPaperScalping(
     quoteCoverage: {
       candlesWithBidAsk,
       candlesWithoutBidAsk,
-      percentage: ((candlesWithBidAsk + candlesWithoutBidAsk) === 0 ? 0 : (candlesWithBidAsk / (candlesWithBidAsk + candlesWithoutBidAsk)) * 100),
+      percentage: candlesWithBidAsk + candlesWithoutBidAsk === 0
+        ? 0
+        : (candlesWithBidAsk / (candlesWithBidAsk + candlesWithoutBidAsk)) * 100,
     },
   };
 }
