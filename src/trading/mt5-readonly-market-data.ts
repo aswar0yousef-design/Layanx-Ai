@@ -1,7 +1,7 @@
 import type { MarketCandle } from "./scalping-signal.js";
 import type { BrokerSymbolSpecification } from "./broker-symbol-spec.js";
 import { validateBrokerSymbolSpecification } from "./broker-symbol-spec.js";
-import { normalizeMt5Timeframe, type Mt5SymbolSnapshot, type Mt5CandleRequest } from "./mt5-adapter.js";
+import { normalizeMt5Timeframe, filterCompletedMt5Candles, type Mt5SymbolSnapshot, type Mt5CandleRequest } from "./mt5-adapter.js";
 
 export interface Mt5ReadOnlyTransport {
   getSymbolSnapshot(symbol: string): Promise<Mt5SymbolSnapshot>;
@@ -43,32 +43,8 @@ export async function readMt5MarketData(
   const specErrors = validateBrokerSymbolSpecification(specification);
   if (specErrors.length) throw new Error(`Invalid MT5 symbol specification: ${specErrors.join(" ")}`);
   if (!Array.isArray(candles) || candles.length === 0) throw new Error("MT5 returned no candles.");
-  const snapshotTime = Date.parse(snapshot.timestamp);
-  const intervalMs = mt5TimeframeIntervalMs(normalizedTimeframe);
-  let historicalCandles = candles;
-  let excludedFormingCandle = false;
-  const lastCandle = candles[candles.length - 1];
-  if (lastCandle && Date.parse(lastCandle.timestamp) + intervalMs > snapshotTime) {
-    historicalCandles = candles.slice(0, -1);
-    excludedFormingCandle = true;
-  }
-  if (historicalCandles.length === 0) throw new Error("MT5 returned no completed candles.");
-  if (Date.parse(historicalCandles[historicalCandles.length - 1].timestamp) + intervalMs > snapshotTime) {
-    throw new Error("MT5 completed-candle filter could not establish a completed latest candle.");
-  }
-  for (let index = 0; index < historicalCandles.length; index += 1) {
-    const candle = historicalCandles[index];
-    if (Number.isNaN(Date.parse(candle.timestamp))) throw new Error("MT5 returned a candle with an invalid timestamp.");
-    if (![candle.open, candle.high, candle.low, candle.close].every(Number.isFinite)) {
-      throw new Error("MT5 returned a candle with non-finite OHLC values.");
-    }
-    if (candle.high < Math.max(candle.open, candle.close) || candle.low > Math.min(candle.open, candle.close) || candle.high < candle.low) {
-      throw new Error(`MT5 returned an invalid OHLC range at ${candle.timestamp}.`);
-    }
-    if (index > 0 && Date.parse(historicalCandles[index - 1].timestamp) >= Date.parse(candle.timestamp)) {
-      throw new Error("MT5 candles must be strictly chronological with no duplicate timestamps.");
-    }
-  }
+  const historicalCandles = filterCompletedMt5Candles(candles, snapshot.timestamp, normalizedTimeframe);
+  const excludedFormingCandle = historicalCandles.length < candles.length;
 
   return { snapshot, candles: historicalCandles, specification, excludedFormingCandle };
 }
