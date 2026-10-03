@@ -138,6 +138,9 @@ export function runPaperScalping(
   if (config.initialBalance <= 0 || config.riskPercent <= 0) {
     throw new Error("Initial balance and risk percent must be positive.");
   }
+  if (config.brokerSymbol && config.brokerSymbol.symbol !== config.symbol) {
+    throw new Error("Broker symbol specification does not match paper trading symbol.");
+  }
   if (config.stopLossDistance <= 0 || typeof config.spread === "number" && config.spread < 0) {
     throw new Error("Stop-loss distance must be positive and spread must be non-negative.");
   }
