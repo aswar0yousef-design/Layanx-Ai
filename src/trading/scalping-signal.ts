@@ -7,6 +7,9 @@ export interface MarketCandle {
   volume?: number;
   bid?: number;
   ask?: number;
+  /** Optional quote captured at the candle open; used for next-candle execution modeling. */
+  bidOpen?: number;
+  askOpen?: number;
 }
 
 export interface ScalpingSignalConfig {
