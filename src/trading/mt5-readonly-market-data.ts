@@ -58,7 +58,6 @@ export async function readMt5MarketData(
   }
   for (let index = 0; index < historicalCandles.length; index += 1) {
     const candle = historicalCandles[index];
-    const candle = candles[index];
     if (Number.isNaN(Date.parse(candle.timestamp))) throw new Error("MT5 returned a candle with an invalid timestamp.");
     if (![candle.open, candle.high, candle.low, candle.close].every(Number.isFinite)) {
       throw new Error("MT5 returned a candle with non-finite OHLC values.");
