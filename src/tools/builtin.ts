@@ -4,7 +4,7 @@ import type {ToolAdapter} from "./executor.js";
 import {createHttpReadAdapter} from "./http-read.js";
 import {createGitHubReadAdapter} from "../connectors/github-read.js";
 import {createGitToolAdapter} from "./git.js";
-import {createBrowserToolAdapter,createFileToolAdapter,createFileWriteToolAdapter,createTerminalToolAdapter,createProjectVerifyToolAdapter} from "./fabric.js";
+import {createBrowserToolAdapter,createFileToolAdapter,createFileWriteToolAdapter,createTerminalToolAdapter,createProjectVerifyToolAdapter,createProjectBootstrapToolAdapter} from "./fabric.js";
 import {createDesktopControlToolAdapter} from "./desktop-control.js";
 
 function payloadRecord(request:ToolRequest):Record<string,unknown>{
