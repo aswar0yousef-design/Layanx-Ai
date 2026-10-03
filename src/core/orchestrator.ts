@@ -535,6 +535,8 @@ export class LayanXCore{
     const results:unknown[]=[];
     let latest:unknown={status:"not_started"};
     let steps=0;
+    let visualContext:{mimeType:string;base64:string}|undefined;
+    let lastDesktopMutation=false;
     while(steps<limit){
       const current=this.missions.get(missionId);
       if(!current)throw new Error("Mission not found.");
