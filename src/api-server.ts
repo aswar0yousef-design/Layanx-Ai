@@ -9,7 +9,8 @@ import {createHash} from "node:crypto";
 import {VoiceService} from "./voice/service.js";
 import {BusinessManager} from "./business/manager.js";
 import {voiceUiHtml} from "./voice/ui.js";
-export interface RuntimeApiOptions{core:LayanXCore;business:BusinessManager;persistence?:RuntimePersistence;host?:string;port?:number;maxBodyBytes?:number;token?:string;requireToken?:boolean;}
+import {AdsManager} from "./business/ads.js";
+export interface RuntimeApiOptions{core:LayanXCore;business:BusinessManager;ads?:AdsManager;persistence?:RuntimePersistence;host?:string;port?:number;maxBodyBytes?:number;token?:string;requireToken?:boolean;}
 function json(response:ServerResponse,status:number,body:unknown){response.statusCode=status;response.setHeader("content-type","application/json; charset=utf-8");response.end(JSON.stringify(body));}
 async function rawBody(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}return Buffer.concat(chunks);}
 async function body(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}const raw=Buffer.concat(chunks).toString("utf8");if(!raw)return{};try{return JSON.parse(raw) as Record<string,unknown>;}catch{throw new Error("invalid_json");}}
@@ -20,7 +21,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
  const mcp=new McpGateway(options.core);
  const control=new ControlCenter(options.core);
  const voice=new VoiceService();
- const business=options.business;
+ const business=options.business; const ads=options.ads; if(!ads)throw new Error("ads_manager_required");
  const server=createServer(async(request,response)=>{
   response.setHeader("cache-control","no-store");
   if(requireToken&&!authorized(request,options.token)&&request.url!=="/v1/health"&&request.url!=="/voice"){json(response,401,{ok:false,error:"unauthorized"});return;}
@@ -180,6 +181,15 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"mission cancellation failed"});}
    return;
   }
+  if(request.method==="GET"&&request.url==="/v1/ads"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}json(response,200,{ok:true,ads:ads.snapshot(),dashboard:ads.dashboard()});return;}
+  if(request.method==="POST"&&request.url==="/v1/ads/account"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,account:ads.addAccount(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"ad account failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/ads/campaign"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,campaign:ads.createCampaign(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"paid campaign creation failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/ads/adgroup"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,adGroup:ads.createAdGroup(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"ad group creation failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/ads/creative"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,creative:ads.createCreative(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"creative creation failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/ads/ad"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,ad:ads.createAd(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"ad creation failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/ads/campaign/launch"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,200,{ok:true,result:await ads.launchCampaign(String(input.campaignId))});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"campaign launch failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/ads/campaign/pause"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,200,{ok:true,campaign:await ads.pauseCampaign(String(input.campaignId))});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"campaign pause failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/ads/insights/sync"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,200,{ok:true,metrics:await ads.syncInsights(String(input.accountId),input.campaignId?String(input.campaignId):undefined)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"ad insights sync failed"});}return;}
   if(request.method==="GET"&&request.url==="/v1/business"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}json(response,200,{ok:true,business:business.snapshot()});return;}
   if(request.method==="POST"&&request.url==="/v1/business/store"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,store:business.createStore(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"store creation failed"});}return;}
   if(request.method==="POST"&&request.url==="/v1/business/product"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,product:business.createProduct(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"product creation failed"});}return;}
