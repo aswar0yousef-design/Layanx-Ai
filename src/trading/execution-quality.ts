@@ -18,7 +18,7 @@ export interface ExecutionQualityResult {
   spreadEntry?: number; spreadExit?: number; spreadAtrRatio?: number; atr?: number;
   entrySlippage?: number; exitSlippage?: number; entrySlippageAtrRatio?: number; exitSlippageAtrRatio?: number; totalExecutionDrag?: number;
   estimatedRoundTripCost?: number; grossPnl: number; netPnlAfterExecutionCosts: number;
-  executionCostPctOfGross: number | null; quality: ExecutionQuality; warnings: string[];
+  executionCostPctOfGross: number | null; quality: ExecutionQuality; warnings: string[]; atrBasis?: "ohlc";
 }
 
 function finite(value: number | undefined): value is number {
