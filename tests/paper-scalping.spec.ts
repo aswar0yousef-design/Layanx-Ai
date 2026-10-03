@@ -24,6 +24,9 @@ const result = runPaperScalping(candles, {
 });
 
 assert.equal(result.analyses.length, result.trades.length);
+for (const trade of result.trades) {
+  assert.ok(trade.closedAt);
+}
 assert.ok(result.blockedSignals >= 0);
 assert.ok(result.finalBalance > 0);
 
@@ -62,3 +65,31 @@ const quotedResult = runPaperScalping(quoteCandles, {
 for (const trade of quotedResult.trades) {
   assert.equal(trade.entry.spread, 0.02);
 }
+
+
+const forcedCloseResult = runPaperScalping(candles, {
+  symbol: "XAUUSD",
+  timeframe: "M1",
+  initialBalance: 1000,
+  riskPercent: 1,
+  stopLossDistance: 1000,
+  spread: 0.05,
+  slippage: 0.02,
+  endOfDataPolicy: "close",
+});
+
+assert.ok(forcedCloseResult.trades.some((trade) => trade.metadata?.exitReason === "end-of-data"));
+assert.equal(forcedCloseResult.analyses.length, forcedCloseResult.trades.length);
+
+const excludedResult = runPaperScalping(candles, {
+  symbol: "XAUUSD",
+  timeframe: "M1",
+  initialBalance: 1000,
+  riskPercent: 1,
+  stopLossDistance: 1000,
+  spread: 0.05,
+  slippage: 0.02,
+  endOfDataPolicy: "exclude",
+});
+
+assert.ok(excludedResult.trades.every((trade) => trade.metadata?.exitReason !== "end-of-data"));
