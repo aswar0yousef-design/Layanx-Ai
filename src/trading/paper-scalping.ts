@@ -135,7 +135,7 @@ export function runPaperScalping(
 
   for (let i = 30; i < candles.length; i += 1) {
     const history = signalOnClosedCandle ? candles.slice(0, i) : candles.slice(0, i + 1);
-    const candle = candles[i];
+    const candle = candles[i]!;
 
     if (candle.bid !== undefined && candle.ask !== undefined) candlesWithBidAsk += 1;
     else candlesWithoutBidAsk += 1;
@@ -291,7 +291,7 @@ export function runPaperScalping(
   }
 
   if (openTrade && (config.endOfDataPolicy ?? "close") === "close") {
-    const lastCandle = candles[candles.length - 1];
+    const lastCandle = candles[candles.length - 1]!;
     const spread = currentSpread(config.spread, lastCandle);
     const slippage = currentSlippage(config.slippage, lastCandle, openTrade.side);
     const referencePrice = lastCandle.close;
