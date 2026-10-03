@@ -3,8 +3,9 @@ import type {ToolAdapter} from "../tools/executor.js";
 import type {BusinessManager} from "./manager.js";
 import type {AdsManager} from "./ads.js";
 import type {MediaManager} from "./media.js";
+import type {GrowthEngine} from "./growth-engine.js";
 
-export function registerBusinessTools(core:LayanXCore,business:BusinessManager,ads:AdsManager,media?:MediaManager){
+export function registerBusinessTools(core:LayanXCore,business:BusinessManager,ads:AdsManager,media?:MediaManager,growth?:GrowthEngine){
  const defs=[
   ["ads.snapshot","read paid advertising state","L1_READ",false],
   ["ads.account.create","create an advertising account connection","L3_MODIFY",false],
@@ -28,7 +29,13 @@ export function registerBusinessTools(core:LayanXCore,business:BusinessManager,a
   ["content.schedule","schedule approved content for publication","L3_MODIFY",false],
   ["content.process_scheduled","publish due approved scheduled content","L4_EXECUTE",true],
   ["commerce.analytics","read business operating metrics","L1_READ",false],
-  ["campaign.create","create a campaign","L3_MODIFY",false]
+  ["campaign.create","create a campaign","L3_MODIFY",false],
+  ["growth.snapshot","read growth experiments and metrics","L1_READ",false],
+  ["growth.dashboard","diagnose the current growth funnel","L2_ANALYZE",false],
+  ["growth.experiment.create","create a bounded growth experiment","L3_MODIFY",false],
+  ["growth.plan_cycle","plan the next growth experiment from measured bottlenecks","L2_ANALYZE",false],
+  ["growth.metric.record","record measured growth metrics","L3_MODIFY",false],
+  ["growth.action.complete","close a growth action","L3_MODIFY",false]
  ] as const;
  const handlers:Record<string,(p:any)=>Promise<unknown>|unknown>={
   "ads.snapshot":()=>ads.snapshot(),
@@ -53,7 +60,13 @@ export function registerBusinessTools(core:LayanXCore,business:BusinessManager,a
   "content.schedule":p=>business.scheduleContent(String(p.contentId),String(p.scheduledAt)),
   "content.process_scheduled":()=>business.processScheduledContent(),
   "commerce.analytics":()=>business.analytics(),
-  "campaign.create":p=>business.createCampaign(p)
+  "campaign.create":p=>business.createCampaign(p),
+  "growth.snapshot":()=>{if(!growth)throw new Error("growth_engine_not_configured");return growth.snapshot();},
+  "growth.dashboard":()=>{if(!growth)throw new Error("growth_engine_not_configured");return growth.dashboard();},
+  "growth.experiment.create":p=>{if(!growth)throw new Error("growth_engine_not_configured");return growth.createExperiment(p);},
+  "growth.plan_cycle":p=>{if(!growth)throw new Error("growth_engine_not_configured");return growth.planCycle({projectId:String(p.projectId),storeId:p.storeId?String(p.storeId):undefined,productId:p.productId?String(p.productId):undefined,channel:p.channel?String(p.channel):undefined});},
+  "growth.metric.record":p=>{if(!growth)throw new Error("growth_engine_not_configured");return growth.recordMetric(p);},
+  "growth.action.complete":p=>{if(!growth)throw new Error("growth_engine_not_configured");return growth.completeAction(String(p.id),p.status==="dismissed"?"dismissed":"done");}
  };
  for(const [name,description,permission,dangerous] of defs){
   const handler=handlers[name];if(!handler)throw new Error(`business_handler_missing:${name}`);
