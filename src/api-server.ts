@@ -13,7 +13,8 @@ import {AdsManager} from "./business/ads.js";
 import {OAuthConnectionCenter} from "./business/oauth.js";
 import {MediaManager} from "./business/media.js";
 import {GrowthEngine} from "./business/growth-engine.js";
-export interface RuntimeApiOptions{core:LayanXCore;business:BusinessManager;ads?:AdsManager;media?:MediaManager;growth?:GrowthEngine;persistence?:RuntimePersistence;host?:string;port?:number;maxBodyBytes?:number;token?:string;requireToken?:boolean;}
+import {MessagingChannels} from "./channels/service.js";
+export interface RuntimeApiOptions{core:LayanXCore;business:BusinessManager;ads?:AdsManager;media?:MediaManager;growth?:GrowthEngine;channels?:MessagingChannels;persistence?:RuntimePersistence;host?:string;port?:number;maxBodyBytes?:number;token?:string;requireToken?:boolean;}
 function json(response:ServerResponse,status:number,body:unknown){response.statusCode=status;response.setHeader("content-type","application/json; charset=utf-8");response.end(JSON.stringify(body));}
 async function rawBody(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}return Buffer.concat(chunks);}
 async function body(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}const raw=Buffer.concat(chunks).toString("utf8");if(!raw)return{};try{return JSON.parse(raw) as Record<string,unknown>;}catch{throw new Error("invalid_json");}}
@@ -291,6 +292,32 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   if(request.method==="GET"&&request.url==="/v1/business/analytics"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}json(response,200,{ok:true,analytics:business.analytics()});return;}
   if(request.method==="POST"&&request.url==="/v1/business/campaign"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,campaign:business.createCampaign(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"campaign creation failed"});}return;}
   if(request.method==="GET"&&request.url==="/v1/status"){json(response,200,runtimeStatus(runtimeView(options.core,options.persistence,business,ads,media)));return;}
+  if(request.method==="GET"&&request.url==="/v1/channels/status"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   json(response,200,{ok:true,channels:options.channels?.status()??{enabled:false}});
+   return;
+  }
+  if(request.method==="GET"&&request.url==="/v1/channels/whatsapp/webhook"){
+   const parsed=new URL(request.url,"http://localhost");
+   const mode=parsed.searchParams.get("hub.mode")??"";
+   const token=parsed.searchParams.get("hub.verify_token")??"";
+   const challenge=parsed.searchParams.get("hub.challenge")??"";
+   try{
+    if(!options.channels){json(response,503,{ok:false,error:"messaging_channels_not_configured"});return;}
+    response.statusCode=200;response.setHeader("content-type","text/plain; charset=utf-8");response.end(options.channels.whatsapp.verify(mode,token,challenge));
+   }catch{json(response,403,{ok:false,error:"whatsapp_webhook_verification_failed"});}
+   return;
+  }
+  if(request.method==="POST"&&request.url==="/v1/channels/whatsapp/webhook"){
+   try{
+    if(!options.channels){json(response,503,{ok:false,error:"messaging_channels_not_configured"});return;}
+    const input=await body(request,max);
+    const message=options.channels.whatsapp.parseWebhook(input);
+    response.statusCode=200;response.setHeader("content-type","application/json; charset=utf-8");response.end(JSON.stringify({ok:true}));
+    if(message)void options.channels.handle(message).catch(()=>undefined);
+   }catch(error){json(response,400,{ok:false,error:error instanceof Error?error.message:"whatsapp_webhook_failed"});}
+   return;
+  }
   if(request.method==="GET"&&request.url==="/v1/health"){const health=await runtimeHealth(runtimeView(options.core,options.persistence,business,ads,media));json(response,health.healthy?200:503,health);return;}
   if(request.method==="GET"&&request.url?.startsWith("/v1/missions/")&&request.url.endsWith("/tools/prepare")){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
@@ -849,5 +876,6 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   }
   json(response,404,{ok:false,error:"not_found"});
  });
+ if(options.channels)void options.channels.start();
  server.listen(port,host);options.core.scheduler.start();return server;
 }
