@@ -41,3 +41,24 @@ for (const trade of result.trades) {
 }
 
 console.log("Paper scalping tests passed");
+
+
+const quoteCandles = candles.map((candle) => ({
+  ...candle,
+  bidOpen: candle.open - 0.01,
+  askOpen: candle.open + 0.01,
+  bid: candle.close - 0.02,
+  ask: candle.close + 0.02,
+}));
+const quotedResult = runPaperScalping(quoteCandles, {
+  symbol: "XAUUSD",
+  timeframe: "M1",
+  initialBalance: 1000,
+  riskPercent: 1,
+  stopLossDistance: 1,
+  spread: 0.05,
+  slippage: 0.02,
+});
+for (const trade of quotedResult.trades) {
+  assert.equal(trade.entry.spread, 0.02);
+}
