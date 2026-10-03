@@ -6,7 +6,7 @@ import {evaluateScalpingDecision} from "./scalping-decision.js";
 import {filterCompletedMt5Candles} from "./mt5-adapter.js";
 
 interface State{date:string;startEquity:number;dailyPnl:number;consecutiveLosses:number;lastSignalTimestamp?:string;lastTradeTimestamp?:string;}
-export interface Mt5AutoScalperStatus{running:boolean;symbol:string;timeframe:string;lastAction?:string;lastError?:string;lastCheckAt?:string;tradesToday:number;dailyPnl:number;}
+export interface Mt5AutoScalperStatus{running:boolean;symbol:string;timeframe:string;lastAction?:string;lastError?:string;lastCheckAt?:string;lastTradeTimestamp?:string;tradesToday:number;dailyPnl:number;}
 
 export class Mt5AutoScalper{
  private timer?:NodeJS.Timeout;
