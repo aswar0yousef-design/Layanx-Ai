@@ -41,8 +41,10 @@ export class ExecutionRuntime{
    }catch(error){
     return this.block(mission,request,error instanceof Error?"Change impact analysis failed: "+error.message:"Change impact analysis failed.");
    }
-   if(["high","critical"].includes(impact.impact.risk)&&!approvalId)
-    return this.block(mission,request,"Explicit approval is required for this change impact risk level.");
+   if(["high","critical"].includes(impact.impact.risk)&&!approvalId){
+    const approval=this.ensureApproval(mission,request,"Explicit approval is required for this change impact risk level.");
+    return this.block(mission,request,"Explicit approval is required for this change impact risk level.",approval.id);
+   }
   }
   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:risk.requiresApproval?"pending_approval":"allowed",metadata:{risk:risk.level,missionId:mission.id}});
   if(rank[request.permission]>rank[mission.requiredPermission])return this.block(mission,request,"Requested permission exceeds mission scope.");
