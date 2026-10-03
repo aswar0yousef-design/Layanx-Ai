@@ -27,6 +27,7 @@ try{
    throw new Error("Completed Ollama mission was not persisted.");
 
   const restarted=createRuntime({storagePath});
+  const hydration=await (await import("../src/runtime.js")).restoreRuntime(restarted);
   const restored=await restarted.persistence?.get(result.missionId);
   if(!restored||restored.mission.status!=="completed"||restored.executionState.status!=="completed")
    throw new Error("Completed mission was not available after runtime restart.");
@@ -38,7 +39,8 @@ try{
    missionId:result.missionId,
    status:restored.mission.status,
    executionStatus:restored.executionState.status,
-   steps:result.steps
+   steps:result.steps,
+   hydratedSnapshots:hydration.restored
   },null,2));
  }
 }finally{
