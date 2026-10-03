@@ -17,7 +17,7 @@ export const emptyAds=():AdsSnapshot=>({adAccounts:[],paidCampaigns:[],adGroups:
 export class AdsManager{
  constructor(private readonly store:BusinessStore){}
  snapshot():AdsSnapshot{const s=this.store.snapshot() as BusinessSnapshot&Partial<AdsSnapshot>;return {...emptyAds(),...s};}
- private mutate(fn:(s:BusinessSnapshot&Partial<AdsSnapshot>)=>void){return this.store.mutate(fn as (s:BusinessSnapshot)=>void) as BusinessSnapshot&AdsSnapshot;}
+ private mutate(fn:(s:BusinessSnapshot&Partial<AdsSnapshot>)=>void){return this.store.mutate(fn as unknown as (s:BusinessSnapshot)=>void) as unknown as BusinessSnapshot&AdsSnapshot;}
  addAccount(input:Omit<AdAccount,"id"|"createdAt">){const s=this.snapshot();const existing=s.adAccounts.find(a=>a.platform===input.platform&&a.accountId===input.accountId);if(existing)return existing;const a={...input,id:randomUUID(),createdAt:new Date().toISOString()};this.mutate(s=>{s.adAccounts??=[];s.adAccounts.push(a)});return a;}
  createCampaign(input:Omit<PaidCampaign,"id"|"createdAt"|"updatedAt">){if(!this.snapshot().adAccounts.some(a=>a.id===input.accountId))throw new Error("ad_account_not_found");const c={...input,id:randomUUID(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};this.mutate(s=>{s.paidCampaigns??=[];s.paidCampaigns.push(c)});return c;}
  createAdGroup(input:Omit<AdGroup,"id"|"createdAt"|"updatedAt">){if(!this.snapshot().paidCampaigns.some(c=>c.id===input.campaignId))throw new Error("paid_campaign_not_found");const g={...input,id:randomUUID(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};this.mutate(s=>{s.adGroups??=[];s.adGroups.push(g)});return g;}
