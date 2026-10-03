@@ -6,7 +6,7 @@ import type { MarketCandle } from "./scalping-signal.js";
 import { runPaperScalping, type PaperTradingConfig } from "./paper-scalping.js";
 import { createXauUsdPaperConfig } from "./xauusd-scalping-profile.js";
 import { BinanceSpotClient } from "./binance-spot-client.js";
-import { getBinanceCredentials } from "../security/local-secret-store.js";
+import { localSecret } from "../security/local-secret-vault.js";
 
 export const PAPER_TRADING_TOOL = "trading.paper.backtest";
 
@@ -105,7 +105,7 @@ const BINANCE_LIVE_ORDER_DEFINITION: ToolDefinition = {
 };
 
 export function createBinanceLiveOrderToolAdapter(
-  loadCredentials: typeof getBinanceCredentials = getBinanceCredentials,
+  loadCredentials: (() => Promise<{apiKey:string;apiSecret:string}>) | undefined = undefined,
 ): ToolAdapter {
   return {
     async execute(request) {
@@ -116,7 +116,14 @@ export function createBinanceLiveOrderToolAdapter(
       if (typeof payload.symbol !== "string" || (payload.side !== "BUY" && payload.side !== "SELL") || (payload.type !== "MARKET" && payload.type !== "LIMIT")) throw new Error("Invalid Binance order payload.");
       if (typeof payload.quantity !== "number" || !Number.isFinite(payload.quantity) || payload.quantity <= 0) throw new Error("Order quantity must be positive.");
       if (payload.type === "LIMIT" && (typeof payload.price !== "number" || !Number.isFinite(payload.price) || payload.price <= 0)) throw new Error("Limit price must be positive.");
-      const credentials = await loadCredentials();
+      const credentials=loadCredentials
+        ? await loadCredentials()
+        : (() => {
+            const apiKey=localSecret("binance.apiKey",process.env.BINANCE_API_KEY);
+            const apiSecret=localSecret("binance.apiSecret",process.env.BINANCE_API_SECRET);
+            if(!apiKey||!apiSecret) throw new Error("Binance credentials are not configured in the encrypted local vault or deployment environment.");
+            return {apiKey,apiSecret};
+          })();
       const client = new BinanceSpotClient({
         apiKey: credentials.apiKey,
         apiSecret: credentials.apiSecret,
