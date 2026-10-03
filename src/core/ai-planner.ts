@@ -52,23 +52,27 @@ export class AiMissionPlanner{
     const catalog=input.tools.map(tool=>({name:tool.name,description:tool.description,permission:tool.permission,dangerous:tool.dangerous,actions:tool.actions,tags:tool.tags}));
     const boundedResult=JSON.stringify(input.result).slice(0,12000);
     const boundedMemory=JSON.stringify(input.memory??[]).slice(0,8000);
+    const prompt=[
+      "You are the LayanX adaptive mission planner.",
+      "Return ONLY valid JSON: either null when the mission is complete, or an object with tool, action, permission, reason, and optional payload.",
+      "Choose exactly one tool from the supplied catalog.",
+      "The selected permission must exactly match the catalog tool permission and must not exceed the mission permission.",
+      "Do not invent tools or actions. Do not request secrets or bypass security controls.",
+      "Prefer a tool that advances the goal using the latest result.",
+      "Completed tools: "+JSON.stringify(input.completedTools),
+      "Available tool catalog: "+JSON.stringify(catalog),
+      "Project intelligence context: "+JSON.stringify(input.projectContext??null).slice(0,6000),
+      "Mission goal: "+input.goal,
+      "Mission memory context: "+boundedMemory,
+      "Latest tool result: "+boundedResult
+    ].join("\n");
+    const modelInput=input.visualContext
+      ? [{type:"text" as const,text:prompt},{type:"image" as const,image:input.visualContext}]
+      : prompt;
     const response=await this.models.execute({
-      capability:"reasoning",
+      capability:input.visualContext?"vision":"reasoning",
       routing:input.routing,
-      input:[
-        "You are the LayanX adaptive mission planner.",
-        "Return ONLY valid JSON: either null when the mission is complete, or an object with tool, action, permission, reason, and optional payload.",
-        "Choose exactly one tool from the supplied catalog.",
-        "The selected permission must exactly match the catalog tool permission and must not exceed the mission permission.",
-        "Do not invent tools or actions. Do not request secrets or bypass security controls.",
-        "Prefer a tool that advances the goal using the latest result.",
-        "Completed tools: "+JSON.stringify(input.completedTools),
-        "Available tool catalog: "+JSON.stringify(catalog),
-        "Project intelligence context: "+JSON.stringify(input.projectContext??null).slice(0,6000),
-        "Mission goal: "+input.goal,
-        "Mission memory context: "+boundedMemory,
-        "Latest tool result: "+boundedResult
-      ].join("\n")
+      input:modelInput
     });
     let value:unknown;
     try{value=JSON.parse(response.output);}catch{throw new Error("Adaptive planner returned invalid JSON.");}
