@@ -1,0 +1,5 @@
+# OOS Stability Analytics\n\n`oos-stability.ts` summarizes how historical out-of-sample results vary across walk-forward test windows.\n\nReported diagnostics:\n- number of windows and active test windows\n- profitable, losing, and flat windows\n- profitable-window rate\n- average and median return percentage\n- minimum and maximum window return\n- average and median expectancy per trade\n- worst window drawdown percentage\n- average finite profit factor\n- windows with positive, negative, or zero expectancy
+- total OOS test trades
+- pooled OOS net PnL and pooled expectancy per trade
+- pooled net PnL relative to the sum of each window starting balance
+- descriptive warnings for empty windows and dispersion\n\nThese are descriptive stability metrics. They intentionally do not produce a strategy score, ranking, recommendation, or future-performance prediction.
