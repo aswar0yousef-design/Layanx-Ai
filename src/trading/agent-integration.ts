@@ -161,8 +161,28 @@ export function createBinanceLiveOrderToolAdapter(
       if (!Number.isFinite(configuredMax) || configuredMax <= 0) throw new Error("BINANCE_MAX_ORDER_NOTIONAL must be a positive limit for live execution.");
       if (notional > configuredMax) throw new Error("Order exceeds configured Binance maximum notional.");
       const clientOrderId = payload.clientOrderId ?? request.idempotencyKey;
-      const result = await client.placeOrder({symbol:payload.symbol,side:payload.side,type:payload.type,quantity:payload.quantity,price:payload.price,clientOrderId});
-      return { ...result, preflight: {referencePrice, notional, maxNotional: configuredMax} };
+      try {
+        const result = await client.placeOrder({symbol:payload.symbol,side:payload.side,type:payload.type,quantity:payload.quantity,price:payload.price,clientOrderId});
+        return { ...result, preflight: {referencePrice, notional, maxNotional: configuredMax}, reconciliation: {status: "confirmed-by-submit"} };
+      } catch (error) {
+        try {
+          const reconciled = await client.getOrder(payload.symbol, clientOrderId);
+          return {
+            submitted: true,
+            testnet: false,
+            orderId: reconciled.orderId,
+            clientOrderId: reconciled.clientOrderId,
+            status: reconciled.status,
+            raw: reconciled.raw,
+            preflight: {referencePrice, notional, maxNotional: configuredMax},
+            reconciliation: {status: "confirmed-by-lookup"},
+          };
+        } catch (lookupError) {
+          throw new Error(
+            `Binance order status is UNKNOWN for clientOrderId ${clientOrderId}; do not retry automatically. Original error: ${error instanceof Error ? error.message : "unknown"}; lookup error: ${lookupError instanceof Error ? lookupError.message : "unknown"}`,
+          );
+        }
+      }
     },
   };
 }
