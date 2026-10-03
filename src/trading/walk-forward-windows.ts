@@ -11,6 +11,53 @@ export interface WalkForwardWindow {
   testEnd: string;
 }
 
+export interface WalkForwardWindowSummary {
+  windows: number;
+  testOverlap: boolean;
+  testOverlapCandles: number;
+  testCoveredCandles: number;
+}
+
+export function summarizeWalkForwardWindows(
+  windows: WalkForwardWindow[],
+): WalkForwardWindowSummary {
+  if (windows.length < 2) {
+    return {
+      windows: windows.length,
+      testOverlap: false,
+      testOverlapCandles: 0,
+      testCoveredCandles: windows[0]?.test.length ?? 0,
+    };
+  }
+
+  const testIntervals = windows.map(window => ({
+    start: Date.parse(window.testStart),
+    end: Date.parse(window.testEnd),
+    length: window.test.length,
+  })).sort((a, b) => a.start - b.start);
+
+  let overlapCandles = 0;
+  let coveredCandles = 0;
+  let previousEnd = Number.NaN;
+
+  for (const interval of testIntervals) {
+    if (Number.isNaN(interval.start) || Number.isNaN(interval.end)) {
+      throw new Error("Invalid walk-forward test timestamp.");
+    }
+    const overlap = Number.isFinite(previousEnd) && interval.start <= previousEnd;
+    if (overlap) overlapCandles += Math.min(interval.length, 1);
+    coveredCandles += interval.length;
+    previousEnd = Math.max(previousEnd, interval.end);
+  }
+
+  return {
+    windows: windows.length,
+    testOverlap: overlapCandles > 0,
+    testOverlapCandles: overlapCandles,
+    testCoveredCandles: coveredCandles - overlapCandles,
+  };
+}
+
 export function createWalkForwardWindows(
   candles: MarketCandle[],
   trainSize: number,
