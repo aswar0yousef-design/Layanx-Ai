@@ -30,18 +30,25 @@ function normalizeCandle(row: Record<string, unknown>): MarketCandle {
   const askValue = row.ask ?? row.ask_price ?? row.askprice;
   const bid = bidValue === undefined ? undefined : finiteNumber(bidValue, "bid");
   const ask = askValue === undefined ? undefined : finiteNumber(askValue, "ask");
-  if ((bid !== undefined && bid <= 0) || (ask !== undefined && ask <= 0)) {
+  const bidOpenValue = row.bidOpen ?? row.bid_open ?? row.open_bid;
+  const askOpenValue = row.askOpen ?? row.ask_open ?? row.open_ask;
+  const bidOpen = bidOpenValue === undefined ? undefined : finiteNumber(bidOpenValue, "bidOpen");
+  const askOpen = askOpenValue === undefined ? undefined : finiteNumber(askOpenValue, "askOpen");
+  if ((bid !== undefined && bid <= 0) || (ask !== undefined && ask <= 0) || (bidOpen !== undefined && bidOpen <= 0) || (askOpen !== undefined && askOpen <= 0)) {
     throw new Error(`Bid and ask must be positive at ${timestamp}`);
   }
   if (bid !== undefined && ask !== undefined && ask < bid) {
     throw new Error(`Ask cannot be below bid at ${timestamp}`);
+  }
+  if (bidOpen !== undefined && askOpen !== undefined && askOpen < bidOpen) {
+    throw new Error(`AskOpen cannot be below bidOpen at ${timestamp}`);
   }
 
   if (high < Math.max(open, close) || low > Math.min(open, close) || high < low) {
     throw new Error(`Invalid OHLC range at ${timestamp}`);
   }
 
-  return { timestamp: new Date(timestamp).toISOString(), open, high, low, close, volume, bid, ask };
+  return { timestamp: new Date(timestamp).toISOString(), open, high, low, close, volume, bid, ask, bidOpen, askOpen };
 }
 
 function parseCsvLine(line: string): string[] {
