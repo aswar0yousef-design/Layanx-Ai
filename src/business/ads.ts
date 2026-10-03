@@ -1,8 +1,10 @@
 import {randomUUID} from "node:crypto";
 import type {BusinessSnapshot,AdPlatform,AdStatus,AdAccount,PaidCampaign,AdGroup,AdCreative,PaidAd,AdMetric} from "./types.js";
+export type {AdPlatform,AdStatus,AdAccount,PaidCampaign,AdGroup,AdCreative,PaidAd,AdMetric} from "./types.js";
 import {BusinessStore} from "./store.js";
 import {configuredAdsConnector} from "./ad-connectors.js";
 
+export interface AdsSnapshot{adAccounts:AdAccount[];paidCampaigns:PaidCampaign[];adGroups:AdGroup[];adCreatives:AdCreative[];paidAds:PaidAd[];adMetrics:AdMetric[];}
 export const emptyAds=():AdsSnapshot=>({adAccounts:[],paidCampaigns:[],adGroups:[],adCreatives:[],paidAds:[],adMetrics:[]});
 export class AdsManager{
  constructor(private readonly store:BusinessStore){}
