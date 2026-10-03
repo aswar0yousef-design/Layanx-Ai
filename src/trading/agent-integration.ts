@@ -104,10 +104,10 @@ const BINANCE_LIVE_ORDER_DEFINITION: ToolDefinition = {
   tags: ["trading", "binance", "execution", "live"],
 };
 
-export function registerBinanceLiveOrderTool(tools: ToolRegistry, adapters: ToolAdapterRegistry): void {
-  if (tools.list().some(tool => tool.name === BINANCE_LIVE_ORDER_TOOL)) return;
-  tools.register(BINANCE_LIVE_ORDER_DEFINITION);
-  adapters.register(BINANCE_LIVE_ORDER_TOOL, {
+export function createBinanceLiveOrderToolAdapter(
+  loadCredentials: typeof getBinanceCredentials = getBinanceCredentials,
+): ToolAdapter {
+  return {
     async execute(request) {
       if (process.env.BINANCE_LIVE_TRADING_ENABLED !== "true") {
         throw new Error("Binance live execution is disabled. Set BINANCE_LIVE_TRADING_ENABLED=true only after approval and deployment readiness checks.");
@@ -116,7 +116,7 @@ export function registerBinanceLiveOrderTool(tools: ToolRegistry, adapters: Tool
       if (typeof payload.symbol !== "string" || (payload.side !== "BUY" && payload.side !== "SELL") || (payload.type !== "MARKET" && payload.type !== "LIMIT")) throw new Error("Invalid Binance order payload.");
       if (typeof payload.quantity !== "number" || !Number.isFinite(payload.quantity) || payload.quantity <= 0) throw new Error("Order quantity must be positive.");
       if (payload.type === "LIMIT" && (typeof payload.price !== "number" || !Number.isFinite(payload.price) || payload.price <= 0)) throw new Error("Limit price must be positive.");
-      const credentials = await getBinanceCredentials();
+      const credentials = await loadCredentials();
       const client = new BinanceSpotClient({
         apiKey: credentials.apiKey,
         apiSecret: credentials.apiSecret,
@@ -147,7 +147,13 @@ export function registerBinanceLiveOrderTool(tools: ToolRegistry, adapters: Tool
       const result = await client.placeOrder({symbol:payload.symbol,side:payload.side,type:payload.type,quantity:payload.quantity,price:payload.price,clientOrderId});
       return { ...result, preflight: {referencePrice, notional, maxNotional: configuredMax} };
     },
-  });
+  };
+}
+
+export function registerBinanceLiveOrderTool(tools: ToolRegistry, adapters: ToolAdapterRegistry): void {
+  if (tools.list().some(tool => tool.name === BINANCE_LIVE_ORDER_TOOL)) return;
+  tools.register(BINANCE_LIVE_ORDER_DEFINITION);
+  adapters.register(BINANCE_LIVE_ORDER_TOOL, createBinanceLiveOrderToolAdapter());
 }
 
 export const LIVE_TRADING_TOOLS: readonly string[] = [BINANCE_LIVE_ORDER_TOOL];
