@@ -24,10 +24,10 @@ npm run layanx -- secrets list
 The encrypted vault defaults to:
 
 ```text
-.layanx/secrets.vault
+~/.layanx/secrets.vault
 ```
 
-and `.layanx/` is ignored by Git. The vault uses AES-256-GCM with a key derived from the local master key. The stored file does not contain plaintext secret values.
+and the default vault is outside the repository, so it cannot be committed accidentally. A custom `LAYANX_SECRET_VAULT_PATH` may still be used when needed. The vault uses AES-256-GCM with a key derived from the local master key. The stored file does not contain plaintext secret values.
 
 ## Runtime behavior
 
