@@ -3,7 +3,7 @@ import type {SocialAccount,SocialPlatform} from "./types.js";
 
 export interface PublishItem{title:string;body:string;mediaUrls:string[]}
 export interface NativeSocialResult{externalId:string;url?:string}
-export interface NativeSocialConnector{platform:SocialPlatform;publish(account:SocialAccount,item:PublishItem):Promise<NativeSocialResult>}
+export interface PlatformSocialConnector{platform:SocialPlatform;publish(account:SocialAccount,item:PublishItem):Promise<NativeSocialResult>}
 
 async function jsonRequest(url:string,init:RequestInit={}):Promise<any>{
  const r=await fetch(url,init);const text=await r.text();let data:any={};try{data=text?JSON.parse(text):{}}catch{data={raw:text}};
@@ -17,14 +17,14 @@ function token(platform:SocialPlatform){
 function requireId(account:SocialAccount){if(!account.externalId)throw new Error("social_account_external_id_required");return account.externalId;}
 function base(platform:SocialPlatform, fallback:string){return (process.env[`LAYANX_${platform.toUpperCase()}_SOCIAL_BASE_URL`]??fallback).replace(/\/$/,"");}
 
-export class NativeSocialConnector implements NativeSocialConnector{
+export class NativeSocialConnector implements PlatformSocialConnector{
  constructor(public readonly platform:SocialPlatform){}
  async publish(account:SocialAccount,item:PublishItem):Promise<NativeSocialResult>{
   const access=token(this.platform);if(!access)throw new Error(`LAYANX_${this.platform.toUpperCase()}_SOCIAL_TOKEN is required`);
   switch(this.platform){
    case "instagram": return this.instagram(requireId(account),access,item);
    case "facebook": return this.facebook(requireId(account),access,item);
-   case "tiktok": return this.tiktok(requireId(account),access,item);
+   case "tiktok": return this.tiktok(access,item);
    case "youtube": return this.youtube(access,item);
    case "linkedin": return this.linkedin(requireId(account),access,item);
    case "x": return this.x(access,item);
