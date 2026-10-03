@@ -7,18 +7,24 @@ import {McpGateway} from "./mcp-gateway.js";
 import {ControlCenter} from "./control-center.js";
 import {createHash} from "node:crypto";
 import {VoiceService} from "./voice/service.js";
+import {BusinessManager} from "./business/manager.js";
 import {voiceUiHtml} from "./voice/ui.js";
-export interface RuntimeApiOptions{core:LayanXCore;persistence?:RuntimePersistence;host?:string;port?:number;maxBodyBytes?:number;token?:string;requireToken?:boolean;}
+import {AdsManager} from "./business/ads.js";
+import {OAuthConnectionCenter} from "./business/oauth.js";
+import {MediaManager} from "./business/media.js";
+export interface RuntimeApiOptions{core:LayanXCore;business:BusinessManager;ads?:AdsManager;media?:MediaManager;persistence?:RuntimePersistence;host?:string;port?:number;maxBodyBytes?:number;token?:string;requireToken?:boolean;}
 function json(response:ServerResponse,status:number,body:unknown){response.statusCode=status;response.setHeader("content-type","application/json; charset=utf-8");response.end(JSON.stringify(body));}
 async function rawBody(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}return Buffer.concat(chunks);}
 async function body(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}const raw=Buffer.concat(chunks).toString("utf8");if(!raw)return{};try{return JSON.parse(raw) as Record<string,unknown>;}catch{throw new Error("invalid_json");}}
 function authorized(request:IncomingMessage,token?:string){return !token||request.headers.authorization==="Bearer "+token;}
-function runtimeView(core:LayanXCore,persistence?:RuntimePersistence){return {core,models:core.models,providers:core.providers,providerSummary:providerSummary(),persistence};}
+function runtimeView(core:LayanXCore,persistence:RuntimePersistence|undefined,business:BusinessManager,ads:AdsManager,media:MediaManager){return {core,models:core.models,providers:core.providers,providerSummary:providerSummary(),persistence,business,ads,media};}
 export function startRuntimeApi(options:RuntimeApiOptions){
  const host=options.host??process.env.LAYANX_API_HOST??"127.0.0.1";const port=options.port??Number(process.env.LAYANX_API_PORT??3000);const max=options.maxBodyBytes??65536;const requireToken=options.requireToken??(process.env.LAYANX_API_REQUIRE_TOKEN==="true");const remoteHost=host!=="127.0.0.1"&&host!=="localhost"&&host!=="::1";if((requireToken||remoteHost)&&!options.token)throw new Error("LAYANX_API_TOKEN is required for remote API access");
  const mcp=new McpGateway(options.core);
  const control=new ControlCenter(options.core);
  const voice=new VoiceService();
+ const oauth=new OAuthConnectionCenter();
+ const business=options.business; const ads=options.ads; const media=options.media??new MediaManager(); if(!ads)throw new Error("ads_manager_required");
  const server=createServer(async(request,response)=>{
   response.setHeader("cache-control","no-store");
   if(requireToken&&!authorized(request,options.token)&&request.url!=="/v1/health"&&request.url!=="/voice"){json(response,401,{ok:false,error:"unauthorized"});return;}
@@ -129,6 +135,47 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     json(response,200,{ok:true,approval:{...approval,approved:options.core.executionRuntime.approvals.isApproved(approvalId)}});return;
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"approval operation failed"});return;}
   }
+  if(request.method==="GET"&&request.url==="/v1/oauth/connections"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   json(response,200,{ok:true,connections:oauth.list()});return;
+  }
+  if(request.method==="POST"&&request.url==="/v1/oauth/connect"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{const input=await body(request,max);const provider=String(input.provider) as import("./business/types.js").OAuthProvider;const accountId=typeof input.accountId==="string"&&input.accountId.trim()?input.accountId.trim():"default";const result=oauth.begin(provider,accountId);json(response,200,{ok:true,...result});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_begin_failed"});}return;
+  }
+  if(request.method==="GET"&&request.url?.startsWith("/v1/oauth/callback")){
+   try{const u=new URL(request.url,"http://localhost");const state=u.searchParams.get("state")??"";const code=u.searchParams.get("code")??"";if(!state||!code){json(response,400,{ok:false,error:"state_and_code_required"});return;}const connection=await oauth.callback(state,code);json(response,200,{ok:true,connection:oauth.status(connection)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_callback_failed"});}return;
+  }
+  if(request.method==="GET"&&request.url?.match(/^\/v1\/oauth\/[^/]+\/discover$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{const id=decodeURIComponent(request.url.split("/")[3]??"");json(response,200,{ok:true,...await oauth.discover(id)});}
+   catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_discovery_failed"});}
+   return;
+  }
+  if(request.method==="POST"&&request.url?.match(/^\/v1\/oauth\/[^/]+\/bind$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const id=decodeURIComponent(request.url.split("/")[3]??"");
+    const connection=oauth.get(id);
+    const input=await body(request,max);
+    const platform=typeof input.platform==="string"?input.platform as import("./business/types.js").SocialPlatform:"generic";
+    const externalId=typeof input.externalId==="string"?input.externalId.trim():"";
+    const name=typeof input.name==="string"&&input.name.trim()?input.name.trim():externalId;
+    if(!externalId||!name){json(response,400,{ok:false,error:"platform, externalId, and name are required"});return;}
+    const allowed=["generic","instagram","facebook","tiktok","youtube","x","linkedin","snapchat","pinterest"];
+    if(!allowed.includes(platform)){json(response,400,{ok:false,error:"unsupported_social_platform"});return;}
+    if(!["meta","instagram","facebook","tiktok","youtube","x","linkedin","snapchat","pinterest"].includes(connection.provider)){
+     json(response,400,{ok:false,error:"oauth_provider_cannot_bind_social"});return;
+    }
+    const account=business.upsertSocialAccount({platform,name,externalId,enabled:true});
+    json(response,201,{ok:true,connection:oauth.status(connection),account});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_bind_failed"});}
+   return;
+  }
+  if(request.method==="POST"&&request.url?.match(/^\/v1\/oauth\/[^/]+\/revoke$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{const id=request.url.split("/")[3] as string;const connection=oauth.get(id);oauth.revoke(connection);json(response,200,{ok:true,id});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_revoke_failed"});}return;
+  }
   if(request.method==="GET"&&request.url?.match(/^\/v1\/missions\/[^/]+\/events$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const missionId=request.url.split("/")[3] as string;
@@ -178,8 +225,33 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"mission cancellation failed"});}
    return;
   }
-  if(request.method==="GET"&&request.url==="/v1/status"){json(response,200,runtimeStatus(runtimeView(options.core,options.persistence)));return;}
-  if(request.method==="GET"&&request.url==="/v1/health"){const health=await runtimeHealth(runtimeView(options.core,options.persistence));json(response,health.healthy?200:503,health);return;}
+  if(request.method==="GET"&&request.url==="/v1/ads"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}json(response,200,{ok:true,ads:ads.snapshot(),dashboard:ads.dashboard()});return;}
+  if(request.method==="POST"&&request.url==="/v1/ads/account"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,account:ads.addAccount(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"ad account failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/ads/campaign"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,campaign:ads.createCampaign(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"paid campaign creation failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/ads/adgroup"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,adGroup:ads.createAdGroup(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"ad group creation failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/ads/creative"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,creative:ads.createCreative(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"creative creation failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/ads/ad"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,ad:ads.createAd(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"ad creation failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/ads/campaign/launch"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,200,{ok:true,result:await ads.launchCampaign(String(input.campaignId))});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"campaign launch failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/ads/campaign/pause"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,200,{ok:true,campaign:await ads.pauseCampaign(String(input.campaignId))});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"campaign pause failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/ads/insights/sync"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,200,{ok:true,metrics:await ads.syncInsights(String(input.accountId),input.campaignId?String(input.campaignId):undefined)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"ad insights sync failed"});}return;}
+  if(request.method==="GET"&&request.url==="/v1/business"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}json(response,200,{ok:true,business:business.snapshot(),persistence:business.store.persistenceStatus()});return;}
+  if(request.method==="POST"&&request.url==="/v1/business/store"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,store:business.createStore(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"store creation failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/business/product"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,product:business.createProduct(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"product creation failed"});}return;}
+  if(request.method==="PATCH"&&request.url?.match(/^\/v1\/business\/product\/[^/]+$/)){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,200,{ok:true,product:business.updateProduct(decodeURIComponent(request.url.split("/").pop()!),await body(request,max))});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"product update failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/business/product/publish"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,200,{ok:true,result:await business.publishProduct(String(input.productId))});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"product publish failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/business/orders/sync"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,200,{ok:true,orders:await business.syncOrders(String(input.storeId))});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"order sync failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/business/social-account"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,account:business.upsertSocialAccount(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"social account failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/business/media/inspect"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,200,{ok:true,media:await media.inspect(String(input.url))});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"media inspection failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/business/media"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,media:business.addMedia(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"media registration failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/business/content/generate"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,201,{ok:true,content:await business.generateProductContentAI(String(input.productId),Array.isArray(input.platforms)?input.platforms.filter((x):x is any=>typeof x==="string"):undefined)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"content generation failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/business/content/approve"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,200,{ok:true,content:business.updateContent(String(input.contentId),{status:"approved"})});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"content approval failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/business/content/publish"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,200,{ok:true,result:await business.publishContent(String(input.contentId))});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"content publish failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/business/content/schedule"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,200,{ok:true,content:business.scheduleContent(String(input.contentId),String(input.scheduledAt))});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"content scheduling failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/business/content/process-scheduled"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,200,{ok:true,results:await business.processScheduledContent()});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"scheduled content processing failed"});}return;}
+  if(request.method==="GET"&&request.url==="/v1/business/analytics"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}json(response,200,{ok:true,analytics:business.analytics()});return;}
+  if(request.method==="POST"&&request.url==="/v1/business/campaign"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,campaign:business.createCampaign(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"campaign creation failed"});}return;}
+  if(request.method==="GET"&&request.url==="/v1/status"){json(response,200,runtimeStatus(runtimeView(options.core,options.persistence,business,ads,media)));return;}
+  if(request.method==="GET"&&request.url==="/v1/health"){const health=await runtimeHealth(runtimeView(options.core,options.persistence,business,ads,media));json(response,health.healthy?200:503,health);return;}
   if(request.method==="GET"&&request.url?.startsWith("/v1/missions/")&&request.url.endsWith("/tools/prepare")){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const id=request.url.slice("/v1/missions/".length,-"/tools/prepare".length);
@@ -548,10 +620,10 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"dependent mission execution failed"});}
    return;
   }
-  if(request.method==="GET"&&request.url==="/v1/scheduler"){
+  if(request.method==="GET"&&request.url==="/v1/scheduler"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    json(response,200,{ok:true,schedules:options.core.scheduler.list()});return;
   }
-  if(request.method==="POST"&&request.url==="/v1/scheduler/schedules"){
+  if(request.method==="POST"&&request.url==="/v1/scheduler/schedules"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{
     const input=await body(request,max);
     const goal=typeof input.goal==="string"?input.goal.trim():"";
@@ -563,7 +635,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"schedule creation failed"});}
    return;
   }
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/scheduler\/[^/]+\/enable$/)){
+  if(request.method==="POST"&&request.url?.match(/^\/v1\/scheduler\/[^/]+\/enable$/)){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{
     const id=decodeURIComponent(request.url.split("/")[3]??"");
     const input=await body(request,max);
@@ -572,20 +644,20 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"schedule update failed"});}
    return;
   }
-  if(request.method==="DELETE"&&request.url?.match(/^\/v1\/scheduler\/[^/]+$/)){
+  if(request.method==="DELETE"&&request.url?.match(/^\/v1\/scheduler\/[^/]+$/)){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{options.core.scheduler.unregister(decodeURIComponent(request.url.split("/")[3]??""));json(response,200,{ok:true});}
    catch(error){json(response,404,{ok:false,error:error instanceof Error?error.message:"schedule not found"});}
    return;
   }
-  if(request.method==="POST"&&request.url==="/v1/scheduler/tick"){
+  if(request.method==="POST"&&request.url==="/v1/scheduler/tick"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{const runs=await options.core.scheduler.tick();json(response,200,{ok:true,runs});}
    catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"scheduler tick failed"});}
    return;
   }
-  if(request.method==="GET"&&request.url==="/v1/events/triggers"){
+  if(request.method==="GET"&&request.url==="/v1/events/triggers"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    json(response,200,{ok:true,triggers:options.core.eventEngine.list()});return;
   }
-  if(request.method==="POST"&&request.url==="/v1/events/triggers"){
+  if(request.method==="POST"&&request.url==="/v1/events/triggers"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{
     const input=await body(request,max);
     const eventType=typeof input.eventType==="string"?input.eventType.trim():"";
@@ -598,12 +670,12 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"event trigger creation failed"});}
    return;
   }
-  if(request.method==="DELETE"&&request.url?.match(/^\/v1\/events\/triggers\/[^/]+$/)){
+  if(request.method==="DELETE"&&request.url?.match(/^\/v1\/events\/triggers\/[^/]+$/)){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{options.core.eventEngine.remove(decodeURIComponent(request.url.split("/")[4]??""));json(response,200,{ok:true});}
    catch(error){json(response,404,{ok:false,error:error instanceof Error?error.message:"event trigger not found"});}
    return;
   }
-  if(request.method==="POST"&&request.url==="/v1/events/emit"){
+  if(request.method==="POST"&&request.url==="/v1/events/emit"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{
     const input=await body(request,max);
     const type=typeof input.type==="string"?input.type.trim():"";
@@ -722,5 +794,5 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   }
   json(response,404,{ok:false,error:"not_found"});
  });
- server.listen(port,host);return server;
+ server.listen(port,host);options.core.scheduler.start();return server;
 }
