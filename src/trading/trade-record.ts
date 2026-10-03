@@ -1,4 +1,5 @@
 import { analyzeExecutionQuality, type ExecutionTrade, type ExecutionQualityResult } from "./execution-quality.js";
+import type { MarketTrendRegime, MarketVolatilityRegime } from "./market-regime.js";
 
 export interface TradeRecord extends ExecutionTrade {
   openedAt: string;
@@ -6,6 +7,8 @@ export interface TradeRecord extends ExecutionTrade {
   strategy?: string;
   timeframe?: string;
   session?: string;
+  trendRegime?: MarketTrendRegime;
+  volatilityRegime?: MarketVolatilityRegime;
   commission?: number;
   swap?: number;
   metadata?: Record<string, string | number | boolean | null>;
@@ -18,6 +21,8 @@ export interface TradeAnalysis extends ExecutionQualityResult {
   strategy?: string;
   timeframe?: string;
   session?: string;
+  trendRegime?: MarketTrendRegime;
+  volatilityRegime?: MarketVolatilityRegime;
   commission: number;
   swap: number;
   trueNetPnl: number;
@@ -40,6 +45,8 @@ export function analyzeTradeRecord(trade: TradeRecord): TradeAnalysis {
     strategy: trade.strategy,
     timeframe: trade.timeframe,
     session: trade.session,
+    trendRegime: trade.trendRegime,
+    volatilityRegime: trade.volatilityRegime,
     commission,
     swap,
     trueNetPnl: quality.netPnlAfterExecutionCosts - commission - swap
