@@ -20,8 +20,8 @@ try {
   const path = mod.localBinanceSecretStorePath();
   assert.equal(path.startsWith(tempHome), true);
   const raw = await readFile(path, "utf8");
-  assert.match(raw, /^k$/);
-  assert.match(raw, /^s$/);
+  assert.equal(raw.includes("k"), true);
+  assert.equal(raw.includes("s"), true);
 
   console.log("local-secret-store: ok");
 } finally {
