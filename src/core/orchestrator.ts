@@ -152,6 +152,7 @@ export class LayanXCore{
     if(snapshot.memory)this.memory.restore(snapshot.memory);
     if(snapshot.handoffs)this.handoffs.restore(snapshot.handoffs);
     if(snapshot.delegatedTasks)this.delegation.restore(snapshot.delegatedTasks);
+    if(snapshot.approvals)this.executionRuntime.approvals.restore(snapshot.approvals);
     return this.missions.get(snapshot.mission.id);
   }
 
