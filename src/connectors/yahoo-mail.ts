@@ -34,10 +34,11 @@ export function createYahooMailAdapter(options:YahooMailAdapterOptions={}):ToolA
    const lock=await c.getMailboxLock("INBOX");
    try{
     const q=typeof i.query==="string"?i.query.trim():"";
-    const uids=q?await c.search({or:[{subject:q},{from:q},{to:q}]},{uid:true}):await c.search({},{uid:true});
+    const found=q?await c.search({or:[{subject:q},{from:q},{to:q}]},{uid:true}):await c.search({},{uid:true});
+    const uids=Array.isArray(found)?found:[];
     const ids=uids.slice(-Math.min(Math.max(typeof i.limit==="number"?i.limit:20,1),50));
     const msgs=ids.length?await c.fetchAll(ids,{envelope:true,flags:true},{uid:true}):[];
-    return {messages:msgs.map(m=>({id:String(m.uid),subject:m.envelope.subject??"",from:m.envelope.from?.[0]?.address??"",to:m.envelope.to?.[0]?.address??"",date:m.envelope.date?.toISOString()??"",seen:m.flags.has("\\Seen")}))}
+    return {messages:msgs.map(m=>{const envelope=m.envelope;const date=envelope?.date;return {id:String(m.uid),subject:envelope?.subject??"",from:envelope?.from?.[0]?.address??"",to:envelope?.to?.[0]?.address??"",date:typeof date==="string"?date:date instanceof Date?date.toISOString():"",seen:m.flags?.has("\\Seen")??false};})}
    }finally{lock.release()}
   });
   if(a==="read yahoo mail")return withClient(async c=>{
