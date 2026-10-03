@@ -9,6 +9,7 @@ if(order.status!=="filled"||order.price!==2650.5)throw new Error("Paper market o
 if(engine.positions().length!==1)throw new Error("Paper position was not created.");
 const closed=engine.closePosition(order.orderId,2670);
 if(closed.pnl!==19.5)throw new Error("Paper PnL calculation failed.");
+if(engine.accountSnapshot().balance!==100019.5||engine.accountSnapshot().available!==100019.5)throw new Error("Paper account settlement failed.");
 if(engine.positions().length!==0)throw new Error("Paper position was not closed.");
 let rejected=false;try{engine.placeMarket({symbol:"XAUUSD",side:"buy",quantity:100});}catch{rejected=true;}
 if(!rejected)throw new Error("Paper risk limit did not reject oversized order.");
