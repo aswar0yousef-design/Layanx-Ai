@@ -114,6 +114,28 @@ npm run release:check
 npm run build
 ```
 
+## Business Operations Layer
+LayanX now includes a local-first Business Operations layer on top of the existing agent runtime.
+
+Current capabilities:
+- Durable local store/product/order/content/campaign/media state.
+- Store adapters for Generic HTTP, Shopify Admin REST, and WooCommerce REST.
+- Product publication with external-id tracking to avoid duplicate creation on retries.
+- Social account/content/media records with approval-gated publishing.
+- Scheduled content processing through a dedicated business tool that can be invoked by the existing Scheduler/Agent Gateway.
+- Business operating analytics derived from local state.
+- API endpoints under `/v1/business/*`.
+- Business tools are registered in the same permission/capability pipeline as the existing LayanX tools.
+
+Credential policy:
+- Secrets are supplied through local environment variables only; never commit them to Git.
+- Shopify uses `LAYANX_SHOPIFY_ACCESS_TOKEN`.
+- WooCommerce uses `LAYANX_WOOCOMMERCE_CONSUMER_KEY` and `LAYANX_WOOCOMMERCE_CONSUMER_SECRET`.
+- Generic commerce/social connectors use `LAYANX_COMMERCE_TOKEN`, `LAYANX_SOCIAL_TOKEN`, and `LAYANX_SOCIAL_PUBLISH_URL`.
+- Store `baseUrl` must be the configured API base URL for the selected adapter.
+
+The social layer intentionally keeps platform-specific OAuth/publishing implementations behind the connector contract; it does not pretend that an unconfigured generic endpoint is a native Instagram/TikTok integration.
+
 ## Future evolution
 
 The architecture keeps project boundaries, storage abstraction, provider routing, tool isolation, and API boundaries explicit so the local runtime can later evolve into a multi-tenant platform.
