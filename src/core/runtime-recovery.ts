@@ -104,6 +104,7 @@ export class RuntimeRecoveryManager{
     if(snapshot.memory) this.core.memory.restore(snapshot.memory);
     if(snapshot.handoffs) this.core.handoffs.restore(snapshot.handoffs);
     if(snapshot.delegatedTasks) this.core.delegation.restore(snapshot.delegatedTasks);
+    if(snapshot.approvals)this.core.executionRuntime.approvals.restore(snapshot.approvals);
 
     const acceptedHandoff=snapshot.handoffs?.find(h=>h.status==="accepted"&&h.execution);
     if(snapshot.mission.status==="completed" && acceptedHandoff?.execution){
