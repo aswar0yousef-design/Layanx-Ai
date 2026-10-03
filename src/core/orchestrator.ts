@@ -607,6 +607,7 @@ export class LayanXCore{
     if(["completed","cancelled"].includes(mission.status))return{missionId,status:mission.status,completed:mission.status==="completed",blocked:false,paused:false,nextToolIndex:null,results:[]};
     const plans=mission.tools??[];
     const missing:number[]=[];
+    const requestedApprovals:Record<number,string>={};
     for(let index=0;index<plans.length;index++){
       const plan=plans[index]!;
       const request={missionId,agentId,tool:plan.tool,action:plan.action,permission:plan.permission,idempotencyKey:"session-preflight-"+missionId+"-"+index,payload:plan.payload??{},planIndex:index};
@@ -615,6 +616,8 @@ export class LayanXCore{
       if(risk.requiresApproval||tool.dangerous){
         const approvalId=approvalIds[index];
         if(!approvalId){
+          const created=this.executionRuntime.approvals.ensure({missionId,agentId,tool:plan.tool,action:plan.action,permission:plan.permission,payloadHash:createHash("sha256").update(JSON.stringify(request.payload??null)).digest("hex"),reason:"Explicit approval is required before this development session can execute.",expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
+          requestedApprovals[index]=created.id;
           missing.push(index);
           continue;
         }
@@ -626,7 +629,8 @@ export class LayanXCore{
       }
     }
     if(missing.length){
-      return{missionId,status:"awaiting_approval",completed:false,blocked:false,paused:true,nextToolIndex:missing[0],missingApprovals:missing,results:[]};
+      await this.executionRuntime.persist(mission);
+      return{missionId,status:"awaiting_approval",completed:false,blocked:false,paused:true,nextToolIndex:missing[0],missingApprovals:missing,approvalIds:requestedApprovals,results:[]};
     }
     const results:unknown[]=[];
     for(let index=0;index<plans.length;index++){
