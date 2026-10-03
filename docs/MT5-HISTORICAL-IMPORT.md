@@ -41,3 +41,8 @@ The import result includes UTC-based session diagnostics using the existing sess
 ### Candle-open quotes for next-bar execution
 
 For realistic next-candle entries, historical imports may provide `bidOpen`/`askOpen` (also accepted as `bid_open`/`ask_open` or `open_bid`/`open_ask`). These are preferred for the entry fill and entry spread. `bid`/`ask` remain available for the candle timestamp snapshot. If candle-open quotes are unavailable, the paper engine falls back to the candle-time quote and then the OHLC open plus configured spread model; the data should be labeled accordingly when evaluating execution quality.
+
+
+### End-of-data positions
+
+Paper backtests now default to `endOfDataPolicy: "close"`: an otherwise-open trade is marked to the final available candle close with the configured exit spread/slippage and `exitReason: "end-of-data"`. For analyses that intentionally exclude unfinished positions, set `endOfDataPolicy: "exclude"`. This choice is recorded rather than silently dropping an open trade.
