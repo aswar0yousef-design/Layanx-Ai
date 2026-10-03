@@ -26,6 +26,8 @@ export interface PaperTradingConfig {
   quantityStep?: number;
   brokerSymbol?: BrokerSymbolSpecification;
   intrabarResolution?: IntrabarResolution;
+  /** Signal is generated from the last completed candle; execution occurs on the next candle. */
+  signalOnClosedCandle?: boolean;
 }
 
 export interface PaperTrade {
@@ -113,8 +115,10 @@ export function runPaperScalping(
   let candlesWithoutBidAsk = 0;
   const trades: TradeRecord[] = [];
 
+  const signalOnClosedCandle = config.signalOnClosedCandle ?? true;
+
   for (let i = 30; i < candles.length; i += 1) {
-    const history = candles.slice(0, i + 1);
+    const history = signalOnClosedCandle ? candles.slice(0, i) : candles.slice(0, i + 1);
     const candle = candles[i];
 
     if (candle.bid !== undefined && candle.ask !== undefined) candlesWithBidAsk += 1;
