@@ -1,3 +1,4 @@
+import {localSecret} from "../security/local-secret-vault.js";
 import type {AdPlatform,AdAccount,PaidCampaign,AdGroup,AdCreative,PaidAd,AdMetric} from "./ads.js";
 export interface AdsConnector{platform:AdPlatform;createCampaign(account:AdAccount,campaign:PaidCampaign):Promise<any>;updateCampaign(account:AdAccount,campaign:PaidCampaign):Promise<any>;pauseCampaign(account:AdAccount,campaign:PaidCampaign):Promise<any>;createAdGroup(account:AdAccount,group:AdGroup):Promise<any>;createAd(account:AdAccount,ad:PaidAd,creative:AdCreative):Promise<any>;insights(account:AdAccount,campaign?:PaidCampaign):Promise<AdMetric[]>;}
 async function req(url:string,init:RequestInit={}){const r=await fetch(url,init);const t=await r.text();let d:any={};try{d=t?JSON.parse(t):{}}catch{d={raw:t}}if(!r.ok)throw new Error(`ads_http_${r.status}`);const headers=Object.fromEntries(r.headers.entries());if(Array.isArray(d)){(d as any)._headers=headers;return d;}return {...d,_headers:headers};}
@@ -11,8 +12,8 @@ export class ConfiguredAdsConnector implements AdsConnector{
  createAd(a:AdAccount,ad:PaidAd,c:AdCreative){return this.call("adCreate",{accountId:a.accountId,adGroupId:ad.adGroupId,ad:{name:ad.name,status:ad.status},creative:c});}
  async insights(a:AdAccount,c?:PaidCampaign){const d=await this.call("insights",{accountId:a.accountId,campaignId:c?.externalId},process.env[`LAYANX_${this.platform.toUpperCase()}_ADS_INSIGHTS_METHOD`]??"POST");return Array.isArray(d)?d:(d.metrics??[]);}
 }
-export function configuredAdsConnector(platform:AdPlatform){const p=platform.toUpperCase();const base=process.env[`LAYANX_${p}_ADS_BASE_URL`],token=process.env[`LAYANX_${p}_ADS_TOKEN`];if(!base||!token)throw new Error(`LAYANX_${p}_ADS credentials are required`);const prefix=process.env[`LAYANX_${p}_ADS_PATH_PREFIX`]??"";const keys=["campaignCreate","campaignUpdate","campaignPause","adGroupCreate","adCreate","insights"];
+export function configuredAdsConnector(platform:AdPlatform){const p=platform.toUpperCase();const base=process.env[`LAYANX_${p}_ADS_BASE_URL`],token=localSecret(`${platform}.ads.token`,process.env[`LAYANX_${p}_ADS_TOKEN`]);if(!base||!token)throw new Error(`LAYANX_${p}_ADS credentials are required`);const prefix=process.env[`LAYANX_${p}_ADS_PATH_PREFIX`]??"";const keys=["campaignCreate","campaignUpdate","campaignPause","adGroupCreate","adCreate","insights"];
 const paths=Object.fromEntries(keys.map(k=>{const envKey=`LAYANX_${p}_ADS_${k.replace(/([A-Z])/g,"_$1").toUpperCase()}_PATH`;return [k,process.env[envKey]??`${prefix}/${k}`]}));
-let extraHeaders:Record<string,string>={};try{const raw=process.env[`LAYANX_${p}_ADS_HEADERS_JSON`];if(raw)extraHeaders=JSON.parse(raw);}catch{throw new Error(`LAYANX_${p}_ADS_HEADERS_JSON must be valid JSON`);}
+let extraHeaders:Record<string,string>={};try{const raw=localSecret(`${platform}.ads.headers`,process.env[`LAYANX_${p}_ADS_HEADERS_JSON`]);if(raw)extraHeaders=JSON.parse(raw);}catch{throw new Error(`LAYANX_${p}_ADS_HEADERS_JSON must be valid JSON`);}
 return new ConfiguredAdsConnector(platform,base,token,paths,extraHeaders);}
 
