@@ -236,3 +236,30 @@ LayanX already had Observability, Audit, Event Stream, and Execution State; this
 - `GET /v1/traces` exposes current traces to the local control/API layer.
 - Tool execution now creates a trace span and records duration/status.
 - Existing Observatory remains the aggregate operational view; Audit/Event Stream remain the event/history layers.
+
+
+## Paid Advertising Operations
+
+LayanX now has a separate paid-advertising control layer for **Meta (Facebook/Instagram), TikTok, Google Ads and X**. It keeps paid campaigns distinct from organic content, supports ad accounts, campaign → ad group → creative → ad hierarchy, launch/pause approval gates, local performance metrics, ROAS/CTR/CPA dashboard calculations, and connector-based synchronization.
+
+### Local-only advertising credentials
+
+Real advertising credentials belong only in the local runtime environment or local secret manager and must never be committed to Git. Configure the platform-specific advertising variables from `.env.example`.
+
+The connector layer deliberately keeps platform endpoint configuration explicit rather than silently assuming an API version. This is important because advertising APIs change independently. Google Ads currently has the v25 line (including v25.2 released September 23, 2026), while Google documents campaign/ad-group mutation through its REST mutate services. TikTok's Business API exposes campaign, ad-group, ad, creative and reporting capabilities. The runtime therefore supports versioned/configured endpoints without hard-coding credentials or pretending an account is connected before its credentials are supplied.
+
+### Safety
+
+Creating drafts is a modification action; launching or pausing a paid campaign is an execute-level action and remains behind the existing approval/audit pipeline. The system does not automatically spend money merely because a campaign draft exists.
+
+### Advertising API
+
+- `GET /v1/ads`
+- `POST /v1/ads/account`
+- `POST /v1/ads/campaign`
+- `POST /v1/ads/adgroup`
+- `POST /v1/ads/creative`
+- `POST /v1/ads/ad`
+- `POST /v1/ads/campaign/launch`
+- `POST /v1/ads/campaign/pause`
+- `POST /v1/ads/insights/sync`
