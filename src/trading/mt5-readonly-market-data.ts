@@ -73,7 +73,7 @@ export async function readMt5MarketData(
 
 
 function mt5TimeframeIntervalMs(timeframe: string): number {
-  const match = /^(M|H|D|W)(\\d+)$/.exec(timeframe);
+  const match = /^(M|H|D|W)(\d+)$/.exec(timeframe);
   if (!match) throw new Error(`Unsupported MT5 timeframe for completed-candle filtering: ${timeframe}`);
   const value = Number(match[2]);
   const unitMs = match[1] === "M" ? 60_000 : match[1] === "H" ? 3_600_000 : match[1] === "D" ? 86_400_000 : 604_800_000;
