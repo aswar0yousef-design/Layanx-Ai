@@ -12,15 +12,20 @@ export interface ExitSimulation {
 }
 
 function touched(trade: { side: TradeSide; stopLossPrice: number; takeProfitPrice?: number }, candle: MarketCandle) {
+  const quoteAware = trade.side === "long"
+    ? candle.bidLow !== undefined && candle.bidHigh !== undefined
+    : candle.askLow !== undefined && candle.askHigh !== undefined;
+  const low = trade.side === "long" ? (quoteAware ? candle.bidLow! : candle.low) : (quoteAware ? candle.askLow! : candle.low);
+  const high = trade.side === "long" ? (quoteAware ? candle.bidHigh! : candle.high) : (quoteAware ? candle.askHigh! : candle.high);
   const stop = trade.side === "long"
-    ? candle.low <= trade.stopLossPrice
-    : candle.high >= trade.stopLossPrice;
+    ? low <= trade.stopLossPrice
+    : high >= trade.stopLossPrice;
   const target = trade.takeProfitPrice !== undefined && (
     trade.side === "long"
-      ? candle.high >= trade.takeProfitPrice
-      : candle.low <= trade.takeProfitPrice
+      ? high >= trade.takeProfitPrice
+      : low <= trade.takeProfitPrice
   );
-  return { stop, target };
+  return { stop, target, quoteAware };
 }
 
 export function simulateExit(
@@ -30,16 +35,21 @@ export function simulateExit(
   slippage: number,
   resolution: IntrabarResolution = "conservative",
 ): ExitSimulation | null {
-  const { stop, target } = touched(trade, candle);
+  const { stop, target, quoteAware } = touched(trade, candle);
   if (!stop && !target) return null;
 
-  const stopGap = trade.side === "long"
-    ? candle.open <= trade.stopLossPrice
-    : candle.open >= trade.stopLossPrice;
-  const targetGap = trade.takeProfitPrice !== undefined && (
+  const triggerOpen = quoteAware
+    ? trade.side === "long" ? candle.bidOpen : candle.askOpen
+    : candle.open;
+  const stopGap = triggerOpen !== undefined && (
     trade.side === "long"
-      ? candle.open >= trade.takeProfitPrice
-      : candle.open <= trade.takeProfitPrice
+      ? triggerOpen <= trade.stopLossPrice
+      : triggerOpen >= trade.stopLossPrice
+  );
+  const targetGap = triggerOpen !== undefined && trade.takeProfitPrice !== undefined && (
+    trade.side === "long"
+      ? triggerOpen >= trade.takeProfitPrice
+      : triggerOpen <= trade.takeProfitPrice
   );
 
   let reason: "stop-loss" | "take-profit";
@@ -68,7 +78,9 @@ export function simulateExit(
 
   const direction = trade.side === "long" ? -1 : 1;
   return {
-    price: gapReference + direction * (spread / 2 + slippage),
+    // With quote-aware intrabar data the trigger price is already the executable
+    // bid/ask side, so applying spread again would double-count it.
+    price: gapReference + direction * (quoteAware ? slippage : spread / 2 + slippage),
     referencePrice: gapReference,
     reason,
     intrabarAmbiguous: stop && target,
