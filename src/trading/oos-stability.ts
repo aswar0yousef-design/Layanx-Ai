@@ -18,6 +18,12 @@ export interface OutOfSampleStability {
   averageProfitFactor: number;
   positiveExpectancyWindows: number;
   negativeExpectancyWindows: number;
+  zeroExpectancyWindows: number;
+  totalTestTrades: number;
+  pooledTestNetPnl: number;
+  pooledTestExpectancyPerTrade: number;
+  pooledTestReturnOnStartingBalancesPct: number;
+  warnings: string[];
 }
 
 function median(values: number[]): number {
@@ -43,7 +49,21 @@ export function analyzeOosStability(
 
   const profitableWindows = active.filter(report => report.netPnl > 0).length;
   const losingWindows = active.filter(report => report.netPnl < 0).length;
-  const flatWindows = active.length - profitableWindows - losingWindows;
+  const flatWindows = active.filter(report => report.netPnl === 0).length;
+
+  const totalTestTrades = reports.reduce((sum, report) => sum + report.trades, 0);
+  const pooledTestNetPnl = reports.reduce((sum, report) => sum + report.netPnl, 0);
+  const pooledStartingBalance = reports.reduce((sum, report) => sum + report.initialBalance, 0);
+  const warnings: string[] = [];
+
+  if (reports.length === 0) warnings.push("No out-of-sample windows were produced.");
+  if (active.length < reports.length) warnings.push("One or more OOS windows contained no trades.");
+  if (active.length > 0 && profitableWindows < active.length / 2) {
+    warnings.push("Fewer than half of active OOS windows were profitable; inspect window-level results.");
+  }
+  if (active.length > 0 && Math.abs(Math.min(...returns)) > Math.max(...returns, 0)) {
+    warnings.push("Negative OOS movement is larger in magnitude than the positive OOS movement; inspect dispersion.");
+  }
 
   return {
     windows: reports.length,
@@ -66,5 +86,13 @@ export function analyzeOosStability(
       : active.reduce((sum, report) => sum + finiteProfitFactor(report), 0) / active.length,
     positiveExpectancyWindows: active.filter(report => report.expectancyPerTrade > 0).length,
     negativeExpectancyWindows: active.filter(report => report.expectancyPerTrade < 0).length,
+    zeroExpectancyWindows: active.filter(report => report.expectancyPerTrade === 0).length,
+    totalTestTrades,
+    pooledTestNetPnl,
+    pooledTestExpectancyPerTrade: totalTestTrades === 0 ? 0 : pooledTestNetPnl / totalTestTrades,
+    pooledTestReturnOnStartingBalancesPct: pooledStartingBalance === 0
+      ? 0
+      : (pooledTestNetPnl / pooledStartingBalance) * 100,
+    warnings,
   };
 }
