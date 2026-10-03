@@ -176,6 +176,9 @@ export function runPaperScalping(
             exitReason: exit.reason,
             intrabarAmbiguous: exit.intrabarAmbiguous,
             gapThrough: exit.gapThrough,
+            signalTimestamp: signalOnClosedCandle
+              ? candles[Math.max(0, candles.findIndex(item => item.timestamp === openTrade.openedAt) - 1)]?.timestamp
+              : openTrade.openedAt,
           },
         };
 
