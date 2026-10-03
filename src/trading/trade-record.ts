@@ -25,6 +25,8 @@ export interface TradeAnalysis extends ExecutionQualityResult {
   session?: string;
   trendRegime?: MarketTrendRegime;
   volatilityRegime?: MarketVolatilityRegime;
+  entryTrendRegime?: MarketTrendRegime;
+  entryVolatilityRegime?: MarketVolatilityRegime;
   commission: number;
   swap: number;
   trueNetPnl: number;
@@ -50,6 +52,8 @@ export function analyzeTradeRecord(trade: TradeRecord): TradeAnalysis {
     session: trade.session,
     trendRegime: trade.trendRegime,
     volatilityRegime: trade.volatilityRegime,
+    entryTrendRegime: trade.entryTrendRegime,
+    entryVolatilityRegime: trade.entryVolatilityRegime,
     commission,
     swap,
     trueNetPnl: quality.netPnlAfterExecutionCosts - commission - swap,
