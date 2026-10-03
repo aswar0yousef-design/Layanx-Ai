@@ -137,6 +137,8 @@ export class LayanXCore{
 
   setLiveScreenObserver(observer:LiveScreenObserver){this.liveScreen=observer;}
   liveScreenStatus(){return {running:this.liveScreen?.isRunning()??false,frameAvailable:Boolean(this.liveScreen?.latest()),frame:this.liveScreen?.latest()};}
+  startLiveScreen(){if(!this.liveScreen)throw new Error("Live screen observer is not configured.");this.liveScreen.start();}
+  stopLiveScreen(){this.liveScreen?.stop();}
 
   constructor(idempotency?:IdempotencyService,persistence?:RuntimePersistence,storage?:import("../storage/runtime-storage.js").RuntimeStorage){
     this.idempotency=idempotency??new IdempotencyStore();
