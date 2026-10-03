@@ -8,3 +8,7 @@ const result=backtest(strategy,candles,100000,0.005);
 if(result.strategyId!==strategy.id)throw new Error("Strategy id missing.");
 if(!Number.isFinite(result.maxDrawdownPct)||!Number.isFinite(result.endingEquity))throw new Error("Backtest metrics are invalid.");
 console.log(JSON.stringify({ok:true,trades:result.trades.length,returnPct:result.returnPct,maxDrawdownPct:result.maxDrawdownPct}));
+
+const scalp=new (await import("../src/trading/strategy.js")).ScalpingSweepStrategy();
+const scalpSignal=scalp.evaluate({candles,index:50});
+if(!scalpSignal||scalpSignal.side!=="long")throw new Error("Scalp long signal was not generated.");
