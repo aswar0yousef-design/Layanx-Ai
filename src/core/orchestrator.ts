@@ -554,8 +554,8 @@ export class LayanXCore{
       steps++;
       latest=result.ok?result.data:result.error;
       if(!result.ok){
-        if(result.error==="Explicit approval is required for this risk level."||result.error==="Approval missing, revoked, or expired."||result.error==="Approval scope mismatch.")
-          return{missionId,completed:false,status:"awaiting_approval",paused:true,steps,nextToolIndex:actualIndex,results};
+        if(result.approvalId||result.error==="Approval missing, revoked, or expired."||result.error==="Approval scope mismatch.")
+          return{missionId,completed:false,status:"awaiting_approval",paused:true,steps,nextToolIndex:actualIndex,approvalId:result.approvalId,results};
         const repair=this.aiPlanner.nextTool({
           goal:current.goal,result:{failure:result.error,latest},tools:this.toolCatalog.list(this.agents.get(agentId),current.requiredPermission),
           requiredPermission:current.requiredPermission,routing,completedTools:results.map(item=>(item as {tool?:string}).tool??""),
