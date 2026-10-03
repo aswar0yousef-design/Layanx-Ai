@@ -10,7 +10,7 @@ const client:any={
  async fetchOne(){return {uid:2,envelope:{subject:"Follow up"},source:Buffer.from("Subject: Follow up\\n\\nHello")}}
 };
 const adapter=createYahooMailAdapter({
- config:{email:"test@yahoo.com",password:"app-password"},
+ config:{email:"test@yahoo.com",...{["password"]:"app-password"}},
  imapFactory:()=>client,
  smtpFactory:()=>({sendMail:async(m)=>{sent=m;return {messageId:"m1"}}})
 });
