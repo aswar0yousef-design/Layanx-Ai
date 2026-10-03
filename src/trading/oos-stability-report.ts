@@ -4,7 +4,7 @@ import { analyzeOosStability, type OutOfSampleStability } from "./oos-stability.
 export interface OosStabilityWithContext {
   stability: OutOfSampleStability;
   windows: MultiWindowWalkForwardResult["windows"];
-  aggregateTest: MultiWindowWalkForwardResult["aggregateTest"];
+  pooledTest: MultiWindowWalkForwardResult["pooledTest"];
 }
 
 export function buildOosStabilityReport(
@@ -13,6 +13,6 @@ export function buildOosStabilityReport(
   return {
     stability: analyzeOosStability(result),
     windows: result.windows,
-    aggregateTest: result.aggregateTest,
+    pooledTest: result.pooledTest,
   };
 }
