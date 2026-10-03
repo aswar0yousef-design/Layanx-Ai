@@ -572,16 +572,14 @@ export class LayanXCore{
         this.missions.save(current);
         plan=current.tools[current.tools.length-1]!;
       }
-      if(plan&&/^desktop\.(mouse|keyboard)/.test(plan.tool)&&this.liveScreen){
-        if(!this.liveScreen.isRunning())this.liveScreen.start();
-        const frame=this.liveScreen.latest();
-        if(frame)visualContext={mimeType:frame.mimeType,base64:frame.base64};
-      }
+      if(plan&&/^desktop\.(mouse|keyboard)/.test(plan.tool)&&this.liveScreen&&!this.liveScreen.isRunning())
+        this.liveScreen.start();
       if(plan&&/^desktop\.(mouse|keyboard)/.test(plan.tool)&&!visualContext){
         const screenshot={tool:"desktop.screenshot",action:"desktop screenshot",permission:"L2_ANALYZE" as const,reason:"Observe the current desktop before choosing a coordinate or keyboard action."};
         const missionTools=current.tools??[];
-        const insertAt=index>=0?index:missionTools.length;
-        missionTools.splice(insertAt,0,screenshot);
+        const replaceAt=index>=0?index:missionTools.length;
+        if(replaceAt>=missionTools.length)missionTools.push(screenshot);
+        else missionTools[replaceAt]=screenshot;
         current.tools=missionTools;
         this.missions.save(current);
         plan=screenshot;
