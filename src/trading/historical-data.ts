@@ -36,7 +36,7 @@ function normalizeCandle(row: Record<string, unknown>): MarketCandle {
   const askOpen = askOpenValue === undefined ? undefined : finiteNumber(askOpenValue, "askOpen");
   const bidHigh = row.bidHigh === undefined && row.bid_high === undefined ? undefined : finiteNumber(row.bidHigh ?? row.bid_high, "bidHigh");
   const bidLow = row.bidLow === undefined && row.bid_low === undefined ? undefined : finiteNumber(row.bidLow ?? row.bid_low, "bidLow");
-  const askHigh = row.askHigh === undefined && row.ask_high === undefined ? undefined : finiteNumber(row.askHigh ?? row.ask_low, "askHigh");
+  const askHigh = row.askHigh === undefined && row.ask_high === undefined ? undefined : finiteNumber(row.askHigh ?? row.ask_high, "askHigh");
   const askLow = row.askLow === undefined && row.ask_low === undefined ? undefined : finiteNumber(row.askLow ?? row.ask_low, "askLow");
   if ((bid !== undefined && bid <= 0) || (ask !== undefined && ask <= 0) || (bidOpen !== undefined && bidOpen <= 0) || (askOpen !== undefined && askOpen <= 0)) {
     throw new Error(`Bid and ask must be positive at ${timestamp}`);
