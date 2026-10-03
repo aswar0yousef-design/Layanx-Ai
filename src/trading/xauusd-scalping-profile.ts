@@ -31,6 +31,24 @@ export const XAUUSD_SCALPING_PROFILE: XauUsdScalpingProfile = {
  * Risk, stop distance, spread, and slippage remain explicit inputs and are
  * intentionally not hard-coded as broker or profitability assumptions.
  */
+export function assertBacktestConfigMatchesData(
+  symbol: string,
+  timeframe: string,
+  config: PaperTradingConfig,
+): void {
+  if (symbol !== config.symbol) {
+    throw new Error(`Backtest data symbol ${symbol} does not match config symbol ${config.symbol}.`);
+  }
+  if (timeframe !== config.timeframe) {
+    throw new Error(`Backtest data timeframe ${timeframe} does not match config timeframe ${config.timeframe}.`);
+  }
+  if (symbol === XAUUSD_SCALPING_PROFILE.symbol && timeframe === XAUUSD_SCALPING_PROFILE.timeframe) {
+    if (config.intrabarResolution !== XAUUSD_SCALPING_PROFILE.intrabarResolution) {
+      throw new Error("XAUUSD M1 backtest must use the shared XAUUSD intrabar resolution.");
+    }
+  }
+}
+
 export function createXauUsdPaperConfig(
   input: Omit<PaperTradingConfig, "symbol" | "timeframe" | "intrabarResolution">,
 ): PaperTradingConfig {
