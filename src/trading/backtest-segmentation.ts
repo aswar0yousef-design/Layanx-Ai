@@ -21,7 +21,7 @@ export function segmentBacktestAnalyses(
     const key =
       dimension === "session" ? analysis.session ?? "unknown" :
       dimension === "side" ? analysis.side :
-      dimension === "quality" ? analysis.executionQuality :
+      dimension === "quality" ? analysis.quality :
       dimension === "trendRegime" ? analysis.trendRegime ?? "unknown" :
       dimension === "volatilityRegime" ? analysis.volatilityRegime ?? "unknown" :
       dimension === "entryTrendRegime" ? analysis.entryTrendRegime ?? "unknown" :
