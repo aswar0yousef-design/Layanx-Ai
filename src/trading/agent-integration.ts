@@ -62,4 +62,27 @@ export function registerPaperTradingAgentTool(
  * Deliberately empty: no live-broker, Binance, or real-money execution tool is
  * registered by the trading layer. Adding one requires a separate security review.
  */
+export const BINANCE_MARKET_DATA_TOOL = "trading.binance.market-data";
+
+const BINANCE_MARKET_DATA_DEFINITION: ToolDefinition = {
+  name: BINANCE_MARKET_DATA_TOOL,
+  description: "Read Binance Spot market data and exchange symbol rules. No order submission.",
+  permission: "L1_READ",
+  dangerous: false,
+  actions: ["market-data"],
+  tags: ["trading", "binance", "market-data"],
+};
+
+export function registerBinanceMarketDataTool(tools: ToolRegistry, adapters: ToolAdapterRegistry): void {
+  if (tools.list().some(tool => tool.name === BINANCE_MARKET_DATA_TOOL)) return;
+  tools.register(BINANCE_MARKET_DATA_DEFINITION);
+  adapters.register(BINANCE_MARKET_DATA_TOOL, {
+    async execute(request) {
+      const payload = request.payload as { symbol?: unknown };
+      if (typeof payload?.symbol !== "string" || !payload.symbol) throw new Error("Binance market data requires a symbol.");
+      return { submitted: false, marketDataOnly: true, symbol: payload.symbol };
+    },
+  });
+}
+
 export const LIVE_TRADING_TOOLS: readonly string[] = [];
