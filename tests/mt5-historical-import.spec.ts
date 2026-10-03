@@ -19,6 +19,9 @@ const ready = importMt5HistoricalCsv(csv, {
 assert.equal(ready.quality.valid, true);
 assert.equal(ready.quoteCoverage.percentage, 100);
 assert.equal(ready.readyForBacktest, true);
+assert.equal(ready.sessions.totalCandles, 40);
+assert.equal(ready.sessions.unknownCandles, 0);
+assert.ok(ready.diagnostics.spread?.median !== undefined);
 assert.doesNotThrow(() => assertMt5HistoricalReady(ready));
 
 const withoutQuotes = importMt5HistoricalCsv(
