@@ -4,6 +4,13 @@ export interface StrategyCandidate{strategy:TradingStrategy;parameters:Record<st
 export interface WalkForwardWindow{trainStart:number;trainEnd:number;testStart:number;testEnd:number;}
 export interface WalkForwardResult{windows:WalkForwardWindow[];results:BacktestResult[];combinedReturnPct:number;combinedMaxDrawdownPct:number;}
 export interface MonteCarloResult{runs:number;meanReturnPct:number;p05ReturnPct:number;medianReturnPct:number;p95ReturnPct:number;worstDrawdownPct:number;bestDrawdownPct:number;}
+export interface TradeAnalysis{trades:number;wins:number;losses:number;pnl:number;winRate:number;averagePnl:number;averageBarsHeld:number;maxConsecutiveLosses:number;grossProfit:number;grossLoss:number;profitFactor:number;}
+export function analyzeTrades(trades:BacktestResult["trades"]):TradeAnalysis{
+ let losses=0,maxConsecutiveLosses=0;const wins=trades.filter(t=>t.pnl>0),losing=trades.filter(t=>t.pnl<0);
+ for(const trade of trades){if(trade.pnl<0){losses++;maxConsecutiveLosses=Math.max(maxConsecutiveLosses,losses);}else if(trade.pnl>0)losses=0;}
+ const pnl=trades.reduce((s,t)=>s+t.pnl,0),grossProfit=wins.reduce((s,t)=>s+t.pnl,0),grossLoss=Math.abs(losing.reduce((s,t)=>s+t.pnl,0));
+ return{trades:trades.length,wins:wins.length,losses:losing.length,pnl,winRate:trades.length?wins.length/trades.length:0,averagePnl:trades.length?pnl/trades.length:0,averageBarsHeld:trades.length?trades.reduce((s,t)=>s+t.barsHeld,0)/trades.length:0,maxConsecutiveLosses,grossProfit,grossLoss,profitFactor:grossLoss?grossProfit/grossLoss:grossProfit>0?Infinity:0};
+}
 
 export function optimizeStrategy(candles:Candle[],factory:(parameters:Record<string,number>)=>TradingStrategy,grid:Record<string,number[]>,startingEquity=100000,riskFraction=0.002,costs:BacktestCosts={}):StrategyCandidate[]{
  const keys=Object.keys(grid);const combinations:Record<string,number>[]=[];
