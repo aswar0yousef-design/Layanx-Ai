@@ -112,9 +112,22 @@ export function registerBinanceLiveOrderTool(tools: ToolRegistry, adapters: Tool
       if (typeof payload.quantity !== "number" || !Number.isFinite(payload.quantity) || payload.quantity <= 0) throw new Error("Order quantity must be positive.");
       if (payload.type === "LIMIT" && (typeof payload.price !== "number" || !Number.isFinite(payload.price) || payload.price <= 0)) throw new Error("Limit price must be positive.");
       const credentials = await getBinanceCredentials();\n      const client = new BinanceSpotClient({\n        apiKey: credentials.apiKey,\n        apiSecret: credentials.apiSecret,\n        baseUrl: process.env.BINANCE_BASE_URL ?? "https://api.binance.com",\n        allowTrading: true,\n        liveTradingEnabled: true,\n      });
-      const ticker = await client.getTicker(payload.symbol);
+      const [ticker, rules] = await Promise.all([
+        client.getTicker(payload.symbol),
+        client.getSymbolRules(payload.symbol),
+      ]);
+      if (rules.status !== "TRADING") throw new Error(`Binance symbol is not trading: ${payload.symbol} (${rules.status}).`);
+      if (rules.minQty !== undefined && payload.quantity < rules.minQty) throw new Error("Order quantity is below Binance minimum quantity.");
+      if (rules.maxQty !== undefined && payload.quantity > rules.maxQty) throw new Error("Order quantity exceeds Binance maximum quantity.");
+      if (rules.stepSize !== undefined && rules.stepSize > 0) {
+        const steps = payload.quantity / rules.stepSize;
+        if (Math.abs(steps - Math.round(steps)) > 1e-9) throw new Error("Order quantity does not match Binance quantity step size.");
+      }
       const referencePrice = payload.price ?? (payload.side === "BUY" ? ticker.askPrice : ticker.bidPrice);
       const notional = payload.quantity * referencePrice;
+      if (rules.minNotional !== undefined && Number.isFinite(rules.minNotional) && notional < rules.minNotional) {
+        throw new Error("Order notional is below Binance minimum notional.");
+      }
       const configuredMax = Number(process.env.BINANCE_MAX_ORDER_NOTIONAL ?? payload.maxNotional ?? 0);
       if (!Number.isFinite(configuredMax) || configuredMax <= 0) throw new Error("BINANCE_MAX_ORDER_NOTIONAL must be a positive limit for live execution.");
       if (notional > configuredMax) throw new Error("Order exceeds configured Binance maximum notional.");
