@@ -7,6 +7,7 @@ import {McpGateway} from "./mcp-gateway.js";
 import {ControlCenter} from "./control-center.js";
 import {createHash} from "node:crypto";
 import {VoiceService} from "./voice/service.js";
+import {BusinessManager} from "./business/manager.js";
 import {voiceUiHtml} from "./voice/ui.js";
 export interface RuntimeApiOptions{core:LayanXCore;persistence?:RuntimePersistence;host?:string;port?:number;maxBodyBytes?:number;token?:string;requireToken?:boolean;}
 function json(response:ServerResponse,status:number,body:unknown){response.statusCode=status;response.setHeader("content-type","application/json; charset=utf-8");response.end(JSON.stringify(body));}
@@ -19,7 +20,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
  const mcp=new McpGateway(options.core);
  const control=new ControlCenter(options.core);
  const voice=new VoiceService();
- const business=business??new BusinessManager();
+ const business=options.business??new BusinessManager();
  const server=createServer(async(request,response)=>{
   response.setHeader("cache-control","no-store");
   if(requireToken&&!authorized(request,options.token)&&request.url!=="/v1/health"&&request.url!=="/voice"){json(response,401,{ok:false,error:"unauthorized"});return;}
