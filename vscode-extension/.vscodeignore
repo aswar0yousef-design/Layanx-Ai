@@ -1,0 +1,4 @@
+**/*.map
+.git/**
+node_modules/**
+tests/**
