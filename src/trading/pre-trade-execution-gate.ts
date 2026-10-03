@@ -20,7 +20,7 @@ export interface PreTradeExecutionPolicy {
 }
 
 export interface PreTradeCheck {
-  name: "spread-atr" | "expected-slippage-atr" | "minimum-atr" | "session";
+  name: "atr-present" | "spread-present" | "spread-atr" | "expected-slippage-atr" | "minimum-atr" | "session";
   passed: boolean;
   observed?: number;
   limit?: number;
@@ -54,7 +54,7 @@ export function evaluatePreTradeExecutionGate(
   if (rules.requireAtr) {
     const valid = finitePositive(snapshot.atr);
     if (!valid) {
-      checks.push({ name: "spread-atr", passed: false, message: "ATR is missing or non-positive." });
+      checks.push({ name: "atr-present", passed: false, message: "ATR is missing or non-positive." });
       reasons.push("ATR is required before execution.");
     }
   }
@@ -62,7 +62,7 @@ export function evaluatePreTradeExecutionGate(
   if (rules.requireSpread) {
     const valid = finiteNonNegative(snapshot.spread);
     if (!valid) {
-      checks.push({ name: "spread-atr", passed: false, message: "Spread is missing or negative." });
+      checks.push({ name: "spread-present", passed: false, message: "Spread is missing or negative." });
       reasons.push("Spread is required before execution.");
     }
   }
