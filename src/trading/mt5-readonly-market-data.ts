@@ -13,6 +13,7 @@ export interface Mt5ReadOnlyMarketData {
   snapshot: Mt5SymbolSnapshot;
   candles: MarketCandle[];
   specification: BrokerSymbolSpecification;
+  excludedFormingCandle: boolean;
 }
 
 export async function readMt5MarketData(
@@ -42,7 +43,18 @@ export async function readMt5MarketData(
   const specErrors = validateBrokerSymbolSpecification(specification);
   if (specErrors.length) throw new Error(`Invalid MT5 symbol specification: ${specErrors.join(" ")}`);
   if (!Array.isArray(candles) || candles.length === 0) throw new Error("MT5 returned no candles.");
-  for (let index = 0; index < candles.length; index += 1) {
+  const snapshotTime = Date.parse(snapshot.timestamp);
+  const intervalMs = mt5TimeframeIntervalMs(normalizedTimeframe);
+  let historicalCandles = candles;
+  let excludedFormingCandle = false;
+  const lastCandle = candles[candles.length - 1];
+  if (lastCandle && Date.parse(lastCandle.timestamp) + intervalMs > snapshotTime) {
+    historicalCandles = candles.slice(0, -1);
+    excludedFormingCandle = true;
+  }
+  if (historicalCandles.length === 0) throw new Error("MT5 returned no completed candles.");
+  for (let index = 0; index < historicalCandles.length; index += 1) {
+    const candle = historicalCandles[index];
     const candle = candles[index];
     if (Number.isNaN(Date.parse(candle.timestamp))) throw new Error("MT5 returned a candle with an invalid timestamp.");
     if (![candle.open, candle.high, candle.low, candle.close].every(Number.isFinite)) {
@@ -51,10 +63,19 @@ export async function readMt5MarketData(
     if (candle.high < Math.max(candle.open, candle.close) || candle.low > Math.min(candle.open, candle.close) || candle.high < candle.low) {
       throw new Error(`MT5 returned an invalid OHLC range at ${candle.timestamp}.`);
     }
-    if (index > 0 && Date.parse(candles[index - 1].timestamp) >= Date.parse(candle.timestamp)) {
+    if (index > 0 && Date.parse(historicalCandles[index - 1].timestamp) >= Date.parse(candle.timestamp)) {
       throw new Error("MT5 candles must be strictly chronological with no duplicate timestamps.");
     }
   }
 
-  return { snapshot, candles, specification };
+  return { snapshot, candles: historicalCandles, specification, excludedFormingCandle };
+}
+
+
+function mt5TimeframeIntervalMs(timeframe: string): number {
+  const match = /^(M|H|D|W)(\\d+)$/.exec(timeframe);
+  if (!match) throw new Error(`Unsupported MT5 timeframe for completed-candle filtering: ${timeframe}`);
+  const value = Number(match[2]);
+  const unitMs = match[1] === "M" ? 60_000 : match[1] === "H" ? 3_600_000 : match[1] === "D" ? 86_400_000 : 604_800_000;
+  return value * unitMs;
 }
