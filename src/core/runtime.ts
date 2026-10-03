@@ -8,7 +8,7 @@ import type {RuntimePersistence} from "./runtime-persistence.js";
 
 export interface RuntimeSecurityContext{projectId:string;capabilityId:string;}
 
-export interface RuntimeResult{ok:boolean;missionId:string;verified:boolean;error?:string;data?:unknown;recoverable?:boolean;}
+export interface RuntimeResult{ok:boolean;missionId:string;verified:boolean;error?:string;data?:unknown;recoverable?:boolean;approvalId?:string;}
 
 export class ExecutionRuntime{
  private readonly persistence:RuntimePersistence|undefined;
