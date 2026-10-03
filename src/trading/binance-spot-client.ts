@@ -26,6 +26,7 @@ export interface BinanceSymbolRules {
   minQty?: number;
   maxQty?: number;
   stepSize?: number;
+  tickSize?: number;
   minNotional?: number;
 }
 
@@ -91,7 +92,11 @@ export class BinanceSpotClient {
 
   async getTicker(symbol: string): Promise<BinanceMarketTicker> {
     const raw=await this.request<{symbol:string;bidPrice:string;askPrice:string;lastPrice:string;closeTime:number}>("/api/v3/ticker/24hr",{symbol});
-    return {symbol:raw.symbol,bidPrice:Number(raw.bidPrice),askPrice:Number(raw.askPrice),lastPrice:Number(raw.lastPrice),timestamp:raw.closeTime};
+    const bidPrice=Number(raw.bidPrice);
+    const askPrice=Number(raw.askPrice);
+    const lastPrice=Number(raw.lastPrice);
+    if(!raw.symbol||!Number.isFinite(bidPrice)||!Number.isFinite(askPrice)||!Number.isFinite(lastPrice)||bidPrice<=0||askPrice<=0||lastPrice<=0||bidPrice>askPrice) throw new Error("Binance ticker returned invalid prices.");
+    return {symbol:raw.symbol,bidPrice,askPrice,lastPrice,timestamp:raw.closeTime};
   }
 
   async getSymbolRules(symbol: string): Promise<BinanceSymbolRules> {
@@ -100,7 +105,9 @@ export class BinanceSpotClient {
     if(!item) throw new Error(`Binance symbol not found: ${symbol}`);
     const lot=item.filters.find(x=>x.filterType==="LOT_SIZE");
     const notional=item.filters.find(x=>x.filterType==="MIN_NOTIONAL"||x.filterType==="NOTIONAL");
-    return {symbol:item.symbol,status:item.status,baseAsset:item.baseAsset,quoteAsset:item.quoteAsset,minQty:lot?.minQty?Number(lot.minQty):undefined,maxQty:lot?.maxQty?Number(lot.maxQty):undefined,stepSize:lot?.stepSize?Number(lot.stepSize):undefined,minNotional:Number(notional?.minNotional??notional?.notional??NaN)};
+    const priceFilter=item.filters.find(x=>x.filterType==="PRICE_FILTER");
+    const parsedMinNotional=Number(notional?.minNotional??notional?.notional);
+    return {symbol:item.symbol,status:item.status,baseAsset:item.baseAsset,quoteAsset:item.quoteAsset,minQty:lot?.minQty?Number(lot.minQty):undefined,maxQty:lot?.maxQty?Number(lot.maxQty):undefined,stepSize:lot?.stepSize?Number(lot.stepSize):undefined,tickSize:priceFilter?.stepSize?Number(priceFilter.stepSize):undefined,minNotional:Number.isFinite(parsedMinNotional)?parsedMinNotional:undefined};
   }
 
   async accountInfo(): Promise<unknown> {
