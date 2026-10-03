@@ -12,6 +12,8 @@ assert.equal(pending.findings.safe,true);
 assert.equal(engine.list().length,1);
 const approved=engine.approve(pending.id);
 assert.equal(approved.manifest.status,"approved");
+const enabled=engine.enable(pending.id);
+assert.equal(enabled.manifest.status,"enabled");
 assert.match(readFileSync(join(dir,pending.id+".json"),"utf8"),/Verify the sheet write/);
 assert.equal(readdirSync(dir).length,1);
 assert.throws(()=>engine.propose({missionId:"m2",projectId:"p1",goal:"bad",steps:[],outcome:"failure"}),/successful/);
