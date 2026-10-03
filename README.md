@@ -265,5 +265,9 @@ Creating drafts is a modification action; launching or pausing a paid campaign i
 - `POST /v1/ads/insights/sync`
 
 
+### Connection and advertising discovery
+
+OAuth connections can discover native publishing accounts and advertising accounts through the authenticated platform APIs. Advertising discovery is exposed at `GET /v1/oauth/:id/discover-ads`; account binding remains explicit so discovery never silently creates a spending account.
+
 ### Production hardening
 Business state hydrates from PostgreSQL when configured, scheduler definitions persist across restart, scheduler/event management endpoints require API authentication, social publishing uses platform-specific configured connectors, and content generation can route through the existing model router with local preference.
