@@ -9,6 +9,7 @@ import {BusinessManager} from "./business/manager.js";
 import {registerBusinessTools} from "./business/tools.js";
 import {AdsManager} from "./business/ads.js";
 import {MediaManager} from "./business/media.js";
+import {LiveScreenObserver} from "./desktop/live-screen.js";
 
 export interface RuntimeOptions{storagePath?:string;}
 
@@ -26,6 +27,8 @@ export function createRuntime(options:RuntimeOptions={}){
  registerGitHubReadTools(core,{token:process.env.GITHUB_TOKEN});
  registerToolFabric(core);
  registerDesktopControlTools(core);
+ const liveScreen=new LiveScreenObserver({adapter:core.toolAdapters.get("desktop.screenshot"),intervalMs:Number(process.env.LAYANX_LIVE_SCREEN_INTERVAL_MS??500)});
+ core.setLiveScreenObserver(liveScreen);
  registerBusinessTools(core,business,ads,media);
  const agent:AgentContract={
   agentId:"core",
@@ -46,7 +49,7 @@ export function createRuntime(options:RuntimeOptions={}){
  };
  core.registerAgent(agent);
  const configured=configureProviders(undefined,core.models,core.providers);
- return{core,business,ads,media,...configured,providerSummary:providerSummary(),persistence};
+ return{core,business,ads,media,liveScreen,...configured,providerSummary:providerSummary(),persistence};
 }
 
 export async function restoreRuntime(runtime:ReturnType<typeof createRuntime>):Promise<{restored:number}>{
