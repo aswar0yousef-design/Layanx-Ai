@@ -28,3 +28,8 @@ Risk percentage, stop distance, spread, and slippage remain explicit inputs. The
 Use createXauUsdPaperConfig(...) to create a paper-trading configuration while keeping the symbol, timeframe, and intrabar policy consistent.
 
 Before a historical backtest, pass data through the guarded MT5 historical import and verify its quality, quote coverage, and session distribution.
+
+
+### Stop-distance sanity gate
+
+The execution gate supports an optional `minStopDistanceAtrRatio`. It is intentionally not enabled by the base XAUUSD profile until a broker-specific historical study establishes an appropriate floor. When enabled, it blocks stops that are unusually small relative to the current ATR and therefore prevents accidental oversizing without silently changing the strategy's stop model.
