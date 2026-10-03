@@ -26,7 +26,7 @@ import { ToolAdapterRegistry } from "../src/tools/adapters.js";
   registerPaperTradingAgentTool(tools, adapters);
   registerPaperTradingAgentTool(tools, adapters);
   assert.equal(tools.list().filter(tool => tool.name === PAPER_TRADING_TOOL).length, 1);
-  assert.deepEqual(LIVE_TRADING_TOOLS, []);
+  assert.deepEqual(LIVE_TRADING_TOOLS, [BINANCE_LIVE_ORDER_TOOL]);
   assert.equal(
     tools.list().some(tool => /binance|live|broker|real.?money/i.test(tool.name)),
     false,
