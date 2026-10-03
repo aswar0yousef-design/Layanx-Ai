@@ -52,9 +52,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   if(request.method==="POST"&&request.url==="/v1/computer/live/start"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{
-    const observer=(options.core as LayanXCore & {liveScreen?:{start:()=>void}}).liveScreen;
-    if(!observer)throw new Error("Live screen observer is not configured.");
-    observer.start();
+    options.core.startLiveScreen();
     json(response,200,{ok:true,...options.core.liveScreenStatus()});
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"live screen start failed"});}
    return;
@@ -62,9 +60,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   if(request.method==="POST"&&request.url==="/v1/computer/live/stop"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{
-    const observer=(options.core as LayanXCore & {liveScreen?:{stop:()=>void}}).liveScreen;
-    if(!observer)throw new Error("Live screen observer is not configured.");
-    observer.stop();
+    options.core.stopLiveScreen();
     json(response,200,{ok:true,...options.core.liveScreenStatus()});
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"live screen stop failed"});}
    return;
