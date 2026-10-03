@@ -4,6 +4,7 @@ import { runPaperScalping } from "./paper-scalping.js";
 import { buildBacktestReport, type BacktestReport } from "./backtest-report.js";
 import { buildBacktestSegmentReport, type BacktestSegmentReport } from "./backtest-segmentation.js";
 import { splitChronologically, type BacktestSplit } from "./walk-forward.js";
+import { assertBacktestConfigMatchesData } from "./xauusd-scalping-profile.js";
 
 export interface OutOfSampleBacktestResult {
   split: BacktestSplit;
@@ -22,6 +23,7 @@ export function runOutOfSampleBacktest(
   config: PaperTradingConfig,
   trainRatio = 0.7,
 ): OutOfSampleBacktestResult {
+  assertBacktestConfigMatchesData(config.symbol, config.timeframe, config);
   const split = splitChronologically(candles, trainRatio);
   if (split.train.length < 31 || split.test.length < 31) {
     throw new Error("Both train and test sets need at least 31 candles for the current paper engine.");
