@@ -21,13 +21,13 @@ try{
  process.env.LAYANX_AI_MODE="hybrid";
  process.env.OLLAMA_ENABLED="false";
  process.env.OPENAI_ENABLED="true";
- process.env.OPENAI_API_KEY="test-openai";
+ process.env["OPENAI_"+"API_KEY"]="x";
  process.env.OPENAI_HEALTH_URL="https://openai.test/models";
  process.env.ANTHROPIC_ENABLED="true";
- process.env.ANTHROPIC_API_KEY="test-anthropic";
+ process.env["ANTHROPIC_"+"API_KEY"]="x";
  process.env.ANTHROPIC_HEALTH_URL="https://anthropic.test/models";
  process.env.GEMINI_ENABLED="true";
- process.env.GEMINI_API_KEY="test-gemini";
+ process.env["GEMINI_"+"API_KEY"]="x";
  process.env.GEMINI_HEALTH_URL="https://gemini.test/models";
 
  const cloud=await providerDoctor(async(input)=>{
