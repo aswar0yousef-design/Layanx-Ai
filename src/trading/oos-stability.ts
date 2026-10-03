@@ -1,5 +1,6 @@
 import type { BacktestReport } from "./backtest-report.js";
 import type { MultiWindowWalkForwardResult } from "./multi-window-walk-forward.js";
+import { summarizeWalkForwardWindows } from "./walk-forward-windows.js";
 
 export interface OutOfSampleStability {
   windows: number;
@@ -24,6 +25,9 @@ export interface OutOfSampleStability {
   pooledTestExpectancyPerTrade: number;
   pooledTestReturnOnStartingBalancesPct: number;
   warnings: string[];
+  testOverlap: boolean;
+  overlappingTestCandles: number;
+  uniqueTestCandles: number;
 }
 
 function median(values: number[]): number {
@@ -55,8 +59,10 @@ export function analyzeOosStability(
   const pooledTestNetPnl = reports.reduce((sum, report) => sum + report.netPnl, 0);
   const pooledStartingBalance = reports.reduce((sum, report) => sum + report.initialBalance, 0);
   const warnings: string[] = [];
+  const windowSummary = summarizeWalkForwardWindows(result.windows.map(item => item.window));
 
   if (reports.length === 0) warnings.push("No out-of-sample windows were produced.");
+  if (windowSummary.testOverlap) warnings.push("OOS test windows overlap; pooled trade counts can include the same historical candle more than once.");
   if (active.length < reports.length) warnings.push("One or more OOS windows contained no trades.");
   if (active.length > 0 && profitableWindows < active.length / 2) {
     warnings.push("Fewer than half of active OOS windows were profitable; inspect window-level results.");
@@ -94,5 +100,8 @@ export function analyzeOosStability(
       ? 0
       : (pooledTestNetPnl / pooledStartingBalance) * 100,
     warnings,
+    testOverlap: windowSummary.testOverlap,
+    overlappingTestCandles: windowSummary.testOverlapCandles,
+    uniqueTestCandles: windowSummary.testCoveredCandles,
   };
 }
