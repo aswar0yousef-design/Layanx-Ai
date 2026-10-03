@@ -129,6 +129,10 @@ export class BinanceSpotClient {
       return {submitted:false,testnet:true,clientOrderId:request.clientOrderId,raw};
     }
     if (!this.config.liveTradingEnabled) throw new Error("Production Binance trading requires BINANCE_LIVE_TRADING_ENABLED=true.");
+    const baseUrl=new URL(this.config.baseUrl);
+    if (baseUrl.protocol !== "https:" || baseUrl.hostname !== "api.binance.com") {
+      throw new Error("Production Binance trading requires HTTPS api.binance.com as the trading endpoint.");
+    }
     const raw=await this.request<Record<string,unknown>>("/api/v3/order",{symbol:request.symbol,side:request.side,type:request.type,quantity:request.quantity,price:request.price,timeInForce:request.type==="LIMIT"?"GTC":undefined,newClientOrderId:request.clientOrderId},true,"POST");
     return {submitted:true,testnet:false,orderId:typeof raw.orderId==="number"?raw.orderId:undefined,clientOrderId:typeof raw.clientOrderId==="string"?raw.clientOrderId:request.clientOrderId,status:typeof raw.status==="string"?raw.status:undefined,raw};
   }
