@@ -16,7 +16,7 @@ The command prompts for the API key and secret without displaying their values. 
 ~/.layanx/secrets/binance.json
 ```
 
-The directory is created with owner-only permissions (0700) and the file with owner-only permissions (0600). The file is outside the repository, so it is not committed to GitHub.
+On POSIX systems the directory is created with owner-only permissions (0700) and the file with owner-only permissions (0600). On Windows, the file lives under the current user's home profile and relies on the operating system's normal user-profile ACLs. The file is outside the repository, so it is not committed to GitHub.
 
 Check only the configured location:
 
