@@ -12,4 +12,7 @@ export class LayanXApi{
   analytics(){return this.request<any>("/v1/business/analytics")}
   ads(){return this.request<any>("/v1/ads")}
   oauthConnections(){return this.request<any>("/v1/oauth/connections")}
+  oauthConnect(provider:string,accountId="default"){return this.request<any>("/v1/oauth/connect",{method:"POST",body:JSON.stringify({provider,accountId})})}
+  oauthDiscover(id:string){return this.request<any>(`/v1/oauth/${encodeURIComponent(id)}/discover`)}
+  oauthBind(id:string,input:{platform:string;externalId:string;name:string}){return this.request<any>(`/v1/oauth/${encodeURIComponent(id)}/bind`,{method:"POST",body:JSON.stringify(input)})}
 }
