@@ -20,8 +20,9 @@ Set:
 - `LAYANX_WHATSAPP_VERIFY_TOKEN`
 - `LAYANX_WHATSAPP_APP_SECRET`
 - `LAYANX_WHATSAPP_GRAPH_VERSION` (pin the Graph API version used by your Meta app)
-- `LAYANX_CHANNEL_OWNER_IDS` as a comma-separated list of WhatsApp sender IDs allowed to operate LayanX
-- optional `LAYANX_CHANNEL_STAFF_IDS`
+- `LAYANX_WHATSAPP_OWNER_IDS` as a comma-separated list of WhatsApp sender IDs allowed to operate LayanX
+- optional `LAYANX_WHATSAPP_STAFF_IDS`
+- `LAYANX_CHANNEL_OWNER_IDS` / `LAYANX_CHANNEL_STAFF_IDS` remain supported as shared fallback lists
 
 Configure the Meta webhook callback to:
 
@@ -35,8 +36,9 @@ Create a bot with @BotFather and set:
 
 - `LAYANX_TELEGRAM_ENABLED=true`
 - `LAYANX_TELEGRAM_BOT_TOKEN`
-- `LAYANX_CHANNEL_OWNER_IDS` using the Telegram numeric user ID
-- optional `LAYANX_CHANNEL_STAFF_IDS`
+- `LAYANX_TELEGRAM_OWNER_IDS` using the Telegram numeric user ID
+- optional `LAYANX_TELEGRAM_STAFF_IDS`
+- `LAYANX_CHANNEL_OWNER_IDS` / `LAYANX_CHANNEL_STAFF_IDS` remain supported as shared fallback lists
 
 LayanX uses Telegram long polling by default, so a public webhook is not required. A webhook can be added later if a public deployment needs push delivery.
 
@@ -55,3 +57,7 @@ The messaging connector does not bypass Meta or Telegram authentication. WhatsAp
 - `POST /v1/channels/whatsapp/webhook`
 
 The same router is used for both channels, so adding another messaging provider does not require changing the LayanX agent itself.
+
+## Delivery hardening
+
+Inbound messages are deduplicated by channel and provider message ID for a bounded five-minute window. This protects owner commands from duplicate WhatsApp webhook deliveries. Telegram offsets prevent replay during normal polling.
