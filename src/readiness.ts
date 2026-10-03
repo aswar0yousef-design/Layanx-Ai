@@ -16,7 +16,7 @@ export interface ReadinessGateResult{
   timestamp:string;
 }
 
-const requiredTools=["runtime.status","mission.inspect","memory.recall","project.inspect","project.verify","terminal.exec","files.read","files.list","browser.read","desktop.status","desktop.screenshot"];
+const requiredTools=["runtime.status","mission.inspect","memory.recall","project.inspect","terminal.exec","files.read","files.list","browser.read","desktop.status","desktop.screenshot"];
 
 function structuralPass(runtime:Runtime):ReadinessCheck[]{
   const status=runtimeStatus(runtime);
