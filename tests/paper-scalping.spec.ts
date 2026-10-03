@@ -20,7 +20,7 @@ const result = runPaperScalping(candles, {
   riskPercent: 1,
   stopLossDistance: 1,
   spread: 0.05,
-  expectedSlippage: 0.02,
+  slippage: 0.02,
 });
 
 assert.equal(result.analyses.length, result.trades.length);
