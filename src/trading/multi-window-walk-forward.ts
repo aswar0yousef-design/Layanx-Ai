@@ -3,6 +3,7 @@ import type { PaperTradingConfig } from "./paper-scalping.js";
 import { runPaperScalping } from "./paper-scalping.js";
 import { buildBacktestReport, type BacktestReport } from "./backtest-report.js";
 import { createWalkForwardWindows, type WalkForwardWindow } from "./walk-forward-windows.js";
+import { assertBacktestConfigMatchesData } from "./xauusd-scalping-profile.js";
 
 export interface WalkForwardResult {
   window: WalkForwardWindow;
@@ -22,6 +23,7 @@ export function runMultiWindowWalkForward(
   testSize: number,
   stepSize = testSize,
 ): MultiWindowWalkForwardResult {
+  assertBacktestConfigMatchesData(config.symbol, config.timeframe, config);
   const windows = createWalkForwardWindows(candles, trainSize, testSize, stepSize);
   const testAnalyses = [];
 
