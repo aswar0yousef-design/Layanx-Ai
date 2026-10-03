@@ -1,5 +1,5 @@
 import type {ModelRegistry} from "../models/registry.js";
-import type {ModelExecutionAttempt,ModelExecutionResult,ModelProviderAdapter,ModelRequest} from "../models/inference.js";
+import type {ModelExecutionAttempt,ModelExecutionResult,ModelProviderAdapter,ModelRequest,ModelRoutingOptions} from "../models/inference.js";
 export class ModelProviderRegistry{
  private readonly providers=new Map<string,ModelProviderAdapter>();
  register(provider:ModelProviderAdapter){if(this.providers.has(provider.name))throw new Error("Provider already registered: "+provider.name);this.providers.set(provider.name,provider);}
@@ -7,9 +7,9 @@ export class ModelProviderRegistry{
  list(){return[...this.providers.values()];}
 }
 export class ModelExecutionRouter{
- constructor(private readonly models:ModelRegistry,private readonly providers:ModelProviderRegistry){}
+ constructor(private readonly models:ModelRegistry,private readonly providers:ModelProviderRegistry,private readonly defaultRouting:ModelRoutingOptions={}){}
  async execute(request:ModelRequest):Promise<ModelExecutionResult>{
-  const candidates=this.models.select({capability:request.capability,...(request.routing??{})});
+  const routing={...this.defaultRouting,...(request.routing??{})};\n  const candidates=this.models.select({capability:request.capability,...routing});
   const attempts:ModelExecutionAttempt[]=[];
   for(const model of candidates){
    let provider:ModelProviderAdapter;
