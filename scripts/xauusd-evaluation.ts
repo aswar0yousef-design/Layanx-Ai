@@ -1,7 +1,7 @@
 import {readFile} from "node:fs/promises";
 import {parseMarketCsv,sortMarketBars,validateMarketData,type MarketBar} from "../src/trading/market-data.js";
 import {ScalpingSweepStrategy} from "../src/trading/strategy.js";
-import {optimizeStrategy,walkForward,monteCarlo,analyzeTrades} from "../src/trading/evaluation.js";
+import {optimizeStrategy,walkForward,monteCarlo,analyzeTrades,analyzeTradesByRegime} from "../src/trading/evaluation.js";
 
 type Session="all"|"asia"|"london"|"new-york";
 const args=process.argv.slice(2);const file=args.find(a=>!a.startsWith("--"));if(!file)throw new Error("Usage: npm run trading:evaluate -- <XAUUSD.csv> [--spread=0.20] [--slippage=0.05] [--commission=0] [--session=all|asia|london|new-york]");
@@ -20,6 +20,6 @@ const grid={lookback:[5,8,10,12,15],displacement:[.5,.6,.7],rewardMultiple:[.6,.
 const optimized=optimizeStrategy(bars,factory,grid,100000,.001,costs);
 const trainBars=Math.min(5000,Math.max(1000,Math.floor(bars.length*.5))),testBars=Math.min(1000,Math.max(250,Math.floor(bars.length*.1)));
 const wf=walkForward(bars,factory,grid,trainBars,testBars,100000,.001,costs);
-const best=optimized[0]?.result??null;const trades=best?.trades??[];const mc=trades.length?monteCarlo(trades,2000):null;const overall=analyzeTrades(trades);
+const best=optimized[0]?.result??null;const trades=best?.trades??[];const mc=trades.length?monteCarlo(trades,2000):null;const overall=analyzeTrades(trades);const regime=analyzeTradesByRegime(trades,bars);
 const side=(name:"long"|"short")=>{const t=trades.filter(x=>x.side===name);const pnl=t.reduce((s,x)=>s+x.pnl,0);return{...analyzeTrades(t),pnl};};
-console.log(JSON.stringify({symbol:"XAUUSD",session,bars:bars.length,rawBars:rawBars.length,from:new Date(bars[0]!.timestamp).toISOString(),to:new Date(bars[bars.length-1]!.timestamp).toISOString(),quality,costs,overall,best:optimized[0]?{parameters:optimized[0].parameters,result:optimized[0].result}:null,long:side("long"),short:side("short"),walkForward:{trainBars,testBars,windows:wf.windows.length,returnPct:wf.combinedReturnPct,maxDrawdownPct:wf.combinedMaxDrawdownPct},monteCarlo:mc},null,2));
+console.log(JSON.stringify({symbol:"XAUUSD",session,bars:bars.length,rawBars:rawBars.length,from:new Date(bars[0]!.timestamp).toISOString(),to:new Date(bars[bars.length-1]!.timestamp).toISOString(),quality,costs,overall,regime,best:optimized[0]?{parameters:optimized[0].parameters,result:optimized[0].result}:null,long:side("long"),short:side("short"),walkForward:{trainBars,testBars,windows:wf.windows.length,returnPct:wf.combinedReturnPct,maxDrawdownPct:wf.combinedMaxDrawdownPct},monteCarlo:mc},null,2));
