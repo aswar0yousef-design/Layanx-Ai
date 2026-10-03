@@ -10,6 +10,7 @@ import {VoiceService} from "./voice/service.js";
 import {BusinessManager} from "./business/manager.js";
 import {voiceUiHtml} from "./voice/ui.js";
 import {AdsManager} from "./business/ads.js";
+import {OAuthConnectionCenter} from "./business/oauth.js";
 export interface RuntimeApiOptions{core:LayanXCore;business:BusinessManager;ads?:AdsManager;persistence?:RuntimePersistence;host?:string;port?:number;maxBodyBytes?:number;token?:string;requireToken?:boolean;}
 function json(response:ServerResponse,status:number,body:unknown){response.statusCode=status;response.setHeader("content-type","application/json; charset=utf-8");response.end(JSON.stringify(body));}
 async function rawBody(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}return Buffer.concat(chunks);}
@@ -21,6 +22,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
  const mcp=new McpGateway(options.core);
  const control=new ControlCenter(options.core);
  const voice=new VoiceService();
+ const oauth=new OAuthConnectionCenter();
  const business=options.business; const ads=options.ads; if(!ads)throw new Error("ads_manager_required");
  const server=createServer(async(request,response)=>{
   response.setHeader("cache-control","no-store");
@@ -131,6 +133,22 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     await options.core.executionRuntime.persist(mission);
     json(response,200,{ok:true,approval:{...approval,approved:options.core.executionRuntime.approvals.isApproved(approvalId)}});return;
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"approval operation failed"});return;}
+  }
+  if(request.method==="GET"&&request.url==="/v1/oauth/connections"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   json(response,200,{ok:true,connections:oauth.list()});return;
+  }
+  if(request.method==="POST"&&request.url==="/v1/oauth/connect"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{const input=await body(request,max);const provider=String(input.provider) as import("./business/types.js").OAuthProvider;const accountId=typeof input.accountId==="string"&&input.accountId.trim()?input.accountId.trim():"default";const result=oauth.begin(provider,accountId);json(response,200,{ok:true,...result});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_begin_failed"});}return;
+  }
+  if(request.method==="GET"&&request.url?.startsWith("/v1/oauth/callback")){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{const u=new URL(request.url,"http://localhost");const state=u.searchParams.get("state")??"";const code=u.searchParams.get("code")??"";const accountId=u.searchParams.get("accountId")??"default";if(!state||!code){json(response,400,{ok:false,error:"state_and_code_required"});return;}const connection=await oauth.callback(state,code,accountId);json(response,200,{ok:true,connection:oauth.status(connection)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_callback_failed"});}return;
+  }
+  if(request.method==="POST"&&request.url?.match(/^\/v1\/oauth\/[^/]+\/revoke$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{const id=request.url.split("/")[3] as string;const connection=oauth.get(id);oauth.revoke(connection);json(response,200,{ok:true,id});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_revoke_failed"});}return;
   }
   if(request.method==="GET"&&request.url?.match(/^\/v1\/missions\/[^/]+\/events$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
