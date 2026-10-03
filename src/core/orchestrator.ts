@@ -592,6 +592,18 @@ export class LayanXCore{
       results.push(result);
       steps++;
       latest=result.ok?result.data:result.error;
+      if(result.ok&&plan.tool==="desktop.screenshot"){
+        const data=result.data as Record<string,unknown>;
+        if(typeof data.base64==="string"&&typeof data.mimeType==="string")
+          visualContext={mimeType:data.mimeType,base64:data.base64};
+      }
+      if(result.ok&&/^desktop\.(mouse|keyboard)/.test(plan.tool)){
+        visualContext=undefined;
+        if(this.liveScreen?.isRunning()){
+          const frame=await this.liveScreen.captureNow().catch(()=>undefined);
+          if(frame)visualContext={mimeType:frame.mimeType,base64:frame.base64};
+        }
+      }
       if(!result.ok){
         if(result.approvalId||result.error==="Approval missing, revoked, or expired."||result.error==="Approval scope mismatch.")
           return{missionId,completed:false,status:"awaiting_approval",paused:true,steps,nextToolIndex:actualIndex,approvalId:result.approvalId,results};
