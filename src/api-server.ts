@@ -14,6 +14,7 @@ import {OAuthConnectionCenter} from "./business/oauth.js";
 import {MediaManager} from "./business/media.js";
 import {GrowthEngine} from "./business/growth-engine.js";
 import {MessagingChannels} from "./channels/service.js";
+import {deviceIdentity} from "./device-identity.js";
 export interface RuntimeApiOptions{core:LayanXCore;business:BusinessManager;ads?:AdsManager;media?:MediaManager;growth?:GrowthEngine;channels?:MessagingChannels;persistence?:RuntimePersistence;host?:string;port?:number;maxBodyBytes?:number;token?:string;requireToken?:boolean;}
 function json(response:ServerResponse,status:number,body:unknown){response.statusCode=status;response.setHeader("content-type","application/json; charset=utf-8");response.end(JSON.stringify(body));}
 async function rawBody(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}return Buffer.concat(chunks);}
@@ -31,6 +32,12 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   response.setHeader("cache-control","no-store");
   const publicWebhook=request.url==="/v1/channels/whatsapp/webhook";
   if(requireToken&&!authorized(request,options.token)&&!publicWebhook&&request.url!=="/v1/health"&&request.url!=="/voice"){json(response,401,{ok:false,error:"unauthorized"});return;}
+  if(request.method==="GET"&&request.url==="/v1/device/identity"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{json(response,200,{ok:true,device:await deviceIdentity()});}
+   catch(error){json(response,500,{ok:false,error:error instanceof Error?error.message:"device_identity_failed"});}
+   return;
+  }
   if(request.method==="GET"&&request.url==="/voice"){
    response.statusCode=200;response.setHeader("content-type","text/html; charset=utf-8");response.end(voiceUiHtml());return;
   }
