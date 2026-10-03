@@ -206,7 +206,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   if(request.method==="GET"&&request.url==="/v1/business/analytics"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}json(response,200,{ok:true,analytics:business.analytics()});return;}
   if(request.method==="POST"&&request.url==="/v1/business/campaign"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,campaign:business.createCampaign(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"campaign creation failed"});}return;}
   if(request.method==="GET"&&request.url==="/v1/status"){json(response,200,runtimeStatus(runtimeView(options.core,options.persistence,business,ads)));return;}
-  if(request.method==="GET"&&request.url==="/v1/health"){const health=await runtimeHealth(runtimeView(options.core,options.persistence,business));json(response,health.healthy?200:503,health);return;}
+  if(request.method==="GET"&&request.url==="/v1/health"){const health=await runtimeHealth(runtimeView(options.core,options.persistence,business,ads));json(response,health.healthy?200:503,health);return;}
   if(request.method==="GET"&&request.url?.startsWith("/v1/missions/")&&request.url.endsWith("/tools/prepare")){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const id=request.url.slice("/v1/missions/".length,-"/tools/prepare".length);
