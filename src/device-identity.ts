@@ -34,7 +34,7 @@ export async function deviceIdentity(){
   return {
     deviceId:await getDeviceId(),
     name:process.env.LAYANX_DEVICE_NAME?.trim()||hostname(),
-    platform,
+    platform:platform(),
     apiVersion:"v1",
   };
 }
