@@ -135,6 +135,10 @@ export function createBinanceLiveOrderToolAdapter(
         const steps = payload.quantity / rules.stepSize;
         if (Math.abs(steps - Math.round(steps)) > 1e-9) throw new Error("Order quantity does not match Binance quantity step size.");
       }
+      if (payload.type === "LIMIT" && rules.tickSize !== undefined && rules.tickSize > 0 && payload.price !== undefined) {
+        const ticks = payload.price / rules.tickSize;
+        if (Math.abs(ticks - Math.round(ticks)) > 1e-9) throw new Error("Limit price does not match Binance price tick size.");
+      }
       const referencePrice = payload.price ?? (payload.side === "BUY" ? ticker.askPrice : ticker.bidPrice);
       const notional = payload.quantity * referencePrice;
       if (rules.minNotional !== undefined && Number.isFinite(rules.minNotional) && notional < rules.minNotional) {
