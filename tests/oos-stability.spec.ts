@@ -48,6 +48,9 @@ assert.equal(stability.totalTestTrades, 4);
 assert.equal(stability.pooledTestNetPnl, 5);
 assert.equal(stability.pooledTestExpectancyPerTrade, 1.25);
 assert.equal(stability.pooledTestReturnOnStartingBalancesPct, 0.25);
+assert.equal(stability.testOverlap, false);
+assert.equal(stability.overlappingTestCandles, 0);
+assert.equal(stability.uniqueTestCandles, 0);
 assert.ok(stability.warnings.length >= 1);
 
 console.log("OOS stability tests passed");
