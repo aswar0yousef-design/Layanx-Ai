@@ -19,8 +19,8 @@ export class PaperTradingEngine{
   const value=this.quotes.get(normalizeSymbol(symbol)); if(!value)throw new Error("No paper quote is configured for this symbol."); return structuredClone(value);
  }
  accountSnapshot():TradingAccount{return structuredClone(this.account);}
- positions():TradingPosition[]{return [...this.positions.values()].map(structuredClone);}
- ordersSnapshot():TradingOrder[]{return this.orders.map(structuredClone);}
+ positions():TradingPosition[]{return [...this.positions.values()].map(position=>structuredClone(position));}
+ ordersSnapshot():TradingOrder[]{return this.orders.map(order=>structuredClone(order));}
  placeMarket(input:{symbol:string;side:TradingSide;quantity:number;price?:number;stopLoss?:number;takeProfit?:number}):TradingOrder{
   const symbol=normalizeSymbol(input.symbol); const quantity=finitePositive(input.quantity,"quantity"); const quote=this.quote(symbol);
   const price=input.price??(input.side==="buy"?quote.ask:quote.bid); finitePositive(price,"price");
@@ -37,7 +37,7 @@ export class PaperTradingEngine{
   const position=this.positions.get(orderId); if(!position)throw new Error("Paper position not found.");
   const quote=this.quote(position.symbol); const exit=price??(position.side==="buy"?quote.bid:quote.ask); finitePositive(exit,"price");
   const pnl=(position.side==="buy"?exit-position.entryPrice:position.entryPrice-exit)*position.quantity;
-  this.positions.delete(orderId); this.account={...this.account,balance:this.account.balance+pnl,available:this.account.available+position.entryPrice*position.quantity+pnl,equity:this.account.balance+pnl};
+  this.positions.delete(orderId); const balance=this.account.balance+pnl; this.account={...this.account,balance,available:this.account.available+position.entryPrice*position.quantity+pnl,equity:balance};
   return {orderId,symbol:position.symbol,exitPrice:exit,pnl,closedAt:new Date().toISOString()};
  }
 }
