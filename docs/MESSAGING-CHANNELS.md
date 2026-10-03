@@ -18,6 +18,7 @@ Set:
 - `LAYANX_WHATSAPP_ACCESS_TOKEN`
 - `LAYANX_WHATSAPP_PHONE_NUMBER_ID`
 - `LAYANX_WHATSAPP_VERIFY_TOKEN`
+- `LAYANX_WHATSAPP_APP_SECRET`
 - `LAYANX_WHATSAPP_GRAPH_VERSION` (pin the Graph API version used by your Meta app)
 - `LAYANX_CHANNEL_OWNER_IDS` as a comma-separated list of WhatsApp sender IDs allowed to operate LayanX
 - optional `LAYANX_CHANNEL_STAFF_IDS`
