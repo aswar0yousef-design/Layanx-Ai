@@ -1,0 +1,88 @@
+import type { TradeAnalysis } from "./trade-record.js";
+
+export interface BacktestReport {
+  initialBalance: number;
+  finalBalance: number;
+  netPnl: number;
+  returnPct: number;
+  trades: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  grossProfit: number;
+  grossLoss: number;
+  profitFactor: number;
+  expectancyPerTrade: number;
+  maxDrawdown: number;
+  maxDrawdownPct: number;
+  executionCosts: number;
+  commissions: number;
+  swaps: number;
+  costErasedTrades: number;
+}
+
+export function buildBacktestReport(
+  initialBalance: number,
+  analyses: TradeAnalysis[],
+): BacktestReport {
+  if (initialBalance <= 0) throw new Error("Initial balance must be positive.");
+
+  let balance = initialBalance;
+  let peak = initialBalance;
+  let maxDrawdown = 0;
+  let maxDrawdownPct = 0;
+  let grossProfit = 0;
+  let grossLoss = 0;
+  let executionCosts = 0;
+  let commissions = 0;
+  let swaps = 0;
+  let costErasedTrades = 0;
+  let wins = 0;
+
+  for (const analysis of analyses) {
+    balance += analysis.trueNetPnl;
+    peak = Math.max(peak, balance);
+
+    const drawdown = peak - balance;
+    maxDrawdown = Math.max(maxDrawdown, drawdown);
+    if (peak > 0) maxDrawdownPct = Math.max(maxDrawdownPct, (drawdown / peak) * 100);
+
+    if (analysis.trueNetPnl > 0) {
+      wins += 1;
+      grossProfit += analysis.trueNetPnl;
+    } else if (analysis.trueNetPnl < 0) {
+      grossLoss += Math.abs(analysis.trueNetPnl);
+    }
+
+    executionCosts += analysis.executionCost;
+    commissions += analysis.commission;
+    swaps += analysis.swap;
+    if (analysis.grossPnl > 0 && analysis.trueNetPnl <= 0) costErasedTrades += 1;
+  }
+
+  const trades = analyses.length;
+  const losses = trades - wins;
+  const netPnl = balance - initialBalance;
+  const profitFactor = grossLoss === 0 ? (grossProfit > 0 ? Infinity : 0) : grossProfit / grossLoss;
+
+  return {
+    initialBalance,
+    finalBalance: balance,
+    netPnl,
+    returnPct: (netPnl / initialBalance) * 100,
+    trades,
+    wins,
+    losses,
+    winRate: trades === 0 ? 0 : (wins / trades) * 100,
+    grossProfit,
+    grossLoss,
+    profitFactor,
+    expectancyPerTrade: trades === 0 ? 0 : netPnl / trades,
+    maxDrawdown,
+    maxDrawdownPct,
+    executionCosts,
+    commissions,
+    swaps,
+    costErasedTrades,
+  };
+}
