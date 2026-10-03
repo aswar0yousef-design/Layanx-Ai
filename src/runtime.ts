@@ -27,7 +27,7 @@ export function createRuntime(options:RuntimeOptions={}){
  const agent:AgentContract={
   agentId:"core",
   purpose:"Safely orchestrate LayanX missions.",
-  allowedTools:["runtime.status","mission.inspect","memory.recall","http.read","github.repo.read","github.issues.list","github.prs.list","browser.read","files.read","files.list","files.stat","files.write","terminal.exec","git.status","git.diff","git.log","git.checkpoint","git.branch","git.add","git.commit","git.rollback","git.push","project.inspect","project.verify","development.prepare"],
+  allowedTools:["runtime.status","mission.inspect","memory.recall","http.read","github.repo.read","github.issues.list","github.prs.list","browser.read","files.read","files.list","files.stat","files.write","terminal.exec","git.status","git.diff","git.log","git.checkpoint","git.branch","git.add","git.commit","git.rollback","git.push","project.inspect","project.verify","development.prepare","ads.snapshot","ads.account.create","ads.campaign.create","ads.adgroup.create","ads.creative.create","ads.ad.create","ads.campaign.launch","ads.campaign.pause","ads.insights.sync","commerce.snapshot","commerce.store.create","commerce.product.create","commerce.product.update","commerce.product.publish","commerce.orders.sync","media.add","content.generate","content.publish","content.schedule","content.process_scheduled","commerce.analytics","campaign.create"],
   forbiddenResources:["secrets","security-controls"],
   requiredPermission:"L4_EXECUTE",
   maxToolCalls:100,
