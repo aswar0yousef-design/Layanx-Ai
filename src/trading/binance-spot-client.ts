@@ -56,10 +56,14 @@ export class BinanceSpotClient {
   private readonly config: Required<Pick<BinanceClientConfig,"baseUrl"|"recvWindowMs"|"timeoutMs"|"allowTrading">> & BinanceClientConfig;
 
   constructor(config: BinanceClientConfig = {}) {
+    const recvWindowMs=config.recvWindowMs ?? 5000;
+    const timeoutMs=config.timeoutMs ?? 10000;
+    if(!Number.isFinite(recvWindowMs)||recvWindowMs<=0||recvWindowMs>60000) throw new Error("Binance recvWindowMs must be between 1 and 60000.");
+    if(!Number.isFinite(timeoutMs)||timeoutMs<=0) throw new Error("Binance timeoutMs must be positive.");
     this.config = {
       baseUrl: config.baseUrl ?? "https://api.binance.com",
-      recvWindowMs: config.recvWindowMs ?? 5000,
-      timeoutMs: config.timeoutMs ?? 10000,
+      recvWindowMs,
+      timeoutMs,
       allowTrading: config.allowTrading ?? false,
       liveTradingEnabled: config.liveTradingEnabled ?? false,
       ...config,
