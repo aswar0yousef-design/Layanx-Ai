@@ -12,20 +12,20 @@ export function analyzeTrades(trades:BacktestResult["trades"]):TradeAnalysis{
  return{trades:trades.length,wins:wins.length,losses:losing.length,pnl,winRate:trades.length?wins.length/trades.length:0,averagePnl:trades.length?pnl/trades.length:0,averageBarsHeld:trades.length?trades.reduce((s,t)=>s+t.barsHeld,0)/trades.length:0,maxConsecutiveLosses,grossProfit,grossLoss,profitFactor:grossLoss?grossProfit/grossLoss:grossProfit>0?Infinity:0};
 }
 
-export function optimizeStrategy(candles:Candle[],factory:(parameters:Record<string,number>)=>TradingStrategy,grid:Record<string,number[]>,startingEquity=100000,riskFraction=0.002,costs:BacktestCosts={}):StrategyCandidate[]{
+export function optimizeStrategy(candles:Candle[],factory:(parameters:Record<string,number>)=>TradingStrategy,grid:Record<string,number[]>,startingEquity=100000,riskFraction=0.002,costs:BacktestCosts={},entryFilter?:(candle:Candle,index:number)=>boolean):StrategyCandidate[]{
  const keys=Object.keys(grid);const combinations:Record<string,number>[]=[];
  const build=(i:number,current:Record<string,number>)=>{if(i===keys.length){combinations.push({...current});return;}const key=keys[i];if(key===undefined)throw new Error("Invalid optimization key.");for(const value of grid[key]??[]){current[key]=value;build(i+1,current);}};
  build(0,{});
- return combinations.map(parameters=>{const strategy=factory(parameters);return{strategy,parameters,result:backtest(strategy,candles,startingEquity,riskFraction,costs)}}).sort((a,b)=>b.result.expectancy-a.result.expectancy);
+ return combinations.map(parameters=>{const strategy=factory(parameters);return{strategy,parameters,result:backtest(strategy,candles,startingEquity,riskFraction,costs,entryFilter)}}).sort((a,b)=>b.result.expectancy-a.result.expectancy);
 }
 
-export function walkForward(candles:Candle[],factory:(parameters:Record<string,number>)=>TradingStrategy,grid:Record<string,number[]>,trainBars:number,testBars:number,startingEquity=100000,riskFraction=0.002,costs:BacktestCosts={}):WalkForwardResult{
+export function walkForward(candles:Candle[],factory:(parameters:Record<string,number>)=>TradingStrategy,grid:Record<string,number[]>,trainBars:number,testBars:number,startingEquity=100000,riskFraction=0.002,costs:BacktestCosts={},entryFilter?:(candle:Candle,index:number)=>boolean):WalkForwardResult{
  if(trainBars<40||testBars<1)throw new Error("Invalid walk-forward window.");
  const windows:WalkForwardWindow[]=[];const results:BacktestResult[]=[];
  for(let trainStart=0;trainStart+trainBars+testBars<=candles.length;trainStart+=testBars){
   const train=candles.slice(trainStart,trainStart+trainBars),test=candles.slice(trainStart+trainBars,trainStart+trainBars+testBars);
-  const candidates=optimizeStrategy(train,factory,grid,startingEquity,riskFraction,costs);const best=candidates[0];if(!best)continue;
-  const result=backtest(best.strategy,test,startingEquity,riskFraction,costs);
+  const candidates=optimizeStrategy(train,factory,grid,startingEquity,riskFraction,costs,entryFilter);const best=candidates[0];if(!best)continue;
+  const result=backtest(best.strategy,test,startingEquity,riskFraction,costs,entryFilter);
   windows.push({trainStart,trainEnd:trainStart+trainBars,testStart:trainStart+trainBars,testEnd:trainStart+trainBars+testBars});results.push(result);
  }
  const ending=results.reduce((equity,result)=>equity*(1+result.returnPct/100),startingEquity);
