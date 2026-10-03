@@ -14,7 +14,8 @@ import { ToolAdapterRegistry } from "../src/tools/adapters.js";
   const definition = core.tools.get(PAPER_TRADING_TOOL);
   assert.equal(definition.permission, "L2_ANALYZE");
   assert.equal(definition.dangerous, false);
-  assert.equal(core.toolAdapters.has(PAPER_TRADING_TOOL), true);\n  const market = core.tools.get(BINANCE_MARKET_DATA_TOOL);\n  assert.equal(market.permission, "L1_READ");\n  assert.equal(market.dangerous, false);\n  const execution = core.tools.get(BINANCE_LIVE_ORDER_TOOL);\n  assert.equal(execution.permission, "L4_EXECUTE");\n  assert.equal(execution.dangerous, true);\n  assert.equal(core.agents.get("trading-executor").requiredPermission, "L4_EXECUTE");
+  assert.equal(core.toolAdapters.has(PAPER_TRADING_TOOL), true);
+  const market = core.tools.get(BINANCE_MARKET_DATA_TOOL);\n  assert.equal(market.permission, "L1_READ");\n  assert.equal(market.dangerous, false);\n  const execution = core.tools.get(BINANCE_LIVE_ORDER_TOOL);\n  assert.equal(execution.permission, "L4_EXECUTE");\n  assert.equal(execution.dangerous, true);\n  assert.equal(core.agents.get("trading-executor").requiredPermission, "L4_EXECUTE");
 }
 
 {
