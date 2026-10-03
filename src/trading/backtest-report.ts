@@ -23,6 +23,76 @@ export interface BacktestReport {
   gapThroughExits: number;
 }
 
+
+export interface PooledBacktestReport {
+  aggregation: "pooled-trade-results";
+  trades: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  netPnl: number;
+  grossProfit: number;
+  grossLoss: number;
+  profitFactor: number;
+  expectancyPerTrade: number;
+  executionCosts: number;
+  commissions: number;
+  swaps: number;
+  costErasedTrades: number;
+  intrabarAmbiguousExits: number;
+  gapThroughExits: number;
+}
+
+export function buildPooledBacktestReport(analyses: TradeAnalysis[]): PooledBacktestReport {
+  let wins = 0;
+  let grossProfit = 0;
+  let grossLoss = 0;
+  let executionCosts = 0;
+  let commissions = 0;
+  let swaps = 0;
+  let costErasedTrades = 0;
+  let intrabarAmbiguousExits = 0;
+  let gapThroughExits = 0;
+
+  for (const analysis of analyses) {
+    if (analysis.trueNetPnl > 0) {
+      wins += 1;
+      grossProfit += analysis.trueNetPnl;
+    } else if (analysis.trueNetPnl < 0) {
+      grossLoss += Math.abs(analysis.trueNetPnl);
+    }
+    executionCosts += analysis.executionCost;
+    commissions += analysis.commission;
+    swaps += analysis.swap;
+    if (analysis.grossPnl > 0 && analysis.trueNetPnl <= 0) costErasedTrades += 1;
+    if (analysis.metadata?.intrabarAmbiguous === true) intrabarAmbiguousExits += 1;
+    if (analysis.metadata?.gapThrough === true) gapThroughExits += 1;
+  }
+
+  const trades = analyses.length;
+  const netPnl = analyses.reduce((sum, analysis) => sum + analysis.trueNetPnl, 0);
+  const grossLossValue = grossLoss;
+
+  return {
+    aggregation: "pooled-trade-results",
+    trades,
+    wins,
+    losses: trades - wins,
+    winRate: trades === 0 ? 0 : (wins / trades) * 100,
+    netPnl,
+    grossProfit,
+    grossLoss: grossLossValue,
+    profitFactor: grossLossValue === 0 ? (grossProfit > 0 ? Infinity : 0) : grossProfit / grossLossValue,
+    expectancyPerTrade: trades === 0 ? 0 : netPnl / trades,
+    executionCosts,
+    commissions,
+    swaps,
+    costErasedTrades,
+    intrabarAmbiguousExits,
+    gapThroughExits,
+  };
+}
+
 export function buildBacktestReport(
   initialBalance: number,
   analyses: TradeAnalysis[],
