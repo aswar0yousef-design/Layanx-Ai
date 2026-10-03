@@ -35,3 +35,14 @@ export class HtfStructureLiquidityStrategy implements TradingStrategy{
 }
 
 export class StrategyRegistry{private readonly strategies=new Map<string,TradingStrategy>();register(strategy:TradingStrategy){if(this.strategies.has(strategy.id))throw new Error("Strategy already registered.");this.strategies.set(strategy.id,strategy);}get(id:string){const strategy=this.strategies.get(id);if(!strategy)throw new Error("Unknown trading strategy: "+id);return strategy;}list(){return [...this.strategies.values()];}}
+
+export class ScalpingSweepStrategy implements TradingStrategy{
+ readonly id="scalp-sweep-v1"; readonly name="Scalp Liquidity Sweep"; readonly description="Fast long/short liquidity sweep with displacement."; readonly timeframe="M1-M5";
+ evaluate(context:StrategyContext):TradingSignal|null{
+  const {candles,index}=context;if(index<20||index>=candles.length)return null;const c=candles[index],recent=candles.slice(index-10,index);
+  const hi=Math.max(...recent.map(x=>x.high)),lo=Math.min(...recent.map(x=>x.low));const range=Math.max(c.high-c.low,Math.abs(c.high-candles[index-1].close),Math.abs(c.low-candles[index-1].close));if(range<=0)return null;
+  if(c.low<lo&&c.close>lo&&c.close>c.open&&(c.close-c.open)>=range*.55){const risk=c.close-c.low;if(risk<=0)return null;return{strategyId:this.id,timestamp:c.timestamp,side:"long",entry:c.close,stopLoss:c.low,takeProfit:c.close+risk*.8,reason:["recent low sweep","bullish displacement","quick scalp"],confidence:.68};}
+  if(c.high>hi&&c.close<hi&&c.close<c.open&&(c.open-c.close)>=range*.55){const risk=c.high-c.close;if(risk<=0)return null;return{strategyId:this.id,timestamp:c.timestamp,side:"short",entry:c.close,stopLoss:c.high,takeProfit:c.close-risk*.8,reason:["recent high sweep","bearish displacement","quick scalp"],confidence:.68};}
+  return null;
+ }
+}
