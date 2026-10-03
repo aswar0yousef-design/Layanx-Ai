@@ -16,7 +16,7 @@ export type ExecutionQuality = "excellent" | "good" | "marginal" | "poor" | "unk
 export interface ExecutionQualityResult {
   tradeId: string; symbol: string; side: TradeSide;
   spreadEntry?: number; spreadExit?: number; spreadAtrRatio?: number; atr?: number;
-  entrySlippage?: number; exitSlippage?: number; totalExecutionDrag?: number;
+  entrySlippage?: number; exitSlippage?: number; entrySlippageAtrRatio?: number; exitSlippageAtrRatio?: number; totalExecutionDrag?: number;
   estimatedRoundTripCost?: number; grossPnl: number; netPnlAfterExecutionCosts: number;
   executionCostPctOfGross: number | null; quality: ExecutionQuality; warnings: string[];
 }
@@ -43,6 +43,8 @@ export function analyzeExecutionQuality(trade: ExecutionTrade): ExecutionQuality
 
   const entrySlip = abs(trade.entry.slippage);
   const exitSlip = abs(trade.exit.slippage);
+  const entrySlippageAtrRatio = entrySlip !== undefined && atr !== undefined && atr > 0 ? entrySlip / atr : undefined;
+  const exitSlippageAtrRatio = exitSlip !== undefined && atr !== undefined && atr > 0 ? exitSlip / atr : undefined;
   const entryDrag = finite(trade.entry.referencePrice)
     ? Math.abs(trade.entry.fillPrice - entryRef)
     : (entrySpread !== undefined ? entrySpread / 2 : 0);
@@ -72,7 +74,7 @@ export function analyzeExecutionQuality(trade: ExecutionTrade): ExecutionQuality
   return {
     tradeId: trade.id, symbol: trade.symbol, side: trade.side, spreadEntry: entrySpread,
     spreadExit: exitSpread, spreadAtrRatio, atr, entrySlippage: entrySlip, exitSlippage: exitSlip,
-    totalExecutionDrag, estimatedRoundTripCost: totalExecutionDrag, grossPnl,
+    entrySlippageAtrRatio, exitSlippageAtrRatio, totalExecutionDrag, estimatedRoundTripCost: totalExecutionDrag, grossPnl,
     netPnlAfterExecutionCosts, executionCostPctOfGross, quality, warnings
   };
 }
