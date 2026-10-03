@@ -7,7 +7,7 @@ export function backtest(strategy:TradingStrategy,candles:Candle[],startingEquit
  if(startingEquity<=0||riskFraction<=0||riskFraction>=0.1)throw new Error("Invalid backtest risk configuration.");
  const spread=Math.max(0,costs.spread??0),slippage=Math.max(0,costs.slippage??0),commission=Math.max(0,costs.commissionPerUnit??0);
  let equity=startingEquity,peak=equity,maxDrawdown=0;const trades:BacktestTrade[]=[];let open:TradingSignal|null=null;let openIndex=-1;
- for(let i=30;i<candles.length;i++){const c=candles[i];
+ for(let i=30;i<candles.length;i++){const c=candles[i];if(c===undefined)continue;
   if(open){const hitStop=open.side==="long"?c.low<=open.stopLoss:c.high>=open.stopLoss;const hitTarget=open.side==="long"?c.high>=open.takeProfit:c.low<=open.takeProfit;
    if(hitStop||hitTarget){const exit=hitStop?open.stopLoss:open.takeProfit;const risk=Math.abs(open.entry-open.stopLoss);if(risk<=0){open=null;openIndex=-1;continue;}
     const reward=open.side==="long"?exit-open.entry:open.entry-exit;const qty=equity*riskFraction/risk;const cost=(spread+slippage+commission)*qty;const pnl=reward*qty-cost;equity+=pnl;
