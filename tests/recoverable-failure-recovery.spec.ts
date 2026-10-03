@@ -51,6 +51,7 @@ if(candidates.length!==1||candidates[0]?.missionId!==mission.id)throw new Error(
 let calls=0;
 const resumed=await recovery.resume(mission.id,request,{execute:async()=>{calls++;return"ok";}},undefined,{projectId:"recovery-project",capabilityId:restoredCapability.id});
 if(!resumed.ok||!resumed.verified)throw new Error(resumed.error??"Recoverable failure did not resume.");
+if(restored.missions.get(mission.id)?.status!=="completed")throw new Error("Recovered mission was not restored into MissionStore.");
 if(calls!==1)throw new Error("Recovery executed an unexpected number of calls.");
 const after=await persistence.get(mission.id);
 if(!after||after.mission.status!=="completed"||after.executionState.status!=="completed"||after.executionState.recoverable)throw new Error("Recovered mission did not reach a non-recoverable completed state.");
