@@ -12,10 +12,15 @@ async function check(path:string):Promise<void>{
 
 await check("/v1/health");
 await check("/v1/status");
+await check("/v1/control-center");
+await check("/v1/scheduler");
+await check("/v1/events/triggers");
+await check("/v1/approvals?projectId=default");
+await check("/v1/release");
 
 console.log(JSON.stringify({
  accepted:true,
  productionUrl:baseUrl,
- checks:["/v1/health","/v1/status"],
+ checks:["/v1/health","/v1/status","/v1/control-center","/v1/scheduler","/v1/events/triggers","/v1/approvals?projectId=default","/v1/release"],
  timestamp:new Date().toISOString()
 },null,2));
