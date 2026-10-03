@@ -110,3 +110,66 @@ console.log("binance-endpoint-safety: ok");
 }
 
 console.log("binance-live-adapter-preflight: ok");
+
+
+{
+  const originalFlag=process.env.BINANCE_LIVE_TRADING_ENABLED;
+  const originalMax=process.env.BINANCE_MAX_ORDER_NOTIONAL;
+  const originalBase=process.env.BINANCE_BASE_URL;
+  const originalFetch=globalThis.fetch;
+  process.env.BINANCE_LIVE_TRADING_ENABLED="true";
+  process.env.BINANCE_MAX_ORDER_NOTIONAL="200";
+  process.env.BINANCE_BASE_URL="https://api.binance.com";
+  globalThis.fetch=(async (input,init)=>{
+    const url=String(input);
+    const method=String(init?.method??"GET");
+    if(url.includes("/ticker/24hr")) return new Response(JSON.stringify({symbol:"BTCUSDT",bidPrice:"100",askPrice:"101",lastPrice:"100.5",closeTime:123}),{status:200});
+    if(url.includes("/exchangeInfo")) return new Response(JSON.stringify({symbols:[{symbol:"BTCUSDT",status:"TRADING",baseAsset:"BTC",quoteAsset:"USDT",filters:[{filterType:"LOT_SIZE",minQty:"0.001",maxQty:"100",stepSize:"0.001"},{filterType:"MIN_NOTIONAL",minNotional:"5"}]}]}),{status:200});
+    if(method==="POST") return new Response("network timeout",{status:503});
+    return new Response(JSON.stringify({symbol:"BTCUSDT",orderId:77,clientOrderId:"runtime-reconcile",status:"NEW"}),{status:200});
+  }) as typeof fetch;
+  try {
+    const adapter=createBinanceLiveOrderToolAdapter(async()=>({apiKey:"k",apiSecret:"s"}));
+    const result=await adapter.execute({missionId:"m",agentId:"a",tool:"trading.binance.order",action:"place-order",permission:"L4_EXECUTE",idempotencyKey:"runtime-reconcile",payload:{symbol:"BTCUSDT",side:"BUY",type:"MARKET",quantity:0.001}} as any);
+    assert.equal((result as any).submitted,true);
+    assert.equal((result as any).orderId,77);
+    assert.equal((result as any).reconciliation.status,"confirmed-by-lookup");
+  } finally {
+    globalThis.fetch=originalFetch;
+    if(originalFlag===undefined) delete process.env.BINANCE_LIVE_TRADING_ENABLED; else process.env.BINANCE_LIVE_TRADING_ENABLED=originalFlag;
+    if(originalMax===undefined) delete process.env.BINANCE_MAX_ORDER_NOTIONAL; else process.env.BINANCE_MAX_ORDER_NOTIONAL=originalMax;
+    if(originalBase===undefined) delete process.env.BINANCE_BASE_URL; else process.env.BINANCE_BASE_URL=originalBase;
+  }
+}
+console.log("binance-order-reconciliation: ok");
+
+{
+  const originalFlag=process.env.BINANCE_LIVE_TRADING_ENABLED;
+  const originalMax=process.env.BINANCE_MAX_ORDER_NOTIONAL;
+  const originalBase=process.env.BINANCE_BASE_URL;
+  const originalFetch=globalThis.fetch;
+  process.env.BINANCE_LIVE_TRADING_ENABLED="true";
+  process.env.BINANCE_MAX_ORDER_NOTIONAL="200";
+  process.env.BINANCE_BASE_URL="https://api.binance.com";
+  globalThis.fetch=(async (input,init)=>{
+    const url=String(input);
+    const method=String(init?.method??"GET");
+    if(url.includes("/ticker/24hr")) return new Response(JSON.stringify({symbol:"BTCUSDT",bidPrice:"100",askPrice:"101",lastPrice:"100.5",closeTime:123}),{status:200});
+    if(url.includes("/exchangeInfo")) return new Response(JSON.stringify({symbols:[{symbol:"BTCUSDT",status:"TRADING",baseAsset:"BTC",quoteAsset:"USDT",filters:[{filterType:"LOT_SIZE",minQty:"0.001",maxQty:"100",stepSize:"0.001"},{filterType:"MIN_NOTIONAL",minNotional:"5"}]}]}),{status:200});
+    if(method==="POST") return new Response("network timeout",{status:503});
+    return new Response("order not found",{status:404});
+  }) as typeof fetch;
+  try {
+    const adapter=createBinanceLiveOrderToolAdapter(async()=>({apiKey:"k",apiSecret:"s"}));
+    await assert.rejects(
+      adapter.execute({missionId:"m",agentId:"a",tool:"trading.binance.order",action:"place-order",permission:"L4_EXECUTE",idempotencyKey:"runtime-unknown",payload:{symbol:"BTCUSDT",side:"BUY",type:"MARKET",quantity:0.001}} as any),
+      /status is UNKNOWN.*do not retry automatically/,
+    );
+  } finally {
+    globalThis.fetch=originalFetch;
+    if(originalFlag===undefined) delete process.env.BINANCE_LIVE_TRADING_ENABLED; else process.env.BINANCE_LIVE_TRADING_ENABLED=originalFlag;
+    if(originalMax===undefined) delete process.env.BINANCE_MAX_ORDER_NOTIONAL; else process.env.BINANCE_MAX_ORDER_NOTIONAL=originalMax;
+    if(originalBase===undefined) delete process.env.BINANCE_BASE_URL; else process.env.BINANCE_BASE_URL=originalBase;
+  }
+}
+console.log("binance-order-unknown-safety: ok");
