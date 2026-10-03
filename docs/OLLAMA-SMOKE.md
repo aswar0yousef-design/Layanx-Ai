@@ -21,3 +21,14 @@ The test performs two real operations:
 A successful result proves that the local Ollama adapter, runtime configuration, provider health, model registry, and model execution path can communicate with a real Ollama instance.
 
 Exit code 2 means Ollama is unavailable. Other failures indicate an integration problem.
+
+
+## Full runtime E2E
+
+After the smoke test passes, run:
+
+```bash
+npm run e2e:ollama
+```
+
+This manual machine-level check exercises the real Ollama provider through the LayanX AI planner, mission/agent loop, runtime tool execution, verification, JSON persistence, and a fresh runtime restart. It is intentionally excluded from GitHub CI because it requires a local Ollama service and model.
