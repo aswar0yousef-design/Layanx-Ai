@@ -1,6 +1,7 @@
 import {createCipheriv,createDecipheriv,randomBytes,scryptSync} from "node:crypto";
 import {existsSync,readFileSync,mkdirSync,writeFileSync,renameSync,chmodSync} from "node:fs";
-import {dirname} from "node:path";
+import {dirname,join} from "node:path";
+import {homedir} from "node:os";
 
 interface VaultEntry{iv:string;tag:string;ciphertext:string;updatedAt:string;}
 interface VaultFile{version:1;salt:string;entries:Record<string,VaultEntry>;}
@@ -8,7 +9,7 @@ interface VaultFile{version:1;salt:string;entries:Record<string,VaultEntry>;}
 export class LocalSecretVault{
  private readonly path:string;
  private readonly key:Buffer;
- constructor(path=process.env.LAYANX_SECRET_VAULT_PATH??".layanx/secrets.vault",masterKey=process.env.LAYANX_SECRET_VAULT_KEY){
+ constructor(path=process.env.LAYANX_SECRET_VAULT_PATH??join(homedir(),".layanx","secrets.vault"),masterKey=process.env.LAYANX_SECRET_VAULT_KEY){
   if(!masterKey||masterKey.length<16)throw new Error("LAYANX_SECRET_VAULT_KEY must be at least 16 characters and must remain local.");
   this.path=path;
   const salt=this.readSalt()??randomBytes(16).toString("base64");
