@@ -47,6 +47,7 @@ export function createRuntime(options:RuntimeOptions={}){
 }
 
 export async function restoreRuntime(runtime:ReturnType<typeof createRuntime>):Promise<{restored:number}>{
+ await runtime.business.hydrate();
  if(!runtime.persistence)return{restored:0};
  const snapshots=await runtime.persistence.list();
  for(const snapshot of snapshots)runtime.core.restoreRuntimeSnapshot(snapshot);
