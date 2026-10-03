@@ -1,37 +1,42 @@
 # Local secrets
 
-LayanX keeps Binance execution credentials outside the Git repository.
+LayanX stores Binance execution credentials in the existing encrypted local secret vault. No Binance API secret is stored in GitHub or in `.env.example`.
 
-## Setup
+## 1. Configure the local vault master key
 
-Run this on the user's own computer from the repository:
+Set `LAYANX_SECRET_VAULT_KEY` in the local machine environment. It must be at least 16 characters and must never be committed to Git.
+
+## 2. Store the Binance credentials
+
+Use the LayanX CLI, which reads secret values from stdin and never echoes them:
 
 ```bash
-npm run layanx -- secrets:setup-binance
+npm run layanx -- secrets set binance.apiKey
+npm run layanx -- secrets set binance.apiSecret
 ```
 
-The command prompts for the API key and secret without displaying their values. The credentials are stored at:
+Verify only the names, never the values:
+
+```bash
+npm run layanx -- secrets list
+```
+
+The encrypted vault defaults to:
 
 ```text
-~/.layanx/secrets/binance.json
+.layanx/secrets.vault
 ```
 
-On POSIX systems the directory is created with owner-only permissions (0700) and the file with owner-only permissions (0600). On Windows, the file lives under the current user's home profile and relies on the operating system's normal user-profile ACLs. The file is outside the repository, so it is not committed to GitHub.
-
-Check only the configured location:
-
-```bash
-npm run layanx -- secrets:status
-```
+and `.layanx/` is ignored by Git. The vault uses AES-256-GCM with a key derived from the local master key. The stored file does not contain plaintext secret values.
 
 ## Runtime behavior
 
-- Binance public market-data access does not need API credentials.
-- Binance execution loads credentials from the local store first.
-- Environment variables may be used as a deployment/CI fallback, but they are not written by LayanX.
-- Secret values must never be placed in prompts, tool payloads, audit events, logs, commits, or GitHub issues.
-- Production execution remains disabled unless `BINANCE_LIVE_TRADING_ENABLED=true`, an order-notional limit is configured, and the LayanX runtime approval path authorizes the execution.
+- Binance public market-data access does not need credentials.
+- Binance execution loads `binance.apiKey` and `binance.apiSecret` from the encrypted local vault first.
+- Environment variables `BINANCE_API_KEY` and `BINANCE_API_SECRET` remain a deployment/CI fallback only.
+- Secret values must never be placed in prompts, tool results, audit events, logs, commits, or GitHub issues.
+- Production execution remains disabled unless `BINANCE_LIVE_TRADING_ENABLED=true`, a positive `BINANCE_MAX_ORDER_NOTIONAL` is configured, credentials exist, and the LayanX L4 approval path authorizes the exact order payload.
 
-## Important security note
+## Important
 
-The current local provider is an owner-permissioned local file, not an OS keychain/TPM-backed vault. It prevents accidental repository exposure and limits normal local file access, but it is not equivalent to hardware-backed or OS-encrypted secret storage. A future OS-keychain provider can implement the same `LocalBinanceCredentials` interface without changing the trading layer.
+The master key is the root secret for this vault. Keep it outside the repository and back it up securely. Do not put the master key into `.env.example`.
