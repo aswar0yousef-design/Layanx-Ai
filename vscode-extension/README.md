@@ -5,7 +5,9 @@ This extension makes the existing LayanX Agent Gateway available directly inside
 ## What it provides
 
 - LayanX Agent sidebar in the VS Code Activity Bar.
-- Run natural-language goals against the existing `/v1/agent/gateway`.
+- Run natural-language goals through resumable missions and the existing Agent Gateway.
+- Build/Repair Project workflow that reuses the existing project bootstrap, verification and autonomous repair engine.
+- Live mission events, approval/resume, cancellation and repair controls.
 - Automatically sends the current workspace and project ID as context.
 - Explain selected code.
 - Ask LayanX to fix selected code and verify the change.
@@ -37,5 +39,13 @@ For actual file/code changes, the LayanX runtime must have access to the same wo
 - `layanx.runtimePath`: optional path to the LayanX-Ai runtime repository
 - `layanx.runtimeCommand`: default `npm run api`
 - `layanx.maxSteps`: default 10, maximum 25
+
+## Project Builder lifecycle
+
+The **Build / Repair Project** action is an orchestration UI only; it does not create a second agent engine. It uses the existing LayanX mission loop:
+
+`inspect -> plan -> implement -> bootstrap/install -> verify -> repair on failure -> verify again -> complete/blocked`
+
+Dangerous operations remain subject to the runtime permission and approval system. The VS Code extension can cancel a running mission or invoke the existing repair endpoint after a failed/blocked run.
 
 This integration is local-first. Remote API use still follows LayanX's existing API-token requirement.
