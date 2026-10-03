@@ -4,6 +4,10 @@ LayanX now has a **Paper Trading** capability integrated with the existing Runti
 
 ## Current scope
 
+- Strategy registry with the first rules-based strategy: structure + liquidity sweep + displacement + ATR-derived risk levels.
+- Deterministic OHLCV backtesting with return, win rate, profit factor, max drawdown, and expectancy metrics.
+- Strategy execution is analysis-only until a separate execution connector is introduced.
+
 - Quote registration for test/demo market data.
 - Paper account snapshot.
 - Market buy/sell orders.
