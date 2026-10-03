@@ -11,3 +11,5 @@ backups/
 recovery/
 
 .layanx/
+
+.layanx/oauth-connections.json
