@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { runMultiWindowWalkForward } from "../src/trading/multi-window-walk-forward.js";
+import { createWalkForwardWindows, summarizeWalkForwardWindows } from "../src/trading/walk-forward-windows.js";
 
 const candles = Array.from({ length: 100 }, (_, i) => ({
   timestamp: new Date(Date.parse("2026-10-01T08:00:00Z") + i * 60_000).toISOString(),
@@ -21,7 +22,13 @@ const result = runMultiWindowWalkForward(candles, {
 assert.equal(result.windows.length, 2);
 assert.equal(result.windows[0].window.train.length, 40);
 assert.equal(result.windows[0].window.test.length, 30);
-assert.equal(result.aggregateTest.initialBalance, 1000);
-assert.equal(result.aggregateTest.trades >= 0, true);
+assert.equal(result.pooledTest.initialBalance, 1000);
+assert.equal(result.pooledTest.trades >= 0, true);
+
+const overlapWindows = createWalkForwardWindows(candles, 40, 30, 10);
+const overlap = summarizeWalkForwardWindows(overlapWindows);
+assert.equal(overlap.testOverlap, true);
+assert.equal(overlap.testOverlapCandles, 40);
+assert.equal(overlap.testCoveredCandles, 60);
 
 console.log("Multi-window walk-forward tests passed");
