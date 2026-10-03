@@ -65,6 +65,7 @@ import {ReleaseStateMachine} from "./release-state-machine.js";
 import {ReleaseManager} from "./release-manager.js";
 import {RuntimeTracer} from "./runtime-tracer.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
+import {PaperTradingEngine} from "../trading/paper.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -130,6 +131,7 @@ export class LayanXCore{
   readonly releaseState=new ReleaseStateMachine();
   readonly releaseManager:ReleaseManager;
   readonly tracer=new RuntimeTracer();
+  readonly trading=new PaperTradingEngine();
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
