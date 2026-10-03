@@ -5,9 +5,9 @@ import {ModelExecutionRouter,ModelProviderRegistry} from "../src/core/model-exec
 const freeModel:ModelDefinition={id:"free:demo:remote-model",provider:"demo-free",providerModelId:"remote-model",capabilities:["chat"],local:false,enabled:true,priority:20,costPer1kInputUsd:0,costPer1kOutputUsd:0,tags:["free"]};
 const paidModel:ModelDefinition={id:"paid",provider:"paid",capabilities:["chat"],local:false,enabled:true,priority:10};
 
-const calls:string[]=[];
+const calls:Array<{url:string;init?:RequestInit}>=[];
 const fetcher=async(input:RequestInfo|URL,init?:RequestInit)=>{
-  const url=String(input);calls.push(url);
+  const url=String(input);calls.push({url,init});
   if(url.endsWith("/chat/completions"))return new Response(JSON.stringify({choices:[{message:{content:"ok"}}],usage:{prompt_tokens:3,completion_tokens:4}}),{status:200});
   return new Response("ok",{status:200});
 };
@@ -17,7 +17,10 @@ const providers=new ModelProviderRegistry();providers.register(free);
 const models=new ModelRegistry();models.register(freeModel);
 const result=await new ModelExecutionRouter(models,providers).execute({capability:"chat",input:"hello"});
 if(result.output!=="ok"||result.modelId!==freeModel.id||result.usage?.costUsd!==0)throw new Error("Free provider execution failed.");
-if(!calls.some(url=>url.endsWith("/chat/completions")))throw new Error("Free provider request was not sent.");
+const chatCall=calls.find(call=>call.url.endsWith("/chat/completions"));
+if(!chatCall)throw new Error("Free provider request was not sent.");
+const requestBody=JSON.parse(String(chatCall.init?.body));
+if(requestBody.model!=="remote-model")throw new Error("Provider model id was not preserved.");
 const status=free.status();
 if(status.dailyUsedTokens!==7||status.monthlyUsedTokens!==7)throw new Error("Free token accounting failed.");
 
