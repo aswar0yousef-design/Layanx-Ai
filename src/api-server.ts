@@ -520,7 +520,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     const input=await body(request,max);
     const missionId=typeof input.missionId==="string"?input.missionId.trim():"";
     const projectId=typeof input.projectId==="string"?input.projectId.trim():"";
-    const dependsOn=Array.isArray(input.dependsOn)?input.dependsOn.filter((id):id is string=>typeof id==="string"&&id.trim()).map(id=>id.trim()):[];
+    const dependsOn=Array.isArray(input.dependsOn)?input.dependsOn.filter((id):id is string=>typeof id==="string"&&id.trim().length>0).map(id=>id.trim()):[];
     if(!missionId||!projectId){json(response,400,{ok:false,error:"missionId and projectId are required"});return;}
     const dependency=options.core.registerMissionDependencies(missionId,dependsOn,projectId);
     json(response,201,{ok:true,dependency,status:options.core.missionDependencyStatus(missionId)});
