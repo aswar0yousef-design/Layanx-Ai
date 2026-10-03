@@ -42,10 +42,13 @@ export function assertBacktestConfigMatchesData(
   if (timeframe !== config.timeframe) {
     throw new Error(`Backtest data timeframe ${timeframe} does not match config timeframe ${config.timeframe}.`);
   }
-  if (symbol === XAUUSD_SCALPING_PROFILE.symbol && timeframe === XAUUSD_SCALPING_PROFILE.timeframe) {
-    if (config.intrabarResolution !== undefined && config.intrabarResolution !== XAUUSD_SCALPING_PROFILE.intrabarResolution) {
-      throw new Error("XAUUSD M1 backtest must use the shared XAUUSD intrabar resolution.");
-    }
+  assertXauUsdProfileConfig(config);
+}
+
+export function assertXauUsdProfileConfig(config: PaperTradingConfig): void {
+  if (config.symbol !== XAUUSD_SCALPING_PROFILE.symbol || config.timeframe !== XAUUSD_SCALPING_PROFILE.timeframe) return;
+  if (config.intrabarResolution !== undefined && config.intrabarResolution !== XAUUSD_SCALPING_PROFILE.intrabarResolution) {
+    throw new Error("XAUUSD M1 backtest must use the shared XAUUSD intrabar resolution.");
   }
 }
 
