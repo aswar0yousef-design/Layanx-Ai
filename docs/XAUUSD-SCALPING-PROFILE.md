@@ -33,3 +33,8 @@ Before a historical backtest, pass data through the guarded MT5 historical impor
 ### Stop-distance sanity gate
 
 The execution gate supports an optional `minStopDistanceAtrRatio`. It is intentionally not enabled by the base XAUUSD profile until a broker-specific historical study establishes an appropriate floor. When enabled, it blocks stops that are unusually small relative to the current ATR and therefore prevents accidental oversizing without silently changing the strategy's stop model.
+
+
+### Entry timing and look-ahead control
+
+Paper scalping defaults to generating the signal from the last completed candle and executing on the following candle. This prevents indicators calculated from a candle close from being used to fill a trade inside that same candle. The legacy same-candle behavior remains available only by explicitly setting `signalOnClosedCandle: false` for controlled diagnostics.
