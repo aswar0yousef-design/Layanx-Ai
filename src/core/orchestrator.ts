@@ -133,7 +133,7 @@ export class LayanXCore{
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
-  constructor(idempotency?:IdempotencyService,persistence?:RuntimePersistence){
+  constructor(idempotency?:IdempotencyService,persistence?:RuntimePersistence,storage?:import("../storage/runtime-storage.js").RuntimeStorage){
     this.idempotency=idempotency??new IdempotencyStore();
     this.persistence=persistence;
     this.executor=new ToolExecutor(this.tools,this.sentinel,this.idempotency);
@@ -141,7 +141,7 @@ export class LayanXCore{
     this.skillRuntime=new SkillRuntime(this.skills,async(missionId,projectId,toolIndex,payload)=>this.executeMissionTool(missionId,projectId,toolIndex,payload));
     this.teamRuntime=new AgentTeamRuntime(this.delegation,this.agents,this.projectIsolation);
     this.taskRuntime=new TaskRuntime(this);
-    this.scheduler=new MissionScheduler(this);
+    this.scheduler=new MissionScheduler(this,storage);
     this.eventEngine=new EventMissionEngine(this,this.scheduler);
     this.missionDependencies=new MissionDependencyManager(this);
     this.safeCodeModifier=new SafeCodeModifier(this);
