@@ -65,10 +65,10 @@ export function createWalkForwardWindows(
       index: windows.length + 1,
       train,
       test,
-      trainStart: train[0].timestamp,
-      trainEnd: train[train.length - 1].timestamp,
-      testStart: test[0].timestamp,
-      testEnd: test[test.length - 1].timestamp,
+      trainStart: train[0]!.timestamp,
+      trainEnd: train[train.length - 1]!.timestamp,
+      testStart: test[0]!.timestamp,
+      testEnd: test[test.length - 1]!.timestamp,
     });
   }
 
