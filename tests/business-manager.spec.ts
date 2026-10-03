@@ -7,6 +7,6 @@ const content=b.generateProductContent(product.id);
 assert.equal(content.status,"draft"); assert.equal(content.mediaIds.length,0);
 const media=b.addMedia({kind:"image",url:"https://cdn.example/item.jpg",metadata:{}});
 const content2=b.generateProductContent(product.id); assert.equal(content2.mediaIds.length,1);
-b.updateContent(content2.id,{status:"approved"}); assert.equal(b.snapshot().content.find(c=>c.id===content2.id)?.status,"approved");
+b.updateContent(content2.id,{status:"approved"}); assert.equal(b.snapshot().content.find(c=>c.id===content2.id)?.status,"approved"); b.scheduleContent(content2.id,new Date(Date.now()-1000).toISOString()); assert.equal(b.snapshot().content.find(c=>c.id===content2.id)?.status,"scheduled"); assert.equal(b.analytics().scheduledContent,1);
 const restored=new BusinessManager(); assert.equal(restored.snapshot().products.length,1); assert.equal(restored.snapshot().stores.length,1);
 rmSync(dir,{recursive:true,force:true}); console.log("business manager integration: ok");
