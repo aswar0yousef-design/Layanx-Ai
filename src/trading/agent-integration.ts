@@ -157,13 +157,18 @@ export function createBinanceLiveOrderToolAdapter(
       if (rules.maxNotional !== undefined && Number.isFinite(rules.maxNotional) && notional > rules.maxNotional) {
         throw new Error("Order notional exceeds Binance exchange maximum notional.");
       }
-      const configuredMax = Number(process.env.BINANCE_MAX_ORDER_NOTIONAL ?? payload.maxNotional ?? 0);
+      const configuredMax = Number(process.env.BINANCE_MAX_ORDER_NOTIONAL ?? 0);
       if (!Number.isFinite(configuredMax) || configuredMax <= 0) throw new Error("BINANCE_MAX_ORDER_NOTIONAL must be a positive limit for live execution.");
-      if (notional > configuredMax) throw new Error("Order exceeds configured Binance maximum notional.");
+      const requestedMax = typeof payload.maxNotional === "number" && Number.isFinite(payload.maxNotional) && payload.maxNotional > 0
+        ? payload.maxNotional
+        : configuredMax;
+      const effectiveMax = Math.min(configuredMax, requestedMax);
+      if (notional > effectiveMax) throw new Error("Order exceeds configured Binance maximum notional.");
+
       const clientOrderId = payload.clientOrderId ?? request.idempotencyKey;
       try {
         const result = await client.placeOrder({symbol:payload.symbol,side:payload.side,type:payload.type,quantity:payload.quantity,price:payload.price,clientOrderId});
-        return { ...result, preflight: {referencePrice, notional, maxNotional: configuredMax}, reconciliation: {status: "confirmed-by-submit"} };
+        return { ...result, preflight: {referencePrice, notional, maxNotional: effectiveMax}, reconciliation: {status: "confirmed-by-submit"} };
       } catch (error) {
         try {
           const reconciled = await client.getOrder(payload.symbol, clientOrderId);
@@ -174,7 +179,7 @@ export function createBinanceLiveOrderToolAdapter(
             clientOrderId: reconciled.clientOrderId,
             status: reconciled.status,
             raw: reconciled.raw,
-            preflight: {referencePrice, notional, maxNotional: configuredMax},
+            preflight: {referencePrice, notional, maxNotional: effectiveMax},
             reconciliation: {status: "confirmed-by-lookup"},
           };
         } catch (lookupError) {
