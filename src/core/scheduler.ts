@@ -66,7 +66,7 @@ export class MissionScheduler{
  }
  private require(id:string){const schedule=this.schedules.get(id);if(!schedule)throw new Error("Unknown schedule.");return schedule;}
  private validateTrigger(trigger:ScheduleTrigger){
-  if(trigger.kind==="interval"){if(!Number.isFinite(trigger.intervalMs)||!Number.isInteger(trigger.intervalMs)||trigger.intervalMs<1000)throw new Error("Interval must be an integer of at least 1000ms.");return;}
+  if(trigger.kind==="interval"){const intervalMs=trigger.intervalMs;if(intervalMs===undefined||!Number.isFinite(intervalMs)||!Number.isInteger(intervalMs)||intervalMs<1000)throw new Error("Interval must be an integer of at least 1000ms.");return;}
   if(trigger.kind==="once"){if(!trigger.runAt||Number.isNaN(Date.parse(trigger.runAt)))throw new Error("A valid runAt timestamp is required.");return;}
   throw new Error("Unknown schedule trigger.");
  }
