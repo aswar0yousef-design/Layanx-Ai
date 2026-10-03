@@ -19,6 +19,7 @@ export interface Mt5HistoricalImportResult extends HistoricalCandleSource {
   readyForBacktest: boolean;
   diagnostics: MarketDataDiagnostics;
   sessions: SessionDiagnostics;
+  quoteAwareIntrabarCoverage: { candlesWithBidAskExtremes: number; percentage: number };
 }
 
 function buildResult(data: HistoricalCandleSource, options: Mt5HistoricalImportOptions): Mt5HistoricalImportResult {
@@ -28,7 +29,11 @@ function buildResult(data: HistoricalCandleSource, options: Mt5HistoricalImportO
   const candlesWithBidAsk = data.candles.filter(c => c.bid !== undefined && c.ask !== undefined).length;
   const candlesWithoutBidAsk = data.candles.length - candlesWithBidAsk;
   const percentage = data.candles.length === 0 ? 0 : (candlesWithBidAsk / data.candles.length) * 100;
-  return { ...data, quality, quoteCoverage: { candlesWithBidAsk, candlesWithoutBidAsk, percentage },
+  const candlesWithBidAskExtremes = data.candles.filter(c =>
+    c.bidHigh !== undefined && c.bidLow !== undefined && c.askHigh !== undefined && c.askLow !== undefined
+  ).length;
+  const intrabarPercentage = data.candles.length === 0 ? 0 : (candlesWithBidAskExtremes / data.candles.length) * 100;
+  return { ...data, quality, { candlesWithBidAsk, candlesWithoutBidAsk, percentage },
     readyForBacktest: quality.issues.every(issue => issue.type !== "duplicate" && issue.type !== "non-monotonic" && issue.type !== "invalid-range") &&
       data.candles.length >= 31 &&
       (!options.requireBidAsk || candlesWithBidAsk === data.candles.length),
