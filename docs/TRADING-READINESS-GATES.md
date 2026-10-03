@@ -36,7 +36,7 @@ Binance Spot execution is implemented but remains disabled by default.
 Before a production order can be submitted, all of the following must hold:
 - LayanX ExecutionRuntime authorizes the L4 tool and explicit approval is valid for the exact payload hash.
 - BINANCE_LIVE_TRADING_ENABLED=true.
-- Local Binance credentials are configured outside the repository, or deployment environment credentials are explicitly supplied.
+- Encrypted local Binance credentials are configured in the LayanX secret vault, or deployment environment credentials are explicitly supplied.
 - BINANCE_MAX_ORDER_NOTIONAL is a positive limit.
 - The symbol is currently TRADING.
 - Quantity and price comply with Binance exchange filters.
