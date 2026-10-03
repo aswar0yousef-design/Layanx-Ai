@@ -1,6 +1,6 @@
 import {createHash,randomUUID} from "node:crypto";
 import {mkdirSync,readFileSync,writeFileSync,readdirSync} from "node:fs";
-import {dirname,join,resolve} from "node:path";
+import {join,resolve} from "node:path";
 import type {SkillManifest} from "./registry.js";
 import {SkillScanner} from "./scanner.js";
 
