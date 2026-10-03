@@ -547,10 +547,11 @@ export class LayanXCore{
     let lastDesktopMutation=false;
     const liveScreenWasRunning=this.liveScreen?.isRunning()??false;
     let liveScreenAutoStarted=false;
+    const cleanupLiveScreen=()=>{cleanupLiveScreen();};
     while(steps<limit){
       const current=this.missions.get(missionId);
       if(!current)throw new Error("Mission not found.");
-      if(["completed","cancelled"].includes(current.status))return{missionId,completed:current.status==="completed",status:current.status,steps,results};
+      if(["completed","cancelled"].includes(current.status)){cleanupLiveScreen();return{missionId,completed:current.status==="completed",status:current.status,steps,results};}
       const plans=current.tools??[];
       const index=steps<plans.length?steps:-1;
       let plan=index>=0?plans[index]:undefined;
@@ -608,14 +609,14 @@ export class LayanXCore{
       }
       if(!result.ok){
         if(result.approvalId||result.error==="Approval missing, revoked, or expired."||result.error==="Approval scope mismatch.")
-          return{missionId,completed:false,status:"awaiting_approval",paused:true,steps,nextToolIndex:actualIndex,approvalId:result.approvalId,results};
+          cleanupLiveScreen();return{missionId,completed:false,status:"awaiting_approval",paused:true,steps,nextToolIndex:actualIndex,approvalId:result.approvalId,results};
         const repair=this.aiPlanner.nextTool({
           goal:current.goal,result:{failure:result.error,latest},tools:this.toolCatalog.list(this.agents.get(agentId),current.requiredPermission),
           requiredPermission:current.requiredPermission,routing,completedTools:results.map(item=>(item as {tool?:string}).tool??""),
           projectContext:{repairAfterFailure:true}
         });
         const recoveryPlan=await repair;
-        if(!recoveryPlan)return{missionId,completed:false,status:"failed",steps,results,reason:result.error};
+        if(!recoveryPlan)cleanupLiveScreen();return{missionId,completed:false,status:"failed",steps,results,reason:result.error};
         current.tools=current.tools??[];
         current.tools.push(recoveryPlan);
         this.missions.save(current);
@@ -623,7 +624,7 @@ export class LayanXCore{
     }
     const finalMission=this.missions.get(missionId);
     if(!finalMission)throw new Error("Mission not found.");
-    if(!results.length)return{missionId,completed:false,status:finalMission.status,steps,results,reason:"Agent loop produced no executable result."};
+    if(!results.length)cleanupLiveScreen();return{missionId,completed:false,status:finalMission.status,steps,results,reason:"Agent loop produced no executable result."};
     const final=await this.executionRuntime.finalize(finalMission,latest,agentId);
     this.missions.save(finalMission);
     if(liveScreenAutoStarted&&!liveScreenWasRunning)this.liveScreen?.stop();
