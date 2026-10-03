@@ -1,8 +1,7 @@
 import {runOperationalAcceptance} from "../src/operational-acceptance.js";
 
-const result=await runOperationalAcceptance(undefined,{
-  requireLiveProviders:process.env.LAYANX_OPERATIONAL_REQUIRE_LIVE_PROVIDERS==="true"
-});
+const strict=process.argv.includes("--strict")||process.env.LAYANX_OPERATIONAL_REQUIRE_LIVE_PROVIDERS==="true";
+const result=await runOperationalAcceptance(undefined,{requireLiveProviders:strict});
 
 console.log(JSON.stringify({
   accepted:result.accepted,
