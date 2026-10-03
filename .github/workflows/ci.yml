@@ -19,6 +19,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Run operational acceptance
+        run: npm run operational:acceptance
       - name: Start health runtime
         run: |
           PORT=18080 npm start > /tmp/layanx-health.log 2>&1 &
