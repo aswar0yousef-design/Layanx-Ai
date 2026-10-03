@@ -65,6 +65,7 @@ import {ReleaseStateMachine} from "./release-state-machine.js";
 import {ReleaseManager} from "./release-manager.js";
 import {RuntimeTracer} from "./runtime-tracer.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
+import type {LiveScreenObserver} from "../desktop/live-screen.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -132,6 +133,10 @@ export class LayanXCore{
   readonly tracer=new RuntimeTracer();
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
+  private liveScreen?:LiveScreenObserver;
+
+  setLiveScreenObserver(observer:LiveScreenObserver){this.liveScreen=observer;}
+  liveScreenStatus(){return {running:this.liveScreen?.isRunning()??false,frameAvailable:Boolean(this.liveScreen?.latest()),frame:this.liveScreen?.latest()};}
 
   constructor(idempotency?:IdempotencyService,persistence?:RuntimePersistence,storage?:import("../storage/runtime-storage.js").RuntimeStorage){
     this.idempotency=idempotency??new IdempotencyStore();
@@ -544,6 +549,10 @@ export class LayanXCore{
       const plans=current.tools??[];
       const index=steps<plans.length?steps:-1;
       let plan=index>=0?plans[index]:undefined;
+      if(this.liveScreen?.isRunning()){
+        const frame=this.liveScreen.latest();
+        if(frame)visualContext={mimeType:frame.mimeType,base64:frame.base64};
+      }
       if(!plan){
         const catalog=this.toolCatalog.list(this.agents.get(agentId),current.requiredPermission);
         const context=await this.projectIntelligence.scan(projectId).then(i=>({summary:i.summary,markers:i.markers,package:i.package,files:i.files.slice(0,80).map(f=>f.path)})).catch(error=>({unavailable:true,reason:error instanceof Error?error.message:"project intelligence unavailable"}));
@@ -559,6 +568,11 @@ export class LayanXCore{
         current.tools.push(plan);
         this.missions.save(current);
         plan=current.tools[current.tools.length-1]!;
+      }
+      if(plan&&/^desktop\.(mouse|keyboard)/.test(plan.tool)&&this.liveScreen){
+        if(!this.liveScreen.isRunning())this.liveScreen.start();
+        const frame=this.liveScreen.latest();
+        if(frame)visualContext={mimeType:frame.mimeType,base64:frame.base64};
       }
       if(plan&&/^desktop\.(mouse|keyboard)/.test(plan.tool)&&!visualContext){
         const screenshot={tool:"desktop.screenshot",action:"desktop screenshot",permission:"L2_ANALYZE" as const,reason:"Observe the current desktop before choosing a coordinate or keyboard action."};
