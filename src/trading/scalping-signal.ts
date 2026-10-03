@@ -5,6 +5,8 @@ export interface MarketCandle {
   low: number;
   close: number;
   volume?: number;
+  bid?: number;
+  ask?: number;
 }
 
 export interface ScalpingSignalConfig {
