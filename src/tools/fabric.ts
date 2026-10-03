@@ -121,7 +121,7 @@ function runNpm(cwd:string,args:string[],timeoutMs:number):Promise<{args:string[
     child.on("close",(code,signal)=>resolvePromise({args,cwd,exitCode:code,signal,stdout:stdout.slice(0,128*1024),stderr:stderr.slice(0,128*1024)}));
   });
 }
-export function createProjectBootstrapToolAdapter(options:{root:string}={}):ToolAdapter{
+export function createProjectBootstrapToolAdapter(options:{root:string}):ToolAdapter{
   const root=resolve(options.root);
   return{async execute(request){
     const workspace=workspaceFor(root,request.projectId);
