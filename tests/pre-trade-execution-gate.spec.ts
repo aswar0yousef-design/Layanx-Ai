@@ -59,4 +59,28 @@ const blockedSession = evaluatePreTradeExecutionGate({
 assert.equal(blockedSession.allowed, false);
 assert.ok(blockedSession.reasons.includes("Trading session is outside the configured allowlist."));
 
+const blockedTightStop = evaluatePreTradeExecutionGate({
+  symbol: "XAUUSD",
+  timeframe: "M1",
+  session: "London",
+  spread: 0.05,
+  atr: 1,
+  stopLossDistance: 0.10,
+}, { minStopDistanceAtrRatio: 0.25 });
+
+assert.equal(blockedTightStop.allowed, false);
+assert.ok(blockedTightStop.reasons.includes("Stop-distance/ATR floor not met."));
+assert.equal(blockedTightStop.checks.find((check) => check.name === "stop-distance-atr")?.passed, false);
+
+const allowedStop = evaluatePreTradeExecutionGate({
+  symbol: "XAUUSD",
+  timeframe: "M1",
+  session: "London",
+  spread: 0.05,
+  atr: 1,
+  stopLossDistance: 0.30,
+}, { minStopDistanceAtrRatio: 0.25 });
+
+assert.equal(allowedStop.allowed, true);
+
 console.log("pre-trade execution gate tests passed");
