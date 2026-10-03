@@ -19,3 +19,6 @@ Creator Engine adds a local-first production layer without duplicating the exist
 No credentials are stored by Creator Engine. Rendering uses spawn() with argument arrays rather than shell commands. Output and scene assets are confined to the configured creator workspace. Publishing remains behind the existing LayanX permission/approval pipeline.
 
 The current engine deliberately does not claim that a local MP4 is automatically publishable: a public media URL or a configured upload connector is still required by platform APIs.
+
+## ComfyUI HTTP provider
+When `LAYANX_CREATOR_VISUAL_EXECUTABLE` is not configured, Creator Engine can use a local ComfyUI server. Set `LAYANX_COMFYUI_URL` and provide a serialized ComfyUI workflow in `LAYANX_COMFYUI_WORKFLOW_JSON`. The workflow may contain `{prompt}`, `{output}`, and `{aspect}` placeholders. LayanX queues the workflow through `/prompt`, polls `/history/{prompt_id}`, then retrieves the first generated image through `/view`. The server remains local/configured by the user; no remote credentials are stored by Creator Engine.
