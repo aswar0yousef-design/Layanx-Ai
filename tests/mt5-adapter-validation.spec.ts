@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { toPreTradeMarketSnapshot } from "../src/trading/mt5-adapter.js";
+import { filterCompletedMt5Candles, toPreTradeMarketSnapshot } from "../src/trading/mt5-adapter.js";
 
 const market = toPreTradeMarketSnapshot(
   { symbol: "XAUUSD", bid: 2000, ask: 2000.2, timestamp: "2026-10-03T12:00:00Z" },
@@ -18,5 +18,21 @@ assert.throws(
   ),
   /ask cannot be below bid/,
 );
+
+
+const candle = {
+  timestamp: "2026-10-03T11:59:00Z",
+  open: 2000,
+  high: 2001,
+  low: 1999,
+  close: 2000.5,
+};
+const completed = filterCompletedMt5Candles(
+  [candle, { ...candle, timestamp: "2026-10-03T12:00:00Z", open: 2000.5, high: 2001.2, low: 2000.1, close: 2001 }],
+  "2026-10-03T12:00:30Z",
+  "M1",
+);
+assert.equal(completed.length, 1);
+assert.equal(completed[0].timestamp, candle.timestamp);
 
 console.log("MT5 adapter validation tests passed");
