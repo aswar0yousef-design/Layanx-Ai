@@ -31,3 +31,8 @@ The importer does not claim that bar-level Bid/Ask equals tick-level execution. 
 ## Backtest guard
 
 `runMt5HistoricalBacktest` is the guarded entry point for MT5 historical simulations. By default it requires 100% Bid/Ask coverage and rejects datasets that do not satisfy the readiness gate. Set `requireBidAsk: false` only when an OHLC-only sensitivity run is intentionally desired.
+
+
+## Session distribution
+
+The import result includes UTC-based session diagnostics using the existing session windows: Asia 00:00-08:00, London 08:00-13:00, and New York 13:00-21:00. Candles outside those windows are reported as Unknown. The diagnostic warns about sample concentration but does not reject the dataset. Confirm the timezone semantics of the MT5 export before interpreting session statistics.
