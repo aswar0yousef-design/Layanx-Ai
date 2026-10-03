@@ -26,12 +26,22 @@ function normalizeCandle(row: Record<string, unknown>): MarketCandle {
   const close = finiteNumber(row.close ?? row.c, "close");
   const volumeValue = row.volume ?? row.vol ?? row.tick_volume;
   const volume = volumeValue === undefined ? undefined : finiteNumber(volumeValue, "volume");
+  const bidValue = row.bid ?? row.bid_price ?? row.bidprice;
+  const askValue = row.ask ?? row.ask_price ?? row.askprice;
+  const bid = bidValue === undefined ? undefined : finiteNumber(bidValue, "bid");
+  const ask = askValue === undefined ? undefined : finiteNumber(askValue, "ask");
+  if ((bid !== undefined && bid <= 0) || (ask !== undefined && ask <= 0)) {
+    throw new Error(`Bid and ask must be positive at ${timestamp}`);
+  }
+  if (bid !== undefined && ask !== undefined && ask < bid) {
+    throw new Error(`Ask cannot be below bid at ${timestamp}`);
+  }
 
   if (high < Math.max(open, close) || low > Math.min(open, close) || high < low) {
     throw new Error(`Invalid OHLC range at ${timestamp}`);
   }
 
-  return { timestamp: new Date(timestamp).toISOString(), open, high, low, close, volume };
+  return { timestamp: new Date(timestamp).toISOString(), open, high, low, close, volume, bid, ask };
 }
 
 function parseCsvLine(line: string): string[] {
