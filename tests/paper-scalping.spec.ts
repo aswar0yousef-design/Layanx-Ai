@@ -93,3 +93,31 @@ const excludedResult = runPaperScalping(candles, {
 });
 
 assert.ok(excludedResult.trades.every((trade) => trade.metadata?.exitReason !== "end-of-data"));
+
+
+const trailingCandles = Array.from({ length: 45 }, (_, i) => {
+  const close = 100 + i * 0.25;
+  return {
+    timestamp: new Date(Date.parse("2026-10-03T10:00:00Z") + i * 60_000).toISOString(),
+    open: close - 0.02,
+    high: close + 0.50,
+    low: close - 0.02,
+    close,
+  };
+});
+
+const trailingResult = runPaperScalping(trailingCandles, {
+  symbol: "XAUUSD",
+  timeframe: "M1",
+  initialBalance: 1000,
+  riskPercent: 1,
+  stopLossDistance: 0.5,
+  spread: 0.02,
+  slippage: 0,
+  trailingStopDistance: 0.2,
+});
+
+assert.equal(trailingResult.analyses.length, trailingResult.trades.length);
+for (const trade of trailingResult.trades) {
+  assert.ok(trade.metadata?.exitReason !== undefined);
+}
