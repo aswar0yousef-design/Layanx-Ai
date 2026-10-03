@@ -47,7 +47,7 @@ export class AiMissionPlanner{
     });
     return this.parse(response.output,tools);
   }
-  async nextTool(input:{goal:string;result:unknown;tools:ToolCatalogEntry[];requiredPermission:PermissionLevel;completedTools:string[];memory?:Array<{kind:string;summary:string;content:unknown;tags:string[]}>;projectContext?:unknown;routing?:ModelRoutingOptions}):Promise<PlannedTool|null>{
+  async nextTool(input:{goal:string;result:unknown;tools:ToolCatalogEntry[];requiredPermission:PermissionLevel;completedTools:string[];memory?:Array<{kind:string;summary:string;content:unknown;tags:string[]}>;projectContext?:unknown;routing?:ModelRoutingOptions;visualContext?:{mimeType:string;base64:string}}):Promise<PlannedTool|null>{
     if(!input.goal.trim())throw new Error("Mission goal is empty.");
     const catalog=input.tools.map(tool=>({name:tool.name,description:tool.description,permission:tool.permission,dangerous:tool.dangerous,actions:tool.actions,tags:tool.tags}));
     const boundedResult=JSON.stringify(input.result).slice(0,12000);
