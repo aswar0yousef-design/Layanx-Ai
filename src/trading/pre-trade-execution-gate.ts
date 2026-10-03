@@ -6,6 +6,7 @@ export interface PreTradeMarketSnapshot {
   session?: string;
   spread?: number;
   atr?: number;
+  stopLossDistance?: number;
   expectedSlippage?: number;
   timestamp?: string;
 }
@@ -14,13 +15,14 @@ export interface PreTradeExecutionPolicy {
   maxSpreadAtrRatio: number;
   maxExpectedSlippageAtrRatio: number;
   minAtr?: number;
+  minStopDistanceAtrRatio?: number;
   allowedSessions?: string[];
   requireSpread: boolean;
   requireAtr: boolean;
 }
 
 export interface PreTradeCheck {
-  name: "atr-present" | "spread-present" | "spread-atr" | "expected-slippage-atr" | "minimum-atr" | "session";
+  name: "atr-present" | "spread-present" | "spread-atr" | "expected-slippage-atr" | "minimum-atr" | "stop-distance-atr" | "session";
   passed: boolean;
   observed?: number;
   limit?: number;
@@ -112,6 +114,23 @@ export function evaluatePreTradeExecutionGate(
       message: passed ? "ATR meets the configured minimum." : "ATR is below the configured minimum."
     });
     if (!passed) reasons.push("Minimum ATR threshold not met.");
+  }
+
+  if (rules.minStopDistanceAtrRatio !== undefined) {
+    const ratio = finitePositive(snapshot.stopLossDistance) && finitePositive(snapshot.atr)
+      ? snapshot.stopLossDistance! / snapshot.atr!
+      : NaN;
+    const passed = Number.isFinite(ratio) && ratio >= rules.minStopDistanceAtrRatio;
+    checks.push({
+      name: "stop-distance-atr",
+      passed,
+      observed: Number.isFinite(ratio) ? ratio : undefined,
+      limit: rules.minStopDistanceAtrRatio,
+      message: passed
+        ? "Stop distance meets the configured ATR floor."
+        : "Stop distance is too small relative to ATR."
+    });
+    if (!passed) reasons.push("Stop-distance/ATR floor not met.");
   }
 
   if (rules.allowedSessions?.length) {
