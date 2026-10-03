@@ -27,7 +27,13 @@ export function createRuntime(options:RuntimeOptions={}){
   maxToolCalls:100,
   maxRuntimeMs:30000,
   successCriteria:["mission created","execution auditable","requested project operation completed"],
-  stopCondition:"Stop on policy denial or Sentinel block."
+  stopCondition:"Stop on policy denial or Sentinel block.",
+  profile:{
+   role:"orchestrator",
+   description:"Coordinates missions, delegates work, and keeps execution within LayanX policy.",
+   preferredCapabilities:["reasoning","chat"],
+   memoryTags:["orchestration","missions","runtime"]
+  }
  };
  core.registerAgent(agent);
  const configured=configureProviders(undefined,core.models,core.providers);
