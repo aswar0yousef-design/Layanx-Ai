@@ -55,4 +55,19 @@ assert.throws(
   /XAUUSD data requires an XAUUSD paper-trading configuration/,
 );
 
+const wrongSymbolData = importMt5HistoricalCsv(
+  ["timestamp,open,high,low,close,bid,ask", ...rows].join("\n"),
+  { symbol: "EURUSD", timeframe: "M1", expectedIntervalMs: 60_000, requireBidAsk: true },
+);
+assert.throws(
+  () => runMt5HistoricalBacktest({
+    data: wrongSymbolData,
+    config: {
+      symbol: "XAUUSD", timeframe: "M1", initialBalance: 10000, riskPercent: 1,
+      stopLossDistance: 1, spread: 0.1,
+    },
+  }),
+  /does not match config symbol/,
+);
+
 console.log("MT5 historical backtest tests passed");
