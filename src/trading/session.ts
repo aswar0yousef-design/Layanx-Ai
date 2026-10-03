@@ -29,5 +29,5 @@ export function detectTradingSession(
 
   if (matches.length === 0) return "Unknown";
   if (matches.length > 1) return "Overlap";
-  return matches[0].name;
+  return matches[0]!.name;
 }
