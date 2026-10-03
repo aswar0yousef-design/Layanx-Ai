@@ -15,7 +15,7 @@ export interface BacktestReport {
   expectancyPerTrade: number;
   maxDrawdown: number;
   maxDrawdownPct: number;
-  executionCosts: number;
+  estimatedRoundTripCosts: number;
   commissions: number;
   swaps: number;
   costErasedTrades: number;
@@ -35,7 +35,7 @@ export interface PooledBacktestReport {
   grossLoss: number;
   profitFactor: number;
   expectancyPerTrade: number;
-  executionCosts: number;
+  estimatedRoundTripCosts: number;
   commissions: number;
   swaps: number;
   costErasedTrades: number;
@@ -47,7 +47,7 @@ export function buildPooledBacktestReport(analyses: TradeAnalysis[]): PooledBack
   let wins = 0;
   let grossProfit = 0;
   let grossLoss = 0;
-  let executionCosts = 0;
+  let estimatedRoundTripCosts = 0;
   let commissions = 0;
   let swaps = 0;
   let costErasedTrades = 0;
@@ -61,7 +61,7 @@ export function buildPooledBacktestReport(analyses: TradeAnalysis[]): PooledBack
     } else if (analysis.trueNetPnl < 0) {
       grossLoss += Math.abs(analysis.trueNetPnl);
     }
-    executionCosts += analysis.executionCost;
+    estimatedRoundTripCosts += analysis.estimatedRoundTripCost;
     commissions += analysis.commission;
     swaps += analysis.swap;
     if (analysis.grossPnl > 0 && analysis.trueNetPnl <= 0) costErasedTrades += 1;
@@ -84,7 +84,7 @@ export function buildPooledBacktestReport(analyses: TradeAnalysis[]): PooledBack
     grossLoss: grossLossValue,
     profitFactor: grossLossValue === 0 ? (grossProfit > 0 ? Infinity : 0) : grossProfit / grossLossValue,
     expectancyPerTrade: trades === 0 ? 0 : netPnl / trades,
-    executionCosts,
+    estimatedRoundTripCosts,
     commissions,
     swaps,
     costErasedTrades,
@@ -105,7 +105,7 @@ export function buildBacktestReport(
   let maxDrawdownPct = 0;
   let grossProfit = 0;
   let grossLoss = 0;
-  let executionCosts = 0;
+  let estimatedRoundTripCosts = 0;
   let commissions = 0;
   let swaps = 0;
   let costErasedTrades = 0;
@@ -128,7 +128,7 @@ export function buildBacktestReport(
       grossLoss += Math.abs(analysis.trueNetPnl);
     }
 
-    executionCosts += analysis.executionCost;
+    estimatedRoundTripCosts += analysis.estimatedRoundTripCost;
     commissions += analysis.commission;
     swaps += analysis.swap;
     if (analysis.grossPnl > 0 && analysis.trueNetPnl <= 0) costErasedTrades += 1;
@@ -156,7 +156,7 @@ export function buildBacktestReport(
     expectancyPerTrade: trades === 0 ? 0 : netPnl / trades,
     maxDrawdown,
     maxDrawdownPct,
-    executionCosts,
+    estimatedRoundTripCosts,
     commissions,
     swaps,
     costErasedTrades,
