@@ -44,4 +44,15 @@ assert.throws(
   }),
 );
 
+assert.throws(
+  () => runMt5HistoricalBacktest({
+    data,
+    config: {
+      symbol: "EURUSD", timeframe: "M1", initialBalance: 10000, riskPercent: 1,
+      stopLossDistance: 0.001, spread: 0.0001,
+    },
+  }),
+  /XAUUSD data requires an XAUUSD paper-trading configuration/,
+);
+
 console.log("MT5 historical backtest tests passed");
