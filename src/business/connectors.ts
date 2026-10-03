@@ -1,6 +1,7 @@
 import {createHash} from "node:crypto";
 import {localSecret} from "../security/local-secret-vault.js";
 import type {Product,Order,SocialAccount,SocialPlatform,Store} from "./types.js";
+import {NativeSocialConnector} from "./native-social.js";
 export interface ConnectorResult{externalId?:string;raw:unknown}
 export interface CommerceConnector{platform:string;createProduct(store:Store,product:Product):Promise<ConnectorResult>;updateProduct(store:Store,product:Product):Promise<ConnectorResult>;listOrders(store:Store):Promise<Order[]>;}
 export interface SocialConnector{platform:SocialPlatform;publish(account:SocialAccount,item:{title:string;body:string;mediaUrls:string[]}):Promise<{externalId:string;url?:string}>;}
@@ -32,8 +33,8 @@ export class ConfiguredSocialConnector implements SocialConnector{
  constructor(platform:SocialPlatform,private readonly token:string,private readonly endpoint:string){this.platform=platform;}
  async publish(account:SocialAccount,item:{title:string;body:string;mediaUrls:string[]}){const headers:Record<string,string>={"content-type":"application/json"};if(this.token)headers.authorization=`Bearer ${this.token}`;headers["X-LayanX-Idempotency-Key"]=socialIdempotencyKey(account,item);const d=await request(this.endpoint,{method:"POST",headers,body:JSON.stringify({platform:this.platform,account,item})});const externalId=String(d.externalId??d.id??"");if(!externalId)throw new Error(`social_${this.platform}_missing_external_id`);return {externalId,url:d.url};}
 }
-export function socialIdempotencyKey(account:SocialAccount,item:{title:string;body:string;mediaUrls:string[]}){return createHash("sha256").update(`${account.id}\0${item.title}\0${item.body}`).digest("hex");}
-export function configuredSocialConnector(platform:SocialPlatform){const p=platform.toUpperCase();const token=localSecret(`${platform}.social.token`,process.env[`LAYANX_${p}_SOCIAL_TOKEN`]);const endpoint=process.env[`LAYANX_${p}_SOCIAL_PUBLISH_URL`];if(!endpoint)throw new Error(`LAYANX_${p}_SOCIAL_PUBLISH_URL is required`);return new ConfiguredSocialConnector(platform,token??"",endpoint);}
+export function socialIdempotencyKey(account:SocialAccount,item:{title:string;body:string;mediaUrls:string[]}){return createHash("sha256").update(`${account.id}\0${item.title}\0${item.body}\0${item.mediaUrls.join("\0")}`).digest("hex");}
+export function configuredSocialConnector(platform:SocialPlatform){const p=platform.toUpperCase();const token=localSecret(`${platform}.social.token`,process.env[`LAYANX_${p}_SOCIAL_TOKEN`]);const endpoint=process.env[`LAYANX_${p}_SOCIAL_PUBLISH_URL`];if(endpoint)return new ConfiguredSocialConnector(platform,token??"",endpoint);if(token&&["instagram","facebook","tiktok","youtube","linkedin","x"].includes(platform))return new NativeSocialConnector(platform);throw new Error(`LAYANX_${p}_SOCIAL_PUBLISH_URL or OAuth social token is required`);}
 
 export class GenericSocialConnector implements SocialConnector{
  platform:SocialPlatform="generic"; constructor(private readonly token=process.env.LAYANX_SOCIAL_TOKEN){}

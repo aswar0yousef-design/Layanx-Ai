@@ -4,6 +4,7 @@ import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {BusinessManager} from "../src/business/manager.js";
+import {socialIdempotencyKey} from "../src/business/connectors.js";
 
 const dir=mkdtempSync(join(tmpdir(),"layanx-social-recovery-"));
 process.env.LAYANX_BUSINESS_STORAGE_PATH=join(dir,"business.json");
@@ -20,6 +21,7 @@ b.upsertSocialAccount({platform:"instagram",name:"IG",externalId:"ig",enabled:tr
 b.upsertSocialAccount({platform:"facebook",name:"FB",externalId:"fb",enabled:true});
 const content=b.createContent({title:"T",body:"B",platforms:["instagram","facebook"],mediaIds:[],status:"approved"});
 const first=await b.publishContent(content.id) as any;
+assert.notEqual(socialIdempotencyKey({id:"a",platform:"instagram",name:"A",enabled:true,createdAt:"now"},{title:"T",body:"B",mediaUrls:["https://a.test/1.jpg"]}),socialIdempotencyKey({id:"a",platform:"instagram",name:"A",enabled:true,createdAt:"now"},{title:"T",body:"B",mediaUrls:["https://a.test/2.jpg"]}));
 assert.equal(first.results.length,1);
 assert.equal(first.failures.length,1);
 assert.equal(b.snapshot().content[0]?.status,"scheduled");
