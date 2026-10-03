@@ -566,7 +566,8 @@ export class LayanXCore{
         current.tools=missionTools;
         this.missions.save(current);
         plan=screenshot;
-      }\n      const toolIndex=(this.missions.get(missionId)?.tools??[]).findIndex(item=>item===plan);
+      }
+      const toolIndex=(this.missions.get(missionId)?.tools??[]).findIndex(item=>item===plan);
       const actualIndex=toolIndex>=0?toolIndex:(this.missions.get(missionId)?.tools?.length??1)-1;
       const result=await this.executeMissionTool(missionId,projectId,actualIndex,plan.payload??{},approvalIds[actualIndex],agentId,{deferVerification:true});
       results.push(result);
