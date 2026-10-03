@@ -8,8 +8,8 @@ const args=process.argv.slice(2);const file=args.find(a=>!a.startsWith("--"));if
 const flag=(name:string,fallback:number)=>{const raw=args.find(a=>a.startsWith("--"+name+"="))?.split("=")[1];if(raw===undefined)return fallback;const value=Number(raw);if(!Number.isFinite(value)||value<0)throw new Error("Invalid --"+name+" value.");return value;};
 const session=(args.find(a=>a.startsWith("--session="))?.split("=")[1]??"all") as Session;
 if(!["all","asia","london","new-york"].includes(session))throw new Error("Invalid --session. Use all, asia, london, or new-york.");
-const csv=await readFile(file,"utf8");const rawBars=sortMarketBars(parseMarketCsv(csv));if(rawBars.length<120)throw new Error("At least 120 bars are required for evaluation.");
-const quality=validateMarketData(rawBars);if(!quality.valid)throw new Error("Market data quality failed: "+JSON.stringify(quality));
+const csv=await readFile(file,"utf8");const parsedBars=parseMarketCsv(csv);if(parsedBars.length<120)throw new Error("At least 120 bars are required for evaluation.");
+const quality=validateMarketData(parsedBars);const rawBars=sortMarketBars(parsedBars);if(!quality.valid)throw new Error("Market data quality failed: "+JSON.stringify(quality));
 
 function sessionHour(timestamp:number):number{return new Date(timestamp).getUTCHours()+new Date(timestamp).getUTCMinutes()/60;}
 function inSession(bar:MarketBar):boolean{const hour=sessionHour(bar.timestamp);if(session==="all")return true;if(session==="asia")return hour>=0&&hour<8;if(session==="london")return hour>=7&&hour<16;return hour>=12&&hour<21;}
