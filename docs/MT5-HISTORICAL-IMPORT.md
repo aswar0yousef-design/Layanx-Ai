@@ -28,3 +28,6 @@ The result exposes quoteCoverage so the backtest can distinguish fully quoted da
 
 ## Important
 The importer does not claim that bar-level Bid/Ask equals tick-level execution. For high-fidelity XAUUSD scalping validation, tick Bid/Ask data remains preferable.
+## Backtest guard
+
+`runMt5HistoricalBacktest` is the guarded entry point for MT5 historical simulations. By default it requires 100% Bid/Ask coverage and rejects datasets that do not satisfy the readiness gate. Set `requireBidAsk: false` only when an OHLC-only sensitivity run is intentionally desired.
