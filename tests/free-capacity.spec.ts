@@ -1,9 +1,9 @@
-import {ModelRegistry} from "../src/models/registry.js";
+import {ModelRegistry,type ModelDefinition} from "../src/models/registry.js";
 import {FreeCapacityProvider} from "../src/providers/free-capacity.js";
 import {ModelExecutionRouter,ModelProviderRegistry} from "../src/core/model-execution.js";
 
-const freeModel={id:"free:demo:remote-model",provider:"demo-free",providerModelId:"remote-model",capabilities:["chat"] as const,local:false,enabled:true,priority:20,costPer1kInputUsd:0,costPer1kOutputUsd:0,tags:["free"]};
-const paidModel={id:"paid",provider:"paid",capabilities:["chat"] as const,local:false,enabled:true,priority:10};
+const freeModel:ModelDefinition={id:"free:demo:remote-model",provider:"demo-free",providerModelId:"remote-model",capabilities:["chat"],local:false,enabled:true,priority:20,costPer1kInputUsd:0,costPer1kOutputUsd:0,tags:["free"]};
+const paidModel:ModelDefinition={id:"paid",provider:"paid",capabilities:["chat"] as const,local:false,enabled:true,priority:10};
 
 const calls:string[]=[];
 const fetcher=async(input:RequestInfo|URL,init?:RequestInit)=>{
