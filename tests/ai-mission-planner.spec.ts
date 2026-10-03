@@ -9,7 +9,7 @@ const providers=new ModelProviderRegistry();
 const provider:ModelProviderAdapter={
  name:"fake",
  async health(){return{provider:"fake",available:true,updatedAt:new Date().toISOString()};},
- async generate(model,request){if(model.id==="vision"&&Array.isArray(request.input)&&request.input.some(part=>part.type==="image")===false)throw new Error("Vision input missing."); return{modelId:model.id,provider:model.provider,output:JSON.stringify({
+ async generate(model,request){if(model.id==="vision"){if(!Array.isArray(request.input)||!request.input.some(part=>part.type==="image"))throw new Error("Vision input missing.");return{modelId:model.id,provider:model.provider,output:JSON.stringify({tool:"desktop.screenshot",action:"desktop screenshot",permission:"L2_ANALYZE",reason:"inspect"})};} return{modelId:model.id,provider:model.provider,output:JSON.stringify({
    risk:"low",requiredPermission:"L1_READ",
    steps:[{description:"Understand the request"},{description:"Execute safely"},{description:"Verify the result"}],
    successCriteria:["result exists"],stopCondition:"Stop on policy denial"
