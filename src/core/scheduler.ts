@@ -72,6 +72,8 @@ export class MissionScheduler{
  }
  private nextTime(trigger:ScheduleTrigger,from:Date){
   if(trigger.kind==="once"){const at=new Date(trigger.runAt!);return at.getTime()>=from.getTime()?at:undefined;}
-  return new Date(from.getTime()+(trigger.runImmediately?0:trigger.intervalMs!));
+  const intervalMs=trigger.intervalMs;
+  if(!Number.isFinite(intervalMs))throw new Error("Interval trigger is missing intervalMs.");
+  return new Date(from.getTime()+(trigger.runImmediately?0:intervalMs));
  }
 }
