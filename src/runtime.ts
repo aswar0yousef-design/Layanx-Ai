@@ -15,6 +15,7 @@ import {CreatorEngine} from "./creator/engine.js";
 import {registerCreatorTools} from "./creator/tools.js";
 import {registerGoogleWorkspaceTools} from "./google-tools.js";
 import {GoogleInvoiceAgent,registerGoogleInvoiceTool} from "./google-invoice-agent.js";
+import {registerYahooMailTools} from "./yahoo-tools.js";
 
 export interface RuntimeOptions{storagePath?:string;}
 
@@ -40,10 +41,11 @@ export function createRuntime(options:RuntimeOptions={}){
  registerGoogleWorkspaceTools(core,{accessToken:process.env.GOOGLE_ACCESS_TOKEN,clientId:process.env.GOOGLE_CLIENT_ID,clientSecret:process.env.GOOGLE_CLIENT_SECRET,refreshToken:process.env.GOOGLE_REFRESH_TOKEN});
  const googleInvoices=new GoogleInvoiceAgent(core);
  registerGoogleInvoiceTool(core,googleInvoices);
+ registerYahooMailTools(core);
  const agent:AgentContract={
   agentId:"core",
   purpose:"Safely orchestrate LayanX missions.",
-  allowedTools:["runtime.status","mission.inspect","memory.recall","http.read","github.repo.read","github.issues.list","github.prs.list","browser.read","files.read","files.list","files.stat","files.write","terminal.exec","git.status","git.diff","git.log","git.checkpoint","git.branch","git.add","git.commit","git.rollback","git.push","project.inspect","project.verify","development.prepare","desktop.status","desktop.mouse.move","desktop.mouse.click","desktop.keyboard.type","desktop.keyboard.press","desktop.screenshot","ads.snapshot","ads.account.create","ads.campaign.create","ads.adgroup.create","ads.creative.create","ads.ad.create","ads.campaign.launch","ads.campaign.pause","ads.insights.sync","commerce.snapshot","commerce.store.create","commerce.product.create","commerce.product.update","commerce.product.publish","commerce.orders.sync","media.add","media.inspect","content.generate","content.publish","content.schedule","content.process_scheduled","commerce.analytics","campaign.create","creator.doctor","creator.plan","creator.generate_assets","creator.render","google.gmail.search","google.gmail.read","google.gmail.send","google.drive.list","google.drive.folder.create","google.sheets.create","google.sheets.append","google.calendar.upcoming","google.merchant.accounts","google.merchant.products","google.invoices.scan"],
+  allowedTools:["runtime.status","mission.inspect","memory.recall","http.read","github.repo.read","github.issues.list","github.prs.list","browser.read","files.read","files.list","files.stat","files.write","terminal.exec","git.status","git.diff","git.log","git.checkpoint","git.branch","git.add","git.commit","git.rollback","git.push","project.inspect","project.verify","development.prepare","desktop.status","desktop.mouse.move","desktop.mouse.click","desktop.keyboard.type","desktop.keyboard.press","desktop.screenshot","ads.snapshot","ads.account.create","ads.campaign.create","ads.adgroup.create","ads.creative.create","ads.ad.create","ads.campaign.launch","ads.campaign.pause","ads.insights.sync","commerce.snapshot","commerce.store.create","commerce.product.create","commerce.product.update","commerce.product.publish","commerce.orders.sync","media.add","media.inspect","content.generate","content.publish","content.schedule","content.process_scheduled","commerce.analytics","campaign.create","creator.doctor","creator.plan","creator.generate_assets","creator.render","google.gmail.search","google.gmail.read","google.gmail.send","google.drive.list","google.drive.folder.create","google.sheets.create","google.sheets.append","google.calendar.upcoming","google.merchant.accounts","google.merchant.products","email.invoices.scan","yahoo.mail.search","yahoo.mail.read","yahoo.mail.send"],
   forbiddenResources:["secrets","security-controls"],
   requiredPermission:"L4_EXECUTE",
   maxToolCalls:100,
