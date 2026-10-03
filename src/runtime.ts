@@ -5,6 +5,8 @@ import {registerBuiltinTools,registerHttpReadTool,registerGitHubReadTools,regist
 import {RuntimePersistence} from "./core/runtime-persistence.js";
 import {RuntimeStorage} from "./storage/runtime-storage.js";
 import {PostgresStorageAdapter} from "./storage/postgres-adapter.js";
+import {BusinessManager} from "./business/manager.js";
+import {registerBusinessTools} from "./business/tools.js";
 
 export interface RuntimeOptions{storagePath?:string;}
 
@@ -14,10 +16,12 @@ export function createRuntime(options:RuntimeOptions={}){
  const storage=databaseUrl?new RuntimeStorage(new PostgresStorageAdapter(databaseUrl)):storagePath?RuntimeStorage.json(storagePath):undefined;
  const persistence=storage?new RuntimePersistence(storage):undefined;
  const core=new LayanXCore(undefined,persistence);
+ const business=new BusinessManager();
  registerBuiltinTools(core);
  registerHttpReadTool(core);
  registerGitHubReadTools(core,{token:process.env.GITHUB_TOKEN});
  registerToolFabric(core);
+ registerBusinessTools(core,business);
  const agent:AgentContract={
   agentId:"core",
   purpose:"Safely orchestrate LayanX missions.",
@@ -37,7 +41,7 @@ export function createRuntime(options:RuntimeOptions={}){
  };
  core.registerAgent(agent);
  const configured=configureProviders(undefined,core.models,core.providers);
- return{core,...configured,providerSummary:providerSummary(),persistence};
+ return{core,business,...configured,providerSummary:providerSummary(),persistence};
 }
 
 export async function restoreRuntime(runtime:ReturnType<typeof createRuntime>):Promise<{restored:number}>{
