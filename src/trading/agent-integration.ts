@@ -143,7 +143,8 @@ export function registerBinanceLiveOrderTool(tools: ToolRegistry, adapters: Tool
       const configuredMax = Number(process.env.BINANCE_MAX_ORDER_NOTIONAL ?? payload.maxNotional ?? 0);
       if (!Number.isFinite(configuredMax) || configuredMax <= 0) throw new Error("BINANCE_MAX_ORDER_NOTIONAL must be a positive limit for live execution.");
       if (notional > configuredMax) throw new Error("Order exceeds configured Binance maximum notional.");
-      const result = await client.placeOrder({symbol:payload.symbol,side:payload.side,type:payload.type,quantity:payload.quantity,price:payload.price,clientOrderId:payload.clientOrderId});
+      const clientOrderId = payload.clientOrderId ?? request.idempotencyKey;
+      const result = await client.placeOrder({symbol:payload.symbol,side:payload.side,type:payload.type,quantity:payload.quantity,price:payload.price,clientOrderId});
       return { ...result, preflight: {referencePrice, notional, maxNotional: configuredMax} };
     },
   });
