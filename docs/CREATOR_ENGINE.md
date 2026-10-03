@@ -4,7 +4,7 @@ Creator Engine adds a local-first production layer without duplicating the exist
 
 ## Pipeline
 1. creator.plan turns a topic into a structured project and scene plan.
-2. Scene assets can be produced by a local visual provider such as ComfyUI or another configured generator.
+2. creator.generate_assets invokes a configured local visual executable for each scene and an optional local TTS executable. Arguments are passed without a shell and support {prompt}, {output}, {duration}, {aspect}, {text}, and {audio} placeholders.
 3. creator.render uses FFmpeg directly (no shell) to produce MP4.
 4. Existing content.publish remains the only social publishing path.
 
