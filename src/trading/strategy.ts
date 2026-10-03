@@ -6,15 +6,15 @@ export interface TradingStrategy{id:string;name:string;description:string;timefr
 
 export function atr(candles:Candle[],index:number,period=14):number|null{
  if(index<period)return null;let sum=0;
- for(let i=index-period+1;i<=index;i++){const prev=candles[i-1];const c=candles[i];if(!prev||!c)return null;sum+=Math.max(c.high-c.low,Math.abs(c.high-prev.close),Math.abs(c.low-prev.close));}
+ for(let i=index-period+1;i<=index;i++){const prev=candles[i-1];const c=candles[i];if(prev===undefined||c===undefined)return null;sum+=Math.max(c.high-c.low,Math.abs(c.high-prev.close),Math.abs(c.low-prev.close));}
  return sum/period;
 }
 
 export function swingHigh(candles:Candle[],index:number,left=2,right=2):boolean{
- if(index<left||index+right>=candles.length)return false;const v=candles[index].high;for(let i=index-left;i<=index+right;i++)if(i!==index&&candles[i].high>=v)return false;return true;
+ if(index<left||index+right>=candles.length)return false;const center=candles[index];if(center===undefined)return false;const v=center.high;for(let i=index-left;i<=index+right;i++){const item=candles[i];if(item!==undefined&&i!==index&&item.high>=v)return false;}return true;
 }
 export function swingLow(candles:Candle[],index:number,left=2,right=2):boolean{
- if(index<left||index+right>=candles.length)return false;const v=candles[index].low;for(let i=index-left;i<=index+right;i++)if(i!==index&&candles[i].low<=v)return false;return true;
+ if(index<left||index+right>=candles.length)return false;const center=candles[index];if(center===undefined)return false;const v=center.low;for(let i=index-left;i<=index+right;i++){const item=candles[i];if(item!==undefined&&i!==index&&item.low<=v)return false;}return true;
 }
 
 export class HtfStructureLiquidityStrategy implements TradingStrategy{
@@ -23,7 +23,7 @@ export class HtfStructureLiquidityStrategy implements TradingStrategy{
  readonly description="Trend, swing structure, liquidity sweep and displacement with ATR risk levels.";
  readonly timeframe="input-timeframe";
  evaluate(context:StrategyContext):TradingSignal|null{
-  const {candles,index}=context;if(index<30||index>=candles.length)return null;const c=candles[index];const period=context.atrPeriod??14;const range=atr(candles,index,period);if(!range||range<=0)return null;
+  const {candles,index}=context;if(index<30||index>=candles.length)return null;const c=candles[index];if(c===undefined)return null;const period=context.atrPeriod??14;const range=atr(candles,index,period);if(!range||range<=0)return null;
   const recent=candles.slice(Math.max(0,index-20),index);const highs=recent.map(x=>x.high);const lows=recent.map(x=>x.low);const priorHigh=Math.max(...highs);const priorLow=Math.min(...lows);
   const bullishSweep=c.low<priorLow&&c.close>priorLow&&c.close>c.open&&(c.close-c.open)>range*0.5;
   const bearishSweep=c.high>priorHigh&&c.close<priorHigh&&c.close<c.open&&(c.open-c.close)>range*0.5;
