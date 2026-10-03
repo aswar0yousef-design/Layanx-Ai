@@ -3,6 +3,7 @@ import { importHistoricalCsv, importHistoricalJson } from "./historical-data.js"
 import { inspectCandleQuality, type CandleQualityReport } from "./candle-quality.js";
 import type { MarketCandle } from "./scalping-signal.js";
 import { diagnoseMarketData, type MarketDataDiagnostics } from "./market-data-diagnostics.js";
+import { diagnoseSessions, type SessionDiagnostics } from "./session-diagnostics.js";
 
 export interface Mt5HistoricalImportOptions {
   symbol: string;
@@ -17,11 +18,13 @@ export interface Mt5HistoricalImportResult extends HistoricalCandleSource {
   quoteCoverage: { candlesWithBidAsk: number; candlesWithoutBidAsk: number; percentage: number };
   readyForBacktest: boolean;
   diagnostics: MarketDataDiagnostics;
+  sessions: SessionDiagnostics;
 }
 
 function buildResult(data: HistoricalCandleSource, options: Mt5HistoricalImportOptions): Mt5HistoricalImportResult {
   const quality = inspectCandleQuality(data.candles, options.expectedIntervalMs);
   const diagnostics = diagnoseMarketData(data.symbol, data.timeframe, data.candles, options.expectedIntervalMs);
+  const sessions = diagnoseSessions(data.candles);
   const candlesWithBidAsk = data.candles.filter(c => c.bid !== undefined && c.ask !== undefined).length;
   const candlesWithoutBidAsk = data.candles.length - candlesWithBidAsk;
   const percentage = data.candles.length === 0 ? 0 : (candlesWithBidAsk / data.candles.length) * 100;
@@ -29,7 +32,7 @@ function buildResult(data: HistoricalCandleSource, options: Mt5HistoricalImportO
     readyForBacktest: quality.issues.every(issue => issue.type !== "duplicate" && issue.type !== "non-monotonic" && issue.type !== "invalid-range") &&
       data.candles.length >= 31 &&
       (!options.requireBidAsk || candlesWithBidAsk === data.candles.length),
-    diagnostics };
+    diagnostics, sessions };
 }
 
 export function importMt5HistoricalCsv(csv: string, options: Mt5HistoricalImportOptions): Mt5HistoricalImportResult {
