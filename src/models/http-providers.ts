@@ -49,7 +49,7 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter{
       const response=await this.fetcher(this.baseUrl+"/chat/completions",{
         method:"POST",
         headers:{"content-type":"application/json",...(this.apiKey?{"authorization":"Bearer "+this.apiKey}:{})},
-        body:JSON.stringify({model:model.id,messages:[{role:"user",content:request.input}],max_tokens:request.maxOutputTokens}),
+        body:JSON.stringify({model:model.providerModelId??model.id,messages:[{role:"user",content:request.input}],max_tokens:request.maxOutputTokens}),
         signal:controller.signal
       });
       const raw=await response.text();
@@ -103,7 +103,7 @@ export class OllamaProvider implements ModelProviderAdapter{
       const response=await this.fetcher(this.baseUrl+"/api/chat",{
         method:"POST",
         headers:{"content-type":"application/json"},
-        body:JSON.stringify({model:model.id,messages:[{role:"user",content:request.input}],stream:false}),
+        body:JSON.stringify({model:model.providerModelId??model.id,messages:[{role:"user",content:request.input}],stream:false}),
         signal:controller.signal
       });
       const raw=await response.text();
