@@ -53,6 +53,9 @@ export async function readMt5MarketData(
     excludedFormingCandle = true;
   }
   if (historicalCandles.length === 0) throw new Error("MT5 returned no completed candles.");
+  if (Date.parse(historicalCandles[historicalCandles.length - 1].timestamp) + intervalMs > snapshotTime) {
+    throw new Error("MT5 completed-candle filter could not establish a completed latest candle.");
+  }
   for (let index = 0; index < historicalCandles.length; index += 1) {
     const candle = historicalCandles[index];
     const candle = candles[index];
