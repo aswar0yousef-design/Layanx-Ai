@@ -28,7 +28,7 @@ export class SecurityReviewAgent{
     ]);
     const files=filesText.split("\n").filter(Boolean);
     const findings:SecurityFinding[]=[];
-    const checks:[[RegExp,SecurityFinding["severity"],SecurityFinding["category"],string]]=[
+    const checks:Array<[RegExp,SecurityFinding["severity"],SecurityFinding["category"],string]>=[
       [/(?:api[_-]?key|secret|password|access[_-]?token)\s*[:=]\s*["'][^"']{8,}["']/i,"critical","secret","Potential hard-coded credential detected."],
       [/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,"critical","secret","Private key material detected."],
       [/\b(?:eval|Function)\s*\(/,"high","command","Dynamic code execution detected."],
