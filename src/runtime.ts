@@ -16,8 +16,8 @@ export function createRuntime(options:RuntimeOptions={}){
  const databaseUrl=process.env.LAYANX_DATABASE_URL??process.env.DATABASE_URL;
  const storage=databaseUrl?new RuntimeStorage(new PostgresStorageAdapter(databaseUrl)):storagePath?RuntimeStorage.json(storagePath):undefined;
  const persistence=storage?new RuntimePersistence(storage):undefined;
- const core=new LayanXCore(undefined,persistence);
- const business=new BusinessManager();
+ const core=new LayanXCore(undefined,persistence,storage);
+ const business=new BusinessManager(undefined,async input=>(await core.modelExecution.execute({capability:"chat",input,maxOutputTokens:600,routing:{preferLocal:true}})).output);
  const ads=new AdsManager(business.store);
  registerBuiltinTools(core);
  registerHttpReadTool(core);
@@ -47,6 +47,8 @@ export function createRuntime(options:RuntimeOptions={}){
 }
 
 export async function restoreRuntime(runtime:ReturnType<typeof createRuntime>):Promise<{restored:number}>{
+ await runtime.business.hydrate();
+ await runtime.core.scheduler.hydrate();
  if(!runtime.persistence)return{restored:0};
  const snapshots=await runtime.persistence.list();
  for(const snapshot of snapshots)runtime.core.restoreRuntimeSnapshot(snapshot);

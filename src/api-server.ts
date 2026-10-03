@@ -198,7 +198,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   if(request.method==="POST"&&request.url==="/v1/business/orders/sync"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,200,{ok:true,orders:await business.syncOrders(String(input.storeId))});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"order sync failed"});}return;}
   if(request.method==="POST"&&request.url==="/v1/business/social-account"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,account:business.upsertSocialAccount(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"social account failed"});}return;}
   if(request.method==="POST"&&request.url==="/v1/business/media"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,media:business.addMedia(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"media registration failed"});}return;}
-  if(request.method==="POST"&&request.url==="/v1/business/content/generate"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,201,{ok:true,content:business.generateProductContent(String(input.productId),Array.isArray(input.platforms)?input.platforms.filter((x):x is any=>typeof x==="string"):undefined)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"content generation failed"});}return;}
+  if(request.method==="POST"&&request.url==="/v1/business/content/generate"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,201,{ok:true,content:await business.generateProductContentAI(String(input.productId),Array.isArray(input.platforms)?input.platforms.filter((x):x is any=>typeof x==="string"):undefined)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"content generation failed"});}return;}
   if(request.method==="POST"&&request.url==="/v1/business/content/approve"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,200,{ok:true,content:business.updateContent(String(input.contentId),{status:"approved"})});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"content approval failed"});}return;}
   if(request.method==="POST"&&request.url==="/v1/business/content/publish"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,200,{ok:true,result:await business.publishContent(String(input.contentId))});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"content publish failed"});}return;}
   if(request.method==="POST"&&request.url==="/v1/business/content/schedule"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,200,{ok:true,content:business.scheduleContent(String(input.contentId),String(input.scheduledAt))});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"content scheduling failed"});}return;}
@@ -575,10 +575,10 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"dependent mission execution failed"});}
    return;
   }
-  if(request.method==="GET"&&request.url==="/v1/scheduler"){
+  if(request.method==="GET"&&request.url==="/v1/scheduler"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    json(response,200,{ok:true,schedules:options.core.scheduler.list()});return;
   }
-  if(request.method==="POST"&&request.url==="/v1/scheduler/schedules"){
+  if(request.method==="POST"&&request.url==="/v1/scheduler/schedules"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{
     const input=await body(request,max);
     const goal=typeof input.goal==="string"?input.goal.trim():"";
@@ -590,7 +590,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"schedule creation failed"});}
    return;
   }
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/scheduler\/[^/]+\/enable$/)){
+  if(request.method==="POST"&&request.url?.match(/^\/v1\/scheduler\/[^/]+\/enable$/)){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{
     const id=decodeURIComponent(request.url.split("/")[3]??"");
     const input=await body(request,max);
@@ -599,20 +599,20 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"schedule update failed"});}
    return;
   }
-  if(request.method==="DELETE"&&request.url?.match(/^\/v1\/scheduler\/[^/]+$/)){
+  if(request.method==="DELETE"&&request.url?.match(/^\/v1\/scheduler\/[^/]+$/)){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{options.core.scheduler.unregister(decodeURIComponent(request.url.split("/")[3]??""));json(response,200,{ok:true});}
    catch(error){json(response,404,{ok:false,error:error instanceof Error?error.message:"schedule not found"});}
    return;
   }
-  if(request.method==="POST"&&request.url==="/v1/scheduler/tick"){
+  if(request.method==="POST"&&request.url==="/v1/scheduler/tick"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{const runs=await options.core.scheduler.tick();json(response,200,{ok:true,runs});}
    catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"scheduler tick failed"});}
    return;
   }
-  if(request.method==="GET"&&request.url==="/v1/events/triggers"){
+  if(request.method==="GET"&&request.url==="/v1/events/triggers"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    json(response,200,{ok:true,triggers:options.core.eventEngine.list()});return;
   }
-  if(request.method==="POST"&&request.url==="/v1/events/triggers"){
+  if(request.method==="POST"&&request.url==="/v1/events/triggers"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{
     const input=await body(request,max);
     const eventType=typeof input.eventType==="string"?input.eventType.trim():"";
@@ -625,12 +625,12 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"event trigger creation failed"});}
    return;
   }
-  if(request.method==="DELETE"&&request.url?.match(/^\/v1\/events\/triggers\/[^/]+$/)){
+  if(request.method==="DELETE"&&request.url?.match(/^\/v1\/events\/triggers\/[^/]+$/)){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{options.core.eventEngine.remove(decodeURIComponent(request.url.split("/")[4]??""));json(response,200,{ok:true});}
    catch(error){json(response,404,{ok:false,error:error instanceof Error?error.message:"event trigger not found"});}
    return;
   }
-  if(request.method==="POST"&&request.url==="/v1/events/emit"){
+  if(request.method==="POST"&&request.url==="/v1/events/emit"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{
     const input=await body(request,max);
     const type=typeof input.type==="string"?input.type.trim():"";
@@ -749,5 +749,5 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   }
   json(response,404,{ok:false,error:"not_found"});
  });
- server.listen(port,host);return server;
+ server.listen(port,host);options.core.scheduler.start();return server;
 }

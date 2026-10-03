@@ -17,6 +17,8 @@ await check("/v1/scheduler");
 await check("/v1/events/triggers");
 await check("/v1/approvals?projectId=default");
 await check("/v1/release");
+await check("/v1/business");
+await check("/v1/ads");
 
 console.log(JSON.stringify({
  accepted:true,

@@ -45,7 +45,7 @@ export function registerBusinessTools(core:LayanXCore,business:BusinessManager,a
   "commerce.product.publish":p=>business.publishProduct(String(p.productId)),
   "commerce.orders.sync":p=>business.syncOrders(String(p.storeId)),
   "media.add":p=>business.addMedia(p),
-  "content.generate":p=>business.generateProductContent(String(p.productId),p.platforms),
+  "content.generate":p=>business.generateProductContentAI(String(p.productId),p.platforms),
   "content.publish":p=>business.publishContent(String(p.contentId)),
   "content.schedule":p=>business.scheduleContent(String(p.contentId),String(p.scheduledAt)),
   "content.process_scheduled":()=>business.processScheduledContent(),

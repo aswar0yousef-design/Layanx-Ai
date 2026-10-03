@@ -263,3 +263,7 @@ Creating drafts is a modification action; launching or pausing a paid campaign i
 - `POST /v1/ads/campaign/launch`
 - `POST /v1/ads/campaign/pause`
 - `POST /v1/ads/insights/sync`
+
+
+### Production hardening
+Business state hydrates from PostgreSQL when configured, scheduler definitions persist across restart, scheduler/event management endpoints require API authentication, social publishing uses platform-specific configured connectors, and content generation can route through the existing model router with local preference.
