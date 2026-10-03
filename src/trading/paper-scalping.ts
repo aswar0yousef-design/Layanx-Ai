@@ -4,6 +4,7 @@ import { generateScalpingSignal } from "./scalping-signal.js";
 import { analyzeTradeRecord, type TradeRecord } from "./trade-record.js";
 import { evaluateScalpingDecision } from "./scalping-decision.js";
 import { detectTradingSession } from "./session.js";
+import { classifyMarketRegime } from "./market-regime.js";
 
 export interface PaperTradingConfig {
   symbol: string;
@@ -141,6 +142,7 @@ export function runPaperScalping(
       const exit = exitPrice(openTrade, candle, spread, slippage);
 
       if (exit) {
+        const regime = classifyMarketRegime(history);
         const record: TradeRecord = {
           id: openTrade.id,
           symbol: config.symbol,
@@ -166,6 +168,8 @@ export function runPaperScalping(
           timeframe: config.timeframe,
           strategy: "paper-scalping",
           session: detectTradingSession(openTrade.openedAt),
+          trendRegime: regime.trend,
+          volatilityRegime: regime.volatility,
           commission: (config.commissionPerUnit ?? 0) * openTrade.quantity,
           swap: (config.swapPerUnit ?? 0) * openTrade.quantity,
           metadata: { exitReason: exit.reason },
