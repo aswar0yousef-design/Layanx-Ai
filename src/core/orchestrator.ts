@@ -66,6 +66,7 @@ import {ReleaseManager} from "./release-manager.js";
 import {RuntimeTracer} from "./runtime-tracer.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
 import {PaperTradingEngine} from "../trading/paper.js";
+import {StrategyRegistry,HtfStructureLiquidityStrategy} from "../trading/strategy.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -132,6 +133,9 @@ export class LayanXCore{
   readonly releaseManager:ReleaseManager;
   readonly tracer=new RuntimeTracer();
   readonly trading=new PaperTradingEngine();
+  readonly strategies=new StrategyRegistry();
+  // Built-in strategies are registered once; callers may register additional strategies through the registry.
+  constructor(...args:any[]){super(...args);this.strategies.register(new HtfStructureLiquidityStrategy());}
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
