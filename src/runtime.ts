@@ -37,6 +37,7 @@ export function createRuntime(options:RuntimeOptions={}){
  registerHttpReadTool(core);
  registerGitHubReadTools(core,{token:process.env.GITHUB_TOKEN});
  registerToolFabric(core);
+ registerTradingTools(core,core.trading,core.strategies);
  registerDesktopControlTools(core);
  const liveScreen=new LiveScreenObserver({adapter:core.toolAdapters.get("desktop.screenshot"),intervalMs:Number(process.env.LAYANX_LIVE_SCREEN_INTERVAL_MS??500)});
  core.setLiveScreenObserver(liveScreen);
