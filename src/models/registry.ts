@@ -1,6 +1,6 @@
 export type ModelCapability="chat"|"reasoning"|"coding"|"vision"|"embedding"|"audio";
-export interface ModelDefinition{id:string;provider:string;capabilities:ModelCapability[];local:boolean;enabled:boolean;priority:number;qualityScore?:number;costPer1kInputUsd?:number;costPer1kOutputUsd?:number;latencyClass?:"fast"|"balanced"|"slow";tags?:string[];}
-export interface ModelSelectionRequest{capability:ModelCapability;modelId?:string;preferLocal?:boolean;latencySensitive?:boolean;maxCostUsd?:number;minQualityScore?:number;tags?:string[];}
+export interface ModelDefinition{id:string;provider:string;providerModelId?:string;capabilities:ModelCapability[];local:boolean;enabled:boolean;priority:number;qualityScore?:number;costPer1kInputUsd?:number;costPer1kOutputUsd?:number;latencyClass?:"fast"|"balanced"|"slow";tags?:string[];}
+export interface ModelSelectionRequest{capability:ModelCapability;modelId?:string;preferLocal?:boolean;preferFree?:boolean;latencySensitive?:boolean;maxCostUsd?:number;minQualityScore?:number;tags?:string[];}
 export class ModelRegistry{
  private readonly models=new Map<string,ModelDefinition>();
  register(model:ModelDefinition){if(this.models.has(model.id))throw new Error("Model already registered.");this.models.set(model.id,model);}
@@ -20,7 +20,7 @@ export class ModelRegistry{
  private score(model:ModelDefinition,request:ModelSelectionRequest,tags:Set<string>){
   let score=100-model.priority;
   if(request.preferLocal===true&&model.local)score+=25;
-  if(request.preferLocal===false&&!model.local)score+=10;
+  if(request.preferLocal===false&&!model.local)score+=10;if(request.preferFree===true&&model.tags?.includes("free"))score+=25;if(request.preferFree===false&&!model.tags?.includes("free"))score+=5;
   if(request.latencySensitive){if(model.latencyClass==="fast")score+=20;if(model.latencyClass==="slow")score-=10;}
   score+=(model.qualityScore??50)*0.2;
   if(tags.size&&model.tags)for(const tag of model.tags)if(tags.has(tag))score+=8;
