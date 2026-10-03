@@ -13,6 +13,7 @@ export class BusinessStore{
  private readonly postgres?:PostgresStorageAdapter;
  private writeQueue:Promise<void>=Promise.resolve();
  private hydrated=false;
+ private persistenceError?:string;
 
  constructor(private readonly filePath=process.env.LAYANX_BUSINESS_STORAGE_PATH??".layanx/business.json"){
   const databaseUrl=process.env.LAYANX_DATABASE_URL??process.env.DATABASE_URL;
@@ -44,12 +45,18 @@ export class BusinessStore{
   renameSync(temporary,this.filePath);
  }
 
+ persistenceStatus(){return {mode:this.postgres?"postgres":"local",healthy:!this.persistenceError,error:this.persistenceError};}
+
  private persistRemote(snapshot:BusinessSnapshot):void{
   if(!this.postgres)return;
   this.writeQueue=this.writeQueue.then(async()=>{
-   await this.postgres!.transaction(async tx=>{
-    await tx.set("business:snapshot",snapshot);
-   });
+   try{
+    await this.postgres!.transaction(async tx=>{await tx.set("business:snapshot",snapshot);});
+    this.persistenceError=undefined;
+   }catch(error){
+    this.persistenceError=error instanceof Error?error.message:"business_persistence_failed";
+    console.error(`[LayanX] ${this.persistenceError}`);
+   }
   });
  }
 
