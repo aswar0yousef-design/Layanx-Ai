@@ -5,10 +5,31 @@ import {createHttpReadAdapter} from "./http-read.js";
 import {createGitHubReadAdapter} from "../connectors/github-read.js";
 import {createGitToolAdapter} from "./git.js";
 import {createBrowserToolAdapter,createFileToolAdapter,createFileWriteToolAdapter,createTerminalToolAdapter,createProjectVerifyToolAdapter} from "./fabric.js";
+import type {PaperTradingEngine} from "../trading/paper.js";
 
 function payloadRecord(request:ToolRequest):Record<string,unknown>{
   return request.payload&&typeof request.payload==="object"&&!Array.isArray(request.payload)
     ? request.payload as Record<string,unknown> : {};
+}
+
+export function registerTradingTools(core:LayanXCore,engine:PaperTradingEngine):void {
+ const tools=[
+  {name:"trading.account",description:"read the paper trading account and open positions",permission:"L1_READ" as const,dangerous:false,action:"read trading account",tags:["trading","account","paper"]},
+  {name:"trading.quote",description:"read a configured paper trading quote",permission:"L1_READ" as const,dangerous:false,action:"read market quote",tags:["trading","quote","market","paper"]},
+  {name:"trading.order.place",description:"place a paper market buy or sell order",permission:"L4_EXECUTE" as const,dangerous:true,action:"place paper trading order",tags:["trading","order","execute","paper"]},
+  {name:"trading.position.close",description:"close an existing paper trading position",permission:"L4_EXECUTE" as const,dangerous:true,action:"close paper trading position",tags:["trading","position","execute","paper"]}
+ ];
+ for(const definition of tools){
+  core.tools.register({...definition,actions:[definition.action]});
+  core.toolAdapters.register(definition.name,{async execute(request){
+   const input=payloadRecord(request);
+   if(definition.name==="trading.account")return{account:engine.accountSnapshot(),positions:engine.positions()};
+   if(definition.name==="trading.quote"){if(typeof input.symbol!=="string")throw new Error("symbol is required.");return engine.quote(input.symbol);}
+   if(definition.name==="trading.order.place"){const symbol=typeof input.symbol==="string"?input.symbol:"";const side=input.side==="sell"?"sell":"buy";const quantity=typeof input.quantity==="number"?input.quantity:NaN;const stopLoss=typeof input.stopLoss==="number"?input.stopLoss:undefined;const takeProfit=typeof input.takeProfit==="number"?input.takeProfit:undefined;return engine.placeMarket({symbol,side,quantity,stopLoss,takeProfit});}
+   if(typeof input.orderId!=="string")throw new Error("orderId is required.");
+   const price=typeof input.price==="number"?input.price:undefined;return engine.closePosition(input.orderId,price);
+  }});
+ }
 }
 
 export function registerBuiltinTools(core:LayanXCore):void {
