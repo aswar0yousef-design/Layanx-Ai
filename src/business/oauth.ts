@@ -56,7 +56,8 @@ export class OAuthConnectionCenter{
   return connection;
  }
  async token(connection:OAuthConnection){
-  if(connection.expiresAt&&Date.parse(connection.expiresAt)>Date.now()+60_000){const value=this.vault.get(connection.tokenSecret);if(value)return value;}
+  const value=this.vault.get(connection.tokenSecret);
+  if(value&&(!connection.expiresAt||Date.parse(connection.expiresAt)>Date.now()+60_000))return value;
   if(!connection.refreshTokenSecret)throw new Error("oauth_access_token_expired");
   const refresh=this.vault.get(connection.refreshTokenSecret);if(!refresh)throw new Error("oauth_refresh_token_missing");
   const c=this.config(connection.provider);const form=new URLSearchParams({client_id:c.clientId,refresh_token:refresh,grant_type:"refresh_token"});if(c.clientSecret)form.set("client_secret",c.clientSecret);
@@ -111,6 +112,6 @@ export class OAuthConnectionCenter{
    default: throw new Error(`oauth_discovery_not_implemented:${connection.provider}`);
   }
  }
- revoke(connection:OAuthConnection){this.vault.delete(connection.tokenSecret);if(connection.refreshTokenSecret)this.vault.delete(connection.refreshTokenSecret);this.vault.delete(`${connection.provider}.social.token`);this.vault.delete(`${connection.provider}.ads.token`);this.connections=this.connections.filter(x=>x.id!==connection.id);this.persist();}
+ revoke(connection:OAuthConnection){this.vault.delete(connection.tokenSecret);if(connection.refreshTokenSecret)this.vault.delete(connection.refreshTokenSecret);for(const key of [connection.provider==="meta"?"meta.social.token":undefined,connection.provider==="meta"?"facebook.social.token":undefined,connection.provider==="meta"?"instagram.social.token":undefined,`${connection.provider}.social.token`,`${connection.provider}.ads.token`].filter(Boolean) as string[])this.vault.delete(key);this.connections=this.connections.filter(x=>x.id!==connection.id);this.persist();}
  status(connection:OAuthConnection){return {id:connection.id,provider:connection.provider,accountId:connection.accountId,accountName:connection.accountName,scopes:connection.scopes,expiresAt:connection.expiresAt,configured:true};}
 }
