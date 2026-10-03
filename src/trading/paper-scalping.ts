@@ -197,14 +197,20 @@ export function runPaperScalping(
       continue;
     }
 
-    const entryReference = signal.action === "long" && candle.ask !== undefined
-      ? candle.ask
-      : signal.action === "short" && candle.bid !== undefined
-        ? candle.bid
-        : candle.close;
+    const entryReference = signal.action === "long" && candle.askOpen !== undefined
+      ? candle.askOpen
+      : signal.action === "short" && candle.bidOpen !== undefined
+        ? candle.bidOpen
+        : signal.action === "long" && candle.ask !== undefined
+          ? candle.ask
+          : signal.action === "short" && candle.bid !== undefined
+            ? candle.bid
+            : candle.open;
 
     const entrySlippage = currentSlippage(config.slippage, candle, signal.action);
-    const hasHistoricalQuote = candle.bid !== undefined && candle.ask !== undefined;
+    const hasHistoricalQuote = signal.action === "long"
+      ? candle.askOpen !== undefined || candle.ask !== undefined
+      : candle.bidOpen !== undefined || candle.bid !== undefined;
     const entry = hasHistoricalQuote
       ? entryReference + (signal.action === "long" ? entrySlippage : -entrySlippage)
       : signal.action === "long"
