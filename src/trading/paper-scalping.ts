@@ -304,11 +304,18 @@ export function runPaperScalping(
       continue;
     }
 
-    const entryReference = candle.close;
+    const entryReference = signal.action === "long" && candle.ask !== undefined
+      ? candle.ask
+      : signal.action === "short" && candle.bid !== undefined
+        ? candle.bid
+        : candle.close;
     const entrySlippage = currentSlippage(config.slippage, candle, signal.action);
-    const entry = signal.action === "long"
-      ? entryReference + spread / 2 + entrySlippage
-      : entryReference - spread / 2 - entrySlippage;
+    const hasHistoricalQuote = candle.bid !== undefined && candle.ask !== undefined;
+    const entry = hasHistoricalQuote
+      ? entryReference + (signal.action === "long" ? entrySlippage : -entrySlippage)
+      : signal.action === "long"
+        ? entryReference + spread / 2 + entrySlippage
+        : entryReference - spread / 2 - entrySlippage;
     const stop = stopPrice(signal.action, entry, config.stopLossDistance);
     const target = targetPrice(signal.action, entry, config.takeProfitDistance);
 
