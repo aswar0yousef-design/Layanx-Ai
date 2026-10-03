@@ -21,3 +21,15 @@ Coordinates are bounded to 0..20000 and text to 4000 characters. Keyboard keys a
 - macOS: the current adapter deliberately reports no ready mutation backend rather than silently attempting unsupported accessibility automation.
 
 Remote phone access continues to use the existing authenticated Control Plane; the phone does not receive direct OS access.
+
+## Vision setup
+
+The adaptive desktop loop uses a vision-capable model after screenshots. The default local vision model is `moondream:1.8b`; override it with `OLLAMA_VISION_MODEL` when a stronger compatible model is installed. The repository's provider layer sends screenshots as multimodal image input.
+
+For Ollama, install the configured vision model before using visual desktop missions:
+
+```bash
+ollama pull moondream:1.8b
+```
+
+The agent will not use the text-only `llama3.2:3b` model for image reasoning. Llama 3.2 Vision is supported as an override, but its 11B variant has substantially higher hardware requirements.
