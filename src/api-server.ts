@@ -45,6 +45,37 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"realtime token creation failed"});}
    return;
   }
+  if(request.method==="GET"&&request.url==="/v1/computer/live/status"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   json(response,200,{ok:true,...options.core.liveScreenStatus()});return;
+  }
+  if(request.method==="POST"&&request.url==="/v1/computer/live/start"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const observer=(options.core as LayanXCore & {liveScreen?:{start:()=>void}}).liveScreen;
+    if(!observer)throw new Error("Live screen observer is not configured.");
+    observer.start();
+    json(response,200,{ok:true,...options.core.liveScreenStatus()});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"live screen start failed"});}
+   return;
+  }
+  if(request.method==="POST"&&request.url==="/v1/computer/live/stop"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const observer=(options.core as LayanXCore & {liveScreen?:{stop:()=>void}}).liveScreen;
+    if(!observer)throw new Error("Live screen observer is not configured.");
+    observer.stop();
+    json(response,200,{ok:true,...options.core.liveScreenStatus()});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"live screen stop failed"});}
+   return;
+  }
+  if(request.method==="GET"&&request.url==="/v1/computer/live/frame"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const status=options.core.liveScreenStatus();
+   if(!status.frame){json(response,404,{ok:false,error:"live_frame_unavailable"});return;}
+   json(response,200,{ok:true,frame:status.frame});
+   return;
+  }
   if(request.method==="GET"&&request.url==="/v1/voice/status"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    json(response,200,{ok:true,voice:voice.status()});return;
