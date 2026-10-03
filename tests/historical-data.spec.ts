@@ -24,6 +24,23 @@ const json = importHistoricalJson([
 ], { symbol: "EURUSD", timeframe: "M1" });
 
 assert.equal(json.candles[1].close, 2);
+
+const quotes = importHistoricalJson([
+  {
+    timestamp: "2026-10-03T08:00:00Z",
+    open: 100,
+    high: 101,
+    low: 99,
+    close: 100.5,
+    bid_open: 99.99,
+    ask_open: 100.01,
+    bid: 100.49,
+    ask: 100.51,
+  },
+], { symbol: "XAUUSD", timeframe: "M1" });
+
+assert.equal(quotes.candles[0].bidOpen, 99.99);
+assert.equal(quotes.candles[0].askOpen, 100.01);
 assert.throws(() => importHistoricalJson([
   { timestamp: "2026-10-03T08:00:00Z", open: 1, high: 0, low: 0, close: 1 },
 ], { symbol: "XAUUSD", timeframe: "M1" }));
