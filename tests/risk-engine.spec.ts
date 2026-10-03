@@ -69,9 +69,9 @@ const brokerPlan = calculateRiskPlan({
   },
 });
 assert.equal(brokerPlan.valid, true);
-assert.equal(brokerPlan.quantity, 1);
-assert.equal(brokerPlan.actualRiskAmount, 1);
-assert.equal(brokerPlan.actualRiskPercent, 0.1);
+assert.equal(brokerPlan.quantity, 10);
+assert.equal(brokerPlan.actualRiskAmount, 10);
+assert.equal(brokerPlan.actualRiskPercent, 1);
 
 const invalidRisk = calculateRiskPlan({
   side: "long",
