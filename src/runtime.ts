@@ -1,7 +1,7 @@
 import {LayanXCore} from "./core/orchestrator.js";
 import type {AgentContract} from "./core/contracts.js";
 import {configureProviders,providerSummary} from "./config/providers.js";
-import {registerBuiltinTools,registerHttpReadTool,registerGitHubReadTools,registerToolFabric,registerDesktopControlTools} from "./tools/builtin.js";
+import {registerBuiltinTools,registerHttpReadTool,registerGitHubReadTools,registerToolFabric,registerDesktopControlTools,registerTradingTools} from "./tools/builtin.js";
 import {RuntimePersistence} from "./core/runtime-persistence.js";
 import {RuntimeStorage} from "./storage/runtime-storage.js";
 import {PostgresStorageAdapter} from "./storage/postgres-adapter.js";
@@ -37,6 +37,7 @@ export function createRuntime(options:RuntimeOptions={}){
  registerHttpReadTool(core);
  registerGitHubReadTools(core,{token:process.env.GITHUB_TOKEN});
  registerToolFabric(core);
+ registerTradingTools(core,core.trading,core.strategies);
  registerDesktopControlTools(core);
  const liveScreen=new LiveScreenObserver({adapter:core.toolAdapters.get("desktop.screenshot"),intervalMs:Number(process.env.LAYANX_LIVE_SCREEN_INTERVAL_MS??500)});
  core.setLiveScreenObserver(liveScreen);

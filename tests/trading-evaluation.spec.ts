@@ -1,0 +1,14 @@
+import {ScalpingSweepStrategy} from "../src/trading/strategy.js";
+import {backtest} from "../src/trading/backtest.js";import {optimizeStrategy,walkForward,monteCarlo,analyzeTrades} from "../src/trading/evaluation.js";
+const candles=Array.from({length:180},(_,i)=>({timestamp:i,open:100+i*.03,high:101+i*.03,low:99+i*.03,close:100.2+i*.03,volume:1000}));
+for(let i=30;i<180;i+=25)candles[i]={timestamp:i,open:100+i*.03,high:102+i*.03,low:98+i*.03,close:101+i*.03,volume:2000};
+const factory=()=>new ScalpingSweepStrategy();
+const filterResult=backtest(new ScalpingSweepStrategy(),candles,100000,.001,{},(_,index)=>index%2===0);if(!Number.isFinite(filterResult.endingEquity))throw new Error("Entry filter backtest failed.");
+const optimized=optimizeStrategy(candles,factory,{dummy:[1]},100000,.001,{spread:.02,slippage:.01,commissionPerUnit:.005});
+if(!optimized.length||optimized[0].result.strategyId!=="scalp-sweep-v1")throw new Error("Strategy optimization failed.");
+const wf=walkForward(candles,factory,{dummy:[1]},80,40,100000,.001,{spread:.02,slippage:.01,commissionPerUnit:.005});
+if(!wf.windows.length||!Number.isFinite(wf.combinedReturnPct))throw new Error("Walk-forward evaluation failed.");
+const analysis=analyzeTrades([{pnl:10,barsHeld:2},{pnl:-5,barsHeld:3},{pnl:-2,barsHeld:1},{pnl:8,barsHeld:2}] as any);if(analysis.maxConsecutiveLosses!==2||analysis.trades!==4)throw new Error("Trade analysis failed.");
+const mc=monteCarlo([{pnl:10},{pnl:-5},{pnl:8}],100);
+if(mc.runs!==100||!Number.isFinite(mc.medianReturnPct)||mc.worstDrawdownPct<0)throw new Error("Monte Carlo evaluation failed.");
+console.log(JSON.stringify({ok:true,optimization:optimized.length,windows:wf.windows.length,monteCarlo:mc.runs}));

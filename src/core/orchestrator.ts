@@ -67,6 +67,9 @@ import {RuntimeTracer} from "./runtime-tracer.js";
 import {registerPaperTradingAgentTool,registerBinanceMarketDataTool,registerBinanceLiveOrderTool} from "../trading/agent-integration.js";
 import {SkillLearningEngine,type LearningTrace} from "../skills/learning.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
+import {PaperTradingEngine} from "../trading/paper.js";
+import {StrategyRegistry,HtfStructureLiquidityStrategy,ScalpingSweepStrategy} from "../trading/strategy.js";
+import {ScalpRiskController} from "../trading/scalp-risk.js";
 import type {LiveScreenObserver} from "../desktop/live-screen.js";
 
 export class LayanXCore{
@@ -133,6 +136,9 @@ export class LayanXCore{
   readonly releaseState=new ReleaseStateMachine();
   readonly releaseManager:ReleaseManager;
   readonly tracer=new RuntimeTracer();
+  readonly trading=new PaperTradingEngine();
+  readonly strategies=new StrategyRegistry();
+  readonly scalpRisk=new ScalpRiskController();
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
   readonly skillLearning=new SkillLearningEngine();
@@ -162,6 +168,8 @@ export class LayanXCore{
     this.securityReview=new SecurityReviewAgent();
     this.prGenerator=new PullRequestGenerator();
     this.releaseManager=new ReleaseManager();
+    this.strategies.register(new HtfStructureLiquidityStrategy());
+    this.strategies.register(new ScalpingSweepStrategy());
     registerPaperTradingAgentTool(this.tools,this.toolAdapters);
     registerBinanceMarketDataTool(this.tools,this.toolAdapters);
     registerBinanceLiveOrderTool(this.tools,this.toolAdapters);
