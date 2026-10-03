@@ -64,6 +64,7 @@ import {PullRequestGenerator} from "./pr-generator.js";
 import {ReleaseStateMachine} from "./release-state-machine.js";
 import {ReleaseManager} from "./release-manager.js";
 import {RuntimeTracer} from "./runtime-tracer.js";
+import {SkillLearningEngine,type LearningTrace} from "../skills/learning.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
 import type {LiveScreenObserver} from "../desktop/live-screen.js";
 
@@ -133,6 +134,7 @@ export class LayanXCore{
   readonly tracer=new RuntimeTracer();
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
+  readonly skillLearning=new SkillLearningEngine();
   private liveScreen?:LiveScreenObserver;
 
   setLiveScreenObserver(observer:LiveScreenObserver){this.liveScreen=observer;}
@@ -180,6 +182,9 @@ export class LayanXCore{
   }
 
   registerAgent(c:Parameters<AgentManager["register"]>[0]){this.agents.register(c);}
+  learnSkill(trace:LearningTrace){return this.skillLearning.propose(trace);}
+  approveLearnedSkill(id:string){const pending=this.skillLearning.approve(id);this.skills.register(pending.manifest);this.skills.approve(id);return this.skills.get(id);}
+  enableLearnedSkill(id:string){return this.skills.enable(id);}
   discoverTools(action:string,permission:import("./types.js").PermissionLevel,agentId="core"){
     const contract=this.agents.get(agentId);
     return this.toolSelector.discover(action,contract,permission);
