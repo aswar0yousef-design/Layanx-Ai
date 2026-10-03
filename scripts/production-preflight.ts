@@ -15,6 +15,12 @@ if(process.env.LAYANX_API_HOST!=="0.0.0.0")console.warn("WARNING: LAYANX_API_HOS
 const cloudEnabled=process.env.LAYANX_AI_MODE==="cloud"||process.env.LAYANX_AI_MODE==="hybrid";
 if(cloudEnabled&&!optionalProviderSecrets.some(name=>Boolean(process.env[name]?.trim())))fail("Cloud/hybrid mode requires at least one configured cloud provider key.");
 if(process.env.LAYANX_AI_MODE==="local"&&process.env.OLLAMA_ENABLED==="true"&&!process.env.OLLAMA_BASE_URL)fail("OLLAMA_BASE_URL is required when local Ollama is explicitly enabled.");
+const liveTradingEnabled=process.env.BINANCE_LIVE_TRADING_ENABLED==="true";
+if(liveTradingEnabled){
+ if(!process.env.BINANCE_MAX_ORDER_NOTIONAL||!Number.isFinite(Number(process.env.BINANCE_MAX_ORDER_NOTIONAL))||Number(process.env.BINANCE_MAX_ORDER_NOTIONAL)<=0)fail("BINANCE_MAX_ORDER_NOTIONAL must be a positive limit when Binance live execution is enabled.");
+ if(!process.env.LAYANX_SECRET_VAULT_KEY?.trim()&&(!process.env.BINANCE_API_KEY?.trim()||!process.env.BINANCE_API_SECRET?.trim()))fail("Binance live execution requires the encrypted local vault key or explicit deployment credentials.");
+ if((process.env.BINANCE_BASE_URL??"https://api.binance.com")!=="https://api.binance.com")fail("Production Binance execution must use https://api.binance.com.");
+}
 
 console.log("Production preflight passed.");
 console.log(JSON.stringify({
@@ -22,5 +28,6 @@ console.log(JSON.stringify({
  mode:process.env.LAYANX_AI_MODE??"local",
  databaseConfigured:true,
  apiTokenConfigured:true,
- cloudProviderConfigured:optionalProviderSecrets.some(name=>Boolean(process.env[name]?.trim()))
+ cloudProviderConfigured:optionalProviderSecrets.some(name=>Boolean(process.env[name]?.trim())),
+ liveTradingEnabled
 }));
