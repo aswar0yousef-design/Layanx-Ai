@@ -19,6 +19,7 @@ export class OAuthConnectionCenter{
  constructor(){this.load();}
  private load(){try{if(existsSync(this.connectionsPath))this.connections=JSON.parse(readFileSync(this.connectionsPath,"utf8")) as OAuthConnection[];}catch{this.connections=[];}}
  private persist(){mkdirSync(dirname(this.connectionsPath),{recursive:true});const tmp=this.connectionsPath+".tmp";writeFileSync(tmp,JSON.stringify(this.connections,null,2),"utf8");renameSync(tmp,this.connectionsPath);}
+ private syncProviderToken(provider:OAuthProvider,token:string){if(["meta","instagram","facebook","tiktok","youtube","linkedin","x","snapchat","pinterest"].includes(provider))this.vault.set(`${provider}.social.token`,token);if(["meta","tiktok","google","linkedin"].includes(provider))this.vault.set(`${provider}.ads.token`,token);}
  list(){return this.connections.map(c=>this.status(c));}
  get(id:string){const c=this.connections.find(x=>x.id===id);if(!c)throw new Error("oauth_connection_not_found");return c;}
 
@@ -59,9 +60,9 @@ export class OAuthConnectionCenter{
   const c=this.config(connection.provider);const form=new URLSearchParams({client_id:c.clientId,refresh_token:refresh,grant_type:"refresh_token"});if(c.clientSecret)form.set("client_secret",c.clientSecret);
   const response=await fetch(c.token,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:form});const raw=await response.text();let d:any={};try{d=JSON.parse(raw);}catch{d={raw};}if(!response.ok)throw new Error(`oauth_refresh_${response.status}`);
   const access=String(d.access_token??"");if(!access)throw new Error("oauth_access_token_missing");
-  this.vault.set(connection.tokenSecret,access);connection.expiresAt=typeof d.expires_in==="number"?new Date(Date.now()+d.expires_in*1000).toISOString():undefined;connection.updatedAt=new Date().toISOString();
+  this.vault.set(connection.tokenSecret,access);this.syncProviderToken(connection.provider,access);connection.expiresAt=typeof d.expires_in==="number"?new Date(Date.now()+d.expires_in*1000).toISOString():undefined;connection.updatedAt=new Date().toISOString();
   if(d.refresh_token)this.vault.set(connection.refreshTokenSecret,String(d.refresh_token));this.persist();return access;
  }
- revoke(connection:OAuthConnection){this.vault.delete(connection.tokenSecret);if(connection.refreshTokenSecret)this.vault.delete(connection.refreshTokenSecret);this.connections=this.connections.filter(x=>x.id!==connection.id);this.persist();}
+ revoke(connection:OAuthConnection){this.vault.delete(connection.tokenSecret);if(connection.refreshTokenSecret)this.vault.delete(connection.refreshTokenSecret);this.vault.delete(`${connection.provider}.social.token`);this.vault.delete(`${connection.provider}.ads.token`);this.connections=this.connections.filter(x=>x.id!==connection.id);this.persist();}
  status(connection:OAuthConnection){return {id:connection.id,provider:connection.provider,accountId:connection.accountId,scopes:connection.scopes,expiresAt:connection.expiresAt,configured:true};}
 }
