@@ -110,7 +110,7 @@ export function importHistoricalCsv(
   const lines = csv.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   if (lines.length < 2) throw new Error("CSV must contain a header and at least one row.");
 
-  const headers = parseCsvLine(lines[0]).map(header => header.toLowerCase());
+  const headers = parseCsvLine(lines[0]!).map(header => header.toLowerCase());
   const candles = lines.slice(1).map((line) => {
     const values = parseCsvLine(line);
     if (values.length !== headers.length) throw new Error("CSV row does not match header length.");
