@@ -67,9 +67,9 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   }
   if(request.method==="GET"&&request.url==="/v1/computer/live/frame"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
-   const status=options.core.liveScreenStatus();
-   if(!status.frame){json(response,404,{ok:false,error:"live_frame_unavailable"});return;}
-   json(response,200,{ok:true,frame:status.frame});
+   const frame=options.core.liveScreenFrame();
+   if(!frame){json(response,404,{ok:false,error:"live_frame_unavailable"});return;}
+   json(response,200,{ok:true,frame});
    return;
   }
   if(request.method==="GET"&&request.url==="/v1/voice/status"){
