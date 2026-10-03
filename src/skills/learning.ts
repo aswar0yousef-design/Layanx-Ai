@@ -33,5 +33,6 @@ export class SkillLearningEngine{
  list():PendingSkill[]{try{return readdirSync(this.dir()).filter(x=>x.endsWith(".json")).map(x=>JSON.parse(readFileSync(join(this.dir(),x),"utf8")) as PendingSkill)}catch{return[]}}
  get(id:string){const p=this.path(id);try{return JSON.parse(readFileSync(p,"utf8")) as PendingSkill}catch{throw new Error("Unknown pending skill: "+id)}}
  approve(id:string){const item=this.get(id);if(!item.findings.safe)throw new Error("Skill cannot be approved while security findings block it.");const checksum=createHash("sha256").update(item.content).digest("hex");if(checksum!==item.manifest.checksum)throw new Error("Pending skill integrity checksum mismatch.");item.manifest.status="approved";writeFileSync(this.path(id),JSON.stringify(item,null,2)+"\n","utf8");return item}
+ enable(id:string){const item=this.get(id);if(item.manifest.status!=="approved")throw new Error("Skill must be approved before enablement.");item.manifest.status="enabled";writeFileSync(this.path(id),JSON.stringify(item,null,2)+"\n","utf8");return item}
  reject(id:string){const item=this.get(id);writeFileSync(this.path(id),JSON.stringify({...item,rejectedAt:new Date().toISOString()},null,2)+"\n","utf8");return item}
 }
