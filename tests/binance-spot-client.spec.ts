@@ -12,7 +12,7 @@ await assert.rejects(
 const liveGuard=new BinanceSpotClient({baseUrl:"https://api.binance.com",allowTrading:true});
 await assert.rejects(
   liveGuard.placeOrder({symbol:"BTCUSDT",side:"BUY",type:"MARKET",quantity:0.001}),
-  /Production Binance order submission is intentionally disabled/
+  /Production Binance trading requires BINANCE_LIVE_TRADING_ENABLED=true/
 );
 console.log("binance-safety-boundary: ok");
 
@@ -34,3 +34,16 @@ console.log("binance-safety-boundary: ok");
 }
 
 console.log("binance-market-data-adapter: ok");
+
+{
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({orderId:42,clientOrderId:"cid",status:"NEW"}), {status:200})) as typeof fetch;
+  try {
+    const client = new BinanceSpotClient({baseUrl:"https://api.binance.com",allowTrading:true,liveTradingEnabled:true,apiKey:"k",apiSecret:"s"});
+    const result = await client.placeOrder({symbol:"BTCUSDT",side:"BUY",type:"MARKET",quantity:0.001,clientOrderId:"cid"});
+    assert.equal(result.submitted,true);
+    assert.equal(result.testnet,false);
+    assert.equal(result.orderId,42);
+  } finally { globalThis.fetch = originalFetch; }
+}
+console.log("binance-production-order-client: ok");
