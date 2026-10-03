@@ -66,7 +66,7 @@ import {ReleaseManager} from "./release-manager.js";
 import {RuntimeTracer} from "./runtime-tracer.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
 import {PaperTradingEngine} from "../trading/paper.js";
-import {StrategyRegistry,HtfStructureLiquidityStrategy} from "../trading/strategy.js";
+import {StrategyRegistry,HtfStructureLiquidityStrategy,ScalpingSweepStrategy} from "../trading/strategy.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -156,6 +156,7 @@ export class LayanXCore{
     this.prGenerator=new PullRequestGenerator();
     this.releaseManager=new ReleaseManager();
     this.strategies.register(new HtfStructureLiquidityStrategy());
+    this.strategies.register(new ScalpingSweepStrategy());
   }
 
   restoreRuntimeSnapshot(snapshot:import("./runtime-persistence.js").RuntimeSnapshot){
