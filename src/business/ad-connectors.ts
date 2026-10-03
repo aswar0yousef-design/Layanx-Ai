@@ -12,6 +12,17 @@ export class ConfiguredAdsConnector implements AdsConnector{
  createAd(a:AdAccount,ad:PaidAd,c:AdCreative){return this.call("adCreate",{accountId:a.accountId,adGroupId:ad.adGroupId,ad:{name:ad.name,status:ad.status},creative:c});}
  async insights(a:AdAccount,c?:PaidCampaign){const d=await this.call("insights",{accountId:a.accountId,campaignId:c?.externalId},process.env[`LAYANX_${this.platform.toUpperCase()}_ADS_INSIGHTS_METHOD`]??"POST");return Array.isArray(d)?d:(d.metrics??[]);}
 }
+export class NativeAdsConnector implements AdsConnector{
+ constructor(public readonly platform:AdPlatform,private readonly token:string,private readonly base:string){}
+ private async call(path:string,body?:unknown,method="POST"){return req(this.base.replace(/\/$/,"")+path,{method,headers:{"content-type":"application/json",authorization:`Bearer ${this.token}`},body:body===undefined?undefined:JSON.stringify(body)});}
+ createCampaign(a:AdAccount,c:PaidCampaign){return this.call("/campaigns",{accountId:a.accountId,campaign:{name:c.name,objective:c.objective,status:c.status,dailyBudget:c.dailyBudget,totalBudget:c.totalBudget,currency:c.currency,startAt:c.startAt,endAt:c.endAt}});}
+ updateCampaign(a:AdAccount,c:PaidCampaign){return this.call("/campaigns/"+encodeURIComponent(String(c.externalId)),{accountId:a.accountId,campaign:{name:c.name,status:c.status,dailyBudget:c.dailyBudget,totalBudget:c.totalBudget}},"PATCH");}
+ pauseCampaign(a:AdAccount,c:PaidCampaign){return this.call("/campaigns/"+encodeURIComponent(String(c.externalId)),{accountId:a.accountId,status:"PAUSED"},"PATCH");}
+ createAdGroup(a:AdAccount,g:AdGroup){return this.call("/ad-groups",{accountId:a.accountId,campaignId:g.campaignId,adGroup:{name:g.name,status:g.status,targeting:g.targeting,dailyBudget:g.dailyBudget}});}
+ createAd(a:AdAccount,ad:PaidAd,c:AdCreative){return this.call("/ads",{accountId:a.accountId,adGroupId:ad.adGroupId,ad:{name:ad.name,status:ad.status},creative:c});}
+ async insights(a:AdAccount,c?:PaidCampaign){const d=await this.call("/reports",{accountId:a.accountId,campaignId:c?.externalId});return Array.isArray(d)?d:(d.metrics??[]);}
+}
+
 export function configuredAdsConnector(platform:AdPlatform){const p=platform.toUpperCase();const base=process.env[`LAYANX_${p}_ADS_BASE_URL`],token=localSecret(`${platform}.ads.token`,process.env[`LAYANX_${p}_ADS_TOKEN`]);if(!base||!token)throw new Error(`LAYANX_${p}_ADS credentials are required`);const prefix=process.env[`LAYANX_${p}_ADS_PATH_PREFIX`]??"";const keys=["campaignCreate","campaignUpdate","campaignPause","adGroupCreate","adCreate","insights"];
 const paths=Object.fromEntries(keys.map(k=>{const envKey=`LAYANX_${p}_ADS_${k.replace(/([A-Z])/g,"_$1").toUpperCase()}_PATH`;return [k,process.env[envKey]??`${prefix}/${k}`]}));
 let extraHeaders:Record<string,string>={};try{const raw=localSecret(`${platform}.ads.headers`,process.env[`LAYANX_${p}_ADS_HEADERS_JSON`]);if(raw)extraHeaders=JSON.parse(raw);}catch{throw new Error(`LAYANX_${p}_ADS_HEADERS_JSON must be valid JSON`);}
