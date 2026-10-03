@@ -29,7 +29,7 @@ export class CreatorEngine{
   if(!visualExe)throw new Error("creator_visual_generator_not_configured");
   const visualArgs=argsFromEnv("LAYANX_CREATOR_VISUAL_ARGS_JSON",["{prompt}","{output}"]);
   for(const scene of project.scenes){const output=join(dir,scene.id+".png");await this.run(visualExe,substitute(visualArgs,{prompt:scene.visualPrompt,output,duration:String(scene.durationSec),aspect:project.aspectRatio}),180000);if(!existsSync(output))throw new Error("creator_visual_output_missing:"+scene.id);scene.assetPath=output;}
-  if(ttsExe){const ttsArgs=argsFromEnv("LAYANX_TTS_ARGS_JSON",["{text}","{output}"]);const audio=join(dir,"voice.wav");await this.run(ttsExe,substitute(ttsArgs,{text:project.script,output,audio}),180000);if(existsSync(audio))writeFileSync(join(dir,"voice.ready"),"ready","utf8");}
+  if(ttsExe){const ttsArgs=argsFromEnv("LAYANX_TTS_ARGS_JSON",["{text}","{output}"]);const audio=join(dir,"voice.wav");await this.run(ttsExe,substitute(ttsArgs,{text:project.script,output:audio,audio}),180000);if(existsSync(audio))writeFileSync(join(dir,"voice.ready"),"ready","utf8");}
   this.save(project);return project;
  }
  async render(id:string,outputPath?:string){
