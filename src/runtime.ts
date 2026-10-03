@@ -17,7 +17,7 @@ export function createRuntime(options:RuntimeOptions={}){
  const storage=databaseUrl?new RuntimeStorage(new PostgresStorageAdapter(databaseUrl)):storagePath?RuntimeStorage.json(storagePath):undefined;
  const persistence=storage?new RuntimePersistence(storage):undefined;
  const core=new LayanXCore(undefined,persistence,storage);
- const business=new BusinessManager();
+ const business=new BusinessManager(undefined,async input=>(await core.modelExecution.execute({capability:"chat",input,maxOutputTokens:600,routing:{preferLocal:true}})).output);
  const ads=new AdsManager(business.store);
  registerBuiltinTools(core);
  registerHttpReadTool(core);
