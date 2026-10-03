@@ -20,7 +20,7 @@ export function inspectCandleQuality(
   const issues: CandleQualityIssue[] = [];
 
   for (let i = 0; i < candles.length; i += 1) {
-    const candle = candles[i];
+    const candle = candles[i]!;
     if (!(candle.high >= Math.max(candle.open, candle.close) &&
       candle.low <= Math.min(candle.open, candle.close) &&
       candle.high >= candle.low)) {
@@ -33,7 +33,7 @@ export function inspectCandleQuality(
 
     if (i === 0) continue;
 
-    const previous = candles[i - 1];
+    const previous = candles[i - 1]!;
     const delta = Date.parse(candle.timestamp) - Date.parse(previous.timestamp);
 
     if (delta <= 0) {
