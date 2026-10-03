@@ -129,10 +129,13 @@ export function createBinanceLiveOrderToolAdapter(
         client.getSymbolRules(payload.symbol),
       ]);
       if (rules.status !== "TRADING") throw new Error(`Binance symbol is not trading: ${payload.symbol} (${rules.status}).`);
-      if (rules.minQty !== undefined && payload.quantity < rules.minQty) throw new Error("Order quantity is below Binance minimum quantity.");
-      if (rules.maxQty !== undefined && payload.quantity > rules.maxQty) throw new Error("Order quantity exceeds Binance maximum quantity.");
-      if (rules.stepSize !== undefined && rules.stepSize > 0) {
-        const steps = payload.quantity / rules.stepSize;
+      const minQty = payload.type === "MARKET" ? (rules.marketMinQty ?? rules.minQty) : rules.minQty;
+      const maxQty = payload.type === "MARKET" ? (rules.marketMaxQty ?? rules.maxQty) : rules.maxQty;
+      const stepSize = payload.type === "MARKET" ? (rules.marketStepSize ?? rules.stepSize) : rules.stepSize;
+      if (minQty !== undefined && payload.quantity < minQty) throw new Error("Order quantity is below Binance minimum quantity.");
+      if (maxQty !== undefined && payload.quantity > maxQty) throw new Error("Order quantity exceeds Binance maximum quantity.");
+      if (stepSize !== undefined && stepSize > 0) {
+        const steps = payload.quantity / stepSize;
         if (Math.abs(steps - Math.round(steps)) > 1e-9) throw new Error("Order quantity does not match Binance quantity step size.");
       }
       if (payload.type === "LIMIT" && rules.tickSize !== undefined && rules.tickSize > 0 && payload.price !== undefined) {
@@ -143,6 +146,9 @@ export function createBinanceLiveOrderToolAdapter(
       const notional = payload.quantity * referencePrice;
       if (rules.minNotional !== undefined && Number.isFinite(rules.minNotional) && notional < rules.minNotional) {
         throw new Error("Order notional is below Binance minimum notional.");
+      }
+      if (rules.maxNotional !== undefined && Number.isFinite(rules.maxNotional) && notional > rules.maxNotional) {
+        throw new Error("Order notional exceeds Binance exchange maximum notional.");
       }
       const configuredMax = Number(process.env.BINANCE_MAX_ORDER_NOTIONAL ?? payload.maxNotional ?? 0);
       if (!Number.isFinite(configuredMax) || configuredMax <= 0) throw new Error("BINANCE_MAX_ORDER_NOTIONAL must be a positive limit for live execution.");
