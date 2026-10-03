@@ -558,7 +558,7 @@ export class LayanXCore{
         this.missions.save(current);
         plan=current.tools[current.tools.length-1]!;
       }
-      const toolIndex=(this.missions.get(missionId)?.tools??[]).findIndex(item=>item===plan);
+      if(plan&&/^desktop\.(mouse|keyboard)/.test(plan.tool)&&!visualContext){\n        const screenshot={tool:"desktop.screenshot",action:"desktop screenshot",permission:"L2_ANALYZE" as const,reason:"Observe the current desktop before choosing a coordinate or keyboard action."};\n        const missionTools=current.tools??[];\n        const insertAt=index>=0?index:missionTools.length;\n        missionTools.splice(insertAt,0,screenshot);\n        current.tools=missionTools;\n        this.missions.save(current);\n        plan=screenshot;\n      }\n      const toolIndex=(this.missions.get(missionId)?.tools??[]).findIndex(item=>item===plan);
       const actualIndex=toolIndex>=0?toolIndex:(this.missions.get(missionId)?.tools?.length??1)-1;
       const result=await this.executeMissionTool(missionId,projectId,actualIndex,plan.payload??{},approvalIds[actualIndex],agentId,{deferVerification:true});
       results.push(result);
