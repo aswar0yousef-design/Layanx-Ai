@@ -43,5 +43,11 @@ assert.equal(stability.minReturnPct, -0.5);
 assert.equal(stability.maxReturnPct, 1);
 assert.equal(stability.positiveExpectancyWindows, 1);
 assert.equal(stability.negativeExpectancyWindows, 1);
+assert.equal(stability.zeroExpectancyWindows, 0);
+assert.equal(stability.totalTestTrades, 4);
+assert.equal(stability.pooledTestNetPnl, 5);
+assert.equal(stability.pooledTestExpectancyPerTrade, 1.25);
+assert.equal(stability.pooledTestReturnOnStartingBalancesPct, 0.25);
+assert.ok(stability.warnings.length >= 1);
 
 console.log("OOS stability tests passed");
