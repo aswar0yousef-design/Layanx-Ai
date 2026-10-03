@@ -46,7 +46,7 @@ export class MissionScheduler{
  get(id:string){const schedule=this.schedules.get(id);return schedule?structuredClone(schedule):undefined;}
  async hydrate(){if(!this.storage)return;const saved=await this.storage.get<ScheduledMission[]>("scheduler:schedules");if(saved){this.schedules.clear();for(const item of saved)this.schedules.set(item.id,item);}}
  private persist(){if(this.storage)void this.storage.set([...this.schedules.values()].map(item=>structuredClone(item)),"scheduler:schedules");}
- start(){if(this.timer)return;this.timer=setInterval(()=>void this.tick(),this.tickMs);void this.tick();}
+ start(){if(this.timer)return;this.timer=setInterval(()=>void this.tick(),this.tickMs);this.timer.unref?.();void this.tick();}
  stop(){if(this.timer){clearInterval(this.timer);this.timer=undefined;}}
  async tick(now=new Date()):Promise<SchedulerRun[]>{
   const due=[...this.schedules.values()].filter(s=>s.enabled&&s.nextRunAt&&new Date(s.nextRunAt).getTime()<=now.getTime()&&!this.active.has(s.id));
