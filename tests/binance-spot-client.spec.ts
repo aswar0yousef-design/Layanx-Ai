@@ -173,3 +173,33 @@ console.log("binance-order-reconciliation: ok");
   }
 }
 console.log("binance-order-unknown-safety: ok");
+
+
+{
+  const originalFlag=process.env.BINANCE_LIVE_TRADING_ENABLED;
+  const originalMax=process.env.BINANCE_MAX_ORDER_NOTIONAL;
+  const originalBase=process.env.BINANCE_BASE_URL;
+  const originalFetch=globalThis.fetch;
+  process.env.BINANCE_LIVE_TRADING_ENABLED="true";
+  process.env.BINANCE_MAX_ORDER_NOTIONAL="50";
+  process.env.BINANCE_BASE_URL="https://api.binance.com";
+  globalThis.fetch=(async input=>{
+    const url=String(input);
+    if(url.includes("/ticker/24hr")) return new Response(JSON.stringify({symbol:"BTCUSDT",bidPrice:"100",askPrice:"101",lastPrice:"100.5",closeTime:123}),{status:200});
+    if(url.includes("/exchangeInfo")) return new Response(JSON.stringify({symbols:[{symbol:"BTCUSDT",status:"TRADING",baseAsset:"BTC",quoteAsset:"USDT",filters:[{filterType:"LOT_SIZE",minQty:"0.001",maxQty:"100",stepSize:"0.001"},{filterType:"MIN_NOTIONAL",minNotional:"5"}]}]}),{status:200});
+    return new Response(JSON.stringify({orderId:88,clientOrderId:"lower-limit",status:"NEW"}),{status:200});
+  }) as typeof fetch;
+  try {
+    const adapter=createBinanceLiveOrderToolAdapter(async()=>({apiKey:"k",apiSecret:"s"}));
+    await assert.rejects(
+      adapter.execute({missionId:"m",agentId:"a",tool:"trading.binance.order",action:"place-order",permission:"L4_EXECUTE",idempotencyKey:"lower-limit",payload:{symbol:"BTCUSDT",side:"BUY",type:"MARKET",quantity:0.001,maxNotional:0.05}} as any),
+      /Order exceeds configured Binance maximum notional/,
+    );
+  } finally {
+    globalThis.fetch=originalFetch;
+    if(originalFlag===undefined) delete process.env.BINANCE_LIVE_TRADING_ENABLED; else process.env.BINANCE_LIVE_TRADING_ENABLED=originalFlag;
+    if(originalMax===undefined) delete process.env.BINANCE_MAX_ORDER_NOTIONAL; else process.env.BINANCE_MAX_ORDER_NOTIONAL=originalMax;
+    if(originalBase===undefined) delete process.env.BINANCE_BASE_URL; else process.env.BINANCE_BASE_URL=originalBase;
+  }
+}
+console.log("binance-max-notional-boundary: ok");
