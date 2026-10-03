@@ -67,6 +67,7 @@ import {RuntimeTracer} from "./runtime-tracer.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
 import {PaperTradingEngine} from "../trading/paper.js";
 import {StrategyRegistry,HtfStructureLiquidityStrategy,ScalpingSweepStrategy} from "../trading/strategy.js";
+import {ScalpRiskController} from "../trading/scalp-risk.js";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -134,6 +135,7 @@ export class LayanXCore{
   readonly tracer=new RuntimeTracer();
   readonly trading=new PaperTradingEngine();
   readonly strategies=new StrategyRegistry();
+  readonly scalpRisk=new ScalpRiskController();
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
