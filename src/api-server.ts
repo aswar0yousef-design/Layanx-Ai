@@ -29,7 +29,8 @@ export function startRuntimeApi(options:RuntimeApiOptions){
  const business=options.business; const ads=options.ads; const media=options.media??new MediaManager(); const growth=options.growth; if(!ads)throw new Error("ads_manager_required");
  const server=createServer(async(request,response)=>{
   response.setHeader("cache-control","no-store");
-  if(requireToken&&!authorized(request,options.token)&&request.url!=="/v1/health"&&request.url!=="/voice"){json(response,401,{ok:false,error:"unauthorized"});return;}
+  const publicWebhook=request.url==="/v1/channels/whatsapp/webhook";
+  if(requireToken&&!authorized(request,options.token)&&!publicWebhook&&request.url!=="/v1/health"&&request.url!=="/voice"){json(response,401,{ok:false,error:"unauthorized"});return;}
   if(request.method==="GET"&&request.url==="/voice"){
    response.statusCode=200;response.setHeader("content-type","text/html; charset=utf-8");response.end(voiceUiHtml());return;
   }
@@ -311,7 +312,10 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   if(request.method==="POST"&&request.url==="/v1/channels/whatsapp/webhook"){
    try{
     if(!options.channels){json(response,503,{ok:false,error:"messaging_channels_not_configured"});return;}
-    const input=await body(request,max);
+    const raw=await rawBody(request,max);
+    const signature=typeof request.headers["x-hub-signature-256"]==="string"?request.headers["x-hub-signature-256"]:"";
+    if(!options.channels.whatsapp.verifySignature(raw,signature)){json(response,403,{ok:false,error:"whatsapp_signature_invalid"});return;}
+    const input=JSON.parse(raw.toString("utf8"));
     const message=options.channels.whatsapp.parseWebhook(input);
     response.statusCode=200;response.setHeader("content-type","application/json; charset=utf-8");response.end(JSON.stringify({ok:true}));
     if(message)void options.channels.handle(message).catch(()=>undefined);
