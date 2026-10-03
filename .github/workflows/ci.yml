@@ -16,7 +16,7 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run security:check
-      - run: npm run typecheck
+      - name: TypeScript Check\n        run: |\n          set +e\n          npm run typecheck 2>&1 | tee /tmp/layanx-typecheck.log\n          code=${PIPESTATUS[0]}\n          if [ "$code" -ne 0 ]; then\n            echo "## TypeScript diagnostics" >> "$GITHUB_STEP_SUMMARY"\n            cat /tmp/layanx-typecheck.log >> "$GITHUB_STEP_SUMMARY"\n          fi\n          exit "$code"
       - run: npm test
       - run: npm run build
       - name: Start health runtime
