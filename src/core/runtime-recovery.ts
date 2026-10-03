@@ -162,6 +162,7 @@ export class RuntimeRecoveryManager{
         memory:this.core.memory.list().filter(entry=>entry.missionId===missionId),
         handoffs:this.core.handoffs.forMission(missionId),
         delegatedTasks:this.core.delegation.forMission(missionId),
+        approvals:this.core.executionRuntime.approvals.snapshot(),
         nextAction:this.core.nextAction.decide({mission:snapshot.mission,tasks:this.core.delegation.forMission(missionId),handoffs:this.core.handoffs.forMission(missionId)}),
         savedAt:new Date().toISOString(),
         schemaVersion:1
