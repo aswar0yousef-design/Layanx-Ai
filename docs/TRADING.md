@@ -32,3 +32,14 @@ The scalp path now separates signal generation from risk admission. A scalp setu
 ## Research and validation pipeline
 
 LayanX uses one shared backtester and adds controlled evaluation layers above it: parameter optimization, walk-forward out-of-sample evaluation, and Monte Carlo trade-sequence resampling. These are analysis tools only; they do not authorize live trading. The intended progression is historical research -> out-of-sample validation -> paper trading -> demo execution -> separately approved live execution.
+
+
+## XAUUSD research data
+
+Use a local historical CSV rather than committing market history to the repository. The evaluator accepts timestamp/time/datetime/date plus OHLC columns and optionally bid/ask. For example:
+
+```bash
+npm run trading:evaluate -- ./data/XAUUSD.csv
+```
+
+The evaluator sorts bars chronologically, optimizes the registered scalp strategy, performs out-of-sample walk-forward evaluation, and runs Monte Carlo on the resulting trade series. Execution costs can be supplied through the shared backtest/evaluation APIs. Historical data quality and broker-specific spread/execution conditions must be validated before using results for any trading decision.
