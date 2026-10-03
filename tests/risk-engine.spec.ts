@@ -51,4 +51,36 @@ assert.equal(capped.valid, true);
 assert.equal(capped.quantity, 10);
 assert.ok(capped.warnings.includes("Calculated quantity was capped at maximum quantity."));
 
+const brokerPlan = calculateRiskPlan({
+  side: "long",
+  entryPrice: 2350,
+  stopLossPrice: 2349,
+  accountBalance: 1000,
+  riskPercent: 1,
+  brokerSymbol: {
+    broker: "test",
+    accountType: "demo",
+    symbol: "XAUUSD",
+    volumeMin: 0.01,
+    volumeMax: 100,
+    volumeStep: 0.01,
+    tickSize: 0.01,
+    tickValue: 0.01,
+  },
+});
+assert.equal(brokerPlan.valid, true);
+assert.equal(brokerPlan.quantity, 1);
+assert.equal(brokerPlan.actualRiskAmount, 1);
+assert.equal(brokerPlan.actualRiskPercent, 0.1);
+
+const invalidRisk = calculateRiskPlan({
+  side: "long",
+  entryPrice: 100,
+  stopLossPrice: 99,
+  accountBalance: 1000,
+  riskPercent: 101,
+});
+assert.equal(invalidRisk.valid, false);
+assert.ok(invalidRisk.errors.includes("Risk percent cannot exceed 100."));
+
 console.log("risk engine tests passed");
