@@ -104,7 +104,7 @@ export class BinanceSpotClient {
   }
 
   async getSymbolRules(symbol: string): Promise<BinanceSymbolRules> {
-    const raw=await this.request<{symbols:Array<{symbol:string;status:string;baseAsset:string;quoteAsset:string;filters:Array<{filterType:string;minQty?:string;maxQty?:string;stepSize?:string;minNotional?:string;notional?:string}>}>}>("/api/v3/exchangeInfo",{symbol});
+    const raw=await this.request<{symbols:Array<{symbol:string;status:string;baseAsset:string;quoteAsset:string;filters:Array<{filterType:string;minQty?:string;maxQty?:string;stepSize?:string;minNotional?:string;notional?:string;maxNotional?:string}>}>}>("/api/v3/exchangeInfo",{symbol});
     const item=raw.symbols.find(x=>x.symbol===symbol);
     if(!item) throw new Error(`Binance symbol not found: ${symbol}`);
     const lot=item.filters.find(x=>x.filterType==="LOT_SIZE");
