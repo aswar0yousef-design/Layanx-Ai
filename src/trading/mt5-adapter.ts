@@ -78,11 +78,13 @@ export function filterCompletedMt5Candles(
   const intervalMs = mt5TimeframeIntervalMs(normalizeMt5Timeframe(timeframe));
   if (!Array.isArray(candles) || candles.length === 0) throw new Error("MT5 returned no candles.");
 
-  const completed = candles[candles.length - 1] &&
-    Date.parse(candles[candles.length - 1].timestamp) + intervalMs > snapshotTime
-    ? candles.slice(0, -1)
-    : candles;
-
+  let completedEnd = candles.length;
+  while (completedEnd > 0) {
+    const lastTime = Date.parse(candles[completedEnd - 1].timestamp);
+    if (!Number.isFinite(lastTime) || lastTime + intervalMs > snapshotTime) completedEnd -= 1;
+    else break;
+  }
+  const completed = candles.slice(0, completedEnd);
   if (!completed.length) throw new Error("MT5 returned no completed candles.");
 
   for (let index = 0; index < completed.length; index += 1) {
