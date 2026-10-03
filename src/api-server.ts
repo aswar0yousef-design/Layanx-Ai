@@ -146,6 +146,12 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   if(request.method==="GET"&&request.url?.startsWith("/v1/oauth/callback")){
    try{const u=new URL(request.url,"http://localhost");const state=u.searchParams.get("state")??"";const code=u.searchParams.get("code")??"";if(!state||!code){json(response,400,{ok:false,error:"state_and_code_required"});return;}const connection=await oauth.callback(state,code);json(response,200,{ok:true,connection:oauth.status(connection)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_callback_failed"});}return;
   }
+  if(request.method==="GET"&&request.url?.match(/^\/v1\/oauth\/[^/]+\/discover-ads$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{const id=decodeURIComponent(request.url.split("/")[3]??"");json(response,200,{ok:true,...await oauth.discoverAds(id)});}
+   catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_ads_discovery_failed"});}
+   return;
+  }
   if(request.method==="GET"&&request.url?.match(/^\/v1\/oauth\/[^/]+\/discover$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{const id=decodeURIComponent(request.url.split("/")[3]??"");json(response,200,{ok:true,...await oauth.discover(id)});}
