@@ -70,6 +70,19 @@ function currentSpread(spread: PaperTradingConfig["spread"], candle: MarketCandl
   return typeof spread === "function" ? spread(candle) : spread;
 }
 
+function entrySpread(
+  spread: PaperTradingConfig["spread"],
+  candle: MarketCandle,
+): number {
+  if (candle.bidOpen !== undefined && candle.askOpen !== undefined) {
+    return candle.askOpen - candle.bidOpen;
+  }
+  if (candle.bid !== undefined && candle.ask !== undefined) {
+    return candle.ask - candle.bid;
+  }
+  return typeof spread === "function" ? spread(candle) : spread;
+}
+
 function currentSlippage(
   slippage: PaperTradingConfig["slippage"],
   candle: MarketCandle,
@@ -208,6 +221,7 @@ export function runPaperScalping(
             : candle.open;
 
     const entrySlippage = currentSlippage(config.slippage, candle, signal.action);
+    const entrySpreadValue = entrySpread(config.spread, candle);
     const hasHistoricalQuote = signal.action === "long"
       ? candle.askOpen !== undefined || candle.ask !== undefined
       : candle.bidOpen !== undefined || candle.bid !== undefined;
@@ -226,7 +240,7 @@ export function runPaperScalping(
       market: {
         symbol: config.symbol,
         timeframe: config.timeframe,
-        spread,
+        spread: entrySpreadValue,
         expectedSlippage: entrySlippage,
         atr: signal.indicators.atr,
         timestamp: candle.timestamp,
@@ -266,7 +280,7 @@ export function runPaperScalping(
       takeProfitPrice: target,
       openedAt: candle.timestamp,
       signalTimestamp: history[history.length - 1]?.timestamp ?? candle.timestamp,
-      entrySpread: spread,
+      entrySpread: entrySpreadValue,
       entrySlippage,
       entryAtr: signal.indicators.atr,
       entryTrendRegime: entryRegime.trend,
