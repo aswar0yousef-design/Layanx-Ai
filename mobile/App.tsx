@@ -21,7 +21,7 @@ export default function App(){
   {!!error&&<Text style={s.err}>{error}</Text>}
   <Text style={s.section}>Connections</Text>
   <View style={s.card}>
-   {["meta","tiktok","youtube","linkedin","x"].map(provider=>{const current=connections.find(x=>x.provider===provider);return <View style={s.connection} key={provider}><View style={{flex:1}}><Text style={s.big}>{provider}</Text><Text style={s.muted}>{current?current.accountId+" · connected":"Not connected"}</Text></View><Pressable style={s.smallBtn} onPress={()=>connect(provider)}><Text style={s.bt}>{current?"Reconnect":"Connect"}</Text></Pressable></View>})}
+   {["meta","tiktok","youtube","linkedin","x","pinterest"].map(provider=>{const current=connections.find(x=>x.provider===provider);return <View style={s.connection} key={provider}><View style={{flex:1}}><Text style={s.big}>{provider}</Text><Text style={s.muted}>{current?current.accountId+" · connected":"Not connected"}</Text></View><Pressable style={s.smallBtn} onPress={()=>connect(provider)}><Text style={s.bt}>{current?"Reconnect":"Connect"}</Text></Pressable></View>})}
   </View>
   <Text style={s.section}>Business Overview</Text>
   <View style={s.grid}>
