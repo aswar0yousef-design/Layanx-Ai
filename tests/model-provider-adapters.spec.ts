@@ -19,10 +19,10 @@ if(!lastBody.includes('"model":"test-model"'))throw new Error("OpenAI request bo
 
 const ollama=createOllamaProvider({fetcher:async(input,init)=>{
  if(init?.method==="GET")return new Response("",{status:200});
- return new Response(JSON.stringify({response:"local hello",prompt_eval_count:2,eval_count:5}),{status:200});
+ return new Response(JSON.stringify({message:{content:"local hello"},prompt_eval_count:2,eval_count:5}),{status:200});
 }});
 const local=await ollama.generate({...model,id:"llama3.2:3b",provider:"ollama",local:true},{capability:"chat",input:"hello"});
-if(local.provider!=="ollama"||local.output!=="local hello"||local.usage?.outputTokens!==5)throw new Error("Ollama response parsing failed.");
+if(local.provider!=="ollama"||local.output!=="local hello"||local.usage?.outputTokens!==5)throw new Error("Ollama response parsing failed.");\nconst vision=await ollama.generate({...model,id:"llama3.2-vision",provider:"ollama",local:true,capabilities:["vision"]},{capability:"vision",input:[{type:"text",text:"inspect"},{type:"image",image:{mimeType:"image/png",base64:"aGVsbG8="}}]});\nif(vision.output!=="local hello")throw new Error("Ollama vision response parsing failed.");
 
 const failedOptions=Object.assign({fetcher:async()=>new Response("",{status:503})},{[["api","Key"].join("")]:testCredential});
 const failed=createOpenAIProvider(failedOptions);
