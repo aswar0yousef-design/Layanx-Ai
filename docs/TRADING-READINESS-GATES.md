@@ -5,12 +5,13 @@
 | Gate | State | Evidence |
 |---|---|---|
 | Paper Trading | READY | runPaperScalping, intrabar execution, execution-quality analysis, backtest/OOS tests |
-| Agent Integration | READY | trading.paper.backtest is registered in the LayanX ToolRegistry and ToolAdapterRegistry |
-| Risk Boundary | READY | Agent paper tool is L2_ANALYZE; no live trading tool is registered; paper risk still passes through the existing risk engine |
+| Agent Integration | READY | paper, Binance market-data, and dedicated Binance execution tools are registered with separate permissions |
+| Risk Boundary | READY | Paper is L2_ANALYZE; Binance execution is isolated at L4_EXECUTE and requires runtime controls plus exchange preflight limits |
 | Approval Path | READY | LayanX ExecutionRuntime requires explicit approval for high/critical or dangerous execution paths |
 | Audit Path | READY | ExecutionRuntime writes audit events for allow/deny/pending/failure/success paths |
 | MT5 | READY (read-only) | MT5 snapshot/candle/specification paths are available; forming candles are filtered centrally |
-| Binance Market Data | READY | Read-only Binance REST adapter + Agent tool |\n| Binance Execution | GATED | Dedicated L4 tool; requires runtime approval, API credentials, live-enable flag, and max-notional limit |
+| Binance Market Data | READY | Read-only Binance REST adapter + Agent tool |
+| Binance Execution | GATED | Dedicated L4 tool; requires runtime approval, API credentials, live-enable flag, and max-notional limit |
 | Live Broker | NOT ENABLED | No live broker execution tool is registered |
 | Real Money | GATED / OFF BY DEFAULT | Production order path exists but cannot run without explicit deployment configuration and L4 approval |
 
@@ -28,6 +29,19 @@ There is no unrestricted live trading tool. Binance execution is isolated behind
 
 MT5 support in the current trading layer is for market-data/read-only evaluation. The shared candle filter removes all candles that are still forming at the MT5 snapshot timestamp before scalping evaluation.
 
-## Promotion rule
+## Live execution boundary
 
-A future live execution adapter must be introduced as a separate security change. It must not be enabled merely by adding credentials or changing an environment variable. It should have its own tool permission, risk policy, approval requirement, idempotency strategy, broker reconciliation, and audit evidence.
+Binance Spot execution is implemented but remains disabled by default.
+
+Before a production order can be submitted, all of the following must hold:
+- LayanX ExecutionRuntime authorizes the L4 tool and explicit approval is valid for the exact payload hash.
+- BINANCE_LIVE_TRADING_ENABLED=true.
+- Local Binance credentials are configured outside the repository, or deployment environment credentials are explicitly supplied.
+- BINANCE_MAX_ORDER_NOTIONAL is a positive limit.
+- The symbol is currently TRADING.
+- Quantity and price comply with Binance exchange filters.
+- The order notional is within both the exchange limit and the configured LayanX maximum.
+- Production requests use HTTPS and api.binance.com.
+- The request carries a deterministic clientOrderId derived from the runtime idempotency key.
+
+Post-order reconciliation/user-data streaming is still a separate operational hardening step before unattended high-frequency production trading.
