@@ -12,16 +12,16 @@ process.env.USERPROFILE = tempHome;
 
 try {
   const mod = await import("../src/security/local-secret-store.js");
-  await mod.saveLocalBinanceCredentials({ apiKey: "test-key", apiSecret: "test-secret" });
+  await mod.saveLocalBinanceCredentials({ apiKey: "k", apiSecret: "s" });
 
   const loaded = await mod.loadLocalBinanceCredentials();
-  assert.deepEqual(loaded, { apiKey: "test-key", apiSecret: "test-secret" });
+  assert.deepEqual(loaded, { apiKey: "k", apiSecret: "s" });
 
   const path = mod.localBinanceSecretStorePath();
   assert.equal(path.startsWith(tempHome), true);
   const raw = await readFile(path, "utf8");
-  assert.match(raw, /test-key/);
-  assert.match(raw, /test-secret/);
+  assert.match(raw, /^k$/);
+  assert.match(raw, /^s$/);
 
   console.log("local-secret-store: ok");
 } finally {
