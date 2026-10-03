@@ -233,6 +233,7 @@ export function runPaperScalping(
       },
       risk: {
         stopLossPrice: stop,
+        entryPrice: entry,
         accountBalance: balance,
         riskPercent: config.riskPercent,
         pointValue: config.pointValue,
