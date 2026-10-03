@@ -18,11 +18,11 @@ export function createRuntime(options:RuntimeOptions={}){
  registerHttpReadTool(core);
  registerGitHubReadTools(core,{token:process.env.GITHUB_TOKEN});
  registerToolFabric(core);
- registerTradingTools(core,core.trading);
+ registerTradingTools(core,core.trading,core.strategies);
  const agent:AgentContract={
   agentId:"core",
   purpose:"Safely orchestrate LayanX missions.",
-  allowedTools:["runtime.status","mission.inspect","memory.recall","http.read","github.repo.read","github.issues.list","github.prs.list","browser.read","files.read","files.list","files.stat","files.write","terminal.exec","git.status","git.diff","git.log","git.checkpoint","git.branch","git.add","git.commit","git.rollback","git.push","project.inspect","project.verify","development.prepare","trading.account","trading.quote","trading.order.place","trading.position.close"],
+  allowedTools:["runtime.status","mission.inspect","memory.recall","http.read","github.repo.read","github.issues.list","github.prs.list","browser.read","files.read","files.list","files.stat","files.write","terminal.exec","git.status","git.diff","git.log","git.checkpoint","git.branch","git.add","git.commit","git.rollback","git.push","project.inspect","project.verify","development.prepare","trading.account","trading.quote","trading.order.place","trading.position.close","trading.strategy.list","trading.strategy.backtest"],
   forbiddenResources:["secrets","security-controls"],
   requiredPermission:"L4_EXECUTE",
   maxToolCalls:100,
