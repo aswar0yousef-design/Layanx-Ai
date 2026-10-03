@@ -75,7 +75,7 @@ console.log("binance-production-order-client: ok");
     return new Response(JSON.stringify({orderId:43,clientOrderId:"runtime-id",status:"NEW"}), {status:200});
   }) as typeof fetch;
   try {
-    const adapter = createBinanceLiveOrderToolAdapter(async () => ({apiKey:"test-key",apiSecret:"test-secret"}));
+    const adapter = createBinanceLiveOrderToolAdapter(async () => ({apiKey:"k",apiSecret:"s"}));
     const result = await adapter.execute({
       missionId:"m",
       agentId:"a",
