@@ -6,7 +6,7 @@ export interface TradingAccount{currency:"USD";balance:number;equity:number;avai
 
 export class PaperTradingEngine{
  private readonly quotes=new Map<string,TradingQuote>();
- private readonly positions=new Map<string,TradingPosition>();
+ private readonly openPositions=new Map<string,TradingPosition>();
  private readonly orders:TradingOrder[]=[];
  private account:TradingAccount={currency:"USD",balance:100000,equity:100000,available:100000};
 
@@ -19,7 +19,7 @@ export class PaperTradingEngine{
   const value=this.quotes.get(normalizeSymbol(symbol)); if(!value)throw new Error("No paper quote is configured for this symbol."); return structuredClone(value);
  }
  accountSnapshot():TradingAccount{return structuredClone(this.account);}
- positions():TradingPosition[]{return [...this.positions.values()].map(position=>structuredClone(position));}
+ positions():TradingPosition[]{return [...this.openPositions.values()].map(position=>structuredClone(position));}
  ordersSnapshot():TradingOrder[]{return this.orders.map(order=>structuredClone(order));}
  placeMarket(input:{symbol:string;side:TradingSide;quantity:number;price?:number;stopLoss?:number;takeProfit?:number}):TradingOrder{
   const symbol=normalizeSymbol(input.symbol); const quantity=finitePositive(input.quantity,"quantity"); const quote=this.quote(symbol);
@@ -29,15 +29,15 @@ export class PaperTradingEngine{
   if(input.takeProfit!==undefined)validateTarget(input.side,price,input.takeProfit);
   const order:TradingOrder={orderId:crypto.randomUUID(),symbol,side:input.side,quantity,price,status:"filled",createdAt:new Date().toISOString()};
   this.orders.push(order);
-  const key=order.orderId; this.positions.set(key,{symbol,side:input.side,quantity,entryPrice:price,stopLoss:input.stopLoss,takeProfit:input.takeProfit,openedAt:order.createdAt});
+  const key=order.orderId; this.openPositions.set(key,{symbol,side:input.side,quantity,entryPrice:price,stopLoss:input.stopLoss,takeProfit:input.takeProfit,openedAt:order.createdAt});
   this.account={...this.account,available:this.account.available-quantity*price};
   return structuredClone(order);
  }
  closePosition(orderId:string,price?:number){
-  const position=this.positions.get(orderId); if(!position)throw new Error("Paper position not found.");
+  const position=this.openPositions.get(orderId); if(!position)throw new Error("Paper position not found.");
   const quote=this.quote(position.symbol); const exit=price??(position.side==="buy"?quote.bid:quote.ask); finitePositive(exit,"price");
   const pnl=(position.side==="buy"?exit-position.entryPrice:position.entryPrice-exit)*position.quantity;
-  this.positions.delete(orderId); const balance=this.account.balance+pnl; this.account={...this.account,balance,available:this.account.available+position.entryPrice*position.quantity+pnl,equity:balance};
+  this.openPositions.delete(orderId); const balance=this.account.balance+pnl; this.account={...this.account,balance,available:this.account.available+position.entryPrice*position.quantity+pnl,equity:balance};
   return {orderId,symbol:position.symbol,exitPrice:exit,pnl,closedAt:new Date().toISOString()};
  }
 }
