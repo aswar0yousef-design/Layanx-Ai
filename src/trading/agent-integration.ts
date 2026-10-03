@@ -60,7 +60,10 @@ export function registerPaperTradingAgentTool(
   adapters.register(PAPER_TRADING_TOOL, createPaperTradingToolAdapter());
 }
 
-/**\n * Binance market-data access is read-only and does not require API credentials.\n */\nexport const BINANCE_MARKET_DATA_TOOL = "trading.binance.market-data";
+/**
+ * Binance market-data access is read-only and does not require API credentials.
+ */
+export const BINANCE_MARKET_DATA_TOOL = "trading.binance.market-data";
 
 const BINANCE_MARKET_DATA_DEFINITION: ToolDefinition = {
   name: BINANCE_MARKET_DATA_TOOL,
@@ -78,7 +81,9 @@ export function registerBinanceMarketDataTool(tools: ToolRegistry, adapters: Too
     async execute(request) {
       const payload = request.payload as { symbol?: unknown };
       if (typeof payload?.symbol !== "string" || !payload.symbol) throw new Error("Binance market data requires a symbol.");
-      const client = new BinanceSpotClient({\n        baseUrl: process.env.BINANCE_BASE_URL ?? "https://api.binance.com",\n      });
+      const client = new BinanceSpotClient({
+        baseUrl: process.env.BINANCE_BASE_URL ?? "https://api.binance.com",
+      });
       const [ticker, rules] = await Promise.all([
         client.getTicker(payload.symbol),
         client.getSymbolRules(payload.symbol),
@@ -112,7 +117,13 @@ export function registerBinanceLiveOrderTool(tools: ToolRegistry, adapters: Tool
       if (typeof payload.quantity !== "number" || !Number.isFinite(payload.quantity) || payload.quantity <= 0) throw new Error("Order quantity must be positive.");
       if (payload.type === "LIMIT" && (typeof payload.price !== "number" || !Number.isFinite(payload.price) || payload.price <= 0)) throw new Error("Limit price must be positive.");
       const credentials = await getBinanceCredentials();
-      const client = new BinanceSpotClient({\n        apiKey: credentials.apiKey,\n        apiSecret: credentials.apiSecret,\n        baseUrl: process.env.BINANCE_BASE_URL ?? "https://api.binance.com",\n        allowTrading: true,\n        liveTradingEnabled: true,\n      });
+      const client = new BinanceSpotClient({
+        apiKey: credentials.apiKey,
+        apiSecret: credentials.apiSecret,
+        baseUrl: process.env.BINANCE_BASE_URL ?? "https://api.binance.com",
+        allowTrading: true,
+        liveTradingEnabled: true,
+      });
       const [ticker, rules] = await Promise.all([
         client.getTicker(payload.symbol),
         client.getSymbolRules(payload.symbol),
