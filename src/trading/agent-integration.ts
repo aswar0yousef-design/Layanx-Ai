@@ -5,6 +5,7 @@ import type { ToolAdapterRegistry } from "../tools/adapters.js";
 import type { MarketCandle } from "./scalping-signal.js";
 import { runPaperScalping, type PaperTradingConfig } from "./paper-scalping.js";
 import { createXauUsdPaperConfig } from "./xauusd-scalping-profile.js";
+import { BinanceSpotClient } from "./binance-spot-client.js";
 
 export const PAPER_TRADING_TOOL = "trading.paper.backtest";
 
@@ -80,7 +81,16 @@ export function registerBinanceMarketDataTool(tools: ToolRegistry, adapters: Too
     async execute(request) {
       const payload = request.payload as { symbol?: unknown };
       if (typeof payload?.symbol !== "string" || !payload.symbol) throw new Error("Binance market data requires a symbol.");
-      return { submitted: false, marketDataOnly: true, symbol: payload.symbol };
+      const client = new BinanceSpotClient({
+        apiKey: process.env.BINANCE_API_KEY,
+        apiSecret: process.env.BINANCE_API_SECRET,
+        baseUrl: process.env.BINANCE_BASE_URL ?? "https://api.binance.com",
+      });
+      const [ticker, rules] = await Promise.all([
+        client.getTicker(payload.symbol),
+        client.getSymbolRules(payload.symbol),
+      ]);
+      return { submitted: false, marketDataOnly: true, ticker, rules };
     },
   });
 }
