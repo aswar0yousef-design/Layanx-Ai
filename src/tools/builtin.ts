@@ -6,13 +6,20 @@ import {createGitHubReadAdapter} from "../connectors/github-read.js";
 import {createGitToolAdapter} from "./git.js";
 import {createBrowserToolAdapter,createFileToolAdapter,createFileWriteToolAdapter,createTerminalToolAdapter,createProjectVerifyToolAdapter} from "./fabric.js";
 import type {PaperTradingEngine} from "../trading/paper.js";
+import type {StrategyRegistry} from "../trading/strategy.js";
+import {backtest} from "../trading/backtest.js";
 
 function payloadRecord(request:ToolRequest):Record<string,unknown>{
   return request.payload&&typeof request.payload==="object"&&!Array.isArray(request.payload)
     ? request.payload as Record<string,unknown> : {};
 }
 
-export function registerTradingTools(core:LayanXCore,engine:PaperTradingEngine):void {
+export function registerTradingTools(core:LayanXCore,engine:PaperTradingEngine,strategies:StrategyRegistry):void {
+
+ core.tools.register({name:"trading.strategy.list",description:"list registered trading strategies",permission:"L1_READ",dangerous:false,actions:["list trading strategies"],tags:["trading","strategy","research"]});
+ core.toolAdapters.register("trading.strategy.list",{async execute(){return strategies.list().map(strategy=>({id:strategy.id,name:strategy.name,description:strategy.description,timeframe:strategy.timeframe}));}});
+ core.tools.register({name:"trading.strategy.backtest",description:"backtest a registered trading strategy against supplied OHLCV candles",permission:"L2_ANALYZE",dangerous:false,actions:["backtest trading strategy"],tags:["trading","strategy","backtest","research"]});
+ core.toolAdapters.register("trading.strategy.backtest",{async execute(request){const input=payloadRecord(request);if(typeof input.strategyId!=="string")throw new Error("strategyId is required.");if(!Array.isArray(input.candles))throw new Error("candles array is required.");const candles=input.candles as any[];return backtest(strategies.get(input.strategyId),candles as any,typeof input.startingEquity==="number"?input.startingEquity:100000,typeof input.riskFraction==="number"?input.riskFraction:0.005);}});
  const tools=[
   {name:"trading.account",description:"read the paper trading account and open positions",permission:"L1_READ" as const,dangerous:false,action:"read trading account",tags:["trading","account","paper"]},
   {name:"trading.quote",description:"read a configured paper trading quote",permission:"L1_READ" as const,dangerous:false,action:"read market quote",tags:["trading","quote","market","paper"]},
