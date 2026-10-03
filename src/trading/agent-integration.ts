@@ -95,4 +95,46 @@ export function registerBinanceMarketDataTool(tools: ToolRegistry, adapters: Too
   });
 }
 
-export const LIVE_TRADING_TOOLS: readonly string[] = [];
+export const BINANCE_LIVE_ORDER_TOOL = "trading.binance.order";
+
+const BINANCE_LIVE_ORDER_DEFINITION: ToolDefinition = {
+  name: BINANCE_LIVE_ORDER_TOOL,
+  description: "Submit an approved Binance Spot order. L4 execution: requires explicit runtime approval and BINANCE_LIVE_TRADING_ENABLED=true for production.",
+  permission: "L4_EXECUTE",
+  dangerous: true,
+  actions: ["place-order"],
+  tags: ["trading", "binance", "execution", "live"],
+};
+
+export function registerBinanceLiveOrderTool(tools: ToolRegistry, adapters: ToolAdapterRegistry): void {
+  if (tools.list().some(tool => tool.name === BINANCE_LIVE_ORDER_TOOL)) return;
+  tools.register(BINANCE_LIVE_ORDER_DEFINITION);
+  adapters.register(BINANCE_LIVE_ORDER_TOOL, {
+    async execute(request) {
+      if (process.env.BINANCE_LIVE_TRADING_ENABLED !== "true") {
+        throw new Error("Binance live execution is disabled. Set BINANCE_LIVE_TRADING_ENABLED=true only after approval and deployment readiness checks.");
+      }
+      const payload = request.payload as Partial<import("./binance-spot-client.js").BinanceOrderRequest> & { maxNotional?: unknown };
+      if (typeof payload.symbol !== "string" || (payload.side !== "BUY" && payload.side !== "SELL") || (payload.type !== "MARKET" && payload.type !== "LIMIT")) throw new Error("Invalid Binance order payload.");
+      if (typeof payload.quantity !== "number" || !Number.isFinite(payload.quantity) || payload.quantity <= 0) throw new Error("Order quantity must be positive.");
+      if (payload.type === "LIMIT" && (typeof payload.price !== "number" || !Number.isFinite(payload.price) || payload.price <= 0)) throw new Error("Limit price must be positive.");
+      const client = new BinanceSpotClient({
+        apiKey: process.env.BINANCE_API_KEY,
+        apiSecret: process.env.BINANCE_API_SECRET,
+        baseUrl: process.env.BINANCE_BASE_URL ?? "https://api.binance.com",
+        allowTrading: true,
+        liveTradingEnabled: true,
+      });
+      const ticker = await client.getTicker(payload.symbol);
+      const referencePrice = payload.price ?? (payload.side === "BUY" ? ticker.askPrice : ticker.bidPrice);
+      const notional = payload.quantity * referencePrice;
+      const configuredMax = Number(process.env.BINANCE_MAX_ORDER_NOTIONAL ?? payload.maxNotional ?? 0);
+      if (!Number.isFinite(configuredMax) || configuredMax <= 0) throw new Error("BINANCE_MAX_ORDER_NOTIONAL must be a positive limit for live execution.");
+      if (notional > configuredMax) throw new Error("Order exceeds configured Binance maximum notional.");
+      const result = await client.placeOrder({symbol:payload.symbol,side:payload.side,type:payload.type,quantity:payload.quantity,price:payload.price,clientOrderId:payload.clientOrderId});
+      return { ...result, preflight: {referencePrice, notional, maxNotional: configuredMax} };
+    },
+  });
+}
+
+export const LIVE_TRADING_TOOLS: readonly string[] = [BINANCE_LIVE_ORDER_TOOL];
