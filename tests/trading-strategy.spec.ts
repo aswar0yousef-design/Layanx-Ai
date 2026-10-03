@@ -1,4 +1,4 @@
-import {HtfStructureLiquidityStrategy,ScalpingSweepStrategy} from "../src/trading/strategy.js";import {backtest} from "../src/trading/backtest.js";
+import {HtfStructureLiquidityStrategy,ScalpingSweepStrategy,marketRegime} from "../src/trading/strategy.js";import {backtest} from "../src/trading/backtest.js";
 const candles=Array.from({length:100},(_,i)=>({timestamp:i,open:100+i*0.1,high:100+i*0.1+1,low:100+i*0.1-1,close:100+i*0.1+0.2,volume:1000}));
 // Inject a bullish sweep/displacement after a rising sequence.
 candles[50]={timestamp:50,open:105,high:106,low:98,close:106,volume:2000};
@@ -12,3 +12,5 @@ console.log(JSON.stringify({ok:true,trades:result.trades.length,returnPct:result
 const scalp=new ScalpingSweepStrategy();
 const scalpSignal=scalp.evaluate({candles,index:50});
 if(!scalpSignal||scalpSignal.side!=="long")throw new Error("Scalp long signal was not generated.");
+
+const regime=marketRegime(candles,50);if(!regime||!["bullish","bearish","ranging","high-volatility","low-volatility"].includes(regime.regime))throw new Error("Market regime classification failed.");
