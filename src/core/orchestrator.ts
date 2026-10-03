@@ -136,7 +136,8 @@ export class LayanXCore{
   private liveScreen?:LiveScreenObserver;
 
   setLiveScreenObserver(observer:LiveScreenObserver){this.liveScreen=observer;}
-  liveScreenStatus(){return {running:this.liveScreen?.isRunning()??false,frameAvailable:Boolean(this.liveScreen?.latest()),frame:this.liveScreen?.latest()};}
+  liveScreenStatus(){return {running:this.liveScreen?.isRunning()??false,frameAvailable:Boolean(this.liveScreen?.latest())};}
+  liveScreenFrame(){return this.liveScreen?.latest();}
   startLiveScreen(){if(!this.liveScreen)throw new Error("Live screen observer is not configured.");this.liveScreen.start();}
   stopLiveScreen(){this.liveScreen?.stop();}
 
