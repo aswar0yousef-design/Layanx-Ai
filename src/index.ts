@@ -1,10 +1,11 @@
 import {LayanXCore} from "./core/orchestrator.js";
+import {PAPER_TRADING_TOOL} from "./trading/agent-integration.js";
 import type {AgentContract} from "./core/contracts.js";
 const core=new LayanXCore();
 const systemAgent:AgentContract={
  agentId:"core",
  purpose:"Safely orchestrate LayanX missions.",
- allowedTools:[],
+ allowedTools:[PAPER_TRADING_TOOL],
  forbiddenResources:["secrets","security-controls"],
  requiredPermission:"L1_READ",
  maxToolCalls:100,
