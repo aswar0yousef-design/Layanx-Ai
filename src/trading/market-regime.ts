@@ -35,7 +35,7 @@ function ema(values: number[], period: number): number | undefined {
   const multiplier = 2 / (period + 1);
   let result = seed;
   for (let i = period; i < values.length; i += 1) {
-    result = (values[i] - result) * multiplier + result;
+    result = (values[i]! - result) * multiplier + result;
   }
   return result;
 }
@@ -44,8 +44,8 @@ function atr(candles: Array<{ high:number; low:number; close:number }>, period: 
   if (period <= 0 || candles.length <= period) return undefined;
   const ranges: number[] = [];
   for (let i = 1; i < candles.length; i += 1) {
-    const current = candles[i];
-    const previous = candles[i - 1];
+    const current = candles[i]!;
+    const previous = candles[i - 1]!;
     ranges.push(Math.max(
       current.high - current.low,
       Math.abs(current.high - previous.close),
