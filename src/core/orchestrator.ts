@@ -64,6 +64,7 @@ import {PullRequestGenerator} from "./pr-generator.js";
 import {ReleaseStateMachine} from "./release-state-machine.js";
 import {ReleaseManager} from "./release-manager.js";
 import {RuntimeTracer} from "./runtime-tracer.js";
+import {registerPaperTradingAgentTool} from "../trading/agent-integration.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
 
 export class LayanXCore{
@@ -151,6 +152,7 @@ export class LayanXCore{
     this.securityReview=new SecurityReviewAgent();
     this.prGenerator=new PullRequestGenerator();
     this.releaseManager=new ReleaseManager();
+    registerPaperTradingAgentTool(this.tools,this.toolAdapters);
   }
 
   restoreRuntimeSnapshot(snapshot:import("./runtime-persistence.js").RuntimeSnapshot){
