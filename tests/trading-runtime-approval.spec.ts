@@ -5,9 +5,9 @@ import type { AgentContract } from "../src/core/contracts.js";
 import type { Mission } from "../src/core/types.js";
 
 const core = new LayanXCore();
-assert.ok(core.tools.get(BINANCE_LIVE_ORDER_TOOL), "core must register the gated Binance execution tool");
-assert.ok(core.tools.get("trading.paper.backtest"), "core must register the paper trading tool");
-assert.ok(core.tools.get("trading.binance.market-data"), "core must register Binance market-data tool");
+assert.ok(core.tools.list().some(tool => tool.name === BINANCE_LIVE_ORDER_TOOL), "core must register the gated Binance execution tool");
+assert.ok(core.tools.list().some(tool => tool.name === "trading.paper.backtest"), "core must register the paper trading tool");
+assert.ok(core.tools.list().some(tool => tool.name === "trading.binance.market-data"), "core must register Binance market-data tool");
 const agent: AgentContract = {
   agentId: "trading-executor-test",
   purpose: "Test controlled trading execution approval.",
