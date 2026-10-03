@@ -32,6 +32,7 @@ export class NativeSocialConnector implements PlatformSocialConnector{
    case "youtube": return this.youtube(access,item);
    case "linkedin": return this.linkedin(requireId(account),access,item);
    case "x": return this.x(access,item);
+   case "pinterest": return this.pinterest(requireId(account),access,item);
    default: throw new Error(`native_social_not_implemented:${this.platform}`);
   }
  }
@@ -76,6 +77,15 @@ export class NativeSocialConnector implements PlatformSocialConnector{
   const url=process.env.LAYANX_LINKEDIN_SOCIAL_POST_URL??"https://api.linkedin.com/rest/posts";
   const d=await jsonRequest(url,{method:"POST",headers:{Authorization:`Bearer ${access}`,"Content-Type":"application/json","X-Restli-Protocol-Version":"2.0.0","Linkedin-Version":process.env.LAYANX_LINKEDIN_VERSION??"202601"},body:JSON.stringify({author:author.startsWith("urn:")?author:`urn:li:person:${author}`,commentary:item.body,visibility:"PUBLIC",distribution:{feedDistribution:"MAIN_FEED"},lifecycleState:"PUBLISHED",isReshareDisabledByAuthor:false})});
   const id=String(d?.id??d?.["x-restli-id"]??"");if(!id)throw new Error("linkedin_post_id_missing");return {externalId:id,url:`https://www.linkedin.com/feed/update/${encodeURIComponent(id)}`};
+ }
+ private async pinterest(boardId:string,access:string,item:PublishItem){
+  const image=item.mediaUrls.find(x=>/\.(jpe?g|png|webp)(\?|$)/i.test(x)||/^https?:\/\//i.test(x));
+  if(!image)throw new Error("pinterest_requires_public_image_url");
+  const api=(process.env.LAYANX_PINTEREST_SOCIAL_BASE_URL??"https://api.pinterest.com/v5").replace(/\/$/,"");
+  const body={board_id:boardId,title:item.title.slice(0,100),description:item.body,media_source:{source_type:"image_url",url:image,is_standard:true}};
+  const d=await jsonRequest(`${api}/pins`,{method:"POST",headers:{Authorization:`Bearer ${access}`,"content-type":"application/json"},body:JSON.stringify(body)});
+  const id=String(d?.id??"");if(!id)throw new Error("pinterest_pin_id_missing");
+  return {externalId:id,url:`https://www.pinterest.com/pin/${id}/`};
  }
  private async x(access:string,item:PublishItem){
   const d=await jsonRequest("https://api.x.com/2/tweets",{method:"POST",headers:{Authorization:`Bearer ${access}`,"content-type":"application/json"},body:JSON.stringify({text:item.body})});
