@@ -47,6 +47,7 @@ export interface PaperTradingResult {
   trades: TradeRecord[];
   analyses: ReturnType<typeof analyzeTradeRecord>[];
   blockedSignals: number;
+  quoteCoverage: { candlesWithBidAsk: number; candlesWithoutBidAsk: number; percentage: number };
 }
 
 function stopPrice(side: TradeSide, entry: number, distance: number): number {
@@ -62,6 +63,9 @@ function currentSpread(
   spread: PaperTradingConfig["spread"],
   candle: MarketCandle,
 ): number {
+  if (candle.bid !== undefined && candle.ask !== undefined) {
+    return candle.ask - candle.bid;
+  }
   return typeof spread === "function" ? spread(candle) : spread;
 }
 
@@ -230,11 +234,15 @@ export function runPaperScalping(
   let openTrade: PaperTrade | null = null;
   let sequence = 0;
   let blockedSignals = 0;
+  let candlesWithBidAsk = 0;
+  let candlesWithoutBidAsk = 0;
   const trades: TradeRecord[] = [];
 
   for (let i = 30; i < candles.length; i += 1) {
     const history = candles.slice(0, i + 1);
     const candle = candles[i];
+    if (candle.bid !== undefined && candle.ask !== undefined) candlesWithBidAsk += 1;
+    else candlesWithoutBidAsk += 1;
     const spread = currentSpread(config.spread, candle);
     if (spread < 0) throw new Error("Spread must be non-negative.");
 
@@ -359,5 +367,10 @@ export function runPaperScalping(
     trades,
     analyses: trades.map(analyzeTradeRecord),
     blockedSignals,
+    quoteCoverage: {
+      candlesWithBidAsk,
+      candlesWithoutBidAsk,
+      percentage: ((candlesWithBidAsk + candlesWithoutBidAsk) === 0 ? 0 : (candlesWithBidAsk / (candlesWithBidAsk + candlesWithoutBidAsk)) * 100),
+    },
   };
 }
