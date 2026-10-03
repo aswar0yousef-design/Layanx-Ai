@@ -80,12 +80,12 @@ export class OAuthConnectionCenter{
     const accounts:Array<any>=[];
     for(const page of Array.isArray(data?.data)?data.data:[]){
      if(page.id){
-      if(page.access_token)this.vault.set(`meta.page.${page.id}.token`,String(page.access_token));
+      if(page.access_token){this.vault.set(`meta.page.${page.id}.token`,String(page.access_token));}
       accounts.push({platform:"facebook",externalId:String(page.id),name:String(page.name??page.id),tokenManaged:true});
      }
      const ig=page.instagram_business_account;
      if(ig?.id){
-      accounts.push({platform:"instagram",externalId:String(ig.id),name:String(ig.username??ig.name??ig.id),pageId:String(page.id),tokenManaged:Boolean(page.access_token)});
+      if(page.access_token)this.vault.set(`meta.page.${ig.id}.token`,String(page.access_token)); accounts.push({platform:"instagram",externalId:String(ig.id),name:String(ig.username??ig.name??ig.id),pageId:String(page.id),tokenManaged:Boolean(page.access_token)});
      }
     }
     return {provider:"meta",accounts};
