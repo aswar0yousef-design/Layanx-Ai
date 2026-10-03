@@ -1,4 +1,4 @@
-import {backtest,type BacktestResult,type BacktestCosts} from "./backtest.js";import type {Candle,TradingStrategy} from "./strategy.js";
+import {backtest,type BacktestResult,type BacktestCosts} from "./backtest.js";import {marketRegime,type Candle,type TradingStrategy,type MarketRegime} from "./strategy.js";
 
 export interface StrategyCandidate{strategy:TradingStrategy;parameters:Record<string,number>;result:BacktestResult;}
 export interface WalkForwardWindow{trainStart:number;trainEnd:number;testStart:number;testEnd:number;}
