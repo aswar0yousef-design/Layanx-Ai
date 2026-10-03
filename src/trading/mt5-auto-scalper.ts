@@ -43,6 +43,10 @@ export class Mt5AutoScalper{
    if(!this.state.startEquity)this.state.startEquity=account.equity;
    this.state.dailyPnl=account.equity-this.state.startEquity;
    this.statusState.dailyPnl=this.state.dailyPnl;
+   const maxDailyLossFraction=Math.min(Math.max(Number(process.env.MT5_MAX_DAILY_LOSS_PERCENT??2)/100,0.001),0.10);
+   if(this.state.dailyPnl<=-(account.equity*maxDailyLossFraction)){this.statusState.lastAction="daily loss limit reached; trading paused";this.saveState();return this.status();}
+   const maxTradesPerDay=Math.max(1,Math.floor(Number(process.env.MT5_MAX_TRADES_PER_DAY??20)));
+   if(this.statusState.tradesToday>=maxTradesPerDay){this.statusState.lastAction="daily trade limit reached";this.saveState();return this.status();}
    const positions=await this.adapter.positions(this.statusState.symbol);
    if(positions.length>0){this.statusState.lastAction="position already open; no new entry";this.saveState();return this.status();}
    const snapshot=await this.adapter.getSymbolSnapshot(this.statusState.symbol);
