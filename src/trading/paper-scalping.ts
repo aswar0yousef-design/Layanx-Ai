@@ -247,7 +247,6 @@ export function runPaperScalping(
     if (spread < 0) throw new Error("Spread must be non-negative.");
 
     if (openTrade) {
-      updateTrailingStop(openTrade, candle, config.trailingStopDistance);
       const slippage = currentSlippage(config.slippage, candle, openTrade.side);
       const exit = simulateExit(openTrade, candle, spread, slippage, config.intrabarResolution ?? "conservative");
 
@@ -294,6 +293,9 @@ export function runPaperScalping(
         balance += analysis.trueNetPnl;
         trades.push(record);
         openTrade = null;
+      } else {
+        // Trailing updates use the completed candle only for the next bar.
+        updateTrailingStop(openTrade, candle, config.trailingStopDistance);
       }
       continue;
     }
