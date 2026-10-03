@@ -28,6 +28,8 @@ export interface PaperTradingConfig {
   intrabarResolution?: IntrabarResolution;
   /** Signal is generated from the last completed candle; execution occurs on the next candle. */
   signalOnClosedCandle?: boolean;
+  /** How an open position is handled when historical data ends. */
+  endOfDataPolicy?: "close" | "exclude";
 }
 
 export interface PaperTrade {
@@ -286,6 +288,60 @@ export function runPaperScalping(
       entryTrendRegime: entryRegime.trend,
       entryVolatilityRegime: entryRegime.volatility,
     };
+  }
+
+  if (openTrade && (config.endOfDataPolicy ?? "close") === "close") {
+    const lastCandle = candles[candles.length - 1];
+    const spread = currentSpread(config.spread, lastCandle);
+    const slippage = currentSlippage(config.slippage, lastCandle, openTrade.side);
+    const referencePrice = lastCandle.close;
+    const exitPrice = openTrade.side === "long"
+      ? referencePrice - spread / 2 - slippage
+      : referencePrice + spread / 2 + slippage;
+    const regime = classifyMarketRegime(candles);
+    const record: TradeRecord = {
+      id: openTrade.id,
+      symbol: config.symbol,
+      side: openTrade.side,
+      quantity: openTrade.quantity,
+      entry: {
+        fillPrice: openTrade.entryPrice,
+        referencePrice: openTrade.entryReferencePrice,
+        spread: openTrade.entrySpread,
+        atr: openTrade.entryAtr,
+        slippage: openTrade.entrySlippage,
+      },
+      exit: {
+        fillPrice: exitPrice,
+        referencePrice,
+        spread,
+        slippage,
+      },
+      openedAt: openTrade.openedAt,
+      closedAt: lastCandle.timestamp,
+      timeframe: config.timeframe,
+      strategy: "paper-scalping",
+      session: detectTradingSession(openTrade.openedAt),
+      trendRegime: regime.trend,
+      volatilityRegime: regime.volatility,
+      entryTrendRegime: openTrade.entryTrendRegime,
+      entryVolatilityRegime: openTrade.entryVolatilityRegime,
+      commission: commissionPerUnit * openTrade.quantity,
+      swap: (config.swapPerUnit ?? (
+        openTrade.side === "long"
+          ? config.brokerSymbol?.swapLongPerUnit
+          : config.brokerSymbol?.swapShortPerUnit
+      ) ?? 0) * openTrade.quantity,
+      metadata: {
+        exitReason: "end-of-data",
+        intrabarAmbiguous: false,
+        gapThrough: false,
+        signalTimestamp: openTrade.signalTimestamp,
+      },
+    };
+    trades.push(record);
+    balance += analyzeTradeRecord(record).trueNetPnl;
+    openTrade = null;
   }
 
   return {
