@@ -13,7 +13,6 @@ export interface WalkForwardResult {
 
 export interface MultiWindowWalkForwardResult {
   windows: WalkForwardResult[];
-  aggregateTest: BacktestReport;
   pooledTest: BacktestReport;
 }
 
@@ -42,7 +41,6 @@ export function runMultiWindowWalkForward(
   const pooledTest = buildBacktestReport(config.initialBalance, pooledTestAnalyses);
   return {
     windows: results,
-    aggregateTest: pooledTest,
     pooledTest,
   };
 }
