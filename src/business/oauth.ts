@@ -7,6 +7,7 @@ interface OAuthConfig{authorize:string;token:string;clientId:string;clientSecret
 interface Pending{provider:OAuthProvider;state:string;accountId:string;codeVerifier?:string;createdAt:number;redirectUri:string;}
 const env=(p:string,k:string)=>process.env[`LAYANX_${p}_OAUTH_${k}`];
 const PROVIDER_DEFAULTS:Partial<Record<OAuthProvider,Partial<OAuthConfig>>>={
+ meta:{authorize:"https://www.facebook.com/v24.0/dialog/oauth",token:"https://graph.facebook.com/v24.0/oauth/access_token"},
  tiktok:{authorize:"https://www.tiktok.com/v2/auth/authorize/",token:"https://open.tiktokapis.com/v2/oauth/token/",usePkce:false},
  google:{authorize:"https://accounts.google.com/o/oauth2/v2/auth",token:"https://oauth2.googleapis.com/token"},
  youtube:{authorize:"https://accounts.google.com/o/oauth2/v2/auth",token:"https://oauth2.googleapis.com/token"},
@@ -20,7 +21,7 @@ export class OAuthConnectionCenter{
  constructor(){this.load();}
  private load(){try{if(existsSync(this.connectionsPath))this.connections=JSON.parse(readFileSync(this.connectionsPath,"utf8")) as OAuthConnection[];}catch{this.connections=[];}}
  private persist(){mkdirSync(dirname(this.connectionsPath),{recursive:true});const tmp=this.connectionsPath+".tmp";writeFileSync(tmp,JSON.stringify(this.connections,null,2),"utf8");renameSync(tmp,this.connectionsPath);}
- private syncProviderToken(provider:OAuthProvider,token:string){if(["meta","instagram","facebook","tiktok","youtube","linkedin","x","snapchat","pinterest"].includes(provider))this.vault.set(`${provider}.social.token`,token);if(["meta","tiktok","google","linkedin"].includes(provider))this.vault.set(`${provider}.ads.token`,token);}
+ private syncProviderToken(provider:OAuthProvider,token:string){if(provider==="meta"){this.vault.set("meta.social.token",token);this.vault.set("facebook.social.token",token);this.vault.set("instagram.social.token",token);}else if(["instagram","facebook","tiktok","youtube","linkedin","x","snapchat","pinterest"].includes(provider))this.vault.set(`${provider}.social.token`,token);if(["meta","tiktok","google","linkedin"].includes(provider))this.vault.set(`${provider}.ads.token`,token);}
  list(){return this.connections.map(c=>this.status(c));}
  get(id:string){const c=this.connections.find(x=>x.id===id);if(!c)throw new Error("oauth_connection_not_found");return c;}
 
@@ -64,6 +65,52 @@ export class OAuthConnectionCenter{
   this.vault.set(connection.tokenSecret,access);this.syncProviderToken(connection.provider,access);connection.expiresAt=typeof d.expires_in==="number"?new Date(Date.now()+d.expires_in*1000).toISOString():undefined;connection.updatedAt=new Date().toISOString();
   if(d.refresh_token)this.vault.set(connection.refreshTokenSecret,String(d.refresh_token));this.persist();return access;
  }
+ async discover(id:string){
+  const connection=this.get(id);
+  const access=await this.token(connection);
+  const request=async(url:string,init:RequestInit={})=>{
+   const r=await fetch(url,{...init,headers:{Authorization:`Bearer ${access}`,Accept:"application/json",...(init.headers??{})}});
+   const text=await r.text();let data:any={};try{data=text?JSON.parse(text):{}}catch{data={raw:text}};
+   if(!r.ok)throw new Error(`oauth_discovery_http_${r.status}`);
+   return data;
+  };
+  switch(connection.provider){
+   case "meta":{
+    const data=await request("https://graph.facebook.com/v24.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name}");
+    const accounts:Array<any>=[];
+    for(const page of Array.isArray(data?.data)?data.data:[]){
+     if(page.id){
+      if(page.access_token)this.vault.set(`meta.page.${page.id}.token`,String(page.access_token));
+      accounts.push({platform:"facebook",externalId:String(page.id),name:String(page.name??page.id),tokenManaged:true});
+     }
+     const ig=page.instagram_business_account;
+     if(ig?.id){
+      accounts.push({platform:"instagram",externalId:String(ig.id),name:String(ig.username??ig.name??ig.id),pageId:String(page.id),tokenManaged:Boolean(page.access_token)});
+     }
+    }
+    return {provider:"meta",accounts};
+   }
+   case "tiktok":{
+    const data=await request("https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name,avatar_url");
+    const u=data?.data?.user;
+    return {provider:"tiktok",accounts:u?.open_id?[{platform:"tiktok",externalId:String(u.open_id),name:String(u.display_name??u.open_id)}]:[]};
+   }
+   case "youtube":{
+    const u=await request("https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails&mine=true");
+    return {provider:"youtube",accounts:(Array.isArray(u?.items)?u.items:[]).map((x:any)=>({platform:"youtube",externalId:String(x.id),name:String(x.snippet?.title??x.id)}))};
+   }
+   case "linkedin":{
+    const u=await request("https://api.linkedin.com/v2/userinfo");
+    return {provider:"linkedin",accounts:u?.sub?[{platform:"linkedin",externalId:String(u.sub),name:String(u.name??u.sub)}]:[]};
+   }
+   case "x":{
+    const u=await request("https://api.x.com/2/users/me");
+    const user=u?.data;
+    return {provider:"x",accounts:user?.id?[{platform:"x",externalId:String(user.id),name:String(user.name??user.username??user.id)}]:[]};
+   }
+   default: throw new Error(`oauth_discovery_not_implemented:${connection.provider}`);
+  }
+ }
  revoke(connection:OAuthConnection){this.vault.delete(connection.tokenSecret);if(connection.refreshTokenSecret)this.vault.delete(connection.refreshTokenSecret);this.vault.delete(`${connection.provider}.social.token`);this.vault.delete(`${connection.provider}.ads.token`);this.connections=this.connections.filter(x=>x.id!==connection.id);this.persist();}
- status(connection:OAuthConnection){return {id:connection.id,provider:connection.provider,accountId:connection.accountId,scopes:connection.scopes,expiresAt:connection.expiresAt,configured:true};}
+ status(connection:OAuthConnection){return {id:connection.id,provider:connection.provider,accountId:connection.accountId,accountName:connection.accountName,scopes:connection.scopes,expiresAt:connection.expiresAt,configured:true};}
 }
