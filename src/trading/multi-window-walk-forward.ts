@@ -1,4 +1,5 @@
 import type { MarketCandle } from "./scalping-signal.js";
+import type { TradeAnalysis } from "./trade-record.js";
 import type { PaperTradingConfig } from "./paper-scalping.js";
 import { runPaperScalping } from "./paper-scalping.js";
 import { buildBacktestReport, buildPooledBacktestReport, type BacktestReport, type PooledBacktestReport } from "./backtest-report.js";
@@ -25,7 +26,7 @@ export function runMultiWindowWalkForward(
 ): MultiWindowWalkForwardResult {
   assertXauUsdProfileConfig(config);
   const windows = createWalkForwardWindows(candles, trainSize, testSize, stepSize);
-  const pooledTestAnalyses = [];
+  const pooledTestAnalyses: TradeAnalysis[] = [];
 
   const results = windows.map(window => {
     const train = runPaperScalping(window.train, config);
