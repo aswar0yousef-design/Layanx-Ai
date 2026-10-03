@@ -73,14 +73,14 @@ export class Mt5LiveAdapter implements Mt5Adapter{
   return await this.call("tick",{symbol}) as Mt5SymbolSnapshot;
  }
  async getCandles(request:Mt5CandleRequest):Promise<MarketCandle[]>{
-  return await this.call("candles",request) as MarketCandle[];
+  return await this.call("candles",request as unknown as Record<string,unknown>) as MarketCandle[];
  }
  async getSymbolSpecification(symbol:string):Promise<BrokerSymbolSpecification>{
   return await this.call("symbol_spec",{symbol}) as BrokerSymbolSpecification;
  }
  async placeOrder(request:Mt5OrderRequest):Promise<Mt5OrderResult>{
   if(process.env.MT5_LIVE_TRADING_ENABLED!=="true")throw new Error("MT5 live execution is disabled. Set MT5_LIVE_TRADING_ENABLED=true only after validating the account and risk limits.");
-  return await this.call("order",request) as Mt5OrderResult;
+  return await this.call("order",request as unknown as Record<string,unknown>) as Mt5OrderResult;
  }
  async positions(symbol?:string):Promise<Mt5LivePosition[]>{
   return await this.call("positions",symbol?{symbol}:{}) as Mt5LivePosition[];
