@@ -1,4 +1,6 @@
 import {randomBytes,createHash,randomUUID} from "node:crypto";
+import {existsSync,readFileSync,writeFileSync,mkdirSync,renameSync} from "node:fs";
+import {dirname} from "node:path";
 import {localSecret,LocalSecretVault} from "../security/local-secret-vault.js";
 import type {OAuthProvider,OAuthConnection} from "./types.js";
 interface OAuthConfig{authorize:string;token:string;clientId:string;clientSecret?:string;redirectUri:string;scopes:string[];usePkce?:boolean;extra?:Record<string,string>;}
@@ -12,7 +14,14 @@ const PROVIDER_DEFAULTS:Partial<Record<OAuthProvider,Partial<OAuthConfig>>>={
 export class OAuthConnectionCenter{
  private readonly vault=new LocalSecretVault();
  private readonly pending=new Map<string,Pending>();
- constructor(private readonly storageKey="oauth:connections"){}
+ private readonly connectionsPath=process.env.LAYANX_OAUTH_CONNECTIONS_PATH??".layanx/oauth-connections.json";
+ private connections:OAuthConnection[]=[];
+ constructor(){this.load();}
+ private load(){try{if(existsSync(this.connectionsPath))this.connections=JSON.parse(readFileSync(this.connectionsPath,"utf8")) as OAuthConnection[];}catch{this.connections=[];}}
+ private persist(){mkdirSync(dirname(this.connectionsPath),{recursive:true});const tmp=this.connectionsPath+".tmp";writeFileSync(tmp,JSON.stringify(this.connections,null,2),"utf8");renameSync(tmp,this.connectionsPath);}
+ list(){return this.connections.map(c=>this.status(c));}
+ get(id:string){const c=this.connections.find(x=>x.id===id);if(!c)throw new Error("oauth_connection_not_found");return c;}
+
  private config(provider:OAuthProvider):OAuthConfig{
   const p=provider.toUpperCase(),d=PROVIDER_DEFAULTS[provider]??{};
   const clientId=env(p,"CLIENT_ID")??"";const clientSecret=localSecret(`${provider}.oauth.client_secret`,env(p,"CLIENT_SECRET"));
@@ -40,9 +49,10 @@ export class OAuthConnectionCenter{
   const id=randomUUID(),secret=`${p.provider}.oauth.access.${id}`;this.vault.set(secret,token);
   let refreshSecret:string|undefined;if(d.refresh_token){refreshSecret=`${p.provider}.oauth.refresh.${id}`;this.vault.set(refreshSecret,String(d.refresh_token));}
   const connection:OAuthConnection={id,provider:p.provider,accountId,scopes:typeof d.scope==="string"?d.scope.split(/[ ,]+/).filter(Boolean):c.scopes,tokenSecret:secret,refreshTokenSecret:refreshSecret,expiresAt:typeof d.expires_in==="number"?new Date(Date.now()+d.expires_in*1000).toISOString():undefined,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+  this.connections=this.connections.filter(x=>!(x.provider===connection.provider&&x.accountId===connection.accountId));this.connections.push(connection);this.persist();
   return connection;
  }
  token(connection:OAuthConnection){const value=this.vault.get(connection.tokenSecret);if(!value)throw new Error("oauth_access_token_missing");return value;}
- revoke(connection:OAuthConnection){this.vault.delete(connection.tokenSecret);if(connection.refreshTokenSecret)this.vault.delete(connection.refreshTokenSecret);}
+ revoke(connection:OAuthConnection){this.vault.delete(connection.tokenSecret);if(connection.refreshTokenSecret)this.vault.delete(connection.refreshTokenSecret);this.connections=this.connections.filter(x=>x.id!==connection.id);this.persist();}
  status(connection:OAuthConnection){return {id:connection.id,provider:connection.provider,accountId:connection.accountId,scopes:connection.scopes,expiresAt:connection.expiresAt,configured:true};}
 }
