@@ -95,6 +95,7 @@ export class RuntimeRecoveryManager{
     const readiness=new RecoveryReadinessChecker(this.core).check(snapshot,request);
     if(!readiness.ready)throw new Error("Recovery readiness failed: "+readiness.issues.map(issue=>issue.code).join(", "));
 
+    this.core.missions.save(snapshot.mission);
     this.core.executionStates.restore(snapshot.executionState);
     this.core.ledger.restore(snapshot.ledger);
     this.core.audit.restore(snapshot.audit);
