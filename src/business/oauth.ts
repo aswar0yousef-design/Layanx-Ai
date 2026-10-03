@@ -31,7 +31,7 @@ export class OAuthConnectionCenter{
   const clientId=env(p,"CLIENT_ID")??"";const clientSecret=localSecret(`${provider}.oauth.client_secret`,env(p,"CLIENT_SECRET"));
   const redirectUri=env(p,"REDIRECT_URI")??process.env.LAYANX_OAUTH_REDIRECT_URI??"";
   const authorize=env(p,"AUTHORIZE_URL")??d.authorize??"";const token=env(p,"TOKEN_URL")??d.token??"";
-  const scopes=(env(p,"SCOPES")??(provider==="google"?"https://www.googleapis.com/auth/adwords":provider==="youtube"?"https://www.googleapis.com/auth/youtube.upload":provider==="pinterest"?"boards:read,boards:write,pins:read,pins:write":"user.info.basic")).split(/[ ,]+/).filter(Boolean);
+  const scopes=(env(p,"SCOPES")??(provider==="google"?"https://www.googleapis.com/auth/adwords":provider==="youtube"?"https://www.googleapis.com/auth/youtube.upload":provider==="pinterest"?"boards:read,boards:write,pins:read,pins:write":provider==="linkedin"?"openid,profile,r_ads,r_ads_reporting":"user.info.basic")).split(/[ ,]+/).filter(Boolean);
   if(!clientId||!redirectUri||!authorize||!token)throw new Error(`oauth_${provider}_not_configured`);
   return {authorize,token,clientId,clientSecret,redirectUri,scopes,usePkce:provider==="tiktok"||env(p,"USE_PKCE")==="true",extra:env(p,"EXTRA_JSON")?JSON.parse(env(p,"EXTRA_JSON")!):undefined};
  }
@@ -118,7 +118,32 @@ export class OAuthConnectionCenter{
    }
    default: throw new Error(`oauth_discovery_not_implemented:${connection.provider}`);
   }
+ } async discoverAds(id:string){
+  const connection=this.get(id);
+  const access=await this.token(connection);
+  const headers:Record<string,string>={Authorization:`Bearer ${access}`,Accept:"application/json"};
+  const get=async(url:string,extra:Record<string,string>={})=>{const r=await fetch(url,{headers:{...headers,...extra}});const t=await r.text();let d:any={};try{d=t?JSON.parse(t):{}}catch{d={raw:t}}if(!r.ok)throw new Error(`oauth_ads_discovery_http_${r.status}`);return d;};
+  switch(connection.provider){
+   case "google":{
+    const d=await get("https://googleads.googleapis.com/v25/customers:listAccessibleCustomers");
+    return {provider:"google",accounts:(d.resourceNames??[]).map((x:string)=>({platform:"google",externalId:x.split("/").pop()??x,name:x}))};
+   }
+   case "linkedin":{
+    const d=await get("https://api.linkedin.com/rest/adAccounts?q=search&search.status.values[0]=ACTIVE&search.test=false",{ "Linkedin-Version":process.env.LAYANX_LINKEDIN_API_VERSION??"202604","X-Restli-Protocol-Version":"2.0.0"});
+    return {provider:"linkedin",accounts:(d.elements??[]).map((x:any)=>({platform:"linkedin",externalId:String(x.id),name:String(x.name??x.id),currency:String(x.currency??"USD")}))};
+   }
+   case "meta":{
+    const d=await get("https://graph.facebook.com/v24.0/me/adaccounts?fields=id,name,currency,account_status");
+    return {provider:"meta",accounts:(d.data??[]).map((x:any)=>({platform:"meta",externalId:String(x.id),name:String(x.name??x.id),currency:String(x.currency??"USD")}))};
+   }
+   case "tiktok":{
+    const d=await get("https://business-api.tiktok.com/open_api/v1.3/oauth2/advertiser/get/");
+    return {provider:"tiktok",accounts:(d.data?.list??d.data?.advertiser_list??[]).map((x:any)=>({platform:"tiktok",externalId:String(x.advertiser_id??x.id),name:String(x.advertiser_name??x.name??x.advertiser_id),currency:String(x.currency??"USD")}))};
+   }
+   default: throw new Error(`oauth_ads_discovery_not_implemented:${connection.provider}`);
+  }
  }
+
  revoke(connection:OAuthConnection){this.vault.delete(connection.tokenSecret);if(connection.refreshTokenSecret)this.vault.delete(connection.refreshTokenSecret);for(const key of [connection.provider==="meta"?"meta.social.token":undefined,connection.provider==="meta"?"facebook.social.token":undefined,connection.provider==="meta"?"instagram.social.token":undefined,`${connection.provider}.social.token`,`${connection.provider}.ads.token`].filter(Boolean) as string[])this.vault.delete(key);this.connections=this.connections.filter(x=>x.id!==connection.id);this.persist();}
  status(connection:OAuthConnection){return {id:connection.id,provider:connection.provider,accountId:connection.accountId,accountName:connection.accountName,scopes:connection.scopes,expiresAt:connection.expiresAt,configured:true};}
 }
