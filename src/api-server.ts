@@ -749,5 +749,5 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   }
   json(response,404,{ok:false,error:"not_found"});
  });
- server.listen(port,host);return server;
+ server.listen(port,host);options.core.scheduler.start();return server;
 }
