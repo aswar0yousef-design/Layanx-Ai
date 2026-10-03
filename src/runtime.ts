@@ -2,6 +2,7 @@ import {LayanXCore} from "./core/orchestrator.js";
 import type {AgentContract} from "./core/contracts.js";
 import {configureProviders,providerSummary} from "./config/providers.js";
 import {registerBuiltinTools,registerHttpReadTool,registerGitHubReadTools,registerToolFabric,registerDesktopControlTools,registerTradingTools} from "./tools/builtin.js";
+import {registerMt5TradingTools} from "./trading/mt5-agent-integration.js";
 import {RuntimePersistence} from "./core/runtime-persistence.js";
 import {RuntimeStorage} from "./storage/runtime-storage.js";
 import {PostgresStorageAdapter} from "./storage/postgres-adapter.js";
@@ -38,6 +39,8 @@ export function createRuntime(options:RuntimeOptions={}){
  registerGitHubReadTools(core,{token:process.env.GITHUB_TOKEN});
  registerToolFabric(core);
  registerTradingTools(core,core.trading,core.strategies);
+    const mt5Scalper=registerMt5TradingTools(core.tools,core.toolAdapters);
+    if(process.env.MT5_AUTO_START==="true"&&process.env.MT5_AUTO_SCALPING_ENABLED==="true"&&process.env.MT5_LIVE_TRADING_ENABLED==="true")mt5Scalper.start();
  registerDesktopControlTools(core);
  const liveScreen=new LiveScreenObserver({adapter:core.toolAdapters.get("desktop.screenshot"),intervalMs:Number(process.env.LAYANX_LIVE_SCREEN_INTERVAL_MS??500)});
  core.setLiveScreenObserver(liveScreen);
