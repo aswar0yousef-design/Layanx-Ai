@@ -55,4 +55,4 @@ npm run trading:evaluate -- ./data/XAUUSD.csv --spread=0.20 --slippage=0.05 --co
 npm run trading:evaluate -- ./data/XAUUSD.csv --spread=0.20 --slippage=0.05 --commission=0 --session=new-york
 ```
 
-It also reports duplicate timestamps, ordering, estimated bar interval, large gaps, and negative bid/ask spreads before evaluation. Long and short results are reported separately. Costs should be calibrated to the actual data source/broker rather than assumed to be zero.
+It also reports duplicate timestamps, source ordering, estimated bar interval, large gaps, and negative bid/ask spreads before evaluation. Session filtering is applied only to entry eligibility while the full candle history remains available to indicators, ATR, and regime detection. Long and short results are reported separately. Costs should be calibrated to the actual data source/broker rather than assumed to be zero.
