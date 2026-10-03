@@ -6,6 +6,7 @@ import { evaluateScalpingDecision } from "./scalping-decision.js";
 import { detectTradingSession } from "./session.js";
 import { classifyMarketRegime } from "./market-regime.js";
 import type { BrokerSymbolSpecification } from "./broker-symbol-spec.js";
+import { simulateExit, type IntrabarResolution } from "./intrabar-execution.js";
 
 export interface PaperTradingConfig {
   symbol: string;
@@ -24,6 +25,84 @@ export interface PaperTradingConfig {
   maximumQuantity?: number;
   quantityStep?: number;
   brokerSymbol?: BrokerSymbolSpecification;
+  intrabarResolution?: IntrabarResolution;
+}
+
+export interface PaperTrade {
+  id: string;
+  side: TradeSide;
+  quantity: number;
+  entryPrice: number;
+  stopLossPrice: number;
+  takeProfitPrice?: number;
+  openedAt: string;
+  entrySpread: number;
+  entrySlippage: number;
+  entryAtr: number;
+}
+
+export interface PaperTradingResult {
+  initialBalance: number;
+  finalBalance: number;
+  trades: TradeRecord[];
+  analyses: ReturnType<typeof analyzeTradeRecord>[];
+  blockedSignals: number;
+}
+
+function stopPrice(side: TradeSide, entry: number, distance: number): number {
+  return side === "long" ? entry - distance : entry + distance;
+}
+
+function targetPrice(side: TradeSide, entry: number, distance?: number): number | undefined {
+  if (distance === undefined) return undefined;
+  return side === "long" ? entry + distance : entry - distance;
+}
+
+function currentSpread(
+  spread: PaperTradingConfig["spread"],
+  candle: MarketCandle,
+): number {
+  return typeof spread === "function" ? spread(candle) : spread;
+}
+
+function currentSlippage(
+  slippage: PaperTradingConfig["slippage"],
+  candle: MarketCandle,
+  side: TradeSide,
+): number {
+  const value = typeof slippage === "function" ? slippage(candle, side) : slippage ?? 0;
+  if (value < 0) throw new Error("Slippage must be non-negative.");
+  return value;
+}
+
+mport type { TradeSide } from "./execution-quality.js";
+import type { MarketCandle } from "./scalping-signal.js";
+import { generateScalpingSignal } from "./scalping-signal.js";
+import { analyzeTradeRecord, type TradeRecord } from "./trade-record.js";
+import { evaluateScalpingDecision } from "./scalping-decision.js";
+import { detectTradingSession } from "./session.js";
+import { classifyMarketRegime } from "./market-regime.js";
+import type { BrokerSymbolSpecification } from "./broker-symbol-spec.js";
+import { simulateExit, type IntrabarResolution } from "./intrabar-execution.js";
+
+export interface PaperTradingConfig {
+  symbol: string;
+  timeframe: string;
+  initialBalance: number;
+  riskPercent: number;
+  stopLossDistance: number;
+  takeProfitDistance?: number;
+  spread: number | ((candle: MarketCandle) => number);
+  slippage?: number | ((candle: MarketCandle, side: TradeSide) => number);
+  commissionPerUnit?: number;
+  swapPerUnit?: number;
+  trailingStopDistance?: number;
+  pointValue?: number;
+  minimumQuantity?: number;
+  maximumQuantity?: number;
+  quantityStep?: number;
+  brokerSymbol?: BrokerSymbolSpecification;
+  intrabarResolution?: IntrabarResolution;
 }
 
 export interface PaperTrade {
@@ -162,7 +241,7 @@ export function runPaperScalping(
     if (openTrade) {
       updateTrailingStop(openTrade, candle, config.trailingStopDistance);
       const slippage = currentSlippage(config.slippage, candle, openTrade.side);
-      const exit = exitPrice(openTrade, candle, spread, slippage);
+      const exit = simulateExit(openTrade, candle, spread, slippage, config.intrabarResolution ?? "conservative");
 
       if (exit) {
         const regime = classifyMarketRegime(history);
@@ -197,7 +276,11 @@ export function runPaperScalping(
           swap: (config.swapPerUnit ?? (openTrade.side === "long"
             ? config.brokerSymbol?.swapLongPerUnit
             : config.brokerSymbol?.swapShortPerUnit) ?? 0) * openTrade.quantity,
-          metadata: { exitReason: exit.reason },
+          metadata: {
+            exitReason: exit.reason,
+            intrabarAmbiguous: exit.intrabarAmbiguous,
+            gapThrough: exit.gapThrough,
+          },
         };
         const analysis = analyzeTradeRecord(record);
         balance += analysis.trueNetPnl;
