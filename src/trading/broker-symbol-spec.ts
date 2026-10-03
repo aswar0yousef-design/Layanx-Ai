@@ -24,6 +24,7 @@ export function validateBrokerSymbolSpecification(spec: BrokerSymbolSpecificatio
   if (!positive(spec.volumeStep)) errors.push("Volume step must be positive.");
   if (!positive(spec.tickSize)) errors.push("Tick size must be positive.");
   if (!positive(spec.tickValue)) errors.push("Tick value must be positive.");
+  if (spec.volumeMax !== undefined && !Number.isInteger(Math.round(spec.volumeMax / spec.volumeStep))) errors.push("Volume maximum must align with volume step.");
   if (spec.volumeMax !== undefined && (!positive(spec.volumeMax) || spec.volumeMax < spec.volumeMin)) {
     errors.push("Volume maximum must be positive and not below volume minimum.");
   }
