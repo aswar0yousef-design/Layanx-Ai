@@ -13,6 +13,7 @@ export class BusinessStore{
  private readonly postgres?:PostgresStorageAdapter;
  private writeQueue:Promise<void>=Promise.resolve();
  private hydrated=false;
+ private persistenceError?:string;
 
  constructor(private readonly filePath=process.env.LAYANX_BUSINESS_STORAGE_PATH??".layanx/business.json"){
   const databaseUrl=process.env.LAYANX_DATABASE_URL??process.env.DATABASE_URL;
@@ -43,6 +44,8 @@ export class BusinessStore{
   writeFileSync(temporary,JSON.stringify(this.state,null,2),"utf8");
   renameSync(temporary,this.filePath);
  }
+
+ persistenceStatus(){return {mode:this.postgres?"postgres":"local",healthy:!this.persistenceError,error:this.persistenceError};}
 
  private persistRemote(snapshot:BusinessSnapshot):void{
   if(!this.postgres)return;
