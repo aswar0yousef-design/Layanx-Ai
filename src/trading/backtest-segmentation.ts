@@ -2,7 +2,7 @@ import type { TradeAnalysis } from "./trade-record.js";
 import type { BacktestReport } from "./backtest-report.js";
 import { buildBacktestReport } from "./backtest-report.js";
 
-export type BacktestSegmentDimension = "session" | "side" | "quality" | "strategy" | "trendRegime" | "volatilityRegime";
+export type BacktestSegmentDimension = "session" | "side" | "quality" | "strategy" | "trendRegime" | "volatilityRegime" | "entryTrendRegime" | "entryVolatilityRegime";
 
 export interface BacktestSegment {
   key: string;
@@ -24,6 +24,8 @@ export function segmentBacktestAnalyses(
       dimension === "quality" ? analysis.executionQuality :
       dimension === "trendRegime" ? analysis.trendRegime ?? "unknown" :
       dimension === "volatilityRegime" ? analysis.volatilityRegime ?? "unknown" :
+      dimension === "entryTrendRegime" ? analysis.entryTrendRegime ?? "unknown" :
+      dimension === "entryVolatilityRegime" ? analysis.entryVolatilityRegime ?? "unknown" :
       analysis.strategy ?? "unknown";
 
     const group = groups.get(key) ?? [];
@@ -47,6 +49,8 @@ export interface BacktestSegmentReport {
   byStrategy: BacktestSegment[];
   byTrendRegime: BacktestSegment[];
   byVolatilityRegime: BacktestSegment[];
+  byEntryTrendRegime: BacktestSegment[];
+  byEntryVolatilityRegime: BacktestSegment[];
 }
 
 export function buildBacktestSegmentReport(
@@ -60,5 +64,7 @@ export function buildBacktestSegmentReport(
     byStrategy: segmentBacktestAnalyses(initialBalance, analyses, "strategy"),
     byTrendRegime: segmentBacktestAnalyses(initialBalance, analyses, "trendRegime"),
     byVolatilityRegime: segmentBacktestAnalyses(initialBalance, analyses, "volatilityRegime"),
+    byEntryTrendRegime: segmentBacktestAnalyses(initialBalance, analyses, "entryTrendRegime"),
+    byEntryVolatilityRegime: segmentBacktestAnalyses(initialBalance, analyses, "entryVolatilityRegime"),
   };
 }
