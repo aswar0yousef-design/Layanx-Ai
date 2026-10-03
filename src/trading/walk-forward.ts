@@ -24,8 +24,8 @@ export function splitChronologically(
   return {
     train,
     test,
-    trainEnd: train[train.length - 1]!.timestamp,
-    testStart: test[0]!.timestamp,
-    testEnd: test[test.length - 1]!.timestamp,
+    trainEnd: train[train.length - 1]!!.timestamp,
+    testStart: test[0]!!.timestamp,
+    testEnd: test[test.length - 1]!!.timestamp,
   };
 }
