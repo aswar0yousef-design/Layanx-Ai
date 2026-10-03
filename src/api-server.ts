@@ -98,7 +98,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"agent gateway failed"});}
    return;
   }
-  if(request.method==="GET"&&request.url==="/v1/approvals"){
+  if(request.method==="GET"&&request.url?.split("?")[0]==="/v1/approvals"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const projectId=new URL(request.url,"http://localhost").searchParams.get("projectId")?.trim()??"";
    if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
