@@ -1,0 +1,23 @@
+import assert from "node:assert/strict";
+import {mkdtempSync,rmSync,readFileSync,statSync} from "node:fs";
+import {join} from "node:path";
+import {tmpdir} from "node:os";
+import {LocalSecretVault} from "../src/security/local-secret-vault.js";
+
+const dir=mkdtempSync(join(tmpdir(),"layanx-vault-"));
+const path=join(dir,"secrets.vault");
+const vault=new LocalSecretVault(path,"local-master-key-123456");
+vault.set("meta.token","super-secret-value");
+assert.equal(vault.get("meta.token"),"super-secret-value");
+assert.deepEqual(vault.names(),["meta.token"]);
+assert.equal(vault.get("missing"),undefined);
+const raw=readFileSync(path,"utf8");
+assert.equal(raw.includes("super-secret-value"),false);
+const mode=statSync(path).mode&0o777;
+assert.equal(mode,0o600);
+const restored=new LocalSecretVault(path,"local-master-key-123456");
+assert.equal(restored.get("meta.token"),"super-secret-value");
+assert.equal(restored.delete("meta.token"),true);
+assert.equal(restored.get("meta.token"),undefined);
+rmSync(dir,{recursive:true,force:true});
+console.log("local secret vault: ok");
