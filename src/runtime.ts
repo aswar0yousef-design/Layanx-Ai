@@ -18,6 +18,7 @@ import {registerGoogleWorkspaceTools} from "./google-tools.js";
 import {GoogleInvoiceAgent,registerGoogleInvoiceTool} from "./google-invoice-agent.js";
 import {registerYahooMailTools} from "./yahoo-tools.js";
 import {registerSkillLearningTools} from "./skills/tools.js";
+import {MessagingChannels} from "./channels/service.js";
 
 export interface RuntimeOptions{storagePath?:string;}
 
@@ -46,6 +47,7 @@ export function createRuntime(options:RuntimeOptions={}){
  registerGoogleInvoiceTool(core,googleInvoices);
  registerYahooMailTools(core);
  registerSkillLearningTools(core);
+ const channels=new MessagingChannels(core);
  const agent:AgentContract={
   agentId:"core",
   purpose:"Safely orchestrate LayanX missions.",
@@ -65,7 +67,7 @@ export function createRuntime(options:RuntimeOptions={}){
  };
  core.registerAgent(agent);
  const configured=configureProviders(undefined,core.models,core.providers);
- return{core,business,ads,media,growth,creator,liveScreen,...configured,providerSummary:providerSummary(),persistence};
+ return{core,business,ads,media,growth,creator,liveScreen,channels,...configured,providerSummary:providerSummary(),persistence};
 }
 
 export async function restoreRuntime(runtime:ReturnType<typeof createRuntime>):Promise<{restored:number}>{
