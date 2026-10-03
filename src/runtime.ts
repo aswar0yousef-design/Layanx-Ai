@@ -10,6 +10,7 @@ import {registerBusinessTools} from "./business/tools.js";
 import {AdsManager} from "./business/ads.js";
 import {MediaManager} from "./business/media.js";
 import {LiveScreenObserver} from "./desktop/live-screen.js";
+import {FreeCapacityProvider} from "./providers/free-capacity.js";
 
 export interface RuntimeOptions{storagePath?:string;}
 
@@ -61,17 +62,19 @@ export async function restoreRuntime(runtime:ReturnType<typeof createRuntime>):P
  return{restored:snapshots.length};
 }
 
-export function runtimeStatus(runtime=createRuntime()){
+type RuntimeStatusView=Pick<ReturnType<typeof createRuntime>,"core"|"persistence"|"models"|"providers"|"providerSummary">;
+export function runtimeStatus(runtime:RuntimeStatusView=createRuntime()){
  return{
   system:"LayanX AI",
   ready:runtime.core.isReady(),
   persistence:runtime.persistence?"configured":"disabled",
   providers:runtime.providerSummary,
-  models:runtime.models.list().map(model=>({id:model.id,provider:model.provider,local:model.local,enabled:model.enabled,priority:model.priority}))
+  models:runtime.models.list().map(model=>({id:model.id,provider:model.provider,providerModelId:model.providerModelId,local:model.local,enabled:model.enabled,priority:model.priority,tags:model.tags??[]})),
+  freeCapacity:runtime.providers.list().filter(provider=>provider instanceof FreeCapacityProvider).map(provider=>(provider as FreeCapacityProvider).status())
  };
 }
 
-export async function runtimeHealth(runtime=createRuntime()){
+export async function runtimeHealth(runtime:Pick<ReturnType<typeof createRuntime>,"core"|"persistence"|"providers">=createRuntime()){
  const providers=await Promise.all(runtime.providers.list().map(provider=>provider.health()));
  let storage={healthy:true,writable:true,schemaVersion:1,reason:"Runtime persistence is disabled."};
  if(runtime.persistence){

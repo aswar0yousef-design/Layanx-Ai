@@ -45,7 +45,7 @@ export class LiveScreenObserver {
         payload:{}
       };
       const result=await this.options.adapter.execute(request);
-      const data=result.data as Record<string,unknown>;
+      const data=result&&typeof result==="object"&&"data" in result&&result.data&&typeof result.data==="object"?(result.data as Record<string,unknown>):{};
       if(typeof data.base64!=="string"||typeof data.mimeType!=="string")throw new Error("Desktop screenshot adapter returned an invalid frame.");
       const bytes=typeof data.bytes==="number"?data.bytes:Buffer.from(data.base64,"base64").length;
       const frame={mimeType:data.mimeType,base64:data.base64,bytes,capturedAt:new Date().toISOString(),sequence:++this.sequence};
