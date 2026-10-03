@@ -1,4 +1,6 @@
 import type { TradeSide } from "./execution-quality.js";
+import type { BrokerSymbolSpecification } from "./broker-symbol-spec.js";
+import { normalizeBrokerQuantity, priceMoveValuePerUnit } from "./broker-symbol-spec.js";
 
 export interface RiskInput {
   side: TradeSide;
@@ -10,6 +12,7 @@ export interface RiskInput {
   minimumQuantity?: number;
   maximumQuantity?: number;
   quantityStep?: number;
+  brokerSymbol?: BrokerSymbolSpecification;
 }
 
 export interface RiskPlan {
@@ -29,7 +32,9 @@ export interface RiskPlan {
 export function calculateRiskPlan(input: RiskInput): RiskPlan {
   const errors: string[] = [];
   const warnings: string[] = [];
-  const pointValue = finitePositive(input.pointValue) ? input.pointValue! : 1;
+  const pointValue = input.brokerSymbol
+    ? priceMoveValuePerUnit(input.brokerSymbol)
+    : finitePositive(input.pointValue) ? input.pointValue! : 1;
   const stopDistance = Math.abs(input.entryPrice - input.stopLossPrice);
   const riskAmount = input.accountBalance * (input.riskPercent / 100);
 
@@ -53,6 +58,11 @@ export function calculateRiskPlan(input: RiskInput): RiskPlan {
 
   let quantity = riskAmount / (stopDistance * pointValue);
   quantity = applyQuantityLimits(quantity, input, warnings);
+  if (input.brokerSymbol && quantity > 0) {
+    const normalized = normalizeBrokerQuantity(quantity, input.brokerSymbol);
+    if (normalized !== quantity) warnings.push("Quantity was normalized to the broker symbol volume step.");
+    quantity = normalized;
+  }
 
   const actualRiskAmount = quantity * stopDistance * pointValue;
   const actualRiskPercent = input.accountBalance > 0
