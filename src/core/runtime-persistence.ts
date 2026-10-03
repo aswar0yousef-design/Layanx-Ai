@@ -6,6 +6,7 @@ import type {ExecutionState} from "./execution-state.js";
 import type {IdempotencyRecord} from "./idempotency.js";
 import type {MemoryEntry} from "./memory.js";
 import type {MissionHandoff} from "./handoff.js";
+import type {ApprovalSnapshot} from "../security/approval.js";
 import {RuntimeStorage} from "../storage/runtime-storage.js";
 
 export const RUNTIME_SNAPSHOT_VERSION=1;
@@ -21,6 +22,7 @@ export interface RuntimeSnapshot{
   memory?:MemoryEntry[];
   handoffs?:MissionHandoff[];
   delegatedTasks?:import("./delegation.js").DelegatedTask[];
+  approvals?:ApprovalSnapshot;
   nextAction?:import("./next-action.js").NextAction;
   savedAt:string;
   schemaVersion:number;
