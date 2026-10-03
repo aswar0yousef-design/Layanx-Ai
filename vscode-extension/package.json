@@ -5,8 +5,13 @@
   "version": "0.1.0",
   "publisher": "layanx",
   "license": "MIT",
-  "engines": { "vscode": "^1.95.0" },
-  "categories": ["AI", "Other"],
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
   "activationEvents": [
     "onCommand:layanx.openAgent",
     "onCommand:layanx.runGoal",
@@ -14,23 +19,51 @@
     "onCommand:layanx.fixSelection",
     "onCommand:layanx.health",
     "onCommand:layanx.startRuntime",
-    "onCommand:layanx.setApiToken"
+    "onCommand:layanx.setApiToken",
+    "onView:layanx.agent"
   ],
   "main": "./extension.js",
   "contributes": {
     "commands": [
-      { "command": "layanx.openAgent", "title": "LayanX: Open Agent" },
-      { "command": "layanx.runGoal", "title": "LayanX: Run Goal" },
-      { "command": "layanx.explainSelection", "title": "LayanX: Explain Selection" },
-      { "command": "layanx.fixSelection", "title": "LayanX: Fix Selection" },
-      { "command": "layanx.health", "title": "LayanX: Health Check" },
-      { "command": "layanx.startRuntime", "title": "LayanX: Start Local Runtime" },
-      { "command": "layanx.setApiToken", "title": "LayanX: Set API Token" }
+      {
+        "command": "layanx.openAgent",
+        "title": "LayanX: Open Agent"
+      },
+      {
+        "command": "layanx.runGoal",
+        "title": "LayanX: Run Goal"
+      },
+      {
+        "command": "layanx.explainSelection",
+        "title": "LayanX: Explain Selection"
+      },
+      {
+        "command": "layanx.fixSelection",
+        "title": "LayanX: Fix Selection"
+      },
+      {
+        "command": "layanx.health",
+        "title": "LayanX: Health Check"
+      },
+      {
+        "command": "layanx.startRuntime",
+        "title": "LayanX: Start Local Runtime"
+      },
+      {
+        "command": "layanx.setApiToken",
+        "title": "LayanX: Set API Token"
+      }
     ],
     "menus": {
       "editor/context": [
-        { "command": "layanx.explainSelection", "when": "editorHasSelection" },
-        { "command": "layanx.fixSelection", "when": "editorHasSelection" }
+        {
+          "command": "layanx.explainSelection",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "layanx.fixSelection",
+          "when": "editorHasSelection"
+        }
       ]
     },
     "configuration": {
