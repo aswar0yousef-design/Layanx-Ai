@@ -21,7 +21,9 @@ export class SkillLearningEngine{
   const checksum=createHash("sha256").update(content).digest("hex");
   const manifest:SkillManifest={id,name:slug,version:"0.1.0",description:trace.goal.trim().slice(0,240),source:"agent-learning",license:"MIT",permissions:["L1_READ","L2_ANALYZE","L3_MODIFY"],tools:[...new Set(successful.map(s=>s.tool))],networkHosts:[],checksum,status:"quarantined"};
   const findings=this.scanner.scan(manifest);
-  const contentLower=content.toLowerCase();\n  const dangerousPatterns=[/ignore (all|previous|prior) instructions/,/send .*token|send .*password|exfiltrat/,/rm -rf|format c:/,/reverse shell|nc -e|curl .*\|.*sh/];\n  for(const pattern of dangerousPatterns)if(pattern.test(contentLower))findings.findings.push({severity:"critical",code:"DANGEROUS_CONTENT",message:"Learned skill content matched a blocked security pattern: "+pattern.source});\n  findings.safe=findings.safe&&!findings.findings.some(f=>f.severity==="high"||f.severity==="critical");
+  const contentLower=content.toLowerCase();
+  const dangerousPatterns=[/ignore (all|previous|prior) instructions/,/send .*token|send .*password|exfiltrat/,/rm -rf|format c:/,/reverse shell|nc -e|curl .*\|.*sh/];\n  for(const pattern of dangerousPatterns)if(pattern.test(contentLower))findings.findings.push({severity:"critical",code:"DANGEROUS_CONTENT",message:"Learned skill content matched a blocked security pattern: "+pattern.source});
+  findings.safe=findings.safe&&!findings.findings.some(f=>f.severity==="high"||f.severity==="critical");
   const pending={id,manifest,content,createdAt:new Date().toISOString(),sourceMissionId:trace.missionId,findings};
   if(!findings.safe)throw new Error("Learned skill failed the security policy.");
   mkdirSync(this.dir(),{recursive:true});writeFileSync(this.path(id),JSON.stringify(pending,null,2)+"\n","utf8");
