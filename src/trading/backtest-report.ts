@@ -61,7 +61,7 @@ export function buildPooledBacktestReport(analyses: TradeAnalysis[]): PooledBack
     } else if (analysis.trueNetPnl < 0) {
       grossLoss += Math.abs(analysis.trueNetPnl);
     }
-    estimatedRoundTripCosts += analysis.estimatedRoundTripCost;
+    estimatedRoundTripCosts += analysis.estimatedRoundTripCost ?? 0;
     commissions += analysis.commission;
     swaps += analysis.swap;
     if (analysis.grossPnl > 0 && analysis.trueNetPnl <= 0) costErasedTrades += 1;
@@ -128,7 +128,7 @@ export function buildBacktestReport(
       grossLoss += Math.abs(analysis.trueNetPnl);
     }
 
-    estimatedRoundTripCosts += analysis.estimatedRoundTripCost;
+    estimatedRoundTripCosts += analysis.estimatedRoundTripCost ?? 0;
     commissions += analysis.commission;
     swaps += analysis.swap;
     if (analysis.grossPnl > 0 && analysis.trueNetPnl <= 0) costErasedTrades += 1;
