@@ -11,7 +11,7 @@ function inferKind(mime?:string,url=""):MediaKind{
  if(value.startsWith("video/"))return "video";
  if(value.startsWith("audio/"))return "audio";
  if(value.includes("pdf")||value.includes("document")||value.includes("text/"))return "document";
- const ext=url.split("?")[0].toLowerCase().split(".").pop();
+ const ext=(url.split("?")[0]??"").toLowerCase().split(".").pop();
  if(["jpg","jpeg","png","webp","gif","avif"].includes(ext??""))return "image";
  if(["mp4","mov","webm","m4v"].includes(ext??""))return "video";
  if(["mp3","wav","m4a","ogg"].includes(ext??""))return "audio";
