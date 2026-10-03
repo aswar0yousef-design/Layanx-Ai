@@ -40,6 +40,7 @@ export function calculateRiskPlan(input: RiskInput): RiskPlan {
 
   if (!finitePositive(input.accountBalance)) errors.push("Account balance must be positive.");
   if (!finitePositive(input.riskPercent)) errors.push("Risk percent must be positive.");
+  if (input.riskPercent > 100) errors.push("Risk percent cannot exceed 100.");
   if (!finitePositive(stopDistance)) errors.push("Stop-loss must differ from entry price.");
   if (!finitePositive(pointValue)) errors.push("Point value must be positive.");
 
