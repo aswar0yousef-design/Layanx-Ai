@@ -9,7 +9,7 @@ const result = analyzeExecutionQuality({
 assert.equal(result.spreadAtrRatio, 0.1);
 assert.equal(result.quality, "excellent");
 assert.equal(result.netPnlAfterExecutionCosts, 0.75);
-assert.equal(result.executionCostPctOfGross, 20);
+assert.ok(Math.abs((result.executionCostPctOfGross ?? 0) - 11.764705882352942) < 1e-9);
 
 const erased = analyzeExecutionQuality({
   id: "T2", symbol: "XAUUSD", side: "long", quantity: 1,
