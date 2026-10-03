@@ -40,8 +40,7 @@ export class ContextFabric{
   let text="";
   let truncated=false;
   for(const section of sections){
-   const next=text?text+"
-"+section:section;
+   const next=text?text+"\n"+section:section;
    if(next.length>maxChars){truncated=true;break;}
    text=next;
   }
