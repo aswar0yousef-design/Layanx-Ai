@@ -545,6 +545,8 @@ export class LayanXCore{
     let steps=0;
     let visualContext:{mimeType:string;base64:string}|undefined;
     let lastDesktopMutation=false;
+    const liveScreenWasRunning=this.liveScreen?.isRunning()??false;
+    let liveScreenAutoStarted=false;
     while(steps<limit){
       const current=this.missions.get(missionId);
       if(!current)throw new Error("Mission not found.");
@@ -572,8 +574,10 @@ export class LayanXCore{
         this.missions.save(current);
         plan=current.tools[current.tools.length-1]!;
       }
-      if(plan&&/^desktop\.(mouse|keyboard)/.test(plan.tool)&&this.liveScreen&&!this.liveScreen.isRunning())
+      if(plan&&/^desktop\.(mouse|keyboard)/.test(plan.tool)&&this.liveScreen&&!this.liveScreen.isRunning()){
         this.liveScreen.start();
+        liveScreenAutoStarted=true;
+      }
       if(plan&&/^desktop\.(mouse|keyboard)/.test(plan.tool)&&!visualContext){
         const screenshot={tool:"desktop.screenshot",action:"desktop screenshot",permission:"L2_ANALYZE" as const,reason:"Observe the current desktop before choosing a coordinate or keyboard action."};
         const missionTools=current.tools??[];
@@ -622,6 +626,7 @@ export class LayanXCore{
     if(!results.length)return{missionId,completed:false,status:finalMission.status,steps,results,reason:"Agent loop produced no executable result."};
     const final=await this.executionRuntime.finalize(finalMission,latest,agentId);
     this.missions.save(finalMission);
+    if(liveScreenAutoStarted&&!liveScreenWasRunning)this.liveScreen?.stop();
     return{missionId,completed:final.ok,status:finalMission.status,steps,results,final};
   }
 
