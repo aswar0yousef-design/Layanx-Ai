@@ -146,6 +146,32 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   if(request.method==="GET"&&request.url?.startsWith("/v1/oauth/callback")){
    try{const u=new URL(request.url,"http://localhost");const state=u.searchParams.get("state")??"";const code=u.searchParams.get("code")??"";if(!state||!code){json(response,400,{ok:false,error:"state_and_code_required"});return;}const connection=await oauth.callback(state,code);json(response,200,{ok:true,connection:oauth.status(connection)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_callback_failed"});}return;
   }
+  if(request.method==="GET"&&request.url?.match(/^\/v1\/oauth\/[^/]+\/discover$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{const id=decodeURIComponent(request.url.split("/")[3]??"");json(response,200,{ok:true,...await oauth.discover(id)});}
+   catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_discovery_failed"});}
+   return;
+  }
+  if(request.method==="POST"&&request.url?.match(/^\/v1\/oauth\/[^/]+\/bind$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const id=decodeURIComponent(request.url.split("/")[3]??"");
+    const connection=oauth.get(id);
+    const input=await body(request,max);
+    const platform=typeof input.platform==="string"?input.platform as import("./business/types.js").SocialPlatform:"generic";
+    const externalId=typeof input.externalId==="string"?input.externalId.trim():"";
+    const name=typeof input.name==="string"&&input.name.trim()?input.name.trim():externalId;
+    if(!externalId||!name){json(response,400,{ok:false,error:"platform, externalId, and name are required"});return;}
+    const allowed=["generic","instagram","facebook","tiktok","youtube","x","linkedin","snapchat","pinterest"];
+    if(!allowed.includes(platform)){json(response,400,{ok:false,error:"unsupported_social_platform"});return;}
+    if(!["meta","instagram","facebook","tiktok","youtube","x","linkedin","snapchat","pinterest"].includes(connection.provider)){
+     json(response,400,{ok:false,error:"oauth_provider_cannot_bind_social"});return;
+    }
+    const account=business.upsertSocialAccount({platform,name,externalId,enabled:true});
+    json(response,201,{ok:true,connection:oauth.status(connection),account});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_bind_failed"});}
+   return;
+  }
   if(request.method==="POST"&&request.url?.match(/^\/v1\/oauth\/[^/]+\/revoke$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{const id=request.url.split("/")[3] as string;const connection=oauth.get(id);oauth.revoke(connection);json(response,200,{ok:true,id});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_revoke_failed"});}return;
