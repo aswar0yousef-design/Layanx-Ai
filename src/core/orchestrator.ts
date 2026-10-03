@@ -64,7 +64,7 @@ import {PullRequestGenerator} from "./pr-generator.js";
 import {ReleaseStateMachine} from "./release-state-machine.js";
 import {ReleaseManager} from "./release-manager.js";
 import {RuntimeTracer} from "./runtime-tracer.js";
-import {registerPaperTradingAgentTool,registerBinanceMarketDataTool} from "../trading/agent-integration.js";
+import {registerPaperTradingAgentTool,registerBinanceMarketDataTool,registerBinanceLiveOrderTool} from "../trading/agent-integration.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
 
 export class LayanXCore{
@@ -154,6 +154,7 @@ export class LayanXCore{
     this.releaseManager=new ReleaseManager();
     registerPaperTradingAgentTool(this.tools,this.toolAdapters);
     registerBinanceMarketDataTool(this.tools,this.toolAdapters);
+    registerBinanceLiveOrderTool(this.tools,this.toolAdapters);
   }
 
   restoreRuntimeSnapshot(snapshot:import("./runtime-persistence.js").RuntimeSnapshot){
