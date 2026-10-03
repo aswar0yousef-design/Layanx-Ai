@@ -69,6 +69,7 @@ import type {ModelRoutingOptions} from "../models/inference.js";
 import {PaperTradingEngine} from "../trading/paper.js";
 import {StrategyRegistry,HtfStructureLiquidityStrategy,ScalpingSweepStrategy} from "../trading/strategy.js";
 import {ScalpRiskController} from "../trading/scalp-risk.js";
+import {registerPaperTradingAgentTool,registerBinanceMarketDataTool,registerBinanceLiveOrderTool} from "../trading/agent-integration.js";
 import type {LiveScreenObserver} from "../desktop/live-screen.js";
 
 export class LayanXCore{
@@ -165,6 +166,9 @@ export class LayanXCore{
     this.gitCommits=new GitCommitGenerator();
     this.codeReview=new CodeReviewAgent();
     this.securityReview=new SecurityReviewAgent();
+    registerPaperTradingAgentTool(this.tools,this.toolAdapters);
+    registerBinanceMarketDataTool(this.tools,this.toolAdapters);
+    registerBinanceLiveOrderTool(this.tools,this.toolAdapters);
     this.prGenerator=new PullRequestGenerator();
     this.releaseManager=new ReleaseManager();
     this.strategies.register(new HtfStructureLiquidityStrategy());
