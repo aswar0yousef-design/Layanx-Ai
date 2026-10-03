@@ -38,10 +38,11 @@ export function evaluateScalpingDecision(input: ScalpingDecisionInput): Scalping
     };
   }
 
+  const quotedEntry = signal.action === "long" ? input.market.ask : input.market.bid;
   const riskPlan = calculateRiskPlan({
     ...input.risk,
     side: signal.action,
-    entryPrice: input.risk.entryPrice ?? input.candles[input.candles.length - 1]?.close ?? NaN,
+    entryPrice: input.risk.entryPrice ?? quotedEntry ?? input.candles[input.candles.length - 1]?.close ?? NaN,
   });
 
   reasons.push(...riskPlan.errors, ...riskPlan.warnings);
