@@ -105,3 +105,42 @@ export function createProjectVerifyToolAdapter(options:{root:string}):ToolAdapte
   });
  }};
 }
+
+
+function validatePackageName(value:string):boolean{
+  return /^(?:(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+)(?:@[a-z0-9._*^~<>=+ -]+)?$/i.test(value)
+    && !value.includes("://") && !value.includes("\\\\") && !value.startsWith("-");
+}
+function runNpm(cwd:string,args:string[],timeoutMs:number):Promise<{args:string[];cwd:string;exitCode:number|null;signal:NodeJS.Signals|null;stdout:string;stderr:string}>{
+  return new Promise((resolvePromise,reject)=>{
+    const child=spawn("npm",args,{cwd,shell:false,env:{...process.env,CI:"1"},timeout:timeoutMs});
+    let stdout="",stderr="";
+    child.stdout.on("data",chunk=>{stdout+=String(chunk);if(stdout.length>128*1024)child.kill("SIGKILL");});
+    child.stderr.on("data",chunk=>{stderr+=String(chunk);if(stderr.length>128*1024)child.kill("SIGKILL");});
+    child.on("error",reject);
+    child.on("close",(code,signal)=>resolvePromise({args,cwd,exitCode:code,signal,stdout:stdout.slice(0,128*1024),stderr:stderr.slice(0,128*1024)}));
+  });
+}
+export function createProjectBootstrapToolAdapter(options:{root:string}):ToolAdapter{
+  const root=resolve(options.root);
+  return{async execute(request){
+    const workspace=workspaceFor(root,request.projectId);
+    await mkdir(workspace,{recursive:true});
+    if(request.action!=="bootstrap project")throw new Error("Unsupported project bootstrap action.");
+    const input=payload(request);
+    const dependencies=Array.isArray(input.dependencies)?input.dependencies.filter((v):v is string=>typeof v==="string").map(v=>v.trim()).filter(Boolean):[];
+    const devDependencies=Array.isArray(input.devDependencies)?input.devDependencies.filter((v):v is string=>typeof v==="string").map(v=>v.trim()).filter(Boolean):[];
+    if(dependencies.length>20||devDependencies.length>20)throw new Error("A maximum of 20 runtime and 20 development dependencies is allowed per bootstrap.");
+    if([...dependencies,...devDependencies].some(value=>!validatePackageName(value)))throw new Error("Invalid npm package name.");
+    const results:unknown[]=[];
+    try{
+      await stat(resolve(workspace,"package.json"));
+    }catch{
+      results.push(await runNpm(workspace,["init","-y"],30000));
+    }
+    if(dependencies.length)results.push(await runNpm(workspace,["install",...dependencies],120000));
+    if(devDependencies.length)results.push(await runNpm(workspace,["install","--save-dev",...devDependencies],120000));
+    const failed=results.find(result=>typeof result==="object"&&result!==null&&"exitCode" in result&&(result as {exitCode:number|null}).exitCode!==0) as {exitCode:number|null}|undefined;
+    return{projectId:request.projectId,workspace,initialized:results.length>0,dependencies,devDependencies,passed:!failed,results};
+  }};
+}
