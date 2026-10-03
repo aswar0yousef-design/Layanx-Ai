@@ -143,8 +143,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    try{const input=await body(request,max);const provider=String(input.provider) as import("./business/types.js").OAuthProvider;const accountId=typeof input.accountId==="string"&&input.accountId.trim()?input.accountId.trim():"default";const result=oauth.begin(provider,accountId);json(response,200,{ok:true,...result});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_begin_failed"});}return;
   }
   if(request.method==="GET"&&request.url?.startsWith("/v1/oauth/callback")){
-   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
-   try{const u=new URL(request.url,"http://localhost");const state=u.searchParams.get("state")??"";const code=u.searchParams.get("code")??"";const accountId=u.searchParams.get("accountId")??"default";if(!state||!code){json(response,400,{ok:false,error:"state_and_code_required"});return;}const connection=await oauth.callback(state,code,accountId);json(response,200,{ok:true,connection:oauth.status(connection)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_callback_failed"});}return;
+   try{const u=new URL(request.url,"http://localhost");const state=u.searchParams.get("state")??"";const code=u.searchParams.get("code")??"";if(!state||!code){json(response,400,{ok:false,error:"state_and_code_required"});return;}const connection=await oauth.callback(state,code);json(response,200,{ok:true,connection:oauth.status(connection)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_callback_failed"});}return;
   }
   if(request.method==="POST"&&request.url?.match(/^\/v1\/oauth\/[^/]+\/revoke$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
