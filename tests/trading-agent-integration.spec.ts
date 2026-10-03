@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { LayanXCore } from "../src/core/orchestrator.js";
 import {
-  BINANCE_LIVE_ORDER_TOOL,\n  BINANCE_MARKET_DATA_TOOL,\n  LIVE_TRADING_TOOLS,
+  BINANCE_LIVE_ORDER_TOOL,
+  BINANCE_MARKET_DATA_TOOL,\n  LIVE_TRADING_TOOLS,
   PAPER_TRADING_TOOL,
   registerPaperTradingAgentTool,
 } from "../src/trading/agent-integration.js";
