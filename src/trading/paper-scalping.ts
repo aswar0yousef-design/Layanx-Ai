@@ -33,6 +33,7 @@ export interface PaperTrade {
   side: TradeSide;
   quantity: number;
   entryPrice: number;
+  entryReferencePrice: number;
   stopLossPrice: number;
   takeProfitPrice?: number;
   openedAt: string;
@@ -141,9 +142,7 @@ export function runPaperScalping(
           quantity: openTrade.quantity,
           entry: {
             fillPrice: openTrade.entryPrice,
-            referencePrice: openTrade.side === "long"
-              ? openTrade.entryPrice - openTrade.entrySlippage
-              : openTrade.entryPrice + openTrade.entrySlippage,
+            referencePrice: openTrade.entryReferencePrice,
             spread: openTrade.entrySpread,
             atr: openTrade.entryAtr,
             slippage: openTrade.entrySlippage,
@@ -250,6 +249,7 @@ export function runPaperScalping(
       side: decision.action,
       quantity: riskPlan.quantity,
       entryPrice: entry,
+      entryReferencePrice: entryReference,
       stopLossPrice: stop,
       takeProfitPrice: target,
       openedAt: candle.timestamp,
