@@ -9,6 +9,8 @@ export interface TradeRecord extends ExecutionTrade {
   session?: string;
   trendRegime?: MarketTrendRegime;
   volatilityRegime?: MarketVolatilityRegime;
+  entryTrendRegime?: MarketTrendRegime;
+  entryVolatilityRegime?: MarketVolatilityRegime;
   commission?: number;
   swap?: number;
   metadata?: Record<string, string | number | boolean | null>;
