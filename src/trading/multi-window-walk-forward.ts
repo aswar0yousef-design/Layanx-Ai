@@ -1,0 +1,45 @@
+import type { MarketCandle } from "./scalping-signal.js";
+import type { PaperTradingConfig } from "./paper-scalping.js";
+import { runPaperScalping } from "./paper-scalping.js";
+import { buildBacktestReport, type BacktestReport } from "./backtest-report.js";
+import { createWalkForwardWindows, type WalkForwardWindow } from "./walk-forward-windows.js";
+
+export interface WalkForwardResult {
+  window: WalkForwardWindow;
+  train: BacktestReport;
+  test: BacktestReport;
+}
+
+export interface MultiWindowWalkForwardResult {
+  windows: WalkForwardResult[];
+  aggregateTest: BacktestReport;
+}
+
+export function runMultiWindowWalkForward(
+  candles: MarketCandle[],
+  config: PaperTradingConfig,
+  trainSize: number,
+  testSize: number,
+  stepSize = testSize,
+): MultiWindowWalkForwardResult {
+  const windows = createWalkForwardWindows(candles, trainSize, testSize, stepSize);
+  const results = windows.map(window => {
+    const train = runPaperScalping(window.train, config);
+    const test = runPaperScalping(window.test, config);
+    return {
+      window,
+      train: buildBacktestReport(train.initialBalance, train.analyses),
+      test: buildBacktestReport(test.initialBalance, test.analyses),
+    };
+  });
+
+  const allTestAnalyses = results.flatMap(result => {
+    const simulation = runPaperScalping(result.window.test, config);
+    return simulation.analyses;
+  });
+
+  return {
+    windows: results,
+    aggregateTest: buildBacktestReport(config.initialBalance, allTestAnalyses),
+  };
+}
