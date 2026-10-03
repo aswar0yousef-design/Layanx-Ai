@@ -1,6 +1,7 @@
-import {createRuntime} from "./runtime.js";
+import {createRuntime,restoreRuntime} from "./runtime.js";
 import {startRuntimeApi} from "./api-server.js";
 const runtime=createRuntime();
+await restoreRuntime(runtime);
 const host=process.env.LAYANX_API_HOST??"127.0.0.1";
 const port=Number(process.env.LAYANX_API_PORT??3000);
 startRuntimeApi({core:runtime.core,persistence:runtime.persistence,host,port,token:process.env.LAYANX_API_TOKEN});
