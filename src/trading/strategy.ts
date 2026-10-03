@@ -6,7 +6,7 @@ export interface TradingStrategy{id:string;name:string;description:string;timefr
 
 export function atr(candles:Candle[],index:number,period=14):number|null{
  if(index<period)return null;let sum=0;
- for(let i=index-period+1;i<=index;i++){const prev=candles[i-1];const c=candles[i];sum+=Math.max(c.high-c.low,Math.abs(c.high-prev.close),Math.abs(c.low-prev.close));}
+ for(let i=index-period+1;i<=index;i++){const prev=candles[i-1];const c=candles[i];if(!prev||!c)return null;sum+=Math.max(c.high-c.low,Math.abs(c.high-prev.close),Math.abs(c.low-prev.close));}
  return sum/period;
 }
 
@@ -41,8 +41,8 @@ export class ScalpingSweepStrategy implements TradingStrategy{
  constructor(private readonly options:{lookback?:number;displacement?:number;rewardMultiple?:number}={}){}
  withParameters(parameters:Record<string,number>):TradingStrategy{return new ScalpingSweepStrategy({lookback:parameters.lookback,displacement:parameters.displacement,rewardMultiple:parameters.rewardMultiple});}
  evaluate(context:StrategyContext):TradingSignal|null{
-  const {candles,index}=context;const lookback=Math.max(3,Math.floor(this.options.lookback??10));const displacement=this.options.displacement??.55;const rewardMultiple=this.options.rewardMultiple??.8;if(index<lookback+5||index>=candles.length)return null;const c=candles[index],recent=candles.slice(index-lookback,index);
-  const hi=Math.max(...recent.map(x=>x.high)),lo=Math.min(...recent.map(x=>x.low));const range=Math.max(c.high-c.low,Math.abs(c.high-candles[index-1].close),Math.abs(c.low-candles[index-1].close));if(range<=0)return null;
+  const {candles,index}=context;const lookback=Math.max(3,Math.floor(this.options.lookback??10));const displacement=this.options.displacement??.55;const rewardMultiple=this.options.rewardMultiple??.8;if(index<lookback+5||index>=candles.length)return null;const c=candles[index],previous=candles[index-1],recent=candles.slice(index-lookback,index);if(!c||!previous)return null;
+  const hi=Math.max(...recent.map(x=>x.high)),lo=Math.min(...recent.map(x=>x.low));const range=Math.max(c.high-c.low,Math.abs(c.high-previous.close),Math.abs(c.low-previous.close));if(range<=0)return null;
   if(c.low<lo&&c.close>lo&&c.close>c.open&&(c.close-c.open)>=range*displacement){const risk=c.close-c.low;if(risk<=0)return null;return{strategyId:this.id,timestamp:c.timestamp,side:"long",entry:c.close,stopLoss:c.low,takeProfit:c.close+risk*rewardMultiple,reason:["recent low sweep","bullish displacement","quick scalp"],confidence:.68};}
   if(c.high>hi&&c.close<hi&&c.close<c.open&&(c.open-c.close)>=range*displacement){const risk=c.high-c.close;if(risk<=0)return null;return{strategyId:this.id,timestamp:c.timestamp,side:"short",entry:c.close,stopLoss:c.high,takeProfit:c.close-risk*rewardMultiple,reason:["recent high sweep","bearish displacement","quick scalp"],confidence:.68};}
   return null;
