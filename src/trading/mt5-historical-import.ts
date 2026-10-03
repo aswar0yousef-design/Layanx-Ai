@@ -26,7 +26,8 @@ function buildResult(data: HistoricalCandleSource, options: Mt5HistoricalImportO
   const candlesWithoutBidAsk = data.candles.length - candlesWithBidAsk;
   const percentage = data.candles.length === 0 ? 0 : (candlesWithBidAsk / data.candles.length) * 100;
   return { ...data, quality, quoteCoverage: { candlesWithBidAsk, candlesWithoutBidAsk, percentage },
-    readyForBacktest: quality.valid && data.candles.length >= 31 &&
+    readyForBacktest: quality.issues.every(issue => issue.type !== "duplicate" && issue.type !== "non-monotonic" && issue.type !== "invalid-range") &&
+      data.candles.length >= 31 &&
       (!options.requireBidAsk || candlesWithBidAsk === data.candles.length),
     diagnostics };
 }
