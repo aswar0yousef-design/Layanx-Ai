@@ -120,6 +120,19 @@ export class BinanceSpotClient {
     return {symbol:item.symbol,status:item.status,baseAsset:item.baseAsset,quoteAsset:item.quoteAsset,minQty:lot?.minQty?Number(lot.minQty):undefined,maxQty:lot?.maxQty?Number(lot.maxQty):undefined,stepSize:lot?.stepSize?Number(lot.stepSize):undefined,marketMinQty:marketLot?.minQty?Number(marketLot.minQty):undefined,marketMaxQty:marketLot?.maxQty?Number(marketLot.maxQty):undefined,marketStepSize:marketLot?.stepSize?Number(marketLot.stepSize):undefined,tickSize:priceFilter?.stepSize?Number(priceFilter.stepSize):undefined,minNotional:Number.isFinite(parsedMinNotional)?parsedMinNotional:undefined,maxNotional:Number.isFinite(parsedMaxNotional)?parsedMaxNotional:undefined};
   }
 
+
+  async getOrder(symbol: string, clientOrderId: string): Promise<{symbol:string;orderId?:number;clientOrderId?:string;status?:string;raw:unknown}> {
+    if (!symbol || !clientOrderId) throw new Error("Binance order lookup requires symbol and clientOrderId.");
+    const raw=await this.request<Record<string,unknown>>("/api/v3/order",{symbol,origClientOrderId:clientOrderId},true);
+    return {
+      symbol: typeof raw.symbol === "string" ? raw.symbol : symbol,
+      orderId: typeof raw.orderId === "number" ? raw.orderId : undefined,
+      clientOrderId: typeof raw.clientOrderId === "string" ? raw.clientOrderId : clientOrderId,
+      status: typeof raw.status === "string" ? raw.status : undefined,
+      raw,
+    };
+  }
+
   async accountInfo(): Promise<unknown> {
     return this.request("/api/v3/account",{},true);
   }
