@@ -110,6 +110,24 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }).map(approval=>({...approval,approved:options.core.executionRuntime.approvals.isApproved(approval.id)}));
    json(response,200,{ok:true,approvals});return;
   }
+  if(request.method==="POST"&&request.url?.match(/^\/v1\/approvals\/[^/]+\/(approve|revoke)$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const parts=request.url.split("/");
+   const approvalId=parts[3] as string;
+   const action=parts[4] as string;
+   const projectId=new URL(request.url,"http://localhost").searchParams.get("projectId")?.trim()??"";
+   if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
+   try{
+    const approval=options.core.executionRuntime.approvals.get(approvalId);
+    const mission=options.core.missions.get(approval.missionId);
+    if(!mission){json(response,404,{ok:false,error:"mission_not_found"});return;}
+    options.core.projectIsolation.assertMissionProject(projectId,mission.projectId);
+    if(action==="approve")options.core.executionRuntime.approvals.approve(approvalId);
+    else options.core.executionRuntime.approvals.revoke(approvalId);
+    await options.core.executionRuntime.persist(mission);
+    json(response,200,{ok:true,approval:{...approval,approved:options.core.executionRuntime.approvals.isApproved(approvalId)}});return;
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"approval operation failed"});return;}
+  }
   if(request.method==="GET"&&request.url?.match(/^\/v1\/missions\/[^/]+\/events$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const missionId=request.url.split("/")[3] as string;
