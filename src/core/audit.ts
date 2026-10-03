@@ -1,4 +1,4 @@
-export interface AuditEvent{timestamp:string;actor:string;action:string;resource:string;result:"allowed"|"denied"|"success"|"failure";metadata?:Record<string,unknown>;}
+export interface AuditEvent{timestamp:string;actor:string;action:string;resource:string;result:"allowed"|"denied"|"pending_approval"|"success"|"failure";metadata?:Record<string,unknown>;}
 
 const sensitiveKey=/api[_ -]?key|secret|password|token|authorization|private[_ -]?key|credential/i;
 const bearer=/bearer\s+[A-Za-z0-9._-]{8,}/gi;
