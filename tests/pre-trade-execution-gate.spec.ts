@@ -45,6 +45,8 @@ const blockedMissing = evaluatePreTradeExecutionGate({
 assert.equal(blockedMissing.allowed, false);
 assert.ok(blockedMissing.reasons.includes("ATR is required before execution."));
 assert.ok(blockedMissing.reasons.includes("Spread is required before execution."));
+assert.equal(blockedMissing.checks.find((check) => check.name === "atr-present")?.passed, false);
+assert.equal(blockedMissing.checks.find((check) => check.name === "spread-present")?.passed, false);
 
 const blockedSession = evaluatePreTradeExecutionGate({
   symbol: "XAUUSD",
