@@ -19,6 +19,8 @@ export interface BacktestReport {
   commissions: number;
   swaps: number;
   costErasedTrades: number;
+  intrabarAmbiguousExits: number;
+  gapThroughExits: number;
 }
 
 export function buildBacktestReport(
@@ -38,6 +40,8 @@ export function buildBacktestReport(
   let swaps = 0;
   let costErasedTrades = 0;
   let wins = 0;
+  let intrabarAmbiguousExits = 0;
+  let gapThroughExits = 0;
 
   for (const analysis of analyses) {
     balance += analysis.trueNetPnl;
@@ -58,6 +62,8 @@ export function buildBacktestReport(
     commissions += analysis.commission;
     swaps += analysis.swap;
     if (analysis.grossPnl > 0 && analysis.trueNetPnl <= 0) costErasedTrades += 1;
+    if (analysis.metadata?.intrabarAmbiguous === true) intrabarAmbiguousExits += 1;
+    if (analysis.metadata?.gapThrough === true) gapThroughExits += 1;
   }
 
   const trades = analyses.length;
@@ -84,5 +90,7 @@ export function buildBacktestReport(
     commissions,
     swaps,
     costErasedTrades,
+    intrabarAmbiguousExits,
+    gapThroughExits,
   };
 }
