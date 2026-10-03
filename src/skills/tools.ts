@@ -9,7 +9,8 @@ export function registerSkillLearningTools(core:LayanXCore){
   ["skill.learn","stage a reusable skill from a successful mission trace; never enable it automatically","L3_MODIFY",false],
   ["skill.pending","list staged learned skills awaiting review","L1_READ",false],
   ["skill.approve","approve a staged learned skill after security review","L3_MODIFY",false],
-  ["skill.enable","enable an already approved learned skill","L3_MODIFY",false]
+  ["skill.enable","enable an already approved learned skill","L3_MODIFY",false],
+  ["skill.execute","execute an enabled learned skill against an existing mission","L3_MODIFY",false]
  ] as const;
  for(const [name,description,permission,dangerous] of defs){
   core.tools.register({name,description,permission,dangerous,actions:[name],tags:["skills","learning","self-improvement"]});
@@ -24,7 +25,10 @@ export function registerSkillLearningTools(core:LayanXCore){
    if(name==="skill.pending")return core.skillLearning.list().map(item=>({id:item.id,name:item.manifest.name,description:item.manifest.description,sourceMissionId:item.sourceMissionId,createdAt:item.createdAt,safe:item.findings.safe,findings:item.findings.findings}));
    const id=str(p.id,"id");
    if(name==="skill.approve")return core.approveLearnedSkill(id);
-   return core.enableLearnedSkill(id);
+   if(name==="skill.enable")return core.enableLearnedSkill(id);
+   const missionId=str(p.missionId,"missionId"),projectId=str(p.projectId,"projectId");
+   const payloads=Array.isArray(p.payloads)?p.payloads:[];
+   return core.executeSkill(id,missionId,projectId,payloads);
   }});
  }
 }
