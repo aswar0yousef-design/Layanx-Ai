@@ -38,3 +38,8 @@ The execution gate supports an optional `minStopDistanceAtrRatio`. It is intenti
 ### Entry timing and look-ahead control
 
 Paper scalping defaults to generating the signal from the last completed candle and executing on the following candle. This prevents indicators calculated from a candle close from being used to fill a trade inside that same candle. The legacy same-candle behavior remains available only by explicitly setting `signalOnClosedCandle: false` for controlled diagnostics.
+
+
+### Trailing-stop timing
+
+Trailing stops are updated only after the current candle has been evaluated for an exit. A trailing level derived from a candle's completed high/low therefore becomes active on the next candle. This avoids using a candle's future high/low to retroactively move a stop before checking that same candle for execution. The behavior is intentionally conservative at M1 resolution.
