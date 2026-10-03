@@ -8,7 +8,7 @@ import { generateScalpingSignal } from "./scalping-signal.js";
 export interface ScalpingDecisionInput {
   candles: MarketCandle[];
   market: PreTradeMarketSnapshot;
-  risk: Omit<RiskInput, "side" | "entryPrice"> & { stopLossPrice: number };
+  risk: Omit<RiskInput, "side" | "entryPrice"> & { stopLossPrice: number; entryPrice?: number };
   signalConfig?: Partial<ScalpingSignalConfig>;
   executionPolicy?: Partial<PreTradeExecutionPolicy>;
 }
@@ -41,7 +41,7 @@ export function evaluateScalpingDecision(input: ScalpingDecisionInput): Scalping
   const riskPlan = calculateRiskPlan({
     ...input.risk,
     side: signal.action,
-    entryPrice: input.candles[input.candles.length - 1]?.close ?? NaN,
+    entryPrice: input.risk.entryPrice ?? input.candles[input.candles.length - 1]?.close ?? NaN,
   });
 
   reasons.push(...riskPlan.errors, ...riskPlan.warnings);
