@@ -158,6 +158,7 @@ export class ExecutionRuntime{
     memory:this.core.memory.list().filter(entry=>entry.missionId===mission.id),
     handoffs:this.core.handoffs.forMission(mission.id),
     delegatedTasks:this.core.delegation.forMission(mission.id),
+    approvals:this.approvals.snapshot(),
     nextAction:this.core.nextAction.decide({mission,tasks:this.core.delegation.forMission(mission.id),handoffs:this.core.handoffs.forMission(mission.id)}),
     savedAt:new Date().toISOString(),
     schemaVersion:1
