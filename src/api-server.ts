@@ -98,6 +98,18 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"agent gateway failed"});}
    return;
   }
+  if(request.method==="GET"&&request.url==="/v1/approvals"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const projectId=new URL(request.url,"http://localhost").searchParams.get("projectId")?.trim()??"";
+   if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
+   const approvals=options.core.executionRuntime.approvals.list().filter(approval=>{
+    const mission=options.core.missions.get(approval.missionId);
+    if(!mission)return false;
+    try{options.core.projectIsolation.assertMissionProject(projectId,mission.projectId);}catch{return false;}
+    return Date.parse(approval.expiresAt)>Date.now();
+   }).map(approval=>({...approval,approved:options.core.executionRuntime.approvals.isApproved(approval.id)}));
+   json(response,200,{ok:true,approvals});return;
+  }
   if(request.method==="GET"&&request.url?.match(/^\/v1\/missions\/[^/]+\/events$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const missionId=request.url.split("/")[3] as string;
