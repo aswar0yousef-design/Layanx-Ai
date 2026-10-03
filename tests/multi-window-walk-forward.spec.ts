@@ -24,4 +24,16 @@ assert.equal(result.windows[0].window.test.length, 30);
 assert.equal(result.aggregateTest.initialBalance, 1000);
 assert.equal(result.aggregateTest.trades >= 0, true);
 
+assert.throws(
+  () => runMultiWindowWalkForward(candles, {
+    symbol: "EURUSD",
+    timeframe: "M1",
+    initialBalance: 1000,
+    riskPercent: 1,
+    stopLossDistance: 1,
+    spread: 0.05,
+  }, 40, 30, 30),
+  /Backtest data symbol EURUSD does not match config symbol EURUSD/,
+);
+
 console.log("Multi-window walk-forward tests passed");
