@@ -41,9 +41,7 @@ export function evaluateScalpingDecision(input: ScalpingDecisionInput): Scalping
   const riskPlan = calculateRiskPlan({
     ...input.risk,
     side: signal.action,
-    entryPrice: input.market.spread !== undefined
-      ? input.candles[input.candles.length - 1]?.close ?? NaN
-      : NaN,
+    entryPrice: input.candles[input.candles.length - 1]?.close ?? NaN,
   });
 
   reasons.push(...riskPlan.errors, ...riskPlan.warnings);
