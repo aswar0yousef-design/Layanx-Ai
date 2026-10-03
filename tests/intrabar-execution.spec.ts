@@ -46,4 +46,24 @@ assert.ok(optimistic);
 assert.equal(optimistic.reason, "take-profit");
 assert.equal(optimistic.intrabarAmbiguous, true);
 
+const quoteAware = simulateExit(
+  { side: "long", stopLossPrice: 1998.5, takeProfitPrice: 2001.5 },
+  {
+    ...baseCandle,
+    bidOpen: 1999,
+    askOpen: 1999.2,
+    bidHigh: 2001.8,
+    bidLow: 1998.4,
+    askHigh: 2002,
+    askLow: 1998.6,
+  },
+  0.2,
+  0.05,
+  "conservative",
+);
+assert.ok(quoteAware);
+assert.equal(quoteAware.reason, "stop-loss");
+assert.equal(quoteAware.referencePrice, 1998.5);
+assert.equal(quoteAware.price, 1998.45);
+
 console.log("Intrabar execution tests passed");
