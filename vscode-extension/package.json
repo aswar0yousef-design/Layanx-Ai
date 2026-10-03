@@ -2,7 +2,7 @@
   "name": "layanx-agent",
   "displayName": "LayanX AI Agent",
   "description": "Use the LayanX local-first agent directly inside Visual Studio Code.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "layanx",
   "license": "MIT",
   "engines": {
@@ -15,6 +15,7 @@
   "activationEvents": [
     "onCommand:layanx.openAgent",
     "onCommand:layanx.runGoal",
+    "onCommand:layanx.buildProject",
     "onCommand:layanx.explainSelection",
     "onCommand:layanx.fixSelection",
     "onCommand:layanx.health",
@@ -32,6 +33,10 @@
       {
         "command": "layanx.runGoal",
         "title": "LayanX: Run Goal"
+      },
+      {
+        "command": "layanx.buildProject",
+        "title": "LayanX: Build / Repair Project"
       },
       {
         "command": "layanx.explainSelection",
