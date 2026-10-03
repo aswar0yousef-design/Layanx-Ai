@@ -1,6 +1,8 @@
 export interface PreTradeMarketSnapshot {
   symbol: string;
   timeframe: string;
+  bid?: number;
+  ask?: number;
   session?: string;
   spread?: number;
   atr?: number;
