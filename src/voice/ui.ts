@@ -129,7 +129,7 @@ async function startRecorder(){stream=await navigator.mediaDevices.getUserMedia(
 async function stopRecorder(){if(recorder&&recorder.state!=='inactive')recorder.stop();mic.classList.remove('listening');setStatus('أحوّل الصوت إلى نص...')}
 async function finishRecorder(){stream.getTracks().forEach(t=>t.stop());const blob=new Blob(chunks,{type:recorder.mimeType||'audio/webm'});try{const r=await fetch('/v1/voice/transcribe',{method:'POST',headers:{...headers(),'content-type':blob.type||'audio/webm','x-layanx-filename':'voice.webm','x-layanx-language':'ar'},body:blob});if(!r.ok)throw new Error(await r.text());const tr=await r.json();await executeText(tr.text,false)}catch(e){setStatus('حدث خطأ');resultBox.textContent=String(e)}}
 function wakeText(value){
- return String(value||'').toLowerCase().replace(/[\\s_-]+/g,'');
+ return String(value||'').toLowerCase().replace(/[\s_-]+/g,'');
 }
 function startWakeWord(){
  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
