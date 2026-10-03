@@ -547,7 +547,7 @@ export class LayanXCore{
     let lastDesktopMutation=false;
     const liveScreenWasRunning=this.liveScreen?.isRunning()??false;
     let liveScreenAutoStarted=false;
-    const cleanupLiveScreen=()=>{cleanupLiveScreen();};
+    const cleanupLiveScreen=()=>{if(liveScreenAutoStarted&&!liveScreenWasRunning)this.liveScreen?.stop();};
     while(steps<limit){
       const current=this.missions.get(missionId);
       if(!current)throw new Error("Mission not found.");
@@ -616,7 +616,7 @@ export class LayanXCore{
           projectContext:{repairAfterFailure:true}
         });
         const recoveryPlan=await repair;
-        if(!recoveryPlan)cleanupLiveScreen();return{missionId,completed:false,status:"failed",steps,results,reason:result.error};
+        if(!recoveryPlan){cleanupLiveScreen();return{missionId,completed:false,status:"failed",steps,results,reason:result.error};}
         current.tools=current.tools??[];
         current.tools.push(recoveryPlan);
         this.missions.save(current);
@@ -624,10 +624,10 @@ export class LayanXCore{
     }
     const finalMission=this.missions.get(missionId);
     if(!finalMission)throw new Error("Mission not found.");
-    if(!results.length)cleanupLiveScreen();return{missionId,completed:false,status:finalMission.status,steps,results,reason:"Agent loop produced no executable result."};
+    if(!results.length){cleanupLiveScreen();return{missionId,completed:false,status:finalMission.status,steps,results,reason:"Agent loop produced no executable result."};}
     const final=await this.executionRuntime.finalize(finalMission,latest,agentId);
     this.missions.save(finalMission);
-    if(liveScreenAutoStarted&&!liveScreenWasRunning)this.liveScreen?.stop();
+    cleanupLiveScreen();
     return{missionId,completed:final.ok,status:finalMission.status,steps,results,final};
   }
 
