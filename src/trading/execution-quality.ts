@@ -65,7 +65,6 @@ export function analyzeExecutionQuality(trade: ExecutionTrade): ExecutionQuality
 
   const warnings: string[] = [];
   if (atr === undefined || atr <= 0) warnings.push("ATR is missing or non-positive.");
-  if (atr !== undefined && atr > 0) warnings.push("ATR basis is OHLC price movement; quote spread is evaluated separately against ATR.");
   if (entrySpread === undefined) warnings.push("Entry spread is missing.");
   if (spreadAtrRatio !== undefined && spreadAtrRatio > 0.35) warnings.push("Spread consumes a large share of entry ATR.");
   if (grossPnl > 0 && netPnlAfterExecutionCosts <= 0) warnings.push("Nominally profitable trade is not profitable after estimated execution costs.");
