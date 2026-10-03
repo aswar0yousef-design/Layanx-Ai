@@ -7,7 +7,7 @@ export interface MonteCarloResult{runs:number;meanReturnPct:number;p05ReturnPct:
 
 export function optimizeStrategy(candles:Candle[],factory:(parameters:Record<string,number>)=>TradingStrategy,grid:Record<string,number[]>,startingEquity=100000,riskFraction=0.002,costs:BacktestCosts={}):StrategyCandidate[]{
  const keys=Object.keys(grid);const combinations:Record<string,number>[]=[];
- const build=(i:number,current:Record<string,number>)=>{if(i===keys.length){combinations.push({...current});return;}for(const value of grid[keys[i]]??[]){current[keys[i]]=value;build(i+1,current);}};
+ const build=(i:number,current:Record<string,number>)=>{if(i===keys.length){combinations.push({...current});return;}const key=keys[i];if(key===undefined)throw new Error("Invalid optimization key.");for(const value of grid[key]??[]){current[key]=value;build(i+1,current);}};
  build(0,{});
  return combinations.map(parameters=>{const strategy=factory(parameters);return{strategy,parameters,result:backtest(strategy,candles,startingEquity,riskFraction,costs)}}).sort((a,b)=>b.result.expectancy-a.result.expectancy);
 }
@@ -28,7 +28,7 @@ export function walkForward(candles:Candle[],factory:(parameters:Record<string,n
 export function monteCarlo(trades:{pnl:number}[],runs=1000):MonteCarloResult{
  if(!trades.length)throw new Error("Monte Carlo requires at least one trade.");runs=Math.min(Math.max(Math.floor(runs),100),10000);
  const base=trades.map(t=>t.pnl),returns:number[]=[];const drawdowns:number[]=[];
- for(let r=0;r<runs;r++){let equity=100000,peak=equity,maxDd=0;for(let i=0;i<base.length;i++){const index=Math.floor(Math.random()*base.length);equity+=base[index];peak=Math.max(peak,equity);maxDd=Math.max(maxDd,(peak-equity)/peak*100);}returns.push((equity/100000-1)*100);drawdowns.push(maxDd);}
- returns.sort((a,b)=>a-b);drawdowns.sort((a,b)=>a-b);const q=(values:number[],p:number)=>values[Math.min(values.length-1,Math.floor((values.length-1)*p))];
- return{runs,meanReturnPct:returns.reduce((s,v)=>s+v,0)/returns.length,p05ReturnPct:q(returns,.05),medianReturnPct:q(returns,.5),p95ReturnPct:q(returns,.95),worstDrawdownPct:drawdowns[drawdowns.length-1]??0,bestDrawdownPct:drawdowns[0]??0};
+ for(let r=0;r<runs;r++){let equity=100000,peak=equity,maxDd=0;for(let i=0;i<base.length;i++){const index=Math.floor(Math.random()*base.length);const pnl=base[index];if(pnl===undefined)continue;equity+=pnl;peak=Math.max(peak,equity);maxDd=Math.max(maxDd,(peak-equity)/peak*100);}returns.push((equity/100000-1)*100);drawdowns.push(maxDd);}
+ returns.sort((a,b)=>a-b);drawdowns.sort((a,b)=>a-b);const q=(values:number[],p:number)=>values.length?values[Math.min(values.length-1,Math.floor((values.length-1)*p))]??0:0;
+ const mean=returns.length?returns.reduce((s,v)=>s+v,0)/returns.length:0;const worst=drawdowns.length?drawdowns[drawdowns.length-1]??0:0;const best=drawdowns.length?drawdowns[0]??0:0;return{runs,meanReturnPct:mean,p05ReturnPct:q(returns,.05),medianReturnPct:q(returns,.5),p95ReturnPct:q(returns,.95),worstDrawdownPct:worst,bestDrawdownPct:best};
 }
