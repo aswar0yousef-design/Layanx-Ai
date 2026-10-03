@@ -121,7 +121,7 @@ export function ema(values: number[], period: number): number | undefined {
   const multiplier = 2 / (period + 1);
   let result = seed;
   for (let i = period; i < values.length; i++) {
-    result = (values[i] - result) * multiplier + result;
+    result = (values[i]! - result) * multiplier + result;
   }
   return result;
 }
@@ -131,7 +131,7 @@ export function rsi(values: number[], period: number): number | undefined {
   let gains = 0;
   let losses = 0;
   for (let i = 1; i <= period; i++) {
-    const delta = values[i] - values[i - 1];
+    const delta = values[i]! - values[i - 1]!;
     if (delta >= 0) gains += delta;
     else losses -= delta;
   }
@@ -140,7 +140,7 @@ export function rsi(values: number[], period: number): number | undefined {
   let avgLoss = losses / period;
 
   for (let i = period + 1; i < values.length; i++) {
-    const delta = values[i] - values[i - 1];
+    const delta = values[i]! - values[i - 1]!;
     const gain = Math.max(0, delta);
     const loss = Math.max(0, -delta);
     avgGain = ((avgGain * (period - 1)) + gain) / period;
@@ -155,8 +155,8 @@ export function atr(candles: MarketCandle[], period: number): number | undefined
   if (period <= 0 || candles.length <= period) return undefined;
   const ranges: number[] = [];
   for (let i = 1; i < candles.length; i++) {
-    const current = candles[i];
-    const previous = candles[i - 1];
+    const current = candles[i]!;
+    const previous = candles[i - 1]!;
     ranges.push(Math.max(
       current.high - current.low,
       Math.abs(current.high - previous.close),
