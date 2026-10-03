@@ -62,7 +62,8 @@ export async function restoreRuntime(runtime:ReturnType<typeof createRuntime>):P
  return{restored:snapshots.length};
 }
 
-export function runtimeStatus(runtime=createRuntime()){
+type RuntimeStatusView=Pick<ReturnType<typeof createRuntime>,"core"|"persistence"|"models"|"providers"|"providerSummary">;
+export function runtimeStatus(runtime:RuntimeStatusView=createRuntime()){
  return{
   system:"LayanX AI",
   ready:runtime.core.isReady(),
@@ -73,7 +74,7 @@ export function runtimeStatus(runtime=createRuntime()){
  };
 }
 
-export async function runtimeHealth(runtime=createRuntime()){
+export async function runtimeHealth(runtime:Pick<ReturnType<typeof createRuntime>,"core"|"persistence"|"providers">=createRuntime()){
  const providers=await Promise.all(runtime.providers.list().map(provider=>provider.health()));
  let storage={healthy:true,writable:true,schemaVersion:1,reason:"Runtime persistence is disabled."};
  if(runtime.persistence){
