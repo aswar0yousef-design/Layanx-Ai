@@ -28,7 +28,7 @@ const result = {
     { window: {} as never, train: base, test: { ...base, netPnl: -5, returnPct: -0.5, expectancyPerTrade: -0.25 } },
     { window: {} as never, train: base, test: { ...base, netPnl: 0, returnPct: 0, expectancyPerTrade: 0, trades: 0 } },
   ],
-  aggregateTest: base,
+  pooledTest: base,
 };
 
 const stability = analyzeOosStability(result);
