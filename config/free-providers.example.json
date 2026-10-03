@@ -1,0 +1,24 @@
+{
+  "providers": [
+    {
+      "name": "freellmapi",
+      "baseUrl": "http://127.0.0.1:8080/v1",
+      "apiKeyEnv": "FREELLMAPI_API_KEY",
+      "models": ["provider-model-id"],
+      "capabilities": ["chat", "coding"],
+      "priority": 20,
+      "cooldownMs": 60000,
+      "tags": ["free", "aggregated"]
+    },
+    {
+      "name": "omniroute",
+      "baseUrl": "http://127.0.0.1:8081/v1",
+      "apiKeyEnv": "OMNIROUTE_API_KEY",
+      "models": ["provider-model-id"],
+      "capabilities": ["chat", "reasoning", "coding"],
+      "priority": 30,
+      "cooldownMs": 60000,
+      "tags": ["free", "aggregated"]
+    }
+  ]
+}
