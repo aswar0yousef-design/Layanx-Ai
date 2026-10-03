@@ -6,4 +6,15 @@ if(!engine.authorize(req.id,{missionId:"m1",agentId:"a1",tool:"deploy",action:"d
 if(engine.authorize(req.id,{missionId:"m2",agentId:"a1",tool:"deploy",action:"deploy",permission:"L4_EXECUTE",payloadHash:"hash1"}).allowed)throw new Error("Approval scope bypassed.");
 engine.revoke(req.id);
 if(engine.isApproved(req.id))throw new Error("Approval revoke failed.");
+const snapshot=engine.snapshot();
+engine.approve(req.id);
+const restored=new ApprovalEngine();
+restored.restore(snapshot);
+if(restored.isApproved(req.id))throw new Error("Revoked approval was restored as approved.");
+const approved=engine.create({missionId:"m2",agentId:"a1",tool:"deploy",action:"deploy",permission:"L4_EXECUTE",payloadHash:"hash2",reason:"persisted approval",expiresAt:new Date(Date.now()+60000).toISOString()});
+engine.approve(approved.id);
+const approvedSnapshot=engine.snapshot();
+const approvedRestored=new ApprovalEngine();
+approvedRestored.restore(approvedSnapshot);
+if(!approvedRestored.isApproved(approved.id))throw new Error("Approved request was not restored.");
 console.log("Approval scope test passed.");
