@@ -5,6 +5,7 @@ import { analyzeTradeRecord, type TradeRecord } from "./trade-record.js";
 import { evaluateScalpingDecision } from "./scalping-decision.js";
 import { detectTradingSession } from "./session.js";
 import { classifyMarketRegime } from "./market-regime.js";
+import type { BrokerSymbolSpecification } from "./broker-symbol-spec.js";
 
 export interface PaperTradingConfig {
   symbol: string;
@@ -22,6 +23,7 @@ export interface PaperTradingConfig {
   minimumQuantity?: number;
   maximumQuantity?: number;
   quantityStep?: number;
+  brokerSymbol?: BrokerSymbolSpecification;
 }
 
 export interface PaperTrade {
@@ -141,6 +143,7 @@ export function runPaperScalping(
   }
 
   const initialBalance = config.initialBalance;
+  const commissionPerUnit = config.commissionPerUnit ?? config.brokerSymbol?.commissionPerUnit ?? 0;
   let balance = initialBalance;
   let openTrade: PaperTrade | null = null;
   let sequence = 0;
@@ -187,8 +190,10 @@ export function runPaperScalping(
           session: detectTradingSession(openTrade.openedAt),
           trendRegime: regime.trend,
           volatilityRegime: regime.volatility,
-          commission: (config.commissionPerUnit ?? 0) * openTrade.quantity,
-          swap: (config.swapPerUnit ?? 0) * openTrade.quantity,
+          commission: commissionPerUnit * openTrade.quantity,
+          swap: (config.swapPerUnit ?? (openTrade.side === "long"
+            ? config.brokerSymbol?.swapLongPerUnit
+            : config.brokerSymbol?.swapShortPerUnit) ?? 0) * openTrade.quantity,
           metadata: { exitReason: exit.reason },
         };
         const analysis = analyzeTradeRecord(record);
@@ -231,6 +236,7 @@ export function runPaperScalping(
         minimumQuantity: config.minimumQuantity,
         maximumQuantity: config.maximumQuantity,
         quantityStep: config.quantityStep,
+        brokerSymbol: config.brokerSymbol,
       },
     });
 
