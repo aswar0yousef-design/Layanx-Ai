@@ -1,5 +1,7 @@
 export interface Candle{timestamp:number;open:number;high:number;low:number;close:number;volume?:number;}
 export type SignalSide="long"|"short";
+export type MarketRegime="bullish"|"bearish"|"ranging"|"high-volatility"|"low-volatility";
+export interface RegimeSnapshot{regime:MarketRegime;atr:number;atrRatio:number;trendStrength:number;}
 export interface TradingSignal{strategyId:string;timestamp:number;side:SignalSide;entry:number;stopLoss:number;takeProfit:number;reason:string[];confidence:number;}
 export interface StrategyContext{candles:Candle[];index:number;atrPeriod?:number;}
 export interface TradingStrategy{id:string;name:string;description:string;timeframe:string;evaluate(context:StrategyContext):TradingSignal|null;withParameters?(parameters:Record<string,number>):TradingStrategy;}
@@ -15,6 +17,12 @@ export function swingHigh(candles:Candle[],index:number,left=2,right=2):boolean{
 }
 export function swingLow(candles:Candle[],index:number,left=2,right=2):boolean{
  if(index<left||index+right>=candles.length)return false;const center=candles[index];if(center===undefined)return false;const v=center.low;for(let i=index-left;i<=index+right;i++){const item=candles[i];if(item!==undefined&&i!==index&&item.low<=v)return false;}return true;
+}
+
+export function marketRegime(candles:Candle[],index:number,lookback=20):RegimeSnapshot|null{
+ if(index<lookback+14||index>=candles.length)return null;const current=candles[index];if(!current)return null;const currentAtr=atr(candles,index,14);const priorAtr=atr(candles,index-lookback,14);if(!currentAtr||!priorAtr||priorAtr<=0)return null;
+ const start=candles[index-lookback];if(!start)return null;const trendStrength=(current.close-start.close)/currentAtr;const atrRatio=currentAtr/priorAtr;
+ const regime:MarketRegime=atrRatio>=1.6?"high-volatility":atrRatio<=0.65?"low-volatility":trendStrength>=1?"bullish":trendStrength<=-1?"bearish":"ranging";return{regime,atr:currentAtr,atrRatio,trendStrength};
 }
 
 export class HtfStructureLiquidityStrategy implements TradingStrategy{
