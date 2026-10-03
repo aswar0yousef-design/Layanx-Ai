@@ -39,8 +39,8 @@ async function readHidden(prompt: string): Promise<string> {
 }
 
 export async function configureBinanceSecretsInteractive(): Promise<void> {
-  const apiKey = await readHidden("Binance API key: ");
-  const apiSecret = await readHidden("Binance API secret: ");
+  const apiKey = await readHidden("Binance key -> ");
+  const apiSecret = await readHidden("Binance secret -> ");
   await saveLocalBinanceCredentials({ apiKey, apiSecret });
   console.log(`Saved locally outside the repository: ${localBinanceSecretStorePath()}`);
   console.log("Secret values were not displayed or returned.");
