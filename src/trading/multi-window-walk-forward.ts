@@ -11,9 +11,15 @@ export interface WalkForwardResult {
   test: BacktestReport;
 }
 
+export interface SequentialOosReport extends BacktestReport {
+  windowCount: number;
+}
+
 export interface MultiWindowWalkForwardResult {
   windows: WalkForwardResult[];
   aggregateTest: BacktestReport;
+  pooledTest: BacktestReport;
+  sequentialOos: SequentialOosReport;
 }
 
 export function runMultiWindowWalkForward(
@@ -25,12 +31,14 @@ export function runMultiWindowWalkForward(
 ): MultiWindowWalkForwardResult {
   assertXauUsdProfileConfig(config);
   const windows = createWalkForwardWindows(candles, trainSize, testSize, stepSize);
-  const testAnalyses = [];
+  const pooledTestAnalyses = [];
+  const sequentialTestAnalyses = [];
 
   const results = windows.map(window => {
     const train = runPaperScalping(window.train, config);
     const test = runPaperScalping(window.test, config);
-    testAnalyses.push(...test.analyses);
+    pooledTestAnalyses.push(...test.analyses);
+    sequentialTestAnalyses.push(...test.analyses);
     return {
       window,
       train: buildBacktestReport(train.initialBalance, train.analyses),
@@ -38,8 +46,17 @@ export function runMultiWindowWalkForward(
     };
   });
 
+  const pooledTest = buildBacktestReport(config.initialBalance, pooledTestAnalyses);
+  const sequentialInitialBalance = config.initialBalance;
+  const sequentialOos = {
+    ...buildBacktestReport(sequentialInitialBalance, sequentialTestAnalyses),
+    windowCount: results.length,
+  };
+
   return {
     windows: results,
-    aggregateTest: buildBacktestReport(config.initialBalance, testAnalyses),
+    aggregateTest: pooledTest,
+    pooledTest,
+    sequentialOos,
   };
 }
