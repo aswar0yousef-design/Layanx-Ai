@@ -1,4 +1,4 @@
-import {runtimeHealth,runtimeStatus} from "./runtime.js";
+import {createRuntime,runtimeHealth,runtimeStatus} from "./runtime.js";
 
 import {FreeCapacityProvider} from "./providers/free-capacity.js";
 
