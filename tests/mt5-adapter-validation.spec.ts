@@ -34,5 +34,11 @@ const completed = filterCompletedMt5Candles(
 );
 assert.equal(completed.length, 1);
 assert.equal(completed[0].timestamp, candle.timestamp);
+const futureFiltered = filterCompletedMt5Candles(
+  [candle, { ...candle, timestamp: "2026-10-03T12:00:00Z" }, { ...candle, timestamp: "2026-10-03T12:01:00Z" }],
+  "2026-10-03T12:00:30Z",
+  "M1",
+);
+assert.equal(futureFiltered.length, 2);
 
 console.log("MT5 adapter validation tests passed");
