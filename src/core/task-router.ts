@@ -26,6 +26,7 @@ export class TaskRouter{
    const scored=candidates.map(agent=>({agent,score:this.agentScore(agent,task),reasons:this.reasons(agent,task)}))
     .sort((a,b)=>b.score-a.score||a.agent.agentId.localeCompare(b.agent.agentId));
    const selected=scored[0];
+   if(!selected)throw new Error("No agent candidate was selected for task: "+task.id);
    const model=this.selectModel(task,selected.agent);
    return{taskId:task.id,agentId:selected.agent.agentId,role:selected.agent.profile?.role??this.inferRole(task.capability),modelId:model.id,capability:task.capability,reason:[...selected.reasons,"Model "+model.id+" selected for "+task.capability+"."]};
   });
