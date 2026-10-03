@@ -26,8 +26,12 @@ export interface BinanceSymbolRules {
   minQty?: number;
   maxQty?: number;
   stepSize?: number;
+  marketMinQty?: number;
+  marketMaxQty?: number;
+  marketStepSize?: number;
   tickSize?: number;
   minNotional?: number;
+  maxNotional?: number;
 }
 
 export interface BinanceOrderRequest {
@@ -104,10 +108,12 @@ export class BinanceSpotClient {
     const item=raw.symbols.find(x=>x.symbol===symbol);
     if(!item) throw new Error(`Binance symbol not found: ${symbol}`);
     const lot=item.filters.find(x=>x.filterType==="LOT_SIZE");
+    const marketLot=item.filters.find(x=>x.filterType==="MARKET_LOT_SIZE");
     const notional=item.filters.find(x=>x.filterType==="MIN_NOTIONAL"||x.filterType==="NOTIONAL");
     const priceFilter=item.filters.find(x=>x.filterType==="PRICE_FILTER");
     const parsedMinNotional=Number(notional?.minNotional??notional?.notional);
-    return {symbol:item.symbol,status:item.status,baseAsset:item.baseAsset,quoteAsset:item.quoteAsset,minQty:lot?.minQty?Number(lot.minQty):undefined,maxQty:lot?.maxQty?Number(lot.maxQty):undefined,stepSize:lot?.stepSize?Number(lot.stepSize):undefined,tickSize:priceFilter?.stepSize?Number(priceFilter.stepSize):undefined,minNotional:Number.isFinite(parsedMinNotional)?parsedMinNotional:undefined};
+    const parsedMaxNotional=Number(notional?.maxNotional);
+    return {symbol:item.symbol,status:item.status,baseAsset:item.baseAsset,quoteAsset:item.quoteAsset,minQty:lot?.minQty?Number(lot.minQty):undefined,maxQty:lot?.maxQty?Number(lot.maxQty):undefined,stepSize:lot?.stepSize?Number(lot.stepSize):undefined,marketMinQty:marketLot?.minQty?Number(marketLot.minQty):undefined,marketMaxQty:marketLot?.maxQty?Number(marketLot.maxQty):undefined,marketStepSize:marketLot?.stepSize?Number(marketLot.stepSize):undefined,tickSize:priceFilter?.stepSize?Number(priceFilter.stepSize):undefined,minNotional:Number.isFinite(parsedMinNotional)?parsedMinNotional:undefined,maxNotional:Number.isFinite(parsedMaxNotional)?parsedMaxNotional:undefined};
   }
 
   async accountInfo(): Promise<unknown> {
