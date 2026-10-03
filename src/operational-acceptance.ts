@@ -26,7 +26,11 @@ export async function runOperationalAcceptance(
 ):Promise<OperationalAcceptanceResult>{
   const strict=options.requireLiveProviders??process.env.LAYANX_OPERATIONAL_REQUIRE_LIVE_PROVIDERS==="true";
   const readiness=await runReadinessGate(runtime);
-  const checks=[...readiness.checks];
+  const checks=readiness.checks.map(check=>{
+    if(!strict&&(check.id==="provider-health"||check.id==="runtime-health"))
+      return{...check,blocking:false};
+    return{...check};
+  });
 
   const tools=runtime.core.tools.list();
   const models=runtime.models.list();
