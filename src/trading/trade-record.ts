@@ -26,6 +26,7 @@ export interface TradeAnalysis extends ExecutionQualityResult {
   commission: number;
   swap: number;
   trueNetPnl: number;
+  metadata?: Record<string, string | number | boolean | null>;
 }
 
 export function analyzeTradeRecord(trade: TradeRecord): TradeAnalysis {
@@ -49,7 +50,8 @@ export function analyzeTradeRecord(trade: TradeRecord): TradeAnalysis {
     volatilityRegime: trade.volatilityRegime,
     commission,
     swap,
-    trueNetPnl: quality.netPnlAfterExecutionCosts - commission - swap
+    trueNetPnl: quality.netPnlAfterExecutionCosts - commission - swap,
+    metadata: trade.metadata
   };
 }
 
