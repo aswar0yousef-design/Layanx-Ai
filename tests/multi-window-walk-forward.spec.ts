@@ -22,8 +22,10 @@ const result = runMultiWindowWalkForward(candles, {
 assert.equal(result.windows.length, 2);
 assert.equal(result.windows[0].window.train.length, 40);
 assert.equal(result.windows[0].window.test.length, 30);
-assert.equal(result.pooledTest.initialBalance, 1000);
+assert.equal(result.pooledTest.aggregation, "pooled-trade-results");
 assert.equal(result.pooledTest.trades >= 0, true);
+assert.equal("finalBalance" in result.pooledTest, false);
+assert.equal("maxDrawdownPct" in result.pooledTest, false);
 
 const overlapWindows = createWalkForwardWindows(candles, 40, 30, 10);
 const overlap = summarizeWalkForwardWindows(overlapWindows);
