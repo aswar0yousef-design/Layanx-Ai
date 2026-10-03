@@ -66,3 +66,47 @@ export function normalizeMt5Timeframe(timeframe: string): string {
   if (!normalized) throw new Error("MT5 timeframe is required.");
   return normalized;
 }
+
+
+export function filterCompletedMt5Candles(
+  candles: MarketCandle[],
+  snapshotTimestamp: string,
+  timeframe: string,
+): MarketCandle[] {
+  const snapshotTime = Date.parse(snapshotTimestamp);
+  if (!Number.isFinite(snapshotTime)) throw new Error("MT5 snapshot timestamp is invalid.");
+  const intervalMs = mt5TimeframeIntervalMs(normalizeMt5Timeframe(timeframe));
+  if (!Array.isArray(candles) || candles.length === 0) throw new Error("MT5 returned no candles.");
+
+  const completed = candles[candles.length - 1] &&
+    Date.parse(candles[candles.length - 1].timestamp) + intervalMs > snapshotTime
+    ? candles.slice(0, -1)
+    : candles;
+
+  if (!completed.length) throw new Error("MT5 returned no completed candles.");
+
+  for (let index = 0; index < completed.length; index += 1) {
+    const candle = completed[index];
+    const time = Date.parse(candle.timestamp);
+    if (!Number.isFinite(time)) throw new Error("MT5 returned a candle with an invalid timestamp.");
+    if (![candle.open, candle.high, candle.low, candle.close].every(Number.isFinite)) {
+      throw new Error("MT5 returned a candle with non-finite OHLC values.");
+    }
+    if (candle.high < Math.max(candle.open, candle.close) || candle.low > Math.min(candle.open, candle.close) || candle.high < candle.low) {
+      throw new Error(`MT5 returned an invalid OHLC range at ${candle.timestamp}.`);
+    }
+    if (index > 0 && Date.parse(completed[index - 1].timestamp) >= time) {
+      throw new Error("MT5 candles must be strictly chronological with no duplicate timestamps.");
+    }
+  }
+
+  return completed;
+}
+
+function mt5TimeframeIntervalMs(timeframe: string): number {
+  const match = /^(M|H|D|W)(\d+)$/.exec(timeframe);
+  if (!match) throw new Error(`Unsupported MT5 timeframe: ${timeframe}`);
+  const value = Number(match[2]);
+  const unitMs = match[1] === "M" ? 60_000 : match[1] === "H" ? 3_600_000 : match[1] === "D" ? 86_400_000 : 604_800_000;
+  return value * unitMs;
+}
