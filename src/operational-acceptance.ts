@@ -47,13 +47,13 @@ export async function runOperationalAcceptance(
   });
   checks.push({
     id:"acceptance-runtime-contract",
-    ok=Boolean(runtime.core.isReady()&&tools.length>0&&models.length>0&&providers.length>0),
+    ok:Boolean(runtime.core.isReady()&&tools.length>0&&models.length>0&&providers.length>0),
     blocking:true,
     detail:"Core, tools, models and providers are all present."
   });
   checks.push({
     id:"acceptance-no-duplicate-registration",
-    ok=duplicateTools.length===0&&duplicateModels.length===0&&duplicateProviders.length===0,
+    ok:duplicateTools.length===0&&duplicateModels.length===0&&duplicateProviders.length===0,
     blocking:true,
     detail:"No duplicate registration exists across tools, models or providers."
   });
