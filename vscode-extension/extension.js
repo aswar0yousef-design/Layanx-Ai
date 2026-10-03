@@ -8,6 +8,7 @@ function activate(context) {
     vscode.window.registerWebviewViewProvider("layanx.agent", provider),
     vscode.commands.registerCommand("layanx.openAgent", () => provider.reveal()),
     vscode.commands.registerCommand("layanx.runGoal", () => runGoal(context)),
+    vscode.commands.registerCommand("layanx.buildProject", () => buildProject(context)),
     vscode.commands.registerCommand("layanx.explainSelection", () => runSelectionGoal(context, "Explain the selected code clearly, including risks and concrete improvement suggestions.")),
     vscode.commands.registerCommand("layanx.fixSelection", () => runSelectionGoal(context, "Inspect the selected code, identify the root cause of the problem, and fix it in the workspace. Verify the change with appropriate tests or checks.")),
     vscode.commands.registerCommand("layanx.health", () => healthCheck(context)),
@@ -33,9 +34,23 @@ class AgentViewProvider {
     view.webview.onDidReceiveMessage(async (message) => {
       if (message.command === "run") {
         await executeInteractiveGoal(this.context, String(message.goal || ""), (update) => view.webview.postMessage(update));
+      } else if (message.command === "build") {
+        const goal = String(message.goal || "").trim();
+        if (goal) await executeInteractiveGoal(this.context, [
+          "Act as the project builder and repair agent.",
+          "Inspect the workspace, plan changes, implement the requested application, install required dependencies with existing project tools, run applicable tests/typecheck/build checks, repair failures, and verify final state.",
+          "Preserve unrelated work and do not bypass LayanX permissions or approvals.",
+          "",
+          goal
+        ].join("\n"), (update) => view.webview.postMessage(update));
       } else if (message.command === "approve") {
-        const result = await resumeApprovedGoal(this.context, message.missionId, Number(message.toolIndex), String(message.approvalId || ""), String(message.projectId || ""));
+        await resumeApprovedGoal(this.context, String(message.missionId || ""), Number(message.toolIndex), String(message.approvalId || ""), String(message.projectId || ""), (update) => view.webview.postMessage(update));
+      } else if (message.command === "cancel") {
+        const result = await cancelMission(this.context, String(message.missionId || ""), String(message.projectId || ""));
         view.webview.postMessage({ command: "result", ...result });
+      } else if (message.command === "repair") {
+        const result = await repairMission(this.context, String(message.missionId || ""), String(message.projectId || ""));
+        view.webview.postMessage({ command: "result", ...result, repair: true });
       } else if (message.command === "health") {
         const result = await request(this.context, "/v1/health", "GET");
         view.webview.postMessage({ command: "health", ...result });
@@ -43,6 +58,33 @@ class AgentViewProvider {
     });
   }
   reveal() { if (this.view) this.view.show?.(true); }
+}
+
+async function buildProject(context) {
+  const goal = await vscode.window.showInputBox({
+    title: "LayanX Project Builder",
+    prompt: "Describe the application you want LayanX to build in the current workspace.",
+    placeHolder: "Build an app, install dependencies, test it, repair failures, and verify it.",
+    ignoreFocusOut: true
+  });
+  if (!goal?.trim()) return;
+  const structured = [
+    "Act as the project builder and repair agent for the current workspace.",
+    "Inspect the existing workspace before changing files and preserve unrelated work.",
+    "Plan the implementation before modifying files.",
+    "Use existing LayanX workspace/bootstrap tools for project setup and dependencies.",
+    "Run applicable test, typecheck, and build verification after implementation.",
+    "If verification fails, diagnose the root cause, repair the workspace, and rerun verification.",
+    "Do not report completion until final verification passes or an explicit blocker/approval is reached.",
+    "",
+    "Application request:",
+    goal.trim()
+  ].join("\n");
+  const result = await executeInteractiveGoal(context, structured, (update) => {
+    if (update.command === "approval") vscode.window.showWarningMessage("LayanX Project Builder is waiting for approval.");
+  });
+  if (result.ok) vscode.window.showInformationMessage(result.completed ? "LayanX Project Builder completed and verified the project." : "LayanX Project Builder paused; approval or repair may be required.");
+  else vscode.window.showErrorMessage("LayanX Project Builder: " + result.error);
 }
 
 async function runGoal(context) {
@@ -92,10 +134,15 @@ async function executeInteractiveGoal(context, goal, onUpdate) {
   if (!created.ok || !created.mission?.id) return created;
   const missionId = created.mission.id;
   onUpdate?.({command:"mission",missionId,projectId,status:"running"});
+  return executeMissionLoop(context, missionId, projectId, {}, onUpdate);
+}
+
+async function executeMissionLoop(context, missionId, projectId, approvalIds, onUpdate) {
+  const config = vscode.workspace.getConfiguration("layanx");
   let after = "";
   let loopResult;
   const loopPromise = request(context, "/v1/missions/" + encodeURIComponent(missionId) + "/agent-loop", "POST", {
-    projectId, maxSteps: clamp(Number(config.get("maxSteps", 10)), 1, 25), agentId:"core", approvalIds:{}
+    projectId, maxSteps: clamp(Number(config.get("maxSteps", 10)), 1, 25), agentId:"core", approvalIds
   });
   while (true) {
     const events = await request(context, "/v1/missions/" + encodeURIComponent(missionId) + "/events?projectId=" + encodeURIComponent(projectId) + (after ? "&after=" + encodeURIComponent(after) : ""), "GET");
@@ -106,21 +153,26 @@ async function executeInteractiveGoal(context, goal, onUpdate) {
     if (settled.done) { loopResult = settled.value; break; }
   }
   const result = loopResult || {ok:false,error:"Agent loop ended without a result."};
-  if (result.ok && result.paused) {
-    onUpdate?.({command:"approval",missionId,projectId,toolIndex:result.nextToolIndex,approvalId:result.approvalId});
-  } else {
-    onUpdate?.({command:"result",...result});
-  }
+  if (result.ok && result.paused) onUpdate?.({command:"approval",missionId,projectId,toolIndex:result.nextToolIndex,approvalId:result.approvalId});
+  else onUpdate?.({command:"result",...result});
   return result;
 }
 
-async function resumeApprovedGoal(context, missionId, toolIndex, approvalId, projectId) {
+async function resumeApprovedGoal(context, missionId, toolIndex, approvalId, projectId, onUpdate) {
   if (!missionId || !projectId || !approvalId || !Number.isInteger(toolIndex)) return {ok:false,error:"Approval resume data is incomplete."};
-  const config = vscode.workspace.getConfiguration("layanx");
-  const result = await request(context, "/v1/missions/" + encodeURIComponent(missionId) + "/agent-loop", "POST", {
-    projectId, maxSteps: clamp(Number(config.get("maxSteps", 10)), 1, 25), agentId:"core", approvalIds:{[toolIndex]:approvalId}
+  return executeMissionLoop(context, missionId, projectId, {[toolIndex]:approvalId}, onUpdate);
+}
+
+async function cancelMission(context, missionId, projectId) {
+  if (!missionId || !projectId) return {ok:false,error:"Mission cancellation data is incomplete."};
+  return request(context, "/v1/missions/" + encodeURIComponent(missionId) + "/cancel", "POST", {projectId});
+}
+
+async function repairMission(context, missionId, projectId) {
+  if (!missionId || !projectId) return {ok:false,error:"Mission repair data is incomplete."};
+  return request(context, "/v1/missions/" + encodeURIComponent(missionId) + "/repair", "POST", {
+    projectId, maxRepairAttempts: 3, agentId:"core"
   });
-  return result;
 }
 
 async function executeGoal(context, goal) {
@@ -229,15 +281,20 @@ function renderHtml() {
     "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'\">",
     "<style>body{font-family:var(--vscode-font-family);padding:10px}h3{margin:0 0 10px}textarea{width:100%;min-height:110px;box-sizing:border-box;resize:vertical}button{width:100%;margin-top:8px;padding:7px}#result{white-space:pre-wrap;margin-top:12px}.small{opacity:.75;font-size:11px}</style>",
     "</head><body><h3>LayanX Agent</h3>",
-    "<div class=\"small\">Same LayanX Agent Gateway, tools, permissions, approvals and verification.</div>",
-    "<textarea id=\"goal\" placeholder=\"Tell LayanX what to do in this project...\"></textarea>",
-    "<button id=\"run\">Run with LayanX</button><button id=\"approve\" style=\"display:none\">Approve and Continue</button><button id=\"health\">Health Check</button>",
+    "<div class=\"small\">Local-first agent with live mission progress, approvals, repair and verification.</div>",
+    "<textarea id=\"goal\" placeholder=\"Tell LayanX what to build, fix, test or verify...\"></textarea>",
+    "<button id=\"run\">Run with LayanX</button><button id=\"build\">Build / Repair Project</button><button id=\"approve\" style=\"display:none\">Approve and Continue</button><button id=\"repair\" style=\"display:none\">Run Repair</button><button id=\"cancel\" style=\"display:none\">Cancel Mission</button><button id=\"health\">Health Check</button>",
     "<div id=\"result\"></div>",
     "<script nonce=\"" + nonce + "\">",
-    "const vscode=acquireVsCodeApi();const goal=document.getElementById(\"goal\");const result=document.getElementById(\"result\");",
-    "document.getElementById(\"run\").addEventListener(\"click\",()=>{result.textContent=\"Running...\";vscode.postMessage({command:\"run\",goal:goal.value});});",
-    "document.getElementById(\"health\").addEventListener(\"click\",()=>{result.textContent=\"Checking...\";vscode.postMessage({command:\"health\"});});",
-    "window.addEventListener(\"message\",event=>{const m=event.data;if(m.command===\"result\")result.textContent=m.ok?(m.completed?\"Completed.\\n\\n\":\"Paused.\\n\\n\")+JSON.stringify(m,null,2):\"Error: \"+m.error;if(m.command===\"health\")result.textContent=m.ok?JSON.stringify(m,null,2):\"Error: \"+m.error;});",
+    "const vscode=acquireVsCodeApi();const goal=document.getElementById(\"goal\");const result=document.getElementById(\"result\");const approve=document.getElementById(\"approve\");const repair=document.getElementById(\"repair\");const cancel=document.getElementById(\"cancel\");let state={};",
+    "function show(m){if(m.missionId)state={...state,...m};if(m.command===\"mission\"){state=m;result.textContent=\"Mission \"+m.missionId+\" started.\\n\";}if(m.command===\"event\"){result.textContent+=\"\\n[\"+(m.event.type||\"event\")+\" ] \"+JSON.stringify(m.event.data||m.event);result.scrollTop=result.scrollHeight;}if(m.command===\"approval\"){state={...state,...m};approve.style.display=\"block\";repair.style.display=\"none\";cancel.style.display=\"block\";result.textContent+=\"\\nApproval required for tool #\"+m.toolIndex+\".\";}if(m.command===\"result\"){approve.style.display=\"none\";cancel.style.display=\"none\";repair.style.display=(m.ok===false||m.completed===false)?\"block\":\"none\";result.textContent+=\"\\n\"+(m.ok?(m.completed?\"Completed.\":\"Paused/blocked.\"):\"Error: \"+m.error)+\"\\n\"+JSON.stringify(m,null,2);result.scrollTop=result.scrollHeight;}if(m.command===\"health\"){result.textContent=m.ok?JSON.stringify(m,null,2):\"Error: \"+m.error;}}",
+    "document.getElementById(\"run\").addEventListener(\"click\",()=>{approve.style.display=\"none\";repair.style.display=\"none\";cancel.style.display=\"none\";result.textContent=\"Starting mission...\\";vscode.postMessage({command:\"run\",goal:goal.value});});",
+    "document.getElementById(\"build\").addEventListener(\"click\",()=>{approve.style.display=\"none\";repair.style.display=\"none\";cancel.style.display=\"none\";result.textContent=\"Starting project builder...\\";vscode.postMessage({command:\"build\",goal:goal.value});});",
+    "approve.addEventListener(\"click\",()=>{approve.style.display=\"none\";result.textContent+=\"\\nResuming approved mission...\";vscode.postMessage({command:\"approve\",...state});});",
+    "repair.addEventListener(\"click\",()=>{repair.style.display=\"none\";result.textContent+=\"\\nStarting repair loop...\";vscode.postMessage({command:\"repair\",...state});});",
+    "cancel.addEventListener(\"click\",()=>{cancel.style.display=\"none\";vscode.postMessage({command:\"cancel\",...state});});",
+    "document.getElementById(\"health\").addEventListener(\"click\",()=>{result.textContent=\"Checking...\\";vscode.postMessage({command:\"health\"});});",
+    "window.addEventListener(\"message\",event=>show(event.data));",
     "</script></body></html>"
   ];
   return html.join("");

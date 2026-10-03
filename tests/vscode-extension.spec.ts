@@ -17,7 +17,7 @@ const manifest=JSON.parse(readFileSync(manifestPath,"utf8")) as {
 assert.equal(manifest.main,"./extension.js");
 assert.ok(manifest.engines.vscode);
 const commands=manifest.contributes.commands.map(item=>item.command);
-for(const command of ["layanx.openAgent","layanx.runGoal","layanx.explainSelection","layanx.fixSelection","layanx.health","layanx.startRuntime","layanx.setApiToken"]){
+for(const command of ["layanx.openAgent","layanx.runGoal","layanx.buildProject","layanx.explainSelection","layanx.fixSelection","layanx.health","layanx.startRuntime","layanx.setApiToken"]){
   assert.ok(commands.includes(command),`Missing VS Code command: ${command}`);
 }
 assert.ok(manifest.contributes.configuration.properties["layanx.apiBaseUrl"]);
@@ -39,3 +39,13 @@ assert.match(source,/approvalIds/);
 assert.match(source,/Approve and Continue/);
 assert.match(source,/nextToolIndex/);
 console.log("VS Code live mission workflow checks passed.");
+
+assert.match(source,/Build \/ Repair Project/);
+assert.match(source,//v1\/missions\//);
+assert.match(source,//cancel/);
+assert.match(source,//repair/);
+assert.match(source,/function executeMissionLoop/);
+assert.match(source,/function repairMission/);
+assert.match(source,/function cancelMission/);
+assert.match(source,/preserve unrelated work/);
+console.log("VS Code builder, repair, cancellation and resumable execution checks passed.");
