@@ -41,17 +41,17 @@ function percentile(sorted: number[], p: number): number | undefined {
   const index = (sorted.length - 1) * p;
   const lower = Math.floor(index);
   const upper = Math.ceil(index);
-  if (lower === upper) return sorted[lower];
-  return sorted[lower] + (sorted[upper] - sorted[lower]) * (index - lower);
+  if (lower === upper) return sorted[lower]!;
+  return sorted[lower]! + (sorted[upper]! - sorted[lower]!) * (index - lower);
 }
 
 function summary(values: number[]) {
   if (!values.length) return undefined;
   const sorted = [...values].sort((a, b) => a - b);
   return {
-    min: sorted[0],
+    min: sorted[0]!,
     median: percentile(sorted, 0.5)!,
-    max: sorted[sorted.length - 1],
+    max: sorted[sorted.length - 1]!,
     average: values.reduce((sum, value) => sum + value, 0) / values.length,
     p95: percentile(sorted, 0.95)!,
   };
@@ -67,7 +67,7 @@ export function diagnoseMarketData(
   const timestamps = candles.map(c => Date.parse(c.timestamp));
   const intervals: number[] = [];
   for (let i = 1; i < timestamps.length; i += 1) {
-    const delta = timestamps[i] - timestamps[i - 1];
+    const delta = timestamps[i]! - timestamps[i - 1]!;
     if (delta > 0) intervals.push(delta);
   }
 
