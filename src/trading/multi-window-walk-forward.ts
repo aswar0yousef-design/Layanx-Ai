@@ -23,9 +23,12 @@ export function runMultiWindowWalkForward(
   stepSize = testSize,
 ): MultiWindowWalkForwardResult {
   const windows = createWalkForwardWindows(candles, trainSize, testSize, stepSize);
+  const testAnalyses = [];
+
   const results = windows.map(window => {
     const train = runPaperScalping(window.train, config);
     const test = runPaperScalping(window.test, config);
+    testAnalyses.push(...test.analyses);
     return {
       window,
       train: buildBacktestReport(train.initialBalance, train.analyses),
@@ -33,13 +36,8 @@ export function runMultiWindowWalkForward(
     };
   });
 
-  const allTestAnalyses = results.flatMap(result => {
-    const simulation = runPaperScalping(result.window.test, config);
-    return simulation.analyses;
-  });
-
   return {
     windows: results,
-    aggregateTest: buildBacktestReport(config.initialBalance, allTestAnalyses),
+    aggregateTest: buildBacktestReport(config.initialBalance, testAnalyses),
   };
 }
