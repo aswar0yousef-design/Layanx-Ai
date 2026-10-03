@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { BinanceSpotClient } from "../src/trading/binance-spot-client.js";
-import { registerBinanceMarketDataTool, BINANCE_MARKET_DATA_TOOL } from "../src/trading/agent-integration.js";
+import { createBinanceLiveOrderToolAdapter, registerBinanceMarketDataTool, BINANCE_MARKET_DATA_TOOL } from "../src/trading/agent-integration.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { ToolAdapterRegistry } from "../src/tools/adapters.js";
 
@@ -52,3 +52,48 @@ console.log("binance-market-data-adapter: ok");
   } finally { globalThis.fetch = originalFetch; }
 }
 console.log("binance-production-order-client: ok");
+
+
+{
+  const originalFlag = process.env.BINANCE_LIVE_TRADING_ENABLED;
+  const originalMax = process.env.BINANCE_MAX_ORDER_NOTIONAL;
+  const originalBase = process.env.BINANCE_BASE_URL;
+  const originalFetch = globalThis.fetch;
+  process.env.BINANCE_LIVE_TRADING_ENABLED = "true";
+  process.env.BINANCE_MAX_ORDER_NOTIONAL = "200";
+  process.env.BINANCE_BASE_URL = "https://api.binance.com";
+  const calls: Array<{ method: string; url: string }> = [];
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    calls.push({ method: String(init?.method ?? "GET"), url });
+    if (url.includes("/ticker/24hr")) {
+      return new Response(JSON.stringify({symbol:"BTCUSDT",bidPrice:"100",askPrice:"101",lastPrice:"100.5",closeTime:123}), {status:200});
+    }
+    if (url.includes("/exchangeInfo")) {
+      return new Response(JSON.stringify({symbols:[{symbol:"BTCUSDT",status:"TRADING",baseAsset:"BTC",quoteAsset:"USDT",filters:[{filterType:"LOT_SIZE",minQty:"0.001",maxQty:"100",stepSize:"0.001"},{filterType:"MIN_NOTIONAL",minNotional:"5"}]}]}), {status:200});
+    }
+    return new Response(JSON.stringify({orderId:43,clientOrderId:"runtime-id",status:"NEW"}), {status:200});
+  }) as typeof fetch;
+  try {
+    const adapter = createBinanceLiveOrderToolAdapter(async () => ({apiKey:"test-key",apiSecret:"test-secret"}));
+    const result = await adapter.execute({
+      missionId:"m",
+      agentId:"a",
+      tool:"trading.binance.order",
+      action:"place-order",
+      permission:"L4_EXECUTE",
+      idempotencyKey:"runtime-id",
+      payload:{symbol:"BTCUSDT",side:"BUY",type:"MARKET",quantity:0.001},
+    } as any);
+    assert.equal((result as any).submitted, true);
+    assert.equal((result as any).preflight.notional, 0.101);
+    assert.equal(calls.some(call => call.method === "POST" && call.url.includes("/api/v3/order?")), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalFlag === undefined) delete process.env.BINANCE_LIVE_TRADING_ENABLED; else process.env.BINANCE_LIVE_TRADING_ENABLED = originalFlag;
+    if (originalMax === undefined) delete process.env.BINANCE_MAX_ORDER_NOTIONAL; else process.env.BINANCE_MAX_ORDER_NOTIONAL = originalMax;
+    if (originalBase === undefined) delete process.env.BINANCE_BASE_URL; else process.env.BINANCE_BASE_URL = originalBase;
+  }
+}
+
+console.log("binance-live-adapter-preflight: ok");
