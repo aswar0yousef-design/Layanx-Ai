@@ -1,5 +1,6 @@
 import type { TradeSide } from "./execution-quality.js";
 import type { MarketCandle } from "./scalping-signal.js";
+import { generateScalpingSignal } from "./scalping-signal.js";
 import { analyzeTradeRecord, type TradeRecord } from "./trade-record.js";
 import { evaluateScalpingDecision } from "./scalping-decision.js";
 
@@ -54,8 +55,8 @@ export function runPaperScalping(
   candles: MarketCandle[],
   config: PaperTradingConfig,
 ): PaperTradingResult {
-  if (candles.length < 3) {
-    throw new Error("At least 3 candles are required.");
+  if (candles.length < 31) {
+    throw new Error("At least 31 candles are required.");
   }
   if (config.initialBalance <= 0 || config.riskPercent <= 0) {
     throw new Error("Initial balance and risk percent must be positive.");
@@ -97,6 +98,14 @@ export function runPaperScalping(
       continue;
     }
 
+    const signal = generateScalpingSignal(history);
+    if (signal.action === "neutral") {
+      blockedSignals += 1;
+      continue;
+    }
+
+    const entry = candle.close;
+    const stop = stopPrice(signal.action, entry, config.stopLossDistance);
     const decision = evaluateScalpingDecision({
       candles: history,
       market: {
@@ -104,11 +113,11 @@ export function runPaperScalping(
         timeframe: config.timeframe,
         spread: config.spread,
         expectedSlippage: config.expectedSlippage,
-        atr: undefined,
+        atr: signal.indicators.atr,
         timestamp: candle.timestamp,
       },
       risk: {
-        stopLossPrice: candle.close - config.stopLossDistance,
+        stopLossPrice: stop,
         accountBalance: balance,
         riskPercent: config.riskPercent,
         pointValue: config.pointValue,
@@ -118,13 +127,11 @@ export function runPaperScalping(
       },
     });
 
-    if (!decision.executable) {
+    if (!decision.executable || decision.action !== signal.action) {
       blockedSignals += 1;
       continue;
     }
 
-    const entry = candle.close;
-    const stop = stopPrice(decision.action, entry, config.stopLossDistance);
     const riskPlan = decision.riskPlan;
     if (!riskPlan.valid || riskPlan.quantity <= 0) {
       blockedSignals += 1;
