@@ -9,7 +9,8 @@ export class ModelProviderRegistry{
 export class ModelExecutionRouter{
  constructor(private readonly models:ModelRegistry,private readonly providers:ModelProviderRegistry,private readonly defaultRouting:ModelRoutingOptions={}){}
  async execute(request:ModelRequest):Promise<ModelExecutionResult>{
-  const routing={...this.defaultRouting,...(request.routing??{})};\n  const candidates=this.models.select({capability:request.capability,...routing});
+  const routing={...this.defaultRouting,...(request.routing??{})};
+  const candidates=this.models.select({capability:request.capability,...routing});
   const attempts:ModelExecutionAttempt[]=[];
   for(const model of candidates){
    let provider:ModelProviderAdapter;
