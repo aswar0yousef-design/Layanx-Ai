@@ -43,3 +43,16 @@ npm run trading:evaluate -- ./data/XAUUSD.csv
 ```
 
 The evaluator sorts bars chronologically, optimizes the registered scalp strategy, performs out-of-sample walk-forward evaluation, and runs Monte Carlo on the resulting trade series. Execution costs can be supplied through the shared backtest/evaluation APIs. Historical data quality and broker-specific spread/execution conditions must be validated before using results for any trading decision.
+
+
+### XAUUSD evaluation controls
+
+The reproducible evaluator supports explicit execution-cost assumptions and UTC session filtering:
+
+```bash
+npm run trading:evaluate -- ./data/XAUUSD.csv --spread=0.20 --slippage=0.05 --commission=0 --session=all
+npm run trading:evaluate -- ./data/XAUUSD.csv --spread=0.20 --slippage=0.05 --commission=0 --session=london
+npm run trading:evaluate -- ./data/XAUUSD.csv --spread=0.20 --slippage=0.05 --commission=0 --session=new-york
+```
+
+It also reports duplicate timestamps, ordering, estimated bar interval, large gaps, and negative bid/ask spreads before evaluation. Long and short results are reported separately. Costs should be calibrated to the actual data source/broker rather than assumed to be zero.
