@@ -64,7 +64,6 @@ import {PullRequestGenerator} from "./pr-generator.js";
 import {ReleaseStateMachine} from "./release-state-machine.js";
 import {ReleaseManager} from "./release-manager.js";
 import {RuntimeTracer} from "./runtime-tracer.js";
-import {registerPaperTradingAgentTool,registerBinanceMarketDataTool,registerBinanceLiveOrderTool} from "../trading/agent-integration.js";
 import {SkillLearningEngine,type LearningTrace} from "../skills/learning.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
 import type {LiveScreenObserver} from "../desktop/live-screen.js";
@@ -162,9 +161,6 @@ export class LayanXCore{
     this.securityReview=new SecurityReviewAgent();
     this.prGenerator=new PullRequestGenerator();
     this.releaseManager=new ReleaseManager();
-    registerPaperTradingAgentTool(this.tools,this.toolAdapters);
-    registerBinanceMarketDataTool(this.tools,this.toolAdapters);
-    registerBinanceLiveOrderTool(this.tools,this.toolAdapters);
     this.restoreLearnedSkills();
   }
 
