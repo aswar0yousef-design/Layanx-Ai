@@ -14,7 +14,11 @@ await assert.rejects(
   liveGuard.placeOrder({symbol:"BTCUSDT",side:"BUY",type:"MARKET",quantity:0.001}),
   /Production Binance trading requires BINANCE_LIVE_TRADING_ENABLED=true/
 );
-console.log("binance-safety-boundary: ok");
+console.log("binance-safety-boundary: ok");\n
+assert.throws(() => new BinanceSpotClient({recvWindowMs:60001}), /between 1 and 60000/);
+assert.throws(() => new BinanceSpotClient({timeoutMs:0}), /timeoutMs must be positive/);
+console.log("binance-client-config-validation: ok");
+
 
 {
   const originalFetch = globalThis.fetch;
