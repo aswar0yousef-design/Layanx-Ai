@@ -89,7 +89,7 @@ export class ExecutionRuntime{
   this.core.ledger.append({id:crypto.randomUUID(),missionId:mission.id,agentId:request.agentId,action:request.action,status:result.ok?"completed":"failed",timestamp:new Date().toISOString(),detail:result.error});
   await this.persist(mission);
   if(!result.ok){
-   this.core.failureLearning.record({missionId:mission.id,projectId:security.projectId,error:result.error,tool:request.tool,action:request.action,recoverable:result.recoverable});
+   this.core.failureLearning.record({missionId:mission.id,projectId:security.projectId,error:result.error,tool:request.tool,action:request.action,recoverable:true});
    mission.status="failed";
    this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"failure",metadata:{error:result.error,missionId:mission.id}});
    await this.persist(mission);
