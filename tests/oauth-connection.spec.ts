@@ -1,0 +1,13 @@
+import assert from "node:assert/strict";
+import {createServer} from "node:http";
+import {OAuthConnectionCenter} from "../src/business/oauth.js";
+import {LocalSecretVault} from "../src/security/local-secret-vault.js";
+import {mkdtempSync,rmSync} from "node:fs";
+import {join} from "node:path";
+import {tmpdir} from "node:os";
+const dir=mkdtempSync(join(tmpdir(),"layanx-oauth-"));process.env.LAYANX_SECRET_VAULT_PATH=join(dir,"vault");process.env.LAYANX_SECRET_VAULT_KEY="oauth-test-master-key-123";
+const server=createServer(async(req,res)=>{if(req.url==="/token"){let body="";for await(const c of req)body+=c;const p=new URLSearchParams(body);assert.equal(p.get("code"),"test-code");res.setHeader("content-type","application/json");res.end(JSON.stringify({access_token:"ACCESS",refresh_token:"REFRESH",expires_in:3600,scope:"one two"}));return;}res.statusCode=404;res.end();});
+await new Promise<void>(resolve=>server.listen(0,"127.0.0.1",resolve));const port=(server.address() as any).port;
+process.env.LAYANX_TIKTOK_OAUTH_CLIENT_ID="client";process.env.LAYANX_TIKTOK_OAUTH_REDIRECT_URI="http://127.0.0.1/callback";process.env.LAYANX_TIKTOK_OAUTH_TOKEN_URL=`http://127.0.0.1:${port}/token`;process.env.LAYANX_TIKTOK_OAUTH_AUTHORIZE_URL="https://example.test/auth";
+const center=new OAuthConnectionCenter();const begin=center.begin("tiktok","acct");const u=new URL(begin.authorizationUrl);assert.equal(u.searchParams.get("response_type"),"code");assert.equal(u.searchParams.get("state"),begin.state);assert.equal(u.searchParams.get("code_challenge_method"),"S256");
+const connection=await center.callback(begin.state,"test-code","acct");assert.equal(center.token(connection),"ACCESS");assert.equal(connection.refreshTokenSecret!==undefined,true);assert.equal(new LocalSecretVault().get(connection.refreshTokenSecret!),"REFRESH");center.revoke(connection);assert.equal(center.token,center.token);await new Promise<void>(resolve=>server.close(()=>resolve()));rmSync(dir,{recursive:true,force:true});console.log("oauth connection center: ok");
