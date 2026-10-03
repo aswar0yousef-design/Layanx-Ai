@@ -34,11 +34,36 @@ function normalizeCandle(row: Record<string, unknown>): MarketCandle {
   const askOpenValue = row.askOpen ?? row.ask_open ?? row.open_ask;
   const bidOpen = bidOpenValue === undefined ? undefined : finiteNumber(bidOpenValue, "bidOpen");
   const askOpen = askOpenValue === undefined ? undefined : finiteNumber(askOpenValue, "askOpen");
+  const bidHigh = row.bidHigh === undefined && row.bid_high === undefined ? undefined : finiteNumber(row.bidHigh ?? row.bid_high, "bidHigh");
+  const bidLow = row.bidLow === undefined && row.bid_low === undefined ? undefined : finiteNumber(row.bidLow ?? row.bid_low, "bidLow");
+  const askHigh = row.askHigh === undefined && row.ask_high === undefined ? undefined : finiteNumber(row.askHigh ?? row.ask_low, "askHigh");
+  const askLow = row.askLow === undefined && row.ask_low === undefined ? undefined : finiteNumber(row.askLow ?? row.ask_low, "askLow");
   if ((bid !== undefined && bid <= 0) || (ask !== undefined && ask <= 0) || (bidOpen !== undefined && bidOpen <= 0) || (askOpen !== undefined && askOpen <= 0)) {
     throw new Error(`Bid and ask must be positive at ${timestamp}`);
   }
   if (bid !== undefined && ask !== undefined && ask < bid) {
     throw new Error(`Ask cannot be below bid at ${timestamp}`);
+  }
+  if ((bidHigh !== undefined && bidHigh <= 0) || (bidLow !== undefined && bidLow <= 0) || (askHigh !== undefined && askHigh <= 0) || (askLow !== undefined && askLow <= 0)) {
+    throw new Error(`Intrabar bid/ask extremes must be positive at ${timestamp}`);
+  }
+  if (bidHigh !== undefined && bidLow !== undefined && bidHigh < bidLow) {
+    throw new Error(`Bid high cannot be below bid low at ${timestamp}`);
+  }
+  if (askHigh !== undefined && askLow !== undefined && askHigh < askLow) {
+    throw new Error(`Ask high cannot be below ask low at ${timestamp}`);
+  }
+  if (bidOpen !== undefined && bidLow !== undefined && bidHigh !== undefined && (bidOpen < bidLow || bidOpen > bidHigh)) {
+    throw new Error(`Bid open must be inside bid range at ${timestamp}`);
+  }
+  if (askOpen !== undefined && askLow !== undefined && askHigh !== undefined && (askOpen < askLow || askOpen > askHigh)) {
+    throw new Error(`Ask open must be inside ask range at ${timestamp}`);
+  }
+  if (bidHigh !== undefined && askHigh !== undefined && askHigh < bidHigh) {
+    throw new Error(`Ask high cannot be below bid high at ${timestamp}`);
+  }
+  if (bidLow !== undefined && askLow !== undefined && askLow < bidLow) {
+    throw new Error(`Ask low cannot be below bid low at ${timestamp}`);
   }
   if (bidOpen !== undefined && askOpen !== undefined && askOpen < bidOpen) {
     throw new Error(`AskOpen cannot be below bidOpen at ${timestamp}`);
@@ -48,7 +73,7 @@ function normalizeCandle(row: Record<string, unknown>): MarketCandle {
     throw new Error(`Invalid OHLC range at ${timestamp}`);
   }
 
-  return { timestamp: new Date(timestamp).toISOString(), open, high, low, close, volume, bid, ask, bidOpen, askOpen };
+  return { timestamp: new Date(timestamp).toISOString(), open, high, low, close, volume, bid, ask, bidOpen, askOpen, bidHigh, bidLow, askHigh, askLow };
 }
 
 function parseCsvLine(line: string): string[] {
