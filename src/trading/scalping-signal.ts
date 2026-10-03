@@ -10,6 +10,11 @@ export interface MarketCandle {
   /** Optional quote captured at the candle open; used for next-candle execution modeling. */
   bidOpen?: number;
   askOpen?: number;
+  /** Optional intrabar bid/ask extremes for quote-aware stop/target simulation. */
+  bidHigh?: number;
+  bidLow?: number;
+  askHigh?: number;
+  askLow?: number;
 }
 
 export interface ScalpingSignalConfig {
