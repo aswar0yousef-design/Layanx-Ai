@@ -7,6 +7,7 @@ export interface BinanceClientConfig {
   recvWindowMs?: number;
   timeoutMs?: number;
   allowTrading?: boolean;
+  liveTradingEnabled?: boolean;
 }
 
 export interface BinanceMarketTicker {
@@ -55,6 +56,7 @@ export class BinanceSpotClient {
       recvWindowMs: config.recvWindowMs ?? 5000,
       timeoutMs: config.timeoutMs ?? 10000,
       allowTrading: config.allowTrading ?? false,
+      liveTradingEnabled: config.liveTradingEnabled ?? false,
       ...config,
     };
   }
@@ -106,11 +108,15 @@ export class BinanceSpotClient {
   }
 
   async placeOrder(request: BinanceOrderRequest): Promise<BinanceOrderResult> {
+    if (!request.symbol || !Number.isFinite(request.quantity) || request.quantity <= 0) throw new Error("Binance order quantity and symbol must be valid.");
+    if (request.type === "LIMIT" && (!Number.isFinite(request.price) || request.price! <= 0)) throw new Error("Limit orders require a positive price.");
     if (!this.config.allowTrading) throw new Error("Binance trading is disabled by safety boundary.");
     if (this.config.baseUrl.includes("testnet")) {
       const raw=await this.request<Record<string,unknown>>("/api/v3/order/test",{symbol:request.symbol,side:request.side,type:request.type,quantity:request.quantity,price:request.price,timeInForce:request.type==="LIMIT"?"GTC":undefined,newClientOrderId:request.clientOrderId},true);
       return {submitted:false,testnet:true,clientOrderId:request.clientOrderId,raw};
     }
-    throw new Error("Production Binance order submission is intentionally disabled. Use Spot Testnet first.");
+    if (!this.config.liveTradingEnabled) throw new Error("Production Binance trading requires BINANCE_LIVE_TRADING_ENABLED=true.");
+    const raw=await this.request<Record<string,unknown>>("/api/v3/order",{symbol:request.symbol,side:request.side,type:request.type,quantity:request.quantity,price:request.price,timeInForce:request.type==="LIMIT"?"GTC":undefined,newClientOrderId:request.clientOrderId},true);
+    return {submitted:true,testnet:false,orderId:typeof raw.orderId==="number"?raw.orderId:undefined,clientOrderId:typeof raw.clientOrderId==="string"?raw.clientOrderId:request.clientOrderId,status:typeof raw.status==="string"?raw.status:undefined,raw};
   }
 }
