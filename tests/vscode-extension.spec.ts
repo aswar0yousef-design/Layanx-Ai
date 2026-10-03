@@ -31,3 +31,11 @@ assert.match(source,/context\.secrets\.store/);
 assert.doesNotMatch(source,/apiToken["']\s*:/);
 
 console.log("VS Code extension manifest and entrypoint checks passed.");
+
+assert.match(source,/\/v1\/missions/);
+assert.match(source,/\/agent-loop/);
+assert.match(source,/\/events\?projectId=/);
+assert.match(source,/approvalIds/);
+assert.match(source,/Approve and Continue/);
+assert.match(source,/nextToolIndex/);
+console.log("VS Code live mission workflow checks passed.");

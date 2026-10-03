@@ -32,7 +32,9 @@ class AgentViewProvider {
     view.webview.html = renderHtml();
     view.webview.onDidReceiveMessage(async (message) => {
       if (message.command === "run") {
-        const result = await executeGoal(this.context, String(message.goal || ""));
+        await executeInteractiveGoal(this.context, String(message.goal || ""), (update) => view.webview.postMessage(update));
+      } else if (message.command === "approve") {
+        const result = await resumeApprovedGoal(this.context, message.missionId, Number(message.toolIndex), String(message.approvalId || ""), String(message.projectId || ""));
         view.webview.postMessage({ command: "result", ...result });
       } else if (message.command === "health") {
         const result = await request(this.context, "/v1/health", "GET");
@@ -51,7 +53,7 @@ async function runGoal(context) {
     ignoreFocusOut: true
   });
   if (!goal?.trim()) return;
-  const result = await executeGoal(context, goal.trim());
+  const result = await executeInteractiveGoal(context, goal.trim(), (update) => { if (update.command === "approval") vscode.window.showWarningMessage("LayanX is waiting for approval."); });
   if (result.ok) vscode.window.showInformationMessage(result.completed ? "LayanX completed the goal." : "LayanX paused; inspect the result for required approval.");
   else vscode.window.showErrorMessage("LayanX: " + result.error);
 }
@@ -76,6 +78,49 @@ async function runSelectionGoal(context, instruction) {
   const result = await executeGoal(context, goal);
   if (result.ok) vscode.window.showInformationMessage(result.completed ? "LayanX completed the selection task." : "LayanX paused for approval.");
   else vscode.window.showErrorMessage("LayanX: " + result.error);
+}
+
+async function executeInteractiveGoal(context, goal, onUpdate) {
+  if (!goal.trim()) return { ok: false, error: "Goal is required." };
+  const config = vscode.workspace.getConfiguration("layanx");
+  const projectId = getProjectId(config);
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "";
+  const enrichedGoal = [goal.trim(), "", "VS Code context:", "- Project ID: " + projectId, "- Workspace: " + workspacePath,
+    "- The request originated inside VS Code.", "- Use existing LayanX tools, permissions and approvals; do not bypass them.",
+    "- Change only the current project workspace and verify before reporting completion."].join("\n");
+  const created = await request(context, "/v1/missions", "POST", {goal: enrichedGoal, projectId});
+  if (!created.ok || !created.mission?.id) return created;
+  const missionId = created.mission.id;
+  onUpdate?.({command:"mission",missionId,projectId,status:"running"});
+  let after = "";
+  let loopResult;
+  const loopPromise = request(context, "/v1/missions/" + encodeURIComponent(missionId) + "/agent-loop", "POST", {
+    projectId, maxSteps: clamp(Number(config.get("maxSteps", 10)), 1, 25), agentId:"core", approvalIds:{}
+  });
+  while (true) {
+    const events = await request(context, "/v1/missions/" + encodeURIComponent(missionId) + "/events?projectId=" + encodeURIComponent(projectId) + (after ? "&after=" + encodeURIComponent(after) : ""), "GET");
+    if (events.ok && Array.isArray(events.events)) {
+      for (const event of events.events) { onUpdate?.({command:"event",event}); after = event.id || after; }
+    }
+    const settled = await Promise.race([loopPromise.then(value => ({done:true,value})), new Promise(resolve => setTimeout(() => resolve({done:false}), 700))]);
+    if (settled.done) { loopResult = settled.value; break; }
+  }
+  const result = loopResult || {ok:false,error:"Agent loop ended without a result."};
+  if (result.ok && result.paused) {
+    onUpdate?.({command:"approval",missionId,projectId,toolIndex:result.nextToolIndex,approvalId:result.approvalId});
+  } else {
+    onUpdate?.({command:"result",...result});
+  }
+  return result;
+}
+
+async function resumeApprovedGoal(context, missionId, toolIndex, approvalId, projectId) {
+  if (!missionId || !projectId || !approvalId || !Number.isInteger(toolIndex)) return {ok:false,error:"Approval resume data is incomplete."};
+  const config = vscode.workspace.getConfiguration("layanx");
+  const result = await request(context, "/v1/missions/" + encodeURIComponent(missionId) + "/agent-loop", "POST", {
+    projectId, maxSteps: clamp(Number(config.get("maxSteps", 10)), 1, 25), agentId:"core", approvalIds:{[toolIndex]:approvalId}
+  });
+  return result;
 }
 
 async function executeGoal(context, goal) {
@@ -186,7 +231,7 @@ function renderHtml() {
     "</head><body><h3>LayanX Agent</h3>",
     "<div class=\"small\">Same LayanX Agent Gateway, tools, permissions, approvals and verification.</div>",
     "<textarea id=\"goal\" placeholder=\"Tell LayanX what to do in this project...\"></textarea>",
-    "<button id=\"run\">Run with LayanX</button><button id=\"health\">Health Check</button>",
+    "<button id=\"run\">Run with LayanX</button><button id=\"approve\" style=\"display:none\">Approve and Continue</button><button id=\"health\">Health Check</button>",
     "<div id=\"result\"></div>",
     "<script nonce=\"" + nonce + "\">",
     "const vscode=acquireVsCodeApi();const goal=document.getElementById(\"goal\");const result=document.getElementById(\"result\");",
