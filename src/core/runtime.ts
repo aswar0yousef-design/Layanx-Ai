@@ -44,7 +44,7 @@ export class ExecutionRuntime{
    if(["high","critical"].includes(impact.impact.risk)&&!approvalId)
     return this.block(mission,request,"Explicit approval is required for this change impact risk level.");
   }
-  this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:risk.requiresApproval?"denied":"allowed",metadata:{risk:risk.level,missionId:mission.id}});
+  this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:risk.requiresApproval?"pending_approval":"allowed",metadata:{risk:risk.level,missionId:mission.id}});
   if(rank[request.permission]>rank[mission.requiredPermission])return this.block(mission,request,"Requested permission exceeds mission scope.");
   if(rank[request.permission]>rank[contract.requiredPermission])return this.block(mission,request,"Requested permission exceeds agent scope.");
   const toolDefinition=this.core.tools.get(request.tool);
