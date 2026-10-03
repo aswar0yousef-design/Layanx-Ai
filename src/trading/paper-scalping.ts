@@ -76,27 +76,44 @@ function exitPrice(
   candle: MarketCandle,
   spread: number,
   slippage: number,
-): { price: number; reason: "stop-loss" | "take-profit" | "trailing-stop" } | null {
-  const bid = candle.close - spread / 2;
-  const ask = candle.close + spread / 2;
-
+): { price: number; referencePrice: number; reason: "stop-loss" | "take-profit" | "trailing-stop" } | null {
   if (trade.side === "long") {
     if (candle.low <= trade.stopLossPrice) {
-      return { price: trade.stopLossPrice - slippage, reason: "stop-loss" };
+      const referencePrice = trade.stopLossPrice;
+      return {
+        price: referencePrice - spread / 2 - slippage,
+        referencePrice,
+        reason: "stop-loss",
+      };
     }
     if (trade.takeProfitPrice !== undefined && candle.high >= trade.takeProfitPrice) {
-      return { price: trade.takeProfitPrice - slippage, reason: "take-profit" };
+      const referencePrice = trade.takeProfitPrice;
+      return {
+        price: referencePrice - spread / 2 - slippage,
+        referencePrice,
+        reason: "take-profit",
+      };
     }
-    return bid < trade.entryPrice ? null : null;
+    return null;
   }
 
   if (candle.high >= trade.stopLossPrice) {
-    return { price: trade.stopLossPrice + slippage, reason: "stop-loss" };
+    const referencePrice = trade.stopLossPrice;
+    return {
+      price: referencePrice + spread / 2 + slippage,
+      referencePrice,
+      reason: "stop-loss",
+    };
   }
   if (trade.takeProfitPrice !== undefined && candle.low <= trade.takeProfitPrice) {
-    return { price: trade.takeProfitPrice + slippage, reason: "take-profit" };
+    const referencePrice = trade.takeProfitPrice;
+    return {
+      price: referencePrice + spread / 2 + slippage,
+      referencePrice,
+      reason: "take-profit",
+    };
   }
-  return ask > trade.entryPrice ? null : null;
+  return null;
 }
 
 function updateTrailingStop(trade: PaperTrade, candle: MarketCandle, distance?: number): void {
@@ -159,7 +176,7 @@ export function runPaperScalping(
           },
           exit: {
             fillPrice: exit.price,
-            referencePrice: exit.price,
+            referencePrice: exit.referencePrice,
             spread,
             slippage,
           },
