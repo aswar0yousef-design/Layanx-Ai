@@ -9,7 +9,7 @@ export function optimizeStrategy(candles:Candle[],factory:(parameters:Record<str
  const keys=Object.keys(grid);const combinations:Record<string,number>[]=[];
  const build=(i:number,current:Record<string,number>)=>{if(i===keys.length){combinations.push({...current});return;}for(const value of grid[keys[i]]??[]){current[keys[i]]=value;build(i+1,current);}};
  build(0,{});
- return combinations.map(parameters=>{const strategy=factory(parameters);return{strategy,parameters,result:backtest(strategy,candles,startingEquity,riskFraction,costs);}}).sort((a,b)=>b.result.expectancy-a.result.expectancy);
+ return combinations.map(parameters=>{const strategy=factory(parameters);return{strategy,parameters,result:backtest(strategy,candles,startingEquity,riskFraction,costs)}}).sort((a,b)=>b.result.expectancy-a.result.expectancy);
 }
 
 export function walkForward(candles:Candle[],factory:(parameters:Record<string,number>)=>TradingStrategy,grid:Record<string,number[]>,trainBars:number,testBars:number,startingEquity=100000,riskFraction=0.002,costs:BacktestCosts={}):WalkForwardResult{
