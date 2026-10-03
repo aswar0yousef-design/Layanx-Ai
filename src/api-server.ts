@@ -112,10 +112,11 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   }
   if(request.method==="POST"&&request.url?.match(/^\/v1\/approvals\/[^/]+\/(approve|revoke)$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
-   const parts=request.url.split("/");
+   const parsedApprovalUrl=new URL(request.url,"http://localhost");
+   const parts=parsedApprovalUrl.pathname.split("/");
    const approvalId=parts[3] as string;
    const action=parts[4] as string;
-   const projectId=new URL(request.url,"http://localhost").searchParams.get("projectId")?.trim()??"";
+   const projectId=parsedApprovalUrl.searchParams.get("projectId")?.trim()??"";
    if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
    try{
     const approval=options.core.executionRuntime.approvals.get(approvalId);
