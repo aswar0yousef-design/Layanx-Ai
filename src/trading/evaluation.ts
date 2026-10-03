@@ -39,3 +39,8 @@ export function monteCarlo(trades:{pnl:number}[],runs=1000):MonteCarloResult{
  returns.sort((a,b)=>a-b);drawdowns.sort((a,b)=>a-b);const q=(values:number[],p:number)=>values.length?values[Math.min(values.length-1,Math.floor((values.length-1)*p))]??0:0;
  const mean=returns.length?returns.reduce((s,v)=>s+v,0)/returns.length:0;const worst=drawdowns.length?drawdowns[drawdowns.length-1]??0:0;const best=drawdowns.length?drawdowns[0]??0:0;return{runs,meanReturnPct:mean,p05ReturnPct:q(returns,.05),medianReturnPct:q(returns,.5),p95ReturnPct:q(returns,.95),worstDrawdownPct:worst,bestDrawdownPct:best};
 }
+
+export interface RegimeTradeAnalysis{regime:MarketRegime;analysis:TradeAnalysis;}
+export function analyzeTradesByRegime(trades:BacktestResult["trades"],candles:Candle[]):RegimeTradeAnalysis[]{
+ const groups=new Map<MarketRegime,BacktestResult["trades"]>();for(const trade of trades){const index=candles.findIndex(c=>c.timestamp===trade.entryTime);const snapshot=index>=0?marketRegime(candles,index):null;const regime=snapshot?.regime??"ranging";const list=groups.get(regime)??[];list.push(trade);groups.set(regime,list);}return [...groups.entries()].map(([regime,items])=>({regime,analysis:analyzeTrades(items)}));
+}
