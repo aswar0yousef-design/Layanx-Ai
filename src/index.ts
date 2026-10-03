@@ -20,5 +20,17 @@ const systemAgent:AgentContract={
  }
 };
 core.registerAgent(systemAgent);
+core.registerAgent({
+ agentId:"trading-executor",
+ purpose:"Execute explicitly approved Binance Spot orders under LayanX runtime controls.",
+ allowedTools:["trading.binance.order"],
+ forbiddenResources:["secrets","security-controls"],
+ requiredPermission:"L4_EXECUTE",
+ maxToolCalls:20,
+ maxRuntimeMs:30000,
+ successCriteria:["approved execution request handled","execution auditable"],
+ stopCondition:"Stop on approval denial, Sentinel block, risk limit, or broker error.",
+ profile:{role:"trading-executor",description:"Dedicated execution agent; never bypasses LayanX approval or risk controls.",preferredCapabilities:["reasoning"],memoryTags:["trading","execution","binance"]}
+});
 const mission=core.startMission("Bootstrap LayanX AI foundation");
 console.log(JSON.stringify({system:"LayanX AI",status:"foundation-ready",mission,verification:core.verifier.verify(mission)},null,2));
