@@ -1,4 +1,4 @@
-import type { Mt5Adapter } from "./mt5-adapter.js";
+import { filterCompletedMt5Candles, normalizeMt5Timeframe, type Mt5Adapter } from "./mt5-adapter.js";
 import type { PreTradeExecutionPolicy } from "./pre-trade-execution-gate.js";
 import { evaluateScalpingDecision, type ScalpingDecision } from "./scalping-decision.js";
 import type { ScalpingSignalConfig } from "./scalping-signal.js";
@@ -31,7 +31,7 @@ export interface Mt5ScalpingEvaluation {
 export async function evaluateMt5Scalping(
   input: Mt5ScalpingEvaluationInput
 ): Promise<Mt5ScalpingEvaluation> {
-  const timeframe = input.timeframe.trim().toUpperCase();
+  const timeframe = normalizeMt5Timeframe(input.timeframe);
   const market = await input.adapter.getSymbolSnapshot(input.symbol);
   const candles = await input.adapter.getCandles({
     symbol: input.symbol,
@@ -39,9 +39,10 @@ export async function evaluateMt5Scalping(
     limit: input.candlesLimit,
   });
 
+  const completedCandles = filterCompletedMt5Candles(candles, market.timestamp, timeframe);
   const spread = Math.abs(market.ask - market.bid);
   const decision = evaluateScalpingDecision({
-    candles,
+    candles: completedCandles,
     market: {
       symbol: market.symbol,
       timeframe,
