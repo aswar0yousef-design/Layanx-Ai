@@ -44,6 +44,11 @@ export function toPreTradeMarketSnapshot(
   atr?: number,
   expectedSlippage?: number
 ) {
+  if (!snapshot.symbol.trim()) throw new Error("MT5 symbol is required.");
+  if (!Number.isFinite(snapshot.bid) || !Number.isFinite(snapshot.ask)) throw new Error("MT5 bid and ask must be finite.");
+  if (snapshot.bid <= 0 || snapshot.ask <= 0) throw new Error("MT5 bid and ask must be positive.");
+  if (snapshot.ask < snapshot.bid) throw new Error("MT5 ask cannot be below bid.");
+
   return {
     symbol: snapshot.symbol,
     timeframe,
