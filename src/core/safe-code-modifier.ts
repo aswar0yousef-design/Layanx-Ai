@@ -87,7 +87,7 @@ export class SafeCodeModifier{
     if(!path||path.startsWith("/")||isAbsolute(path)||path===".."||path.startsWith("../")||path.includes("/../"))
       throw new Error("Unsafe code modification path: "+change.path);
     if(path.split("/").some(part=>part==="."||part===".."))throw new Error("Unsafe code modification path: "+change.path);
-    if(/(^|/)(node_modules|.git|dist|build|coverage|.next|.turbo|.cache)(/|$)/.test(path))
+    if(/(^|\/)(node_modules|\.git|dist|build|coverage|\.next|\.turbo|\.cache)(\/|$)/.test(path))
       throw new Error("Protected generated/dependency path: "+path);
     if(path.startsWith(".layanx/"))throw new Error("LayanX internal state cannot be modified through SafeCodeModifier.");
     if(change.content.length>1024*1024)throw new Error("Code change exceeds the per-file size limit.");
