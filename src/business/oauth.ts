@@ -52,7 +52,16 @@ export class OAuthConnectionCenter{
   this.connections=this.connections.filter(x=>!(x.provider===connection.provider&&x.accountId===connection.accountId));this.connections.push(connection);this.persist();
   return connection;
  }
- token(connection:OAuthConnection){const value=this.vault.get(connection.tokenSecret);if(!value)throw new Error("oauth_access_token_missing");return value;}
+ async token(connection:OAuthConnection){
+  if(connection.expiresAt&&Date.parse(connection.expiresAt)>Date.now()+60_000){const value=this.vault.get(connection.tokenSecret);if(value)return value;}
+  if(!connection.refreshTokenSecret)throw new Error("oauth_access_token_expired");
+  const refresh=this.vault.get(connection.refreshTokenSecret);if(!refresh)throw new Error("oauth_refresh_token_missing");
+  const c=this.config(connection.provider);const form=new URLSearchParams({client_id:c.clientId,refresh_token:refresh,grant_type:"refresh_token"});if(c.clientSecret)form.set("client_secret",c.clientSecret);
+  const response=await fetch(c.token,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:form});const raw=await response.text();let d:any={};try{d=JSON.parse(raw);}catch{d={raw};}if(!response.ok)throw new Error(`oauth_refresh_${response.status}`);
+  const access=String(d.access_token??"");if(!access)throw new Error("oauth_access_token_missing");
+  this.vault.set(connection.tokenSecret,access);connection.expiresAt=typeof d.expires_in==="number"?new Date(Date.now()+d.expires_in*1000).toISOString():undefined;connection.updatedAt=new Date().toISOString();
+  if(d.refresh_token)this.vault.set(connection.refreshTokenSecret,String(d.refresh_token));this.persist();return access;
+ }
  revoke(connection:OAuthConnection){this.vault.delete(connection.tokenSecret);if(connection.refreshTokenSecret)this.vault.delete(connection.refreshTokenSecret);this.connections=this.connections.filter(x=>x.id!==connection.id);this.persist();}
  status(connection:OAuthConnection){return {id:connection.id,provider:connection.provider,accountId:connection.accountId,scopes:connection.scopes,expiresAt:connection.expiresAt,configured:true};}
 }
