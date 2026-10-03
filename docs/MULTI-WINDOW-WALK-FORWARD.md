@@ -1,0 +1,8 @@
+# Data Quality and Multi-Window Walk-Forward\n\n`candle-quality.ts` checks historical candle integrity before walk-forward evaluation.\n\nChecks include:\n- invalid OHLC ranges\n- duplicate timestamps\n- non-monotonic timestamps\n- optional candle gaps larger than the expected interval\n\n`walk-forward-windows.ts` creates chronological train/test windows.\n`multi-window-walk-forward.ts` runs the same paper engine on each window and exposes each window separately plus an explicitly named `pooledTest (trade-pooled)` report. The pooled report is a descriptive aggregation of test trades; it is not a sequential equity curve. This distinction matters when windows overlap or when each test simulation starts from the configured initial balance.\n\nThe current implementation does not optimize parameters. It creates a clean framework for future training/selection while keeping out-of-sample evaluation separate.\n\nHistorical performance remains diagnostic and does not guarantee future trading results.
+
+## OOS overlap
+
+When `stepSize` is smaller than `testSize`, OOS test windows overlap. The framework now counts duplicate test-candle timestamps and exposes `testOverlap`, `overlappingTestCandles`, and `uniqueTestCandles` through OOS stability diagnostics. Pooled metrics remain descriptive and should not be interpreted as a unique-candle sequential equity curve when overlap exists.
+
+
+The pooled OOS result is intentionally a trade-level aggregation. It does not expose `finalBalance`, `returnPct`, or drawdown because overlapping windows and independently reset window balances would make those equity metrics misleading. Use window-level reports and OOS stability metrics for equity/drawdown analysis.
