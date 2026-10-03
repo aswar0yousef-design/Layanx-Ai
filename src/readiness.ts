@@ -1,5 +1,5 @@
 import {runtimeHealth,runtimeStatus} from "./runtime.js";
-import type {createRuntime} from "./runtime.js";
+
 import {FreeCapacityProvider} from "./providers/free-capacity.js";
 
 type Runtime=ReturnType<typeof createRuntime>;
