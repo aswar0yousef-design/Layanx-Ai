@@ -1,7 +1,7 @@
 import type { TradeSide } from "./execution-quality.js";
 import type { MarketCandle } from "./scalping-signal.js";
 
-export type IntrabarResolution = "conservative" | "optimistic" | "open-first";
+export type IntrabarResolution = "conservative" | "optimistic";
 
 export interface ExitSimulation {
   price: number;
