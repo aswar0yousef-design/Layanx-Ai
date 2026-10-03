@@ -4,7 +4,7 @@ import {dirname} from "node:path";
 import {localSecret,LocalSecretVault} from "../security/local-secret-vault.js";
 import type {OAuthProvider,OAuthConnection} from "./types.js";
 interface OAuthConfig{authorize:string;token:string;clientId:string;clientSecret?:string;redirectUri:string;scopes:string[];usePkce?:boolean;extra?:Record<string,string>;}
-interface Pending{provider:OAuthProvider;state:string;codeVerifier?:string;createdAt:number;redirectUri:string;}
+interface Pending{provider:OAuthProvider;state:string;accountId:string;codeVerifier?:string;createdAt:number;redirectUri:string;}
 const env=(p:string,k:string)=>process.env[`LAYANX_${p}_OAUTH_${k}`];
 const PROVIDER_DEFAULTS:Partial<Record<OAuthProvider,Partial<OAuthConfig>>>={
  tiktok:{authorize:"https://www.tiktok.com/v2/auth/authorize/",token:"https://open.tiktokapis.com/v2/oauth/token/",usePkce:false},
@@ -32,7 +32,7 @@ export class OAuthConnectionCenter{
   return {authorize,token,clientId,clientSecret,redirectUri,scopes,usePkce:provider==="tiktok"||env(p,"USE_PKCE")==="true",extra:env(p,"EXTRA_JSON")?JSON.parse(env(p,"EXTRA_JSON")!):undefined};
  }
  begin(provider:OAuthProvider,accountId="default"){
-  const c=this.config(provider),state=randomBytes(32).toString("base64url");const pending:Pending={provider,state,createdAt:Date.now(),redirectUri:c.redirectUri};
+  const c=this.config(provider),state=randomBytes(32).toString("base64url");const pending:Pending={provider,state,accountId,createdAt:Date.now(),redirectUri:c.redirectUri};
   if(c.usePkce){const verifier=randomBytes(48).toString("base64url");pending.codeVerifier=verifier;}
   this.pending.set(state,pending);
   const u=new URL(c.authorize);u.searchParams.set("client_id",c.clientId);u.searchParams.set("response_type","code");u.searchParams.set("redirect_uri",c.redirectUri);u.searchParams.set("scope",c.scopes.join(" "));u.searchParams.set("state",state);
@@ -40,7 +40,7 @@ export class OAuthConnectionCenter{
   for(const [k,v] of Object.entries(c.extra??{}))u.searchParams.set(k,v);
   return {authorizationUrl:u.toString(),state,accountId};
  }
- async callback(state:string,code:string,accountId="default"){
+ async callback(state:string,code:string){
   const p=this.pending.get(state);if(!p||Date.now()-p.createdAt>10*60_000){this.pending.delete(state);throw new Error("oauth_state_invalid_or_expired");}
   this.pending.delete(state);const c=this.config(p.provider);
   const form=new URLSearchParams({client_id:c.clientId,code,grant_type:"authorization_code",redirect_uri:p.redirectUri});if(c.clientSecret)form.set("client_secret",c.clientSecret);if(p.codeVerifier)form.set("code_verifier",p.codeVerifier);
@@ -48,7 +48,7 @@ export class OAuthConnectionCenter{
   const token=String(d.access_token??"");if(!token)throw new Error("oauth_access_token_missing");
   const id=randomUUID(),secret=`${p.provider}.oauth.access.${id}`;this.vault.set(secret,token);
   let refreshSecret:string|undefined;if(d.refresh_token){refreshSecret=`${p.provider}.oauth.refresh.${id}`;this.vault.set(refreshSecret,String(d.refresh_token));}
-  const connection:OAuthConnection={id,provider:p.provider,accountId,scopes:typeof d.scope==="string"?d.scope.split(/[ ,]+/).filter(Boolean):c.scopes,tokenSecret:secret,refreshTokenSecret:refreshSecret,expiresAt:typeof d.expires_in==="number"?new Date(Date.now()+d.expires_in*1000).toISOString():undefined,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+  const connection:OAuthConnection={id,provider:p.provider,accountId:p.accountId,scopes:typeof d.scope==="string"?d.scope.split(/[ ,]+/).filter(Boolean):c.scopes,tokenSecret:secret,refreshTokenSecret:refreshSecret,expiresAt:typeof d.expires_in==="number"?new Date(Date.now()+d.expires_in*1000).toISOString():undefined,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
   this.connections=this.connections.filter(x=>!(x.provider===connection.provider&&x.accountId===connection.accountId));this.connections.push(connection);this.persist();
   return connection;
  }
