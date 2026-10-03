@@ -161,6 +161,7 @@ export class LayanXCore{
     this.securityReview=new SecurityReviewAgent();
     this.prGenerator=new PullRequestGenerator();
     this.releaseManager=new ReleaseManager();
+    this.restoreLearnedSkills();
   }
 
   restoreRuntimeSnapshot(snapshot:import("./runtime-persistence.js").RuntimeSnapshot){
@@ -184,7 +185,8 @@ export class LayanXCore{
   registerAgent(c:Parameters<AgentManager["register"]>[0]){this.agents.register(c);}
   learnSkill(trace:LearningTrace){return this.skillLearning.propose(trace);}
   approveLearnedSkill(id:string){const pending=this.skillLearning.approve(id);this.skills.register(pending.manifest);this.skills.approve(id);return this.skills.get(id);}
-  enableLearnedSkill(id:string){return this.skills.enable(id);}
+  enableLearnedSkill(id:string){const pending=this.skillLearning.enable(id);if(this.skills.get(id).status==="approved")return this.skills.enable(id);return pending.manifest;}
+  private restoreLearnedSkills(){for(const pending of this.skillLearning.list()){if(pending.manifest.source!=="agent-learning"||!pending.findings.safe)continue;try{const status=pending.manifest.status;if(status!=="approved"&&status!=="enabled")continue;this.skills.register({...pending.manifest,status:"quarantined"});this.skills.approve(pending.id);if(status==="enabled")this.skills.enable(pending.id);}catch{continue;}}}
   discoverTools(action:string,permission:import("./types.js").PermissionLevel,agentId="core"){
     const contract=this.agents.get(agentId);
     return this.toolSelector.discover(action,contract,permission);
