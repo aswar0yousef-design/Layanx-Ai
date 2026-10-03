@@ -1,7 +1,7 @@
 import type { MarketCandle } from "./scalping-signal.js";
 import type { PaperTradingConfig } from "./paper-scalping.js";
 import { runPaperScalping } from "./paper-scalping.js";
-import { buildBacktestReport, type BacktestReport } from "./backtest-report.js";
+import { buildBacktestReport, buildPooledBacktestReport, type BacktestReport, type PooledBacktestReport } from "./backtest-report.js";
 import { createWalkForwardWindows, type WalkForwardWindow } from "./walk-forward-windows.js";
 import { assertXauUsdProfileConfig } from "./xauusd-scalping-profile.js";
 
@@ -13,7 +13,7 @@ export interface WalkForwardResult {
 
 export interface MultiWindowWalkForwardResult {
   windows: WalkForwardResult[];
-  pooledTest: BacktestReport;
+  pooledTest: PooledBacktestReport;
 }
 
 export function runMultiWindowWalkForward(
@@ -38,7 +38,7 @@ export function runMultiWindowWalkForward(
     };
   });
 
-  const pooledTest = buildBacktestReport(config.initialBalance, pooledTestAnalyses);
+  const pooledTest = buildPooledBacktestReport(pooledTestAnalyses);
   return {
     windows: results,
     pooledTest,
