@@ -39,6 +39,7 @@ export interface PaperTrade {
   stopLossPrice: number;
   takeProfitPrice?: number;
   openedAt: string;
+  signalTimestamp: string;
   entrySpread: number;
   entrySlippage: number;
   entryAtr: number;
@@ -176,9 +177,7 @@ export function runPaperScalping(
             exitReason: exit.reason,
             intrabarAmbiguous: exit.intrabarAmbiguous,
             gapThrough: exit.gapThrough,
-            signalTimestamp: signalOnClosedCandle
-              ? candles[Math.max(0, candles.findIndex(item => item.timestamp === openTrade.openedAt) - 1)]?.timestamp
-              : openTrade.openedAt,
+            signalTimestamp: openTrade.signalTimestamp,
           },
         };
 
@@ -260,6 +259,7 @@ export function runPaperScalping(
       stopLossPrice: stop,
       takeProfitPrice: target,
       openedAt: candle.timestamp,
+      signalTimestamp: history[history.length - 1]?.timestamp ?? candle.timestamp,
       entrySpread: spread,
       entrySlippage,
       entryAtr: signal.indicators.atr,
