@@ -266,7 +266,7 @@ export function runPaperScalping(
     }
 
     const riskPlan = decision.riskPlan;
-    if (!riskPlan.valid || riskPlan.quantity <= 0) {
+    if (!riskPlan || !riskPlan.valid || riskPlan.quantity <= 0) {
       blockedSignals += 1;
       continue;
     }
@@ -284,7 +284,7 @@ export function runPaperScalping(
       signalTimestamp: history[history.length - 1]?.timestamp ?? candle.timestamp,
       entrySpread: entrySpreadValue,
       entrySlippage,
-      entryAtr: signal.indicators.atr,
+      entryAtr: signal.indicators.atr ?? 0,
       entryTrendRegime: entryRegime.trend,
       entryVolatilityRegime: entryRegime.volatility,
     };
