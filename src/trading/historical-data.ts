@@ -114,7 +114,7 @@ export function importHistoricalCsv(
   const candles = lines.slice(1).map((line) => {
     const values = parseCsvLine(line);
     if (values.length !== headers.length) throw new Error("CSV row does not match header length.");
-    return normalizeCandle(Object.fromEntries(headers.map((header, index) => [header, values[index]])));
+    return normalizeCandle(Object.fromEntries(headers.map((header, index) => [header, values[index]!])));
   });
 
   return {
@@ -153,8 +153,8 @@ function sortAndValidateCandles(candles: MarketCandle[]): MarketCandle[] {
   );
 
   for (let i = 1; i < sorted.length; i += 1) {
-    if (sorted[i].timestamp === sorted[i - 1].timestamp) {
-      throw new Error(`Duplicate candle timestamp: ${sorted[i].timestamp}`);
+    if (sorted[i]!.timestamp === sorted[i - 1]!.timestamp) {
+      throw new Error(`Duplicate candle timestamp: ${sorted[i]!.timestamp}`);
     }
   }
 
