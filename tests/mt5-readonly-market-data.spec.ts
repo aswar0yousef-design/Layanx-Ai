@@ -40,4 +40,26 @@ await assert.rejects(
   /specification does not match/,
 );
 
+const invalidChronologyTransport: Mt5ReadOnlyTransport = {
+  ...transport,
+  async getCandles() {
+    return [candles[1], candles[0], ...candles.slice(2)];
+  },
+};
+await assert.rejects(
+  () => readMt5MarketData(invalidChronologyTransport, "XAUUSD", "M1", 35),
+  /strictly chronological/,
+);
+
+const invalidSnapshotTransport: Mt5ReadOnlyTransport = {
+  ...transport,
+  async getSymbolSnapshot(symbol) {
+    return { symbol, bid: 2000.3, ask: 2000.1, timestamp: candles.at(-1)!.timestamp };
+  },
+};
+await assert.rejects(
+  () => readMt5MarketData(invalidSnapshotTransport, "XAUUSD", "M1", 35),
+  /ask cannot be below bid/,
+);
+
 console.log("MT5 read-only market data tests passed");
