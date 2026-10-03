@@ -164,12 +164,15 @@ export class ExecutionRuntime{
     schemaVersion:1
   });
  }
- private async block(mission:Mission,request:ToolRequest,error:string):Promise<RuntimeResult>{
+ private ensureApproval(mission:Mission,request:ToolRequest,reason:string){
+  return this.approvals.ensure({missionId:mission.id,agentId:request.agentId,tool:request.tool,action:request.action,permission:request.permission,payloadHash:createHash("sha256").update(JSON.stringify(request.payload??null)).digest("hex"),reason,expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
+ }
+ private async block(mission:Mission,request:ToolRequest,error:string,approvalId?:string):Promise<RuntimeResult>{
   mission.status="blocked";
   this.core.executionStates.update(mission.id,{status:"blocked",recoverable:false});
   this.core.ledger.append({id:crypto.randomUUID(),missionId:mission.id,agentId:request.agentId,action:request.action,status:"blocked",timestamp:new Date().toISOString(),detail:error});
   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"denied",metadata:{reason:error}});
   await this.persist(mission);
-  return{ok:false,missionId:mission.id,verified:false,error,recoverable:false};
+  return{ok:false,missionId:mission.id,verified:false,error,recoverable:false,approvalId};
  }
 }
