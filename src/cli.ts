@@ -1,6 +1,7 @@
 import {LocalSecretVault} from "./security/local-secret-vault.js";
 import {runtimeHealth,runtimeStatus} from "./runtime.js";
 import {providerDoctor} from "./doctor.js";
+import {runReadinessGate} from "./readiness.js";
 const command=process.argv[2]??"status";
 async function runSecrets(){
  const action=process.argv[3],name=process.argv[4];
@@ -15,4 +16,5 @@ else if(command==="status"){console.log(JSON.stringify(runtimeStatus(),null,2));
 else if(command==="check"){const status=runtimeStatus();console.log(JSON.stringify(status,null,2));process.exitCode=status.ready?0:1;}
 else if(command==="health"){const health=await runtimeHealth();console.log(JSON.stringify(health,null,2));process.exitCode=health.ready&&health.healthy?0:1;}
 else if(command==="doctor"){const doctor=await providerDoctor();console.log(JSON.stringify(doctor,null,2));process.exitCode=doctor.ok?0:1;}
-else{console.error("Usage: layanx <status|check|health|doctor>");process.exitCode=1;}
+else if(command==="ready"){const gate=await runReadinessGate();console.log(JSON.stringify(gate,null,2));process.exitCode=gate.ready?0:1;}
+else{console.error("Usage: layanx <status|check|health|doctor|ready>");process.exitCode=1;}
