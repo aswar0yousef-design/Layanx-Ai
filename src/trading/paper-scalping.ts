@@ -3,6 +3,7 @@ import type { MarketCandle } from "./scalping-signal.js";
 import { generateScalpingSignal } from "./scalping-signal.js";
 import { analyzeTradeRecord, type TradeRecord } from "./trade-record.js";
 import { evaluateScalpingDecision } from "./scalping-decision.js";
+import { detectTradingSession } from "./session.js";
 
 export interface PaperTradingConfig {
   symbol: string;
@@ -32,6 +33,7 @@ export interface PaperTrade {
   openedAt: string;
   entrySpread: number;
   entrySlippage: number;
+  entryAtr: number;
 }
 
 export interface PaperTradingResult {
@@ -150,6 +152,7 @@ export function runPaperScalping(
               ? openTrade.entryPrice + openTrade.entrySpread / 2
               : openTrade.entryPrice - openTrade.entrySpread / 2,
             spread: openTrade.entrySpread,
+            atr: openTrade.entryAtr,
             slippage: openTrade.entrySlippage,
           },
           exit: {
@@ -162,6 +165,7 @@ export function runPaperScalping(
           closedAt: candle.timestamp,
           timeframe: config.timeframe,
           strategy: "paper-scalping",
+          session: detectTradingSession(openTrade.openedAt),
           commission: (config.commissionPerUnit ?? 0) * openTrade.quantity,
           swap: (config.swapPerUnit ?? 0) * openTrade.quantity,
           metadata: { exitReason: exit.reason },
@@ -231,6 +235,7 @@ export function runPaperScalping(
       openedAt: candle.timestamp,
       entrySpread: spread,
       entrySlippage,
+      entryAtr: signal.indicators.atr,
     };
   }
 
