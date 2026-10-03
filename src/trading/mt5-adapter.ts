@@ -88,7 +88,7 @@ export function filterCompletedMt5Candles(
   if (!completed.length) throw new Error("MT5 returned no completed candles.");
 
   for (let index = 0; index < completed.length; index += 1) {
-    const candle = completed[index];
+    const candle = completed[index]!;
     const time = Date.parse(candle.timestamp);
     if (!Number.isFinite(time)) throw new Error("MT5 returned a candle with an invalid timestamp.");
     if (![candle.open, candle.high, candle.low, candle.close].every(Number.isFinite)) {
@@ -97,7 +97,7 @@ export function filterCompletedMt5Candles(
     if (candle.high < Math.max(candle.open, candle.close) || candle.low > Math.min(candle.open, candle.close) || candle.high < candle.low) {
       throw new Error(`MT5 returned an invalid OHLC range at ${candle.timestamp}.`);
     }
-    if (index > 0 && Date.parse(completed[index - 1].timestamp) >= time) {
+    if (index > 0 && Date.parse(completed[index - 1]!.timestamp) >= time) {
       throw new Error("MT5 candles must be strictly chronological with no duplicate timestamps.");
     }
   }
