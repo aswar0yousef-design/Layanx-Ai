@@ -53,6 +53,17 @@ import {TaskRuntime} from "./task-runtime.js";
 import {MissionScheduler} from "./scheduler.js";
 import {EventMissionEngine} from "./event-engine.js";
 import {MissionDependencyManager} from "./mission-dependencies.js";
+import {AutonomousRetryPolicy} from "./autonomous-retry.js";
+import {FailureLearning} from "./failure-learning.js";
+import {SafeCodeModifier} from "./safe-code-modifier.js";
+import {GitBranchManager} from "./git-branch-manager.js";
+import {GitCommitGenerator} from "./git-commit-generator.js";
+import {CodeReviewAgent} from "./code-review-agent.js";
+import {SecurityReviewAgent} from "./security-review-agent.js";
+import {PullRequestGenerator} from "./pr-generator.js";
+import {ReleaseStateMachine} from "./release-state-machine.js";
+import {ReleaseManager} from "./release-manager.js";
+import {RuntimeTracer} from "./runtime-tracer.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
 
 export class LayanXCore{
@@ -229,7 +240,7 @@ export class LayanXCore{
     const catalog=this.toolCatalog.list(contract,mission.requiredPermission);
     const pendingRequest=this.toolRequestBuilder.build(mission,plan,{agentId,projectId,capabilityId:"pending",payload,planIndex:toolIndex},catalog);
     const token=this.capabilities.issue({missionId:mission.id,agentId,projectId,resource:plan.tool,permission:plan.permission,expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
-    let result=await this.executionRuntime.run(mission,{...pendingRequest,capabilityId:token.id},this.toolAdapters.get(plan.tool),approvalId,{projectId,capabilityId:token.id},runtimeOptions);
+    let result=await this.executionRuntime.run(mission,pendingRequest,this.toolAdapters.get(plan.tool),approvalId,{projectId,capabilityId:token.id},runtimeOptions);
     let retryAttempt=1;
     while(!result.ok){
       const decision=this.autonomousRetry.decide(plan,result,retryAttempt);
@@ -238,7 +249,7 @@ export class LayanXCore{
       if(decision.delayMs>0)await new Promise(resolve=>setTimeout(resolve,decision.delayMs));
       const retryToken=this.capabilities.issue({missionId:mission.id,agentId,projectId,resource:plan.tool,permission:plan.permission,expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
       const retryRequest=this.toolRequestBuilder.build(mission,plan,{agentId,projectId,capabilityId:retryToken.id,payload,planIndex:toolIndex,retryAttempt},catalog);
-      result=await this.executionRuntime.run(mission,{...retryRequest,capabilityId:retryToken.id},this.toolAdapters.get(plan.tool),approvalId,{projectId,capabilityId:retryToken.id},runtimeOptions);
+      result=await this.executionRuntime.run(mission,retryRequest,this.toolAdapters.get(plan.tool),approvalId,{projectId,capabilityId:retryToken.id},runtimeOptions);
       retryAttempt++;
     }
     this.missions.save(mission);
@@ -347,7 +358,7 @@ export class LayanXCore{
       const result=await this.executeMissionTool(missionId,projectId,index,next.payload??{},undefined,agentId,{deferVerification:true});
       results.push(result);
       if(!result.ok){
-        const repair=this.autonomousRepair.run(mission,result,{
+        const repair=await this.autonomousRepair.run(mission,result,{
           planner:this.aiPlanner,
           tools:catalog,
           memory:missionMemory,
