@@ -128,6 +128,37 @@ async function startBrowserRecognition(){
 async function startRecorder(){stream=await navigator.mediaDevices.getUserMedia({audio:true});recorder=new MediaRecorder(stream);chunks=[];recorder.ondataavailable=e=>e.data.size&&chunks.push(e.data);recorder.onstop=finishRecorder;recorder.start();mic.classList.add('listening');setStatus('أستمع... تحدث الآن')}
 async function stopRecorder(){if(recorder&&recorder.state!=='inactive')recorder.stop();mic.classList.remove('listening');setStatus('أحوّل الصوت إلى نص...')}
 async function finishRecorder(){stream.getTracks().forEach(t=>t.stop());const blob=new Blob(chunks,{type:recorder.mimeType||'audio/webm'});try{const r=await fetch('/v1/voice/transcribe',{method:'POST',headers:{...headers(),'content-type':blob.type||'audio/webm','x-layanx-filename':'voice.webm','x-layanx-language':'ar'},body:blob});if(!r.ok)throw new Error(await r.text());const tr=await r.json();await executeText(tr.text,false)}catch(e){setStatus('حدث خطأ');resultBox.textContent=String(e)}}
+function wakeText(value){
+ return String(value||'').toLowerCase().replace(/[\\s_-]+/g,'');
+}
+function startWakeWord(){
+ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+ if(!SR){setStatus('Wake Word غير متاح في هذا المتصفح — استخدم زر الميكروفون.');return false}
+ if(wakeRecognition||realtime)return true;
+ wakeEnabled=true;
+ wakeRecognition=new SR();
+ wakeRecognition.lang='ar-SA';
+ wakeRecognition.interimResults=true;
+ wakeRecognition.continuous=true;
+ wakeRecognition.onresult=async e=>{
+   for(let i=e.resultIndex;i<e.results.length;i++){
+     const heard=e.results[i][0]?.transcript||'';
+     const normalized=wakeText(heard);
+     if(normalized.includes('layanx')||normalized.includes('ليانكس')||normalized.includes('لياناكس')||normalized.includes('لياناكس')){
+       wakeRecognition?.stop();
+       wakeRecognition=null;
+       wakeEnabled=false;
+       transcript.textContent=heard;
+       setStatus('تم استدعاء LayanX — الاتصال الصوتي...');
+       try{await connectRealtime()}catch(error){setStatus('تعذر بدء المحادثة الصوتية');resultBox.textContent=String(error);setTimeout(startWakeWord,1000)}
+       return;
+     }
+   }
+ };
+ wakeRecognition.onerror=()=>{wakeRecognition=null;if(wakeEnabled&&!realtime)setTimeout(startWakeWord,700)};
+ wakeRecognition.onend=()=>{wakeRecognition=null;if(wakeEnabled&&!realtime)setTimeout(startWakeWord,400)};
+ try{wakeRecognition.start();setStatus('في انتظار مناداة LayanX...');return true}catch{wakeRecognition=null;return false}
+}
 mic.onclick=async()=>{try{
  if(realtime){disconnectRealtime();return}
  await connectRealtime();
@@ -137,5 +168,6 @@ mic.onclick=async()=>{try{
  try{await startRecorder()}catch(f){setStatus('تعذر الوصول إلى الميكروفون');resultBox.textContent=String(f)}
 }};
 token.value=localStorage.getItem('layanx.voice.token')||'';token.onchange=()=>localStorage.setItem('layanx.voice.token',token.value);
+setTimeout(()=>startWakeWord(),300);
 </script></main></body></html>`;
 }
