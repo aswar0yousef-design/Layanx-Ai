@@ -134,8 +134,6 @@ export class LayanXCore{
   readonly tracer=new RuntimeTracer();
   readonly trading=new PaperTradingEngine();
   readonly strategies=new StrategyRegistry();
-  // Built-in strategies are registered once; callers may register additional strategies through the registry.
-  constructor(...args:any[]){super(...args);this.strategies.register(new HtfStructureLiquidityStrategy());}
   readonly skills=new SkillRegistry();
   readonly skillRuntime:SkillRuntime;
 
@@ -157,6 +155,7 @@ export class LayanXCore{
     this.securityReview=new SecurityReviewAgent();
     this.prGenerator=new PullRequestGenerator();
     this.releaseManager=new ReleaseManager();
+    this.strategies.register(new HtfStructureLiquidityStrategy());
   }
 
   restoreRuntimeSnapshot(snapshot:import("./runtime-persistence.js").RuntimeSnapshot){
