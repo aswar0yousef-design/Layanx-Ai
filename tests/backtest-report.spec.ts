@@ -57,5 +57,7 @@ assert.equal(report.maxDrawdown, 0.65);
 assert.equal(report.costErasedTrades, 0);
 assert.equal(report.commissions, 0.2);
 assert.equal(report.executionCosts, 0.1);
+assert.equal(report.intrabarAmbiguousExits, 0);
+assert.equal(report.gapThroughExits, 0);
 
 console.log("Backtest report tests passed");
