@@ -10,6 +10,7 @@ import {registerBusinessTools} from "./business/tools.js";
 import {AdsManager} from "./business/ads.js";
 import {MediaManager} from "./business/media.js";
 import {LiveScreenObserver} from "./desktop/live-screen.js";
+import {FreeCapacityProvider} from "./providers/free-capacity.js";
 
 export interface RuntimeOptions{storagePath?:string;}
 
@@ -67,7 +68,8 @@ export function runtimeStatus(runtime=createRuntime()){
   ready:runtime.core.isReady(),
   persistence:runtime.persistence?"configured":"disabled",
   providers:runtime.providerSummary,
-  models:runtime.models.list().map(model=>({id:model.id,provider:model.provider,local:model.local,enabled:model.enabled,priority:model.priority}))
+  models:runtime.models.list().map(model=>({id:model.id,provider:model.provider,providerModelId:model.providerModelId,local:model.local,enabled:model.enabled,priority:model.priority,tags:model.tags??[]})),
+  freeCapacity:runtime.providers.list().filter(provider=>provider instanceof FreeCapacityProvider).map(provider=>(provider as FreeCapacityProvider).status())
  };
 }
 
