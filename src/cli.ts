@@ -11,7 +11,7 @@ async function runSecrets(){
  throw new Error("Usage: layanx secrets <set NAME|list|delete NAME>. Set reads the secret from stdin and never echoes it.");
 }
 if(command==="secrets"){try{await runSecrets();}catch(error){console.error(error instanceof Error?error.message:error);process.exitCode=1;}}
-if(command==="status"){console.log(JSON.stringify(runtimeStatus(),null,2));}
+else if(command==="status"){console.log(JSON.stringify(runtimeStatus(),null,2));}
 else if(command==="check"){const status=runtimeStatus();console.log(JSON.stringify(status,null,2));process.exitCode=status.ready?0:1;}
 else if(command==="health"){const health=await runtimeHealth();console.log(JSON.stringify(health,null,2));process.exitCode=health.ready&&health.healthy?0:1;}
 else if(command==="doctor"){const doctor=await providerDoctor();console.log(JSON.stringify(doctor,null,2));process.exitCode=doctor.ok?0:1;}
