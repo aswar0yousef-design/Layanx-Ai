@@ -28,6 +28,11 @@ assert.ok(result.blockedSignals >= 0);
 assert.ok(result.finalBalance > 0);
 
 for (const trade of result.trades) {
+  assert.notEqual(trade.openedAt, trade.metadata?.signalTimestamp);
+  assert.ok(trade.closedAt >= trade.openedAt);
+}
+
+for (const trade of result.trades) {
   if (trade.side === "long") {
     assert.ok(trade.exit.fillPrice < trade.entry.fillPrice);
   } else {
