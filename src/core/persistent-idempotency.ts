@@ -28,6 +28,8 @@ export class PersistentIdempotencyStore{
   async complete(key:string,data:unknown):Promise<void>{await this.update(key,{status:"completed",completedAt:new Date().toISOString(),data:structuredClone(data)});}
   async fail(key:string,error:string):Promise<void>{await this.update(key,{status:"failed",completedAt:new Date().toISOString(),error});}
   async get(key:string){return(await this.store.load()??[]).find(x=>x.key===key);}
+  async list():Promise<IdempotencyRecord[]>{return structuredClone(await this.store.load()??[]);}
+  async restore(records:IdempotencyRecord[]):Promise<void>{const release=await this.lock.acquire();try{const current=await this.store.load()??[];const map=new Map(current.map(x=>[x.key,x]));for(const record of records){const existing=map.get(record.key);if(existing&&(existing.missionId!==record.missionId||existing.agentId!==record.agentId||existing.tool!==record.tool||existing.action!==record.action))throw new Error("Idempotency restore conflicts with an existing operation.");map.set(record.key,structuredClone(record));}await this.store.save([...map.values()]);}finally{await release();}}
   private async update(key:string,patch:Partial<IdempotencyRecord>):Promise<void>{
     const release=await this.lock.acquire();
     try{
