@@ -4,6 +4,7 @@ import {RuntimeStorage} from "../src/storage/runtime-storage.js";
 import {RuntimeRecoveryManager} from "../src/core/runtime-recovery.js";
 import {MissionRunner} from "../src/core/mission-runner.js";
 import type {StorageAdapter,Transaction} from "../src/storage/repository.js";
+import {createHash} from "node:crypto";
 
 class MemoryStorage implements StorageAdapter{
  private state=new Map<string,unknown>();
@@ -33,6 +34,8 @@ const handoff=core.handoffs.create({
 });
 core.handoffs.accept(handoff.id);
 const cap=core.capabilities.issue({missionId:mission.id,agentId:agent.agentId,projectId:"p",resource:"terminal.run",permission:"L4_EXECUTE",expiresAt:new Date(Date.now()+60000).toISOString()});
+const approval=core.executionRuntime.approvals.ensure({missionId:mission.id,agentId:agent.agentId,tool:"terminal.run",action:"run command",permission:"L4_EXECUTE",payloadHash:createHash("sha256").update(JSON.stringify({command:"echo ok"})).digest("hex"),reason:"Crash-recovery test approval",expiresAt:new Date(Date.now()+60000).toISOString()});
+core.executionRuntime.approvals.approve(approval.id);
 let executions=0;
 const originalPersist=core.executionRuntime.persist.bind(core.executionRuntime);
 core.executionRuntime.persist=async current=>{
@@ -41,7 +44,7 @@ core.executionRuntime.persist=async current=>{
 };
 let crashed=false;
 try{
- await new MissionRunner(core).executeHandoff(mission,core.handoffs.get(handoff.id),{async execute(){executions++;return{done:true};}},{projectId:"p",capabilityId:cap.id});
+ await new MissionRunner(core).executeHandoff(mission,core.handoffs.get(handoff.id),{async execute(){executions++;return{done:true};}},{projectId:"p",capabilityId:cap.id},approval.id);
 }catch(error){
  crashed=error instanceof Error && error.message==="SIMULATED_CRASH_BEFORE_FINAL_PERSIST";
 }
