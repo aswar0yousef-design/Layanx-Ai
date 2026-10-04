@@ -27,6 +27,7 @@ if(calls.join(",")!=="ollama,openai")throw new Error("Provider failover order wa
 if(result.attempts.length!==2||result.attempts[0].ok||!result.attempts[1].ok)throw new Error("Execution attempts were not recorded correctly.");
 const missingModels=new ModelRegistry();
 missingModels.register({id:"missing-model",provider:"missing",capabilities:["chat"],local:true,enabled:true,priority:1});
+missingModels.register({id:"backup-model",provider:"openai",capabilities:["chat"],local:false,enabled:true,priority:2});
 const missingResult=await new ModelExecutionRouter(missingModels,providers).execute({capability:"chat",input:"hello"});
 if(missingResult.provider!=="openai")throw new Error("Missing provider did not fail over.");
 console.log("Model execution E2E failover test passed.");
