@@ -1,3 +1,5 @@
+import {roundDecimal} from "./numeric.js";
+
 export type TradeSide = "long" | "short";
 
 export interface ExecutionTrade {
@@ -52,8 +54,8 @@ export function analyzeExecutionQuality(trade: ExecutionTrade): ExecutionQuality
     ? Math.abs(trade.exit.fillPrice - exitRef)
     : (exitSpread !== undefined ? exitSpread / 2 : 0);
   const totalExecutionDrag = (entryDrag + exitDrag) * trade.quantity * multiplier;
-  const netPnlAfterExecutionCosts = grossPnl - totalExecutionDrag;
-  const executionCostPctOfGross = grossPnl > 0 ? (totalExecutionDrag / grossPnl) * 100 : null;
+  const netPnlAfterExecutionCosts = roundDecimal(grossPnl - totalExecutionDrag);
+  const executionCostPctOfGross = grossPnl > 0 ? roundDecimal((totalExecutionDrag / grossPnl) * 100) : null;
 
   let quality: ExecutionQuality = "unknown";
   if (spreadAtrRatio !== undefined) {
