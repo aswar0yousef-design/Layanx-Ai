@@ -1,4 +1,5 @@
 import type {Candle} from "./strategy.js";
+import {roundDecimal} from "./numeric.js";
 
 export interface MarketBar extends Candle{bidOpen?:number;bidHigh?:number;bidLow?:number;bidClose?:number;askOpen?:number;askHigh?:number;askLow?:number;askClose?:number;spread?:number;}
 export interface MarketDataQuality{bars:number;duplicateTimestamps:number;outOfOrderPairs:number;negativeSpreads:number;estimatedIntervalMs:number;gaps:number;valid:boolean;}
@@ -12,7 +13,7 @@ export function parseMarketCsv(csv:string):MarketBar[]{
  const time=col("timestamp","time","datetime","date"),open=col("open","o"),high=col("high","h"),low=col("low","l"),close=col("close","c"),bid=col("bid","bidclose","bid_close"),ask=col("ask","askclose","ask_close");
  if(time<0)throw new Error("Market CSV requires timestamp/time/datetime/date.");
  if(open<0||high<0||low<0||close<0)throw new Error("Market CSV requires OHLC columns.");
- return lines.slice(1).map((line,index)=>{const v=splitCsvLine(line);const rawTime=v[time];if(rawTime===undefined)throw new Error("Missing timestamp at row "+(index+2));const timestamp=Number.isFinite(Number(rawTime))?Number(rawTime):Date.parse(rawTime);if(!Number.isFinite(timestamp))throw new Error("Invalid timestamp at row "+(index+2));const o=number(v[open],"open"),h=number(v[high],"high"),l=number(v[low],"low"),c=number(v[close],"close");if(h<Math.max(o,c)||l>Math.min(o,c)||l>h)throw new Error("Invalid OHLC relationship at row "+(index+2));const b:MarketBar={timestamp,open:o,high:h,low:l,close:c};if(bid>=0)b.bidClose=number(v[bid],"bid");if(ask>=0)b.askClose=number(v[ask],"ask");if(b.bidClose!==undefined&&b.askClose!==undefined)b.spread=b.askClose-b.bidClose;return b;});
+ return lines.slice(1).map((line,index)=>{const v=splitCsvLine(line);const rawTime=v[time];if(rawTime===undefined)throw new Error("Missing timestamp at row "+(index+2));const timestamp=Number.isFinite(Number(rawTime))?Number(rawTime):Date.parse(rawTime);if(!Number.isFinite(timestamp))throw new Error("Invalid timestamp at row "+(index+2));const o=number(v[open],"open"),h=number(v[high],"high"),l=number(v[low],"low"),c=number(v[close],"close");if(h<Math.max(o,c)||l>Math.min(o,c)||l>h)throw new Error("Invalid OHLC relationship at row "+(index+2));const b:MarketBar={timestamp,open:o,high:h,low:l,close:c};if(bid>=0)b.bidClose=number(v[bid],"bid");if(ask>=0)b.askClose=number(v[ask],"ask");if(b.bidClose!==undefined&&b.askClose!==undefined)b.spread=roundDecimal(b.askClose-b.bidClose);return b;});
 }
 
 export function sortMarketBars(bars:MarketBar[]):MarketBar[]{return [...bars].sort((a,b)=>a.timestamp-b.timestamp);}
