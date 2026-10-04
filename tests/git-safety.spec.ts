@@ -5,7 +5,7 @@ import {promisify} from "node:util";
 import {createGitToolAdapter} from "../src/tools/git.js";
 import type {ToolRequest} from "../src/core/types.js";
 
-const exec=promisify(execFile); const gitBinary=process.platform==="win32"?"git.exe":"git";
+const exec=promisify(execFile); const gitBinary="git";
 const dir=await mkdtemp(join(process.cwd(),"git-safety-test-"));
 await exec(gitBinary,["init","-q"],{cwd:dir});
 await exec(gitBinary,["config","user.email","test@example.com"],{cwd:dir});
