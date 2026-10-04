@@ -26,7 +26,7 @@ export class NextActionEngine{
   if(pendingHandoff)return{kind:"handoff",reason:"A scoped handoff is awaiting execution.",missionId:mission.id,targetAgentId:pendingHandoff.toAgentId,goal:pendingHandoff.goal};
   const failed=tasks.find(t=>t.status==="failed");
   if(failed)return{kind:"retry",reason:"A delegated task failed and is eligible for recovery.",missionId:mission.id,sourceTaskId:failed.id};
-  const pending=tasks.find(t=>t.status==="pending");
+  const pending=tasks.find(t=>t.status==="pending"||t.status==="running");
   if(pending)return{kind:"handoff",reason:"A delegated workstream is pending.",missionId:mission.id,targetAgentId:pending.agentId,goal:pending.goal,sourceTaskId:pending.id};
   return{kind:"none",reason:"No executable next action is currently available.",missionId:mission.id};
  }
