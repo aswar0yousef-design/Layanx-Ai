@@ -19,7 +19,26 @@ export interface RuntimeApiOptions{core:LayanXCore;business:BusinessManager;ads?
 function json(response:ServerResponse,status:number,body:unknown){response.statusCode=status;response.setHeader("content-type","application/json; charset=utf-8");response.end(JSON.stringify(body));}
 async function rawBody(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}return Buffer.concat(chunks);}
 async function body(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}const raw=Buffer.concat(chunks).toString("utf8");if(!raw)return{};try{return JSON.parse(raw) as Record<string,unknown>;}catch{throw new Error("invalid_json");}}
-function authorized(request:IncomingMessage,token?:string){return !token||request.headers.authorization==="Bearer "+token;}
+function authorized(request:IncomingMessage,token?:string){
+ if(token)return request.headers.authorization==="Bearer "+token;
+ const host=(request.headers.host??"").toLowerCase().split(":")[0];
+ const loopbackHost=host==="127.0.0.1"||host==="localhost"||host==="::1"||host==="[::1]";
+ if(!loopbackHost)return false;
+ const origin=typeof request.headers.origin==="string"?request.headers.origin:null;
+ if(origin){
+  try{
+   const parsed=new URL(origin);
+   const originHost=parsed.hostname.toLowerCase();
+   const originLoopback=originHost==="127.0.0.1"||originHost==="localhost"||originHost==="::1";
+   if(!originLoopback)return false;
+  }catch{return false;}
+ }
+ return true;
+}
+function validJsonContentType(request:IncomingMessage){
+ const contentType=typeof request.headers["content-type"]==="string"?request.headers["content-type"].split(";")[0].trim().toLowerCase():"";
+ return contentType==="application/json";
+}
 function runtimeView(core:LayanXCore,persistence:RuntimePersistence|undefined,business:BusinessManager,ads:AdsManager,media:MediaManager){return {core,models:core.models,providers:core.providers,providerSummary:providerSummary(),persistence,business,ads,media};}
 export function startRuntimeApi(options:RuntimeApiOptions){
  const host=options.host??process.env.LAYANX_API_HOST??"127.0.0.1";const port=options.port??Number(process.env.LAYANX_API_PORT??3000);const max=options.maxBodyBytes??65536;const requireToken=options.requireToken??(process.env.LAYANX_API_REQUIRE_TOKEN==="true");const remoteHost=host!=="127.0.0.1"&&host!=="localhost"&&host!=="::1";if((requireToken||remoteHost)&&!options.token)throw new Error("LAYANX_API_TOKEN is required for remote API access");
@@ -31,7 +50,12 @@ export function startRuntimeApi(options:RuntimeApiOptions){
  const server=createServer(async(request,response)=>{
   response.setHeader("cache-control","no-store");
   const publicWebhook=request.url==="/v1/channels/whatsapp/webhook";
-  if(requireToken&&!authorized(request,options.token)&&!publicWebhook&&request.url!=="/v1/health"&&request.url!=="/voice"){json(response,401,{ok:false,error:"unauthorized"});return;}
+  const jsonBodyRequest=request.method==="POST"&&request.url!=="/v1/voice/transcribe"&&!publicWebhook&&request.url!=="/voice";
+  if(jsonBodyRequest&&!validJsonContentType(request)){
+   json(response,415,{ok:false,error:"content_type_must_be_application_json"});
+   return;
+  }
+  if(!publicWebhook&&request.url!=="/v1/health"&&request.url!=="/voice"&&!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
   if(request.method==="GET"&&request.url==="/v1/device/identity"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{json(response,200,{ok:true,device:await deviceIdentity()});}
