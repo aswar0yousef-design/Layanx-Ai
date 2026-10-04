@@ -91,6 +91,7 @@ const excludedResult = runPaperScalping(candles, {
   stopLossDistance: 1000,
   spread: 0.05,
   slippage: 0.02,
+  signalConfig:{minimumScore:1},
   endOfDataPolicy: "exclude",
 });
 
