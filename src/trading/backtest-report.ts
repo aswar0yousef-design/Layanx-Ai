@@ -1,166 +1,32 @@
 import type { TradeAnalysis } from "./trade-record.js";
+import {roundDecimal} from "./numeric.js";
 
-export interface BacktestReport {
-  initialBalance: number;
-  finalBalance: number;
-  netPnl: number;
-  returnPct: number;
-  trades: number;
-  wins: number;
-  losses: number;
-  winRate: number;
-  grossProfit: number;
-  grossLoss: number;
-  profitFactor: number;
-  expectancyPerTrade: number;
-  maxDrawdown: number;
-  maxDrawdownPct: number;
-  estimatedRoundTripCosts: number;
-  commissions: number;
-  swaps: number;
-  costErasedTrades: number;
-  intrabarAmbiguousExits: number;
-  gapThroughExits: number;
+export interface BacktestReport {initialBalance:number;finalBalance:number;netPnl:number;returnPct:number;trades:number;wins:number;losses:number;winRate:number;grossProfit:number;grossLoss:number;profitFactor:number;expectancyPerTrade:number;maxDrawdown:number;maxDrawdownPct:number;estimatedRoundTripCosts:number;commissions:number;swaps:number;costErasedTrades:number;intrabarAmbiguousExits:number;gapThroughExits:number;}
+export interface PooledBacktestReport {aggregation:"pooled-trade-results";trades:number;wins:number;losses:number;winRate:number;netPnl:number;grossProfit:number;grossLoss:number;profitFactor:number;expectancyPerTrade:number;estimatedRoundTripCosts:number;commissions:number;swaps:number;costErasedTrades:number;intrabarAmbiguousExits:number;gapThroughExits:number;}
+
+export function buildPooledBacktestReport(analyses:TradeAnalysis[]):PooledBacktestReport{
+ let wins=0,grossProfit=0,grossLoss=0,estimatedRoundTripCosts=0,commissions=0,swaps=0,costErasedTrades=0,intrabarAmbiguousExits=0,gapThroughExits=0;
+ for(const analysis of analyses){
+  if(analysis.trueNetPnl>0){wins++;grossProfit+=analysis.trueNetPnl;}else if(analysis.trueNetPnl<0)grossLoss+=Math.abs(analysis.trueNetPnl);
+  estimatedRoundTripCosts+=analysis.estimatedRoundTripCost??0;commissions+=analysis.commission;swaps+=analysis.swap;
+  if(analysis.grossPnl>0&&analysis.trueNetPnl<=0)costErasedTrades++;
+  if(analysis.metadata?.intrabarAmbiguous===true)intrabarAmbiguousExits++;
+  if(analysis.metadata?.gapThrough===true)gapThroughExits++;
+ }
+ const trades=analyses.length,netPnl=analyses.reduce((sum,a)=>sum+a.trueNetPnl,0),grossLossValue=grossLoss;
+ return{aggregation:"pooled-trade-results",trades,wins,losses:trades-wins,winRate:trades===0?0:roundDecimal(wins/trades*100),netPnl:roundDecimal(netPnl),grossProfit:roundDecimal(grossProfit),grossLoss:roundDecimal(grossLossValue),profitFactor:grossLossValue===0?(grossProfit>0?Infinity:0):roundDecimal(grossProfit/grossLossValue),expectancyPerTrade:trades===0?0:roundDecimal(netPnl/trades),estimatedRoundTripCosts:roundDecimal(estimatedRoundTripCosts),commissions:roundDecimal(commissions),swaps:roundDecimal(swaps),costErasedTrades,intrabarAmbiguousExits,gapThroughExits};
 }
-
-
-export interface PooledBacktestReport {
-  aggregation: "pooled-trade-results";
-  trades: number;
-  wins: number;
-  losses: number;
-  winRate: number;
-  netPnl: number;
-  grossProfit: number;
-  grossLoss: number;
-  profitFactor: number;
-  expectancyPerTrade: number;
-  estimatedRoundTripCosts: number;
-  commissions: number;
-  swaps: number;
-  costErasedTrades: number;
-  intrabarAmbiguousExits: number;
-  gapThroughExits: number;
-}
-
-export function buildPooledBacktestReport(analyses: TradeAnalysis[]): PooledBacktestReport {
-  let wins = 0;
-  let grossProfit = 0;
-  let grossLoss = 0;
-  let estimatedRoundTripCosts = 0;
-  let commissions = 0;
-  let swaps = 0;
-  let costErasedTrades = 0;
-  let intrabarAmbiguousExits = 0;
-  let gapThroughExits = 0;
-
-  for (const analysis of analyses) {
-    if (analysis.trueNetPnl > 0) {
-      wins += 1;
-      grossProfit += analysis.trueNetPnl;
-    } else if (analysis.trueNetPnl < 0) {
-      grossLoss += Math.abs(analysis.trueNetPnl);
-    }
-    estimatedRoundTripCosts += analysis.estimatedRoundTripCost ?? 0;
-    commissions += analysis.commission;
-    swaps += analysis.swap;
-    if (analysis.grossPnl > 0 && analysis.trueNetPnl <= 0) costErasedTrades += 1;
-    if (analysis.metadata?.intrabarAmbiguous === true) intrabarAmbiguousExits += 1;
-    if (analysis.metadata?.gapThrough === true) gapThroughExits += 1;
-  }
-
-  const trades = analyses.length;
-  const netPnl = analyses.reduce((sum, analysis) => sum + analysis.trueNetPnl, 0);
-  const grossLossValue = grossLoss;
-
-  return {
-    aggregation: "pooled-trade-results",
-    trades,
-    wins,
-    losses: trades - wins,
-    winRate: trades === 0 ? 0 : (wins / trades) * 100,
-    netPnl,
-    grossProfit,
-    grossLoss: grossLossValue,
-    profitFactor: grossLossValue === 0 ? (grossProfit > 0 ? Infinity : 0) : grossProfit / grossLossValue,
-    expectancyPerTrade: trades === 0 ? 0 : netPnl / trades,
-    estimatedRoundTripCosts,
-    commissions,
-    swaps,
-    costErasedTrades,
-    intrabarAmbiguousExits,
-    gapThroughExits,
-  };
-}
-
-export function buildBacktestReport(
-  initialBalance: number,
-  analyses: TradeAnalysis[],
-): BacktestReport {
-  if (initialBalance <= 0) throw new Error("Initial balance must be positive.");
-
-  let balance = initialBalance;
-  let peak = initialBalance;
-  let maxDrawdown = 0;
-  let maxDrawdownPct = 0;
-  let grossProfit = 0;
-  let grossLoss = 0;
-  let estimatedRoundTripCosts = 0;
-  let commissions = 0;
-  let swaps = 0;
-  let costErasedTrades = 0;
-  let wins = 0;
-  let intrabarAmbiguousExits = 0;
-  let gapThroughExits = 0;
-
-  for (const analysis of analyses) {
-    balance += analysis.trueNetPnl;
-    peak = Math.max(peak, balance);
-
-    const drawdown = peak - balance;
-    maxDrawdown = Math.max(maxDrawdown, drawdown);
-    if (peak > 0) maxDrawdownPct = Math.max(maxDrawdownPct, (drawdown / peak) * 100);
-
-    if (analysis.trueNetPnl > 0) {
-      wins += 1;
-      grossProfit += analysis.trueNetPnl;
-    } else if (analysis.trueNetPnl < 0) {
-      grossLoss += Math.abs(analysis.trueNetPnl);
-    }
-
-    estimatedRoundTripCosts += analysis.estimatedRoundTripCost ?? 0;
-    commissions += analysis.commission;
-    swaps += analysis.swap;
-    if (analysis.grossPnl > 0 && analysis.trueNetPnl <= 0) costErasedTrades += 1;
-    if (analysis.metadata?.intrabarAmbiguous === true) intrabarAmbiguousExits += 1;
-    if (analysis.metadata?.gapThrough === true) gapThroughExits += 1;
-  }
-
-  const trades = analyses.length;
-  const losses = trades - wins;
-  const netPnl = balance - initialBalance;
-  const profitFactor = grossLoss === 0 ? (grossProfit > 0 ? Infinity : 0) : grossProfit / grossLoss;
-
-  return {
-    initialBalance,
-    finalBalance: balance,
-    netPnl,
-    returnPct: (netPnl / initialBalance) * 100,
-    trades,
-    wins,
-    losses,
-    winRate: trades === 0 ? 0 : (wins / trades) * 100,
-    grossProfit,
-    grossLoss,
-    profitFactor,
-    expectancyPerTrade: trades === 0 ? 0 : netPnl / trades,
-    maxDrawdown,
-    maxDrawdownPct,
-    estimatedRoundTripCosts,
-    commissions,
-    swaps,
-    costErasedTrades,
-    intrabarAmbiguousExits,
-    gapThroughExits,
-  };
+export function buildBacktestReport(initialBalance:number,analyses:TradeAnalysis[]):BacktestReport{
+ if(initialBalance<=0)throw new Error("Initial balance must be positive.");
+ let balance=initialBalance,peak=initialBalance,maxDrawdown=0,maxDrawdownPct=0,grossProfit=0,grossLoss=0,estimatedRoundTripCosts=0,commissions=0,swaps=0,costErasedTrades=0,wins=0,intrabarAmbiguousExits=0,gapThroughExits=0;
+ for(const analysis of analyses){
+  balance+=analysis.trueNetPnl;peak=Math.max(peak,balance);const drawdown=peak-balance;maxDrawdown=Math.max(maxDrawdown,drawdown);if(peak>0)maxDrawdownPct=Math.max(maxDrawdownPct,drawdown/peak*100);
+  if(analysis.trueNetPnl>0){wins++;grossProfit+=analysis.trueNetPnl;}else if(analysis.trueNetPnl<0)grossLoss+=Math.abs(analysis.trueNetPnl);
+  estimatedRoundTripCosts+=analysis.estimatedRoundTripCost??0;commissions+=analysis.commission;swaps+=analysis.swap;
+  if(analysis.grossPnl>0&&analysis.trueNetPnl<=0)costErasedTrades++;
+  if(analysis.metadata?.intrabarAmbiguous===true)intrabarAmbiguousExits++;
+  if(analysis.metadata?.gapThrough===true)gapThroughExits++;
+ }
+ const trades=analyses.length,losses=trades-wins,netPnl=roundDecimal(balance-initialBalance),finalBalance=roundDecimal(balance),grossLossValue=roundDecimal(grossLoss),grossProfitValue=roundDecimal(grossProfit);
+ return{initialBalance,finalBalance,netPnl,returnPct:roundDecimal(netPnl/initialBalance*100),trades,wins,losses,winRate:trades===0?0:roundDecimal(wins/trades*100),grossProfit:grossProfitValue,grossLoss:grossLossValue,profitFactor:grossLossValue===0?(grossProfitValue>0?Infinity:0):roundDecimal(grossProfitValue/grossLossValue),expectancyPerTrade:trades===0?0:roundDecimal(netPnl/trades),maxDrawdown:roundDecimal(maxDrawdown),maxDrawdownPct:roundDecimal(maxDrawdownPct),estimatedRoundTripCosts:roundDecimal(estimatedRoundTripCosts),commissions:roundDecimal(commissions),swaps:roundDecimal(swaps),costErasedTrades,intrabarAmbiguousExits,gapThroughExits};
 }
