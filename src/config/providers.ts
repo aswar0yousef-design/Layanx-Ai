@@ -38,7 +38,7 @@ function loadFreePool(env:NodeJS.ProcessEnv){
 export function loadProviderConfig(env:NodeJS.ProcessEnv=process.env):ProviderRuntimeConfig{
  const mode=(env.LAYANX_AI_MODE??"local") as ProviderMode;if(!["local","cloud","hybrid"].includes(mode))throw new Error("Invalid LAYANX_AI_MODE.");
  return{mode,
-  ollama:{enabled:env.OLLAMA_ENABLED!=="false",baseUrl:(env.OLLAMA_BASE_URL??"http://127.0.0.1:11434").replace(/\/$/,""),model:env.OLLAMA_MODEL??"llama3.2:3b",visionModel:env.OLLAMA_VISION_MODEL??"moondream:1.8b"},
+  ollama:{enabled:env.OLLAMA_ENABLED!=="false",baseUrl:(env.OLLAMA_BASE_URL??"http://127.0.0.1:11434").replace(/\/$/,""),model:env.OLLAMA_MODEL??"qwen2.5-coder:7b",visionModel:env.OLLAMA_VISION_MODEL??"moondream:1.8b"},
   openai:{enabled:env.OPENAI_ENABLED==="true",apiKey:env.OPENAI_API_KEY,baseUrl:env.OPENAI_BASE_URL??"https://api.openai.com/v1/responses",healthUrl:env.OPENAI_HEALTH_URL??"https://api.openai.com/v1/models",model:env.OPENAI_MODEL??"gpt-5.6-luna"},
   anthropic:{enabled:env.ANTHROPIC_ENABLED==="true",apiKey:env.ANTHROPIC_API_KEY,baseUrl:env.ANTHROPIC_BASE_URL??"https://api.anthropic.com/v1/messages",healthUrl:env.ANTHROPIC_HEALTH_URL??"https://api.anthropic.com/v1/models",model:env.ANTHROPIC_MODEL??"claude-sonnet-4-5"},
   gemini:{enabled:env.GEMINI_ENABLED==="true",apiKey:env.GEMINI_API_KEY,baseUrl:env.GEMINI_BASE_URL??"https://generativelanguage.googleapis.com/v1beta",healthUrl:env.GEMINI_HEALTH_URL??"https://generativelanguage.googleapis.com/v1beta/models",model:env.GEMINI_MODEL??"gemini-3.6-flash"},
