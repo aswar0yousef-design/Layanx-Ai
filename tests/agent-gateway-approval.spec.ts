@@ -1,13 +1,13 @@
 import {LayanXCore} from "../src/core/orchestrator.js";
 
 const core=new LayanXCore();
-core.registerAgent({agentId:"core",purpose:"gateway approval",allowedTools:["dangerous.read"],forbiddenResources:[],requiredPermission:"L1_READ",maxToolCalls:10,maxRuntimeMs:10000,successCriteria:["approved"],stopCondition:"stop"});
-core.tools.register({name:"dangerous.read",description:"gateway approval test",permission:"L1_READ",dangerous:true,actions:["run sensitive test"],tags:["test"]});
+core.registerAgent({agentId:"core",purpose:"gateway approval",allowedTools:["dangerous.read"],forbiddenResources:[],requiredPermission:"L4_EXECUTE",maxToolCalls:10,maxRuntimeMs:10000,successCriteria:["approved"],stopCondition:"stop"});
+core.tools.register({name:"dangerous.read",description:"gateway approval test",permission:"L4_EXECUTE",dangerous:true,actions:["run sensitive test"],tags:["test"]});
 core.toolAdapters.register("dangerous.read",{async execute(){return{approved:true};}});
-const mission=core.startMission("gateway approval","project");
-mission.projectId="gateway-approval-project";
+const mission=core.startMission("gateway approval","default");
+mission.projectId="default";
 mission.requiredPermission="L1_READ";
-mission.tools=[{tool:"dangerous.read",action:"run sensitive test",permission:"L1_READ",reason:"gateway approval"}];
+mission.tools=[{tool:"dangerous.read",action:"run sensitive test",permission:"L4_EXECUTE",reason:"gateway approval"}];
 core.missions.save(mission);
 
 const first=await core.executeAgentLoop(mission.id,mission.projectId,2,{}, "core");
