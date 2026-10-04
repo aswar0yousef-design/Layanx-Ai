@@ -39,7 +39,7 @@ core.executionRuntime.approvals.approve(approval.id);
 let executions=0;
 const originalPersist=core.executionRuntime.persist.bind(core.executionRuntime);
 core.executionRuntime.persist=async current=>{
- if(current.status==="completed" && core.handoffs.get(handoff.id).status==="completed")throw new Error("SIMULATED_CRASH_BEFORE_FINAL_PERSIST");
+ if(core.handoffs.get(handoff.id).status==="completed")throw new Error("SIMULATED_CRASH_BEFORE_FINAL_PERSIST");
  await originalPersist(current);
 };
 let crashed=false;
