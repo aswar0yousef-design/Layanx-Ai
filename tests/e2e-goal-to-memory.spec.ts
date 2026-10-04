@@ -41,7 +41,7 @@ const agent={
 core.registerAgent(agent);
 core.tools.register({name:"terminal.run",description:"Run the requested command",permission:"L4_EXECUTE",dangerous:true});
 
-const mission=await core.planAndStartMission("Run the requested command safely.");
+const mission=await core.planAndStartMission("Run the requested command safely.","e2e-project");
 if(mission.status!=="planned"||mission.requiredPermission!=="L4_EXECUTE")throw new Error("Planned mission was not compiled correctly.");
 
 const capability=core.capabilities.issue({
