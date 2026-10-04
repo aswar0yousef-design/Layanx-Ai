@@ -21,7 +21,7 @@ core.tools.register({name:"step.two",description:"second read",permission:"L1_RE
 core.toolAdapters.register("step.one",{async execute(){const sensitiveField=["api","Key"].join(""); return{observation:"known-value",[sensitiveField]:"super-secret-value"};}});
 core.toolAdapters.register("step.two",{async execute(){return{stage:2};}});
 
-const mission=core.startMission("Use previous mission experience to continue");
+const mission=core.startMission("Use previous mission experience to continue","project");
 mission.requiredPermission="L1_READ";
 mission.steps=[{id:crypto.randomUUID(),description:"Execute reads",status:"pending"},{id:crypto.randomUUID(),description:"Verify result",status:"pending"}];
 mission.tools=[{tool:"step.one",action:"read first",permission:"L1_READ",reason:"initial"}];
