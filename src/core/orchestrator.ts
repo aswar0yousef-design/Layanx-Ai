@@ -385,7 +385,7 @@ export class LayanXCore{
           stepsExecuted:processed,maxSteps,nextToolAvailable:true,plannerSucceeded:false
         });
         await this.recordAdaptiveStop(mission,decision,processed,agentId);
-        return{missionId,results,completed:false,reason:decision.detail,recoverable:true};
+        return{missionId,results,completed:false,reason:error instanceof Error?error.message:decision.detail,recoverable:true};
       }
       if(!next){
         const decision=this.adaptiveDecision.decide({mission,toolResult:latest,stepsExecuted:processed,maxSteps,nextToolAvailable:false,toolSucceeded:true});
