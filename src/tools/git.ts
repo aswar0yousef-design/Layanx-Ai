@@ -12,7 +12,8 @@ function workspaceFor(root:string,projectId:string):string{
 }
 function run(cwd:string,args:string[],timeout=30000):Promise<unknown>{
  return new Promise((resolvePromise,reject)=>{
-  const child=spawn("git",args,{cwd,shell:false,env:{...process.env,GIT_TERMINAL_PROMPT:"0"},timeout});
+  const executable=process.env.GIT_EXECUTABLE??"git";
+  const child=spawn(executable,args,{cwd,shell:false,env:{...process.env,GIT_TERMINAL_PROMPT:"0"},timeout});
   let stdout="",stderr="";
   child.stdout.on("data",c=>{stdout+=String(c);if(stdout.length>128*1024)child.kill("SIGKILL");});
   child.stderr.on("data",c=>{stderr+=String(c);if(stderr.length>128*1024)child.kill("SIGKILL");});
