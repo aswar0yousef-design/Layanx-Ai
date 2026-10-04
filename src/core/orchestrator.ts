@@ -258,7 +258,7 @@ export class LayanXCore{
 
   async prepareChangeImpact(mission:import("./types.js").Mission,projectId:string,request?:{tool?:string;action?:string}){
     this.projectIsolation.assertMissionProject(projectId,mission.projectId);
-    const graph=await this.projectGraph.scan(projectId);
+    let graph:Awaited<ReturnType<typeof this.projectGraph.scan>>;\n    try{graph=await this.projectGraph.scan(projectId);}catch(error){\n      const code=error&&typeof error==="object"&&"code" in error?(error as {code?:string}).code:undefined;\n      if(code!=="ENOENT")throw error;\n      graph={projectId,generatedAt:new Date().toISOString(),truncated:false,nodes:[],edges:[],entryPoints:[],routes:[],tests:[],dependencies:{}};\n    }
     const query=[mission.goal,request?.action,request?.tool].filter(Boolean).join(" ");
     const impact=this.impactAnalyzer.analyze(graph,query);
     const selection=this.testSelector.select(graph,impact);
