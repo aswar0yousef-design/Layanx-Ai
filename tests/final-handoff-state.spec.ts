@@ -16,7 +16,7 @@ const core=new LayanXCore(undefined,persistence);
 const a={agentId:"a",purpose:"prepare",allowedTools:["terminal.run"],forbiddenResources:[],requiredPermission:"L4_EXECUTE" as const,maxToolCalls:5,maxRuntimeMs:10000,successCriteria:["done"],stopCondition:"stop"};
 const b={agentId:"b",purpose:"handoff",allowedTools:["terminal.run"],forbiddenResources:[],requiredPermission:"L4_EXECUTE" as const,maxToolCalls:5,maxRuntimeMs:10000,successCriteria:["done"],stopCondition:"stop"};
 core.registerAgent(a);core.registerAgent(b);core.tools.register({name:"terminal.run",description:"run",permission:"L4_EXECUTE",dangerous:true});
-const mission=core.startMission("final handoff state");mission.requiredPermission="L4_EXECUTE";mission.steps=[{id:"execute",description:"Execute handoff",status:"pending"},{id:"verify",description:"Verify result",status:"pending"}];
+const mission=core.startMission("final handoff state","p");mission.requiredPermission="L4_EXECUTE";mission.steps=[{id:"execute",description:"Execute handoff",status:"pending"},{id:"verify",description:"Verify result",status:"pending"}];
 const secret="SUPER_SECRET_TEST_TOKEN_123";
 const h=core.handoffs.create({missionId:mission.id,fromAgentId:a.agentId,toAgent:b,goal:"finish",context:{apiKey:secret,normal:"ok"},requiredPermission:"L4_EXECUTE",execution:{action:"run",tool:"terminal.run",payload:{authorization:"Bearer abcdefghijk"}}});
 if(JSON.stringify(h).includes(secret)||JSON.stringify(h).includes("Bearer abcdefghijk"))throw new Error("Handoff secret leaked.");
