@@ -1,4 +1,4 @@
-import {existsSync,mkdirSync,readFileSync,writeFileSync} from "node:fs";
+import {existsSync,mkdirSync,writeFileSync} from "node:fs";
 import {dirname,resolve} from "node:path";
 import {spawn} from "node:child_process";
 import type {QuranSegment} from "./publisher.js";
