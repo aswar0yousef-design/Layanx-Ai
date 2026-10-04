@@ -33,12 +33,12 @@ export class ToolCatalog{
     return this.list(contract,query.permission)
       .filter(tool=>PERMISSION_RANK[tool.permission]<=PERMISSION_RANK[query.permission])
       .map(tool=>{const haystack=[tool.name,tool.description,...tool.actions,...tool.tags].join(" ").toLowerCase();const score=terms.reduce((sum,term)=>sum+(haystack.includes(term)?1:0),0);return{tool,score};})
-      .filter(item=>item.score>0)
+      .filter(item=>item.score>0 && (terms.length===1 || item.score>=2 || toolActionMatch(item.tool,terms)))
       .sort((a,b)=>b.score-a.score||a.tool.name.localeCompare(b.tool.name))
       .filter((item,index,items)=>index===0||item.score===items[0]!.score)
       .map(item=>item.tool);
   }
 }
-function toPublic(tool:import("../tools/registry.js").ToolDefinition):ToolCatalogEntry{
+function toolActionMatch(tool:import("../tools/registry.js").ToolDefinition,terms:string[]):boolean{\n  const actions=[...(tool.actions??[])].map(action=>action.toLowerCase());\n  return terms.some(term=>actions.some(action=>action.split(/[^a-z0-9_]+/).includes(term)));\n}\nfunction toPublic(tool:import("../tools/registry.js").ToolDefinition):ToolCatalogEntry{
   return {name:tool.name,description:tool.description,permission:tool.permission,dangerous:tool.dangerous,actions:[...(tool.actions??[])],tags:[...(tool.tags??[])]};
 }
