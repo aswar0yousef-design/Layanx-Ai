@@ -647,6 +647,7 @@ export class LayanXCore{
           if(frame)visualContext={mimeType:frame.mimeType,base64:frame.base64};
         }
       }
+      if(result.ok&&actualIndex>=((this.missions.get(missionId)?.tools?.length??1)-1))break;
       if(!result.ok){
         if(result.approvalId||result.error==="Approval missing, revoked, or expired."||result.error==="Approval scope mismatch."){
           cleanupLiveScreen();
