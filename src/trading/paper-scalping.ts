@@ -1,6 +1,6 @@
 import type { TradeSide } from "./execution-quality.js";
 import type { MarketCandle } from "./scalping-signal.js";
-import { generateScalpingSignal } from "./scalping-signal.js";
+import { generateScalpingSignal, type ScalpingSignalConfig } from "./scalping-signal.js";
 import { analyzeTradeRecord, type TradeRecord } from "./trade-record.js";
 import { evaluateScalpingDecision } from "./scalping-decision.js";
 import { detectTradingSession } from "./session.js";
@@ -30,6 +30,7 @@ export interface PaperTradingConfig {
   signalOnClosedCandle?: boolean;
   /** How an open position is handled when historical data ends. */
   endOfDataPolicy?: "close" | "exclude";
+  signalConfig?: Partial<ScalpingSignalConfig>;
 }
 
 export interface PaperTrade {
@@ -206,7 +207,7 @@ export function runPaperScalping(
       continue;
     }
 
-    const signal = generateScalpingSignal(history);
+    const signal = generateScalpingSignal(history, config.signalConfig);
     if (signal.action === "neutral") {
       blockedSignals += 1;
       continue;
