@@ -136,5 +136,7 @@ export class ProjectGraph{
     return candidates.find(candidate=>files.has(candidate));
   }
 
-  private workspaceFor(projectId:string):string{\n    return this.projectIsolation.workspacePath(this.root,projectId);\n  }
+  private workspaceFor(projectId:string):string{
+    return this.projectIsolation.workspacePath(this.root,projectId);
+  }
 }
