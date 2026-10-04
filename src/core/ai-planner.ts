@@ -21,6 +21,33 @@ function filterCatalogForGoal(goal:string,catalog:ToolCatalogEntry[]):ToolCatalo
  return catalog.filter(tool=>allowedPrefixes.some(prefix=>tool.name===prefix||tool.name.startsWith(prefix)));
 }
 
+function deterministicDevelopmentPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
+ const value=goal.toLowerCase();
+ const verification=value.includes("test")||value.includes("اختبار")||value.includes("اختبارات")
+   ? "test"
+   : value.includes("typecheck")||value.includes("type check")||value.includes("types")||value.includes("تايب")
+     ? "typecheck"
+     : value.includes("build")||value.includes("compile")||value.includes("بناء")||value.includes("ترجمة")
+       ? "build" : undefined;
+ if(!verification)return undefined;
+ const tool=catalog.find(item=>item.name==="project.verify"&&item.actions.some(action=>action.toLowerCase()==="verify project"));
+ if(!tool||tool.permission!=="L4_EXECUTE")return undefined;
+ return{
+  risk:"medium",
+  requiredPermission:"L4_EXECUTE",
+  steps:[{description:"Run the requested project verification script."}],
+  successCriteria:["The verification script completes and its result is reported."],
+  stopCondition:"Stop if the project verification script cannot be executed or is blocked by policy.",
+  tools:[{
+   tool:tool.name,
+   action:"verify project",
+   permission:"L4_EXECUTE",
+   reason:"The goal explicitly requests project verification.",
+   payload:{script:verification}
+  }]
+ };
+}
+
 function parseModelJson(raw:string,context:string):unknown{
  const cleaned=raw.trim().replace(/^\x60\x60\x60(?:json)?\s*/i,"").replace(/\s*\x60\x60\x60$/,"").trim();
  try{return JSON.parse(cleaned);}catch{}
