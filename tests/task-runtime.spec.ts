@@ -1,7 +1,7 @@
 import {TaskRuntime} from "../src/core/task-runtime.js";
 
 const events:string[]=[];
-const fakeCore={projectIsolation:{normalize:(id:string)=>id},audit:{append:(entry:any)=>events.push(entry.action+":"+entry.resource)},memory:{remember:()=>{}},runAgentGateway:async(goal:string,_projectId:string,_maxSteps:number,_approvals:any,agentId:string,routing:any)=>{const id=goal.split("\n")[0];events.push("run:"+id+":"+agentId+":"+routing.modelId);await new Promise(resolve=>setTimeout(resolve,id==="a"?25:5));return{missionId:"m-"+id,completed:true,status:"completed",steps:1,results:[],data:id};}} as any;
+const fakeCore={projectIsolation:{normalize:(id:string)=>id},audit:{append:(entry:any)=>events.push(entry.action+":"+entry.resource)},memory:{remember:()=>{}},models:{get:()=>({capabilities:["reasoning"],local:true})},runAgentGateway:async(goal:string,_projectId:string,_maxSteps:number,_approvals:any,agentId:string,routing:any)=>{const id=goal.split("\n")[0];events.push("run:"+id+":"+agentId+":"+routing.modelId);await new Promise(resolve=>setTimeout(resolve,id==="a"?25:5));return{missionId:"m-"+id,completed:true,status:"completed",steps:1,results:[],data:id};}} as any;
 
 const runtime=new TaskRuntime(fakeCore);
 const result=await runtime.run({goal:"dependency graph",tasks:[
