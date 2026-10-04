@@ -1,5 +1,13 @@
 import {mkdir} from "node:fs/promises";
+import {existsSync} from "node:fs";
 import {resolve,relative,sep} from "node:path";
+
+if(process.platform==="win32"){
+ const pathEntries=(process.env.PATH??"").split(";").filter(Boolean);
+ for(const candidate of ["C:\\Program Files\\Git\\cmd","C:\\Program Files\\Git\\bin","C:\\Program Files (x86)\\Git\\cmd"])
+  if(existsSync(candidate)&&!pathEntries.some(entry=>entry.toLowerCase()===candidate.toLowerCase()))pathEntries.push(candidate);
+ process.env.PATH=pathEntries.join(";");
+}
 import {spawn} from "node:child_process";
 import type {ToolRequest} from "../core/types.js";
 import type {ToolAdapter} from "./executor.js";
