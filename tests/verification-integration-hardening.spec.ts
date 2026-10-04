@@ -39,7 +39,7 @@ const provider:ModelProviderAdapter={name:"failure-provider",async health(){retu
 core.providers.register(provider);
 core.tools.register({name:"test.tool",description:"test",permission:"L1_READ",dangerous:false,actions:["read"]});
 core.toolAdapters.register("test.tool",{async execute(){return{ok:true};}});
-const planned=core.startMission("planner failure");
+const planned=core.startMission("planner failure","project");
 planned.requiredPermission="L1_READ";
 planned.tools=[{tool:"test.tool",action:"read",permission:"L1_READ",reason:"initial"}];
 core.missions.save(planned);
