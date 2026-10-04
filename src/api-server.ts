@@ -36,7 +36,8 @@ function authorized(request:IncomingMessage,token?:string){
  return true;
 }
 function validJsonContentType(request:IncomingMessage){
- const contentType=typeof request.headers["content-type"]==="string"?request.headers["content-type"].split(";")[0].trim().toLowerCase():"";
+ const header=request.headers["content-type"];
+ const contentType=typeof header==="string"?header.split(";")[0].trim().toLowerCase():"";
  return contentType==="application/json";
 }
 function runtimeView(core:LayanXCore,persistence:RuntimePersistence|undefined,business:BusinessManager,ads:AdsManager,media:MediaManager){return {core,models:core.models,providers:core.providers,providerSummary:providerSummary(),persistence,business,ads,media};}
