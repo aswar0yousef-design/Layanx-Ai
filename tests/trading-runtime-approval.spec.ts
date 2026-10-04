@@ -16,7 +16,7 @@ const agent: AgentContract = {
   requiredPermission: "L4_EXECUTE",
   maxToolCalls: 5,
   maxRuntimeMs: 30000,
-  successCriteria: ["execution auditable"],
+  successCriteria: ['result.submitted === false'],
   stopCondition: "Stop on approval denial.",
   profile: {
     role: "analyst",
@@ -27,8 +27,7 @@ const agent: AgentContract = {
 };
 core.registerAgent(agent);
 
-const mission = core.startMission("Controlled Binance execution approval test") as Mission;
-mission.projectId = "default";
+const mission = core.startMission("Controlled Binance execution approval test","default") as Mission;
 mission.requiredPermission = "L4_EXECUTE";
 mission.tools = [{
   tool: BINANCE_LIVE_ORDER_TOOL,
