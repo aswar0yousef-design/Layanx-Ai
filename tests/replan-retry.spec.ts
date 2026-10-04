@@ -8,9 +8,9 @@ const agent={
   successCriteria:["done"],stopCondition:"stop"
 };
 core.registerAgent(agent);
-core.tools.register({name:"terminal.run",description:"Run command",permission:"L4_EXECUTE",dangerous:true});
+core.tools.register({name:"terminal.run",description:"Run command",permission:"L4_EXECUTE",dangerous:false});
 
-const mission=core.startMission("Recover a failed command","retry-project");
+const mission=core.startMission("Recover a failed command","default");
 mission.requiredPermission="L4_EXECUTE";
 mission.steps=[
   {id:"prepare",description:"Prepare execution",status:"pending"},
