@@ -61,7 +61,7 @@ export function createBrowserToolAdapter(options:{fetcher?:typeof fetch}={}):Too
   return{url:url.toString(),status:response.status,contentType:response.headers.get("content-type"),body};
  }};
 }
-const COMMANDS=new Map<string,string[]>([["git",["status","diff","log"]],["npm",["test","run typecheck","run build"]]]);
+const COMMANDS=new Map<string,string[]>([["git",["status","status --short","diff","log"],["npm",["test","run typecheck","run build"]]]);
 export function createTerminalToolAdapter(options:{root:string}):ToolAdapter{
  const root=resolve(options.root);
  return{async execute(request){
