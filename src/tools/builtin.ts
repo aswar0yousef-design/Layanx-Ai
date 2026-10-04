@@ -224,6 +224,11 @@ export function registerToolFabric(core:LayanXCore,options:{workspaceRoot?:strin
  });
  core.toolAdapters.register("files.write",createFileWriteToolAdapter({root:workspaceRoot}));
 
+ core.tools.register({name:"project.verify",description:"run an allowlisted project verification script inside the isolated workspace",permission:"L4_EXECUTE",dangerous:true,actions:["verify project","run project tests","typecheck project","build project"],tags:["project","verify","test","typecheck","build"]});
+ core.toolAdapters.register("project.verify",createProjectVerifyToolAdapter({root:workspaceRoot}));
+ core.tools.register({name:"project.bootstrap",description:"bootstrap a bounded local project workspace with validated dependencies",permission:"L4_EXECUTE",dangerous:true,actions:["bootstrap project","create project"],tags:["project","bootstrap","workspace"]});
+ core.toolAdapters.register("project.bootstrap",createProjectBootstrapToolAdapter({root:workspaceRoot}));
+
  for(const definition of [
   {name:"git.status",description:"inspect the current project Git status",action:"git status",permission:"L2_ANALYZE" as const,dangerous:false},
   {name:"git.checkpoint",description:"read the exact current Git commit for a rollback checkpoint",action:"git checkpoint",permission:"L2_ANALYZE" as const,dangerous:false},
