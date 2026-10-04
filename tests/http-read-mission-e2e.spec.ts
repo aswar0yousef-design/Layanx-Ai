@@ -4,7 +4,7 @@ core.registerAgent({agentId:"core",purpose:"test",allowedTools:["http.read"],for
 core.tools.register({name:"http.read",description:"read public URL",permission:"L1_READ",dangerous:false,actions:["read url"],tags:["http","url"]});
 let executed=0;
 core.toolAdapters.register("http.read",{async execute(request){executed++;return{url:(request.payload as {url:string}).url,ok:true};}});
-const mission=core.startMission("Read a public URL");
+const mission=core.startMission("Read a public URL","project");
 mission.requiredPermission="L1_READ";
 mission.tools=[{tool:"http.read",action:"read url",permission:"L1_READ",reason:"read public resource"}];
 const result=await core.executeMissionTool(mission.id,"project-web",0,{url:"https://example.com"});
