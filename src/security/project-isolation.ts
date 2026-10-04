@@ -7,12 +7,12 @@ export class ProjectIsolation{
  }
  assertSameProject(projectId:string,resource:ProjectResource){
   const expected=this.normalize(projectId);
-  if(resource.projectId!==expected)throw new Error("Project isolation violation.");
+  if(resource.projectId!==expected)throw new Error("Project isolation scope violation.");
  }
  assertMissionProject(projectId:string,missionProjectId:string|undefined){
   const expected=this.normalize(projectId);
   if(!missionProjectId)throw new Error("Mission is not bound to a project.");
-  if(missionProjectId!==expected)throw new Error("Project isolation violation.");
+  if(missionProjectId!==expected)throw new Error("Project isolation scope violation.");
  }
  assertMemoryNamespace(projectId:string,namespace:string){
   if(namespace!=="project:"+this.normalize(projectId))throw new Error("Invalid project memory namespace.");
