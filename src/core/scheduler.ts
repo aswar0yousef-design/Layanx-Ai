@@ -5,6 +5,8 @@ export type ScheduleTrigger={
   kind:"interval"|"once"|"daily";
   intervalMs?:number;
   runAt?:string;
+  hour?:number;
+  minute?:number;
   runImmediately?:boolean;
 };
 export interface ScheduledMission{
