@@ -27,7 +27,7 @@ mission.steps=[{id:crypto.randomUUID(),description:"Execute reads",status:"pendi
 mission.tools=[{tool:"step.one",action:"read first",permission:"L1_READ",reason:"initial"}];
 core.missions.save(mission);
 
-const result=await core.executeMissionAdaptive(mission.id,"project-memory",5);
+const result=await core.executeMissionAdaptive(mission.id,"project",5);
 if(!result.completed)throw new Error("Memory-aware adaptive mission did not complete.");
 const memories=core.memory.list().filter(entry=>entry.missionId===mission.id);
 if(memories.length<2)throw new Error("Tool experiences were not persisted to mission memory.");
