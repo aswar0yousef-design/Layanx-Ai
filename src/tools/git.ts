@@ -1,14 +1,20 @@
 import {mkdir} from "node:fs/promises";
 import {existsSync} from "node:fs";
-import {resolve,relative,sep} from "node:path";
+import {resolve,relative,sep,dirname} from "node:path";
+import {execFileSync} from "node:child_process";
 
 export function ensureGitOnPath():void{
  if(process.platform!=="win32")return;
  const pathKey=Object.keys(process.env).find(key=>key.toLowerCase()==="path")??"PATH";
  const pathEntries=(process.env[pathKey]??"").split(";").filter(Boolean);
+ try{
+  const located=execFileSync("where.exe",["git"],{encoding:"utf8",windowsHide:true}).split(/\r?\n/).map(value=>value.trim()).filter(Boolean)[0];
+  if(located)pathEntries.unshift(dirname(located));
+ }catch{}
  for(const candidate of ["C:\\Program Files\\Git\\cmd","C:\\Program Files\\Git\\bin","C:\\Program Files (x86)\\Git\\cmd","C:\\Program Files (x86)\\Git\\bin",`${process.env.LocalAppData??""}\\Programs\\Git\\cmd`,`${process.env.LocalAppData??""}\\Programs\\Git\\bin`])
   if(existsSync(candidate)&&!pathEntries.some(entry=>entry.toLowerCase()===candidate.toLowerCase()))pathEntries.push(candidate);
- process.env[pathKey]=pathEntries.join(";");
+ const normalized=pathEntries.filter((entry,index,all)=>all.findIndex(value=>value.toLowerCase()===entry.toLowerCase())===index);
+ process.env[pathKey]=normalized.join(";");
 }
 ensureGitOnPath();
 import {spawn} from "node:child_process";
