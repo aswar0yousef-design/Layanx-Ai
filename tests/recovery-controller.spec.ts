@@ -12,6 +12,7 @@ const audit=new RecoveryAuditTrail();
 const rollback=new RollbackController();
 const executor=new InMemoryRollbackExecutor();
 const persistence=new RecoveryPersistence(new JsonStorageAdapter("/tmp/layanx-controller-recovery.json"));
+rollback.record({version:"1.0.0",commitSha:"good1234",manifestChecksum:"a".repeat(64),deployedAt:"2026-01-01T00:00:00Z"});
 const controller=new ProductionRecoveryController(probe,rollback,audit,executor,{maxAttempts:1,persistence,recoveryId:"recovery-controller-test"});
 
 const result=await controller.evaluate({
