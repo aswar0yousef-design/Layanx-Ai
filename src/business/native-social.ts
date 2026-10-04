@@ -1,4 +1,5 @@
 import {localSecret} from "../security/local-secret-vault.js";
+import {readFile} from "node:fs/promises";
 import type {SocialAccount,SocialPlatform} from "./types.js";
 
 export interface PublishItem{title:string;body:string;mediaUrls:string[]}
@@ -55,7 +56,7 @@ export class NativeSocialConnector implements PlatformSocialConnector{
   const externalId=String(d.id??"");if(!externalId)throw new Error("facebook_post_id_missing");return {externalId,url:`https://www.facebook.com/${externalId}`};
  }
  private async tiktok(access:string,item:PublishItem){
-  const media=item.mediaUrls.find(x=>/^https?:\/\//i.test(x));if(!media)throw new Error("tiktok_requires_public_media_url");
+  const media=item.mediaUrls[0];if(!media)throw new Error("tiktok_media_required");
   const api=base("tiktok","https://open.tiktokapis.com");
   const info=await jsonRequest(`${api}/v2/post/publish/creator_info/query/`,{method:"POST",headers:{Authorization:`Bearer ${access}`,"content-type":"application/json"}});
   const options=info?.data?.privacy_level_options??[];const privacy=process.env.LAYANX_TIKTOK_PRIVACY_LEVEL??"SELF_ONLY";if(!options.includes(privacy))throw new Error("tiktok_privacy_level_not_allowed");
