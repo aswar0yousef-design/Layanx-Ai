@@ -73,7 +73,7 @@ export function createTerminalToolAdapter(options:{root:string}):ToolAdapter{
   if(!binary||!COMMANDS.has(binary))throw new Error("Terminal command is not allowed.");
   const allowed=COMMANDS.get(binary)??[];
   const normalized=parts.join(" ").replace(/\s+/g," ").trim();
-  const permitted=allowed.some(value=>value===normalized);
+  const permitted=allowed.some(value=>value.replace(/\s+/g," ").trim()===normalized);
   if(!permitted)throw new Error("Terminal command is not allowed.");
   if(/[;&|$<>]/.test(command)||command.includes(String.fromCharCode(96)))throw new Error("Shell metacharacters are blocked.");
   return await new Promise((resolvePromise,reject)=>{
