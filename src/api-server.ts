@@ -813,7 +813,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   if(request.method==="GET"&&request.url?.startsWith("/v1/missions/")){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const url=request.url??"";
-   const id=url.slice("/v1/missions/".length).split("?")[0];
+   const id=url.slice("/v1/missions/".length).split("?")[0]??"";
    const mission=options.core.missions.get(id);
    if(!mission){json(response,404,{ok:false,error:"mission_not_found"});return;}
    const projectId=new URL(url,"http://localhost").searchParams.get("projectId")?.trim()||"";
