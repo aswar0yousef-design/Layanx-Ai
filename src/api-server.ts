@@ -15,6 +15,8 @@ import {MediaManager} from "./business/media.js";
 import {GrowthEngine} from "./business/growth-engine.js";
 import {MessagingChannels} from "./channels/service.js";
 import {deviceIdentity} from "./device-identity.js";
+import {QuranAdminConfigStore} from "./quran/admin-config.js";
+import {QuranFoundationSource} from "./quran/source.js";
 export interface RuntimeApiOptions{core:LayanXCore;business:BusinessManager;ads?:AdsManager;media?:MediaManager;growth?:GrowthEngine;channels?:MessagingChannels;persistence?:RuntimePersistence;host?:string;port?:number;maxBodyBytes?:number;token?:string;requireToken?:boolean;}
 function json(response:ServerResponse,status:number,body:unknown){response.statusCode=status;response.setHeader("content-type","application/json; charset=utf-8");response.end(JSON.stringify(body));}
 async function rawBody(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}return Buffer.concat(chunks);}
@@ -27,6 +29,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
  const control=new ControlCenter(options.core);
  const voice=new VoiceService();
  const oauth=new OAuthConnectionCenter();
+ const quranAdmin=new QuranAdminConfigStore();
  const business=options.business; const ads=options.ads; const media=options.media??new MediaManager(); const growth=options.growth; if(!ads)throw new Error("ads_manager_required");
  const server=createServer(async(request,response)=>{
   response.setHeader("cache-control","no-store");
@@ -171,6 +174,50 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     await options.core.executionRuntime.persist(mission);
     json(response,200,{ok:true,approval:{...approval,approved:options.core.executionRuntime.approvals.isApproved(approvalId)}});return;
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"approval operation failed"});return;}
+  }
+  if(request.method==="GET"&&request.url==="/v1/quran/admin"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   json(response,200,{ok:true,settings:quranAdmin.get()});return;
+  }
+  if(request.method==="PUT"&&request.url==="/v1/quran/admin"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const input=await body(request,max) as any;
+    const settings=quranAdmin.save({
+      clientId:typeof input.clientId==="string"?input.clientId:undefined,
+      clientSecret:typeof input.clientSecret==="string"?input.clientSecret:undefined,
+      environment:input.environment,
+      recitationId:input.recitationId,
+      translationId:input.translationId,
+      platforms:Array.isArray(input.platforms)?input.platforms.filter((x:any):x is string=>typeof x==="string"):undefined,
+      outputDir:input.outputDir,
+      reciterName:input.reciterName,
+      reciterCredit:input.reciterCredit,
+      licenseApproved:input.licenseApproved,
+      licenseProofUrl:input.licenseProofUrl,
+      timingSource:input.timingSource,
+      youtubeConnectionId:input.youtubeConnectionId,
+      tiktokConnectionId:input.tiktokConnectionId
+    });
+    json(response,200,{ok:true,settings});return;
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"quran_admin_save_failed"});return;}
+  }
+  if(request.method==="POST"&&request.url==="/v1/quran/admin/test"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const c=quranAdmin.config();
+    if(!c.clientId||!c.clientSecret||!c.recitationId)throw new Error("quran_foundation_configuration_incomplete");
+    const source=new QuranFoundationSource({clientId:c.clientId,clientSecret:c.clientSecret,environment:c.environment,recitationId:c.recitationId,translationId:c.translationId});
+    const verses=await source.chapter(1);
+    json(response,200,{ok:true,connection:true,surah:1,verses:verses.length,firstVerse:verses[0]?.verseKey??null});
+   }catch(error){json(response,422,{ok:false,connection:false,error:error instanceof Error?error.message:"quran_foundation_test_failed"});}
+   return;
+  }
+  if(request.method==="POST"&&request.url==="/v1/quran/admin/clear-credentials"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{json(response,200,{ok:true,settings:quranAdmin.clearCredentials()});}
+   catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"quran_credentials_clear_failed"});}
+   return;
   }
   if(request.method==="GET"&&request.url==="/v1/oauth/connections"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
