@@ -81,22 +81,10 @@ async status(account:SocialAccount,externalId:string):Promise<NativeSocialStatus
   return {externalId,status:"unknown"};
 }
 
-  const media=item.mediaUrls.find(x=>/^https?:\/\//i.test(x));if(!media)throw new Error("tiktok_requires_public_media_url");
-  const api=base("tiktok","https://open.tiktokapis.com");
-  const info=await jsonRequest(`${api}/v2/post/publish/creator_info/query/`,{method:"POST",headers:{Authorization:`Bearer ${access}`,"content-type":"application/json"}});
-  const options=info?.data?.privacy_level_options??[];const privacy=process.env.LAYANX_TIKTOK_PRIVACY_LEVEL??"SELF_ONLY";if(!options.includes(privacy))throw new Error("tiktok_privacy_level_not_allowed");
-  const isImage=/\.(jpe?g|png|webp)(\?|$)/i.test(media);const body=isImage?
-   {post_info:{title:item.title,description:item.body,privacy_level:privacy},source_info:{source:"PULL_FROM_URL",photo_images:[media],photo_cover_index:0},post_mode:"DIRECT_POST",media_type:"PHOTO"}:
-   {post_info:{title:item.title,description:item.body,privacy_level:privacy},source_info:{source:"PULL_FROM_URL",video_url:media},post_mode:"DIRECT_POST",media_type:"VIDEO"};
-  const d=await jsonRequest(`${api}/v2/post/publish/content/init/`,{method:"POST",headers:{Authorization:`Bearer ${access}`,"content-type":"application/json"},body:JSON.stringify(body)});
-  const id=String(d?.data?.publish_id??"");if(!id)throw new Error("tiktok_publish_id_missing");return {externalId:id};
- }
  private async youtube(access:string,item:PublishItem){
   const video=item.mediaUrls.find(x=>/\.(mp4|mov|webm|m4v)(\?|$)/i.test(x)||x.startsWith("file://")||x.startsWith("/")||/^[A-Za-z]:\\/.test(x));if(!video)throw new Error("youtube_requires_video_media");
   const blob=video.startsWith("file://")||video.startsWith("/")||/^[A-Za-z]:\\/.test(video)?new Blob([await readFile(video.startsWith("file://")?new URL(video):video as any)],{type:"video/mp4"}):await (async()=>{const source=await fetch(video);if(!source.ok)throw new Error("youtube_media_fetch_"+source.status);return source.blob();})();
 
-  const video=item.mediaUrls.find(x=>/\.(mp4|mov|webm|m4v)(\?|$)/i.test(x));if(!video)throw new Error("youtube_requires_video_url");
-  const source=await fetch(video);if(!source.ok)throw new Error(`youtube_media_fetch_${source.status}`);const blob=await source.blob();
   const metadata={snippet:{title:item.title.slice(0,100),description:item.body},status:{privacyStatus:process.env.LAYANX_YOUTUBE_PRIVACY_STATUS??"private"}};
   const form=new FormData();form.append("metadata",new Blob([JSON.stringify(metadata)],{type:"application/json"}));form.append("media",blob,"upload");
   const d=await jsonRequest("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=multipart&part=snippet,status",{method:"POST",headers:{Authorization:`Bearer ${access}`},body:form});
