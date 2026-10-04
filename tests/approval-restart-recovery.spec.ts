@@ -18,7 +18,7 @@ function setup(core:LayanXCore){
 try{
  const first=new LayanXCore(undefined,persistence);
  setup(first);
- const mission=first.startMission("approval restart");
+ const mission=first.startMission("approval restart","project");
  mission.projectId="approval-restart-project";
  mission.requiredPermission="L1_READ";
  mission.tools=[{tool:"dangerous.read",action:"run sensitive test",permission:"L1_READ",reason:"restart test"}];
