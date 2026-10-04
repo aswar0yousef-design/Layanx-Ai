@@ -29,10 +29,20 @@ export class ExecutionRuntime{
    return{ok:false,missionId:mission.id,verified:false,error:"Mission is not executable in its current state.",recoverable:false};
   }
   if(!security)return this.block(mission,request,"Capability context is required.");
-  try{this.core.projectIsolation.assertMissionProject(security.projectId,mission.projectId);}catch(error){const message=error instanceof Error?error.message:"Project isolation violation.";this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"denied",metadata:{reason:message,missionId:mission.id,projectId:security.projectId}});return{ok:false,missionId:mission.id,verified:false,error:message,recoverable:false};}
+  let projectId:string;
+  try{
+   projectId=this.core.projectIsolation.normalize(projectId);
+   this.core.projectIsolation.assertMissionProject(projectId,mission.projectId);
+   this.core.projectIsolation.assertRequestProject(projectId,request.projectId);
+   request={...request,projectId};
+  }catch(error){
+   const message=error instanceof Error?error.message:"Project isolation violation.";
+   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"denied",metadata:{reason:message,missionId:mission.id,projectId:projectId}});
+   return{ok:false,missionId:mission.id,verified:false,error:message,recoverable:false};
+  }
   const state=this.core.executionStates.get(mission.id)??this.core.executionStates.start(mission.id);
   const started=Date.now();
-  const trace=this.core.tracer.start("mission-tool","tool",{missionId:mission.id,projectId:security.projectId,agentId:request.agentId,tool:request.tool,action:request.action});
+  const trace=this.core.tracer.start("mission-tool","tool",{missionId:mission.id,projectId:projectId,agentId:request.agentId,tool:request.tool,action:request.action});
   const contract=this.core.agents.get(request.agentId);
   setLifecycle(mission,this.core.executionStates,"running",true);
   if(state.toolCalls>=contract.maxToolCalls)return this.block(mission,request,"Agent tool-call limit exceeded.");
@@ -42,7 +52,7 @@ export class ExecutionRuntime{
   if(rank[request.permission]>=3){
    let impact;
    try{
-    impact=await this.core.prepareChangeImpact(mission,security.projectId,{tool:request.tool,action:request.action});
+    impact=await this.core.prepareChangeImpact(mission,projectId,{tool:request.tool,action:request.action});
    }catch(error){
     return this.block(mission,request,error instanceof Error?"Change impact analysis failed: "+error.message:"Change impact analysis failed.");
    }
@@ -53,7 +63,7 @@ export class ExecutionRuntime{
   if(rank[toolDefinition.permission]>rank[request.permission])return this.block(mission,request,"Requested permission is below the tool requirement.");
   const permission=this.core.permissions.authorize(request,contract,request.permission);
   if(!permission.allowed)return this.block(mission,request,permission.reason);
-  const capability=this.core.capabilities.authorize(security.capabilityId,{missionId:mission.id,agentId:request.agentId,projectId:security.projectId,resource:request.tool,permission:request.permission});
+  const capability=this.core.capabilities.authorize(security.capabilityId,{missionId:mission.id,agentId:request.agentId,projectId:projectId,resource:request.tool,permission:request.permission});
   if(!capability.allowed)return this.block(mission,request,capability.reason);
   if(risk.requiresApproval){
    if(!approvalId){
@@ -77,7 +87,7 @@ export class ExecutionRuntime{
   this.core.tracer.end(trace,result.ok?"success":"failure",{runtimeMs,ok:result.ok});
   if(request.tool!=="memory.recall")this.core.memory.remember({
    missionId:mission.id,
-   projectId:security.projectId,
+   projectId:projectId,
    kind:result.ok?"experience":"failure",
    summary:result.ok?`Tool ${request.tool} completed: ${request.action}`:`Tool ${request.tool} failed: ${request.action}`,
    content:{tool:request.tool,action:request.action,planIndex:request.planIndex,result:result.ok?result.data:result.error},
@@ -88,7 +98,7 @@ export class ExecutionRuntime{
   if(executionStep) executionStep.status=result.ok?"completed":"failed";
   this.core.ledger.append({id:crypto.randomUUID(),missionId:mission.id,agentId:request.agentId,action:request.action,status:result.ok?"completed":"failed",timestamp:new Date().toISOString(),detail:result.error});
   if(!result.ok){
-   this.core.failureLearning.record({missionId:mission.id,projectId:security.projectId,error:result.error,tool:request.tool,action:request.action,recoverable:true});
+   this.core.failureLearning.record({missionId:mission.id,projectId:projectId,error:result.error,tool:request.tool,action:request.action,recoverable:true});
    setLifecycle(mission,this.core.executionStates,"failed",true);
    this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"failure",metadata:{error:result.error,missionId:mission.id}});
    await this.persist(mission);
@@ -116,7 +126,7 @@ export class ExecutionRuntime{
    return{ok:false,missionId:mission.id,verified:false,error:verification.failures.join("; "),recoverable:false};
   }
   setLifecycle(mission,this.core.executionStates,"completed",false);
-  this.core.memory.remember({missionId:mission.id,projectId:security.projectId,kind:"success",summary:mission.goal,content:{result:result.data,verified:true,tool:request.tool,action:request.action},confidence:1,tags:[request.tool]});
+  this.core.memory.remember({missionId:mission.id,projectId:projectId,kind:"success",summary:mission.goal,content:{result:result.data,verified:true,tool:request.tool,action:request.action},confidence:1,tags:[request.tool]});
   this.approvals.revokeMission(mission.id);
   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"success",metadata:{missionId:mission.id}});
   await this.persist(mission);
