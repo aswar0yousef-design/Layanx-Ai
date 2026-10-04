@@ -100,7 +100,7 @@ export function createProjectVerifyToolAdapter(options:{root:string}):ToolAdapte
   return await new Promise((resolvePromise,reject)=>{
    const isWindows=process.platform==="win32";
    const binary=isWindows?(process.env.ComSpec??"cmd.exe"):"npm";
-   const commandArgs=isWindows?["/d","/s","/c",`npm.cmd run "${requested.replace(/"/g,'\\"' )}"`]:["run",requested];
+   const commandArgs=isWindows?["/d","/s","/c",`npm.cmd run ${requested}`]:["run",requested];
    const child=spawn(binary,commandArgs,{cwd:workspace,shell:false,env:{...process.env,CI:"1"},timeout:60000});
    let stdout="",stderr="";
    child.stdout.on("data",chunk=>{stdout+=String(chunk);if(stdout.length>128*1024)child.kill("SIGKILL");});
@@ -123,7 +123,7 @@ function runNpm(cwd:string,args:string[],timeoutMs:number):Promise<{args:string[
   return new Promise((resolvePromise,reject)=>{
     const isWindows=process.platform==="win32";
     const binary=isWindows?(process.env.ComSpec??"cmd.exe"):"npm";
-    const commandArgs=isWindows?["/d","/s","/c",["npm.cmd",...args].map(value=>`"${value.replace(/"/g,'\\"' )}"`).join(" ")]:args;
+    const commandArgs=isWindows?["/d","/s","/c",`npm.cmd ${args.join(" ")}`]:args;
     const child=spawn(binary,commandArgs,{cwd,shell:false,env:{...process.env,CI:"1"},timeout:timeoutMs});
     let stdout="",stderr="";
     child.stdout.on("data",chunk=>{stdout+=String(chunk);if(stdout.length>128*1024)child.kill("SIGKILL");});
