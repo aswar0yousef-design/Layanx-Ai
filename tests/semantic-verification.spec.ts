@@ -19,8 +19,8 @@ function mission():Mission{
 const engine=new VerificationEngine();
 
 for(const [criteria,result] of [
- ["result.status === "ok"",{status:"ok"}],
- ["result.status !== "failed"",{status:"ok"}],
+ ["result.status === \"ok\"",{status:"ok"}],
+ ["result.status !== \"failed\"",{status:"ok"}],
  ["result.count >= 3",{count:4}],
  ["result.count < 3",{count:2}],
  ["result.message contains "done"",{message:"task done successfully"}],
