@@ -29,7 +29,7 @@ export class ToolSelector{
         const recommendedAction=(tool.actions??[]).find(candidate=>[...terms(candidate)].every(term=>words.has(term)))??tool.actions?.[0]??tool.name;
         return{tool,score,reasons,recommendedAction};
       })
-      .filter(selection=>selection.score>0)
+      .filter(selection=>selection.score>1)
       .sort((a,b)=>b.score-a.score||rank[a.tool.permission]-rank[b.tool.permission]||a.tool.name.localeCompare(b.tool.name));
   }
 
