@@ -1,4 +1,4 @@
-import {mkdtemp,rm,readFile} from "node:fs/promises";
+import {mkdtemp,mkdir,rm,readFile} from "node:fs/promises";
 import {join} from "node:path";
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
@@ -15,6 +15,7 @@ const runGit=async(args:string[],cwd:string)=>{
  return await exec("git",args,{cwd});
 };
 const dir=await mkdtemp(join(process.cwd(),"project-agent-test-"));
+await mkdir(join(dir,"project-a"),{recursive:true});
 await runGit(["init","-q"],dir);
 await runGit(["init","-q"],join(dir,"project-a"));
 await runGit(["config","user.email","test@example.com"],join(dir,"project-a"));
