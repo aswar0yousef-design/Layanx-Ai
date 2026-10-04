@@ -16,5 +16,5 @@ assert.equal(calls.length,3);
 await adapter.execute({...base,tool:"desktop.keyboard.type",action:"desktop type",idempotencyKey:"desktop-4",payload:{text:"x".repeat(4000)}});
 await adapter.execute({...base,tool:"desktop.screenshot",action:"desktop screenshot",permission:"L2_ANALYZE",idempotencyKey:"desktop-5",payload:{}});
 await adapter.execute({...base,tool:"desktop.keyboard.press",action:"desktop press key",idempotencyKey:"desktop-6",payload:{key:"NOPE"}}).then(()=>{throw new Error("unsupported key accepted");}).catch(e=>assert.match(String(e),/Unsupported keyboard key/));
-await adapter.execute({...base,tool:"desktop.mouse.move",action:"desktop move mouse",idempotencyKey:"desktop-7",payload:{x:20001,y:0}}).then(()=>{throw new Error("out-of-range coordinate accepted");}).catch(e=>assert.match(String(e),/between 0 and 20000/));
+try{await adapter.execute({...base,tool:"desktop.mouse.move",action:"desktop move mouse",idempotencyKey:"desktop-7",payload:{x:20001,y:0}});throw new Error("out-of-range coordinate accepted");}catch(e){assert.match(String(e),/between 0 and 20000/);}
 console.log("Desktop control adapter tests passed.");
