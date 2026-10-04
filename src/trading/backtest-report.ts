@@ -38,6 +38,7 @@ export interface PooledBacktestReport {
   profitFactor: number;
   expectancyPerTrade: number;
   estimatedRoundTripCosts: number;
+  executionCosts: number;
   commissions: number;
   swaps: number;
   costErasedTrades: number;
@@ -160,6 +161,7 @@ export function buildBacktestReport(
     maxDrawdown,
     maxDrawdownPct,
     estimatedRoundTripCosts,
+    executionCosts: estimatedRoundTripCosts,
     commissions,
     swaps,
     costErasedTrades,
