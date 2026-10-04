@@ -12,7 +12,7 @@ const core=makeCore();
 const mission=core.startMission("Run an echo test");
 const runtime=new ExecutionRuntime(core);
 const capability=core.capabilities.issue({missionId:mission.id,agentId:"test-agent",projectId:"default",resource:"echo",permission:"L1_READ",expiresAt:new Date(Date.now()+60000).toISOString()});
-const result=await runtime.run(mission,{missionId:mission.id,agentId:"test-agent",tool:"echo",action:"echo",permission:"L1_READ",idempotencyKey:crypto.randomUUID(),payload:"hello"},{execute:async request=>request.payload},{projectId:"default",capabilityId:capability.id});
+const result=await runtime.run(mission,{missionId:mission.id,agentId:"test-agent",tool:"echo",action:"echo",permission:"L1_READ",idempotencyKey:crypto.randomUUID(),payload:"hello"},{execute:async request=>request.payload},undefined,{projectId:"default",capabilityId:capability.id});
 if(!result.ok||!result.verified)throw new Error("Core runtime test failed: "+JSON.stringify(result));
 if(mission.status!=="completed")throw new Error("Successful mission did not complete.");
 
