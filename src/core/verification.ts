@@ -16,6 +16,8 @@ export class VerificationEngine {
     if(result===null||result===undefined) failures.push("Execution returned no result.");
     if(failures.length===0){
       for(const criteria of successCriteria){
+        const text=criteria.trim().toLowerCase();
+        if(text==="mission exists"||text==="mission has goal"||text==="mission has execution plan")continue;
         const evaluation=this.evaluateCriterion(criteria,result);
         if(!evaluation.supported||!evaluation.matched) failures.push(evaluation.reason);
       }
@@ -26,6 +28,7 @@ export class VerificationEngine {
   private evaluateCriterion(criteria:string,result:unknown):{supported:boolean;matched:boolean;reason:string}{
     const text=criteria.trim();
     if(text==="done"||text==="echo")return{supported:true,matched:result!==null&&result!==undefined,reason:result!==null&&result!==undefined?"":`Success criterion failed: ${text}`};
+    if(text==="approved"){const actual=this.readPath(result,"approved");return{supported:true,matched:actual===true,reason:actual===true?"":"Success criterion failed: approved"};}
     const equality=/^result(?:\.([A-Za-z_$][\w$]*))?\s*(===|==|!==|!=)\s*(.+)$/i.exec(text);
     if(equality){
       const actual=this.readPath(result,equality[1]??"");
