@@ -816,7 +816,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    const id=url.slice("/v1/missions/".length).split("?")[0];
    const mission=options.core.missions.get(id);
    if(!mission){json(response,404,{ok:false,error:"mission_not_found"});return;}
-   const projectId=new URL(request.url,"http://localhost").searchParams.get("projectId")?.trim()||"";
+   const projectId=new URL(url,"http://localhost").searchParams.get("projectId")?.trim()||"";
    if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
    try{options.core.projectIsolation.assertMissionProject(projectId,mission.projectId);}
    catch{json(response,403,{ok:false,error:"project isolation scope violation"});return;}
