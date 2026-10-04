@@ -63,3 +63,8 @@ Rendered/caption metadata includes `Quran data provided by Quran Foundation.` Re
 ## Important operational boundary
 
 A green pipeline/CI result does not mean external platform accounts are authorized. The final live gate is: approved recitation rights + production QF credentials + authorized YouTube/TikTok OAuth + platform app approval/audit where required + successful local render/verification.
+
+
+## Validation status
+
+Strict TypeScript indexing checks and scheduler tuple validation are fixed; CI must pass before merge. External recitation licensing and platform approvals remain fail-closed prerequisites for live publication.
