@@ -58,7 +58,7 @@ export class NativeSocialConnector implements PlatformSocialConnector{
   const media=item.mediaUrls.find(x=>/^https?:\/\//i.test(x));if(!media)throw new Error("tiktok_requires_public_media_url");
   const api=base("tiktok","https://open.tiktokapis.com");
   const info=await jsonRequest(`${api}/v2/post/publish/creator_info/query/`,{method:"POST",headers:{Authorization:`Bearer ${access}`,"content-type":"application/json"}});
-  const privacy=info?.data?.privacy_level_options?.[0];if(!privacy)throw new Error("tiktok_creator_info_missing_privacy");
+  const options=info?.data?.privacy_level_options??[];const privacy=process.env.LAYANX_TIKTOK_PRIVACY_LEVEL??"SELF_ONLY";if(!options.includes(privacy))throw new Error("tiktok_privacy_level_not_allowed");
   const isImage=/\.(jpe?g|png|webp)(\?|$)/i.test(media);const body=isImage?
    {post_info:{title:item.title,description:item.body,privacy_level:privacy},source_info:{source:"PULL_FROM_URL",photo_images:[media],photo_cover_index:0},post_mode:"DIRECT_POST",media_type:"PHOTO"}:
    {post_info:{title:item.title,description:item.body,privacy_level:privacy},source_info:{source:"PULL_FROM_URL",video_url:media},post_mode:"DIRECT_POST",media_type:"VIDEO"};
