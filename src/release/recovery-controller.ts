@@ -164,8 +164,12 @@ export class ProductionRecoveryController{
  }
 
  async inspectActiveRecovery():Promise<RecoveryResumePlan|undefined>{
-  const record=await this.persistence?.findActive();
-  return record?this.resumeEngine.plan(record):undefined;
+  if(!this.persistence)return undefined;
+  const record=await this.persistence.findActive();
+  if(record)return this.resumeEngine.plan(record);
+  const history=await this.persistence.history(1);
+  const latest=history[0];
+  return latest?this.resumeEngine.plan(latest):undefined;
  }
 
  private async persistState(deployment:Deployment,state:PersistedRecoveryRecord["state"],attempts:number,reason?:string,target?:Deployment):Promise<void>{
