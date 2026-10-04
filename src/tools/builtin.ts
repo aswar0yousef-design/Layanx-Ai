@@ -112,7 +112,7 @@ export function registerBuiltinTools(core:LayanXCore):void {
       const limit=typeof input.limit==="number"&&Number.isInteger(input.limit)
         ?Math.min(Math.max(input.limit,1),20):10;
       if(!query)throw new Error("Memory query is required.");
-      return {query,entries:core.memory.recall(query,limit)};
+      return {query,entries:core.memory.recall(query,limit,request.projectId)};
     }
   } satisfies ToolAdapter);
 
