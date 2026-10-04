@@ -16,14 +16,14 @@ export class VerificationEngine {
     if(result===null||result===undefined) failures.push("Execution returned no result.");
     if(failures.length===0){
       for(const criteria of successCriteria){
-        const evaluation=this.evaluateCriterion(criteria,result);
+        const evaluation=this.evaluateCriterion(criteria,result,mission);
         if(!evaluation.supported||!evaluation.matched) failures.push(evaluation.reason);
       }
     }
     return {verified:failures.length===0,checks,failures};
   }
 
-  private evaluateCriterion(criteria:string,result:unknown):{supported:boolean;matched:boolean;reason:string}{
+  private evaluateCriterion(criteria:string,result:unknown,mission:Mission):{supported:boolean;matched:boolean;reason:string}{
     const text=criteria.trim();
     const normalized=text.toLowerCase();
     if(normalized==="done"||normalized==="result exists"||normalized==="execution completed")return{supported:true,matched:result!==null&&result!==undefined,reason:result!==null&&result!==undefined?"":`Success criterion failed: ${text}`};
