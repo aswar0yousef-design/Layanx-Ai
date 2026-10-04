@@ -9,7 +9,8 @@ export class LocalSecretVault{
  private readonly path:string;
  private readonly key:Buffer;
  constructor(path=process.env.LAYANX_SECRET_VAULT_PATH??".layanx/secrets.vault",masterKey=process.env.LAYANX_SECRET_VAULT_KEY){
-  if(!masterKey||masterKey.length<16)throw new Error("LAYANX_SECRET_VAULT_KEY must be at least 16 characters and must remain local.");
+  if(!masterKey)throw new Error("secret_vault_key_missing");
+  if(masterKey.length<16)throw new Error("LAYANX_SECRET_VAULT_KEY must be at least 16 characters and must remain local.");
   this.path=path;
   const salt=this.readSalt()??randomBytes(16).toString("base64");
   this.key=scryptSync(masterKey,salt,32);
@@ -45,7 +46,7 @@ export class LocalSecretVault{
 
 export function localSecret(name:string,fallback?:string){
  try{const vault=new LocalSecretVault();return vault.get(name)??fallback;}catch(error){
-  if(error instanceof Error&&["LAYANX_SECRET_VAULT_KEY must be at least 16 characters and must remain local.","secret_vault_corrupt","secret_vault_decryption_failed"].includes(error.message))throw error;
+  if(error instanceof Error&&["secret_vault_key_missing","secret_vault_corrupt","secret_vault_decryption_failed"].includes(error.message))throw error;
   return fallback;
  }
 }
