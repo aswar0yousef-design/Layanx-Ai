@@ -11,7 +11,7 @@ export class MessagingChannels{
  private started=false;
  private readonly processed=new Map<string,number>();
  private readonly dedupeTtlMs=300000;
- constructor(private readonly core:LayanXCore){
+ constructor(private readonly core:LayanXCore,private readonly flowHandler?: (message:ChannelMessage)=>Promise<boolean>){
   const ownerIds=new Set([...(process.env.LAYANX_CHANNEL_OWNER_IDS??"").split(","),...(process.env.LAYANX_WHATSAPP_OWNER_IDS??"").split(","),...(process.env.LAYANX_TELEGRAM_OWNER_IDS??"").split(",")].map(x=>x.trim()).filter(Boolean));
   const staffIds=new Set([...(process.env.LAYANX_CHANNEL_STAFF_IDS??"").split(","),...(process.env.LAYANX_WHATSAPP_STAFF_IDS??"").split(","),...(process.env.LAYANX_TELEGRAM_STAFF_IDS??"").split(",")].map(x=>x.trim()).filter(Boolean));
   this.router=new ChannelRouter(core,{ownerIds,staffIds});
@@ -33,7 +33,7 @@ export class MessagingChannels{
   for(const [id,seenAt] of this.processed)if(now-seenAt>this.dedupeTtlMs)this.processed.delete(id);
   if(this.processed.has(key))return;
   this.processed.set(key,now);
-  const reply=await this.router.handle(message);
+  if(this.flowHandler&&await this.flowHandler(message))return;\n  const reply=await this.router.handle(message);
   if(message.channel==="whatsapp")await this.whatsapp.sendText(message.chatId,reply);
   else await this.telegram.sendText(message.chatId,reply);
  }
