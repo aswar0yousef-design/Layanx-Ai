@@ -60,3 +60,12 @@ const scopedTools=[
 let intentRejected=false;
 try{await intentPlanner.plan("شغّل اختبارات المشروع",scopedTools);}catch(error){intentRejected=error instanceof Error&&error.message.includes("outside the allowed catalog");}
 if(!intentRejected)throw new Error("Development intent did not exclude trading tools.");
+
+
+const deterministicPlanner=new AiMissionPlanner(new ModelExecutionRouter(models,new ModelProviderRegistry()));
+const verifyCatalog=[
+ {name:"project.verify",description:"run project verification",permission:"L4_EXECUTE" as const,dangerous:true,actions:["verify project"],tags:["project","verify"]},
+ {name:"trading.binance.market-data",description:"read market data",permission:"L1_READ" as const,dangerous:false,actions:["market-data"],tags:["trading","market-data"]}
+];
+const deterministic=await deterministicPlanner.plan("شغّل اختبارات المشروع",verifyCatalog);
+if(deterministic.tools.length!==1||deterministic.tools[0].tool!=="project.verify"||deterministic.tools[0].payload?.script!=="test")throw new Error("Deterministic project test plan was not selected.");
