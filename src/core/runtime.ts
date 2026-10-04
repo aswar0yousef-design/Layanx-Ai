@@ -31,13 +31,13 @@ export class ExecutionRuntime{
   if(!security)return this.block(mission,request,"Capability context is required.");
   let projectId:string;
   try{
-   projectId=this.core.projectIsolation.normalize(projectId);
+   projectId=this.core.projectIsolation.normalize(security.projectId);
    this.core.projectIsolation.assertMissionProject(projectId,mission.projectId);
    if(request.projectId)this.core.projectIsolation.assertRequestProject(projectId,request.projectId);
    request={...request,projectId};
   }catch(error){
    const message=error instanceof Error?error.message:"Project isolation violation.";
-   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"denied",metadata:{reason:message,missionId:mission.id,projectId:projectId}});
+   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"denied",metadata:{reason:message,missionId:mission.id,projectId:security.projectId}});
    return{ok:false,missionId:mission.id,verified:false,error:message,recoverable:false};
   }
   const state=this.core.executionStates.get(mission.id)??this.core.executionStates.start(mission.id);
