@@ -19,6 +19,7 @@ const result = runPaperScalping(candles, {
   initialBalance: 1000,
   riskPercent: 1,
   stopLossDistance: 1,
+  signalConfig:{minimumScore:1},
   spread: 0.05,
   slippage: 0.02,
 });
@@ -112,6 +113,7 @@ const trailingResult = runPaperScalping(trailingCandles, {
   initialBalance: 1000,
   riskPercent: 1,
   stopLossDistance: 0.5,
+  signalConfig:{minimumScore:1},
   spread: 0.02,
   slippage: 0,
   trailingStopDistance: 0.2,
