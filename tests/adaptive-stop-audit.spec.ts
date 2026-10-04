@@ -10,7 +10,7 @@ function setup(tool:string,execute:(request:unknown)=>Promise<unknown>){
 }
 
 const limited=setup("step.limit",async()=>({ok:true}));
-const limitedMission=limited.startMission("test step limit");
+const limitedMission=limited.startMission("test step limit","project");
 limitedMission.requiredPermission="L1_READ";
 limitedMission.tools=[{tool:"step.limit",action:"read test",permission:"L1_READ",reason:"test"}];
 limited.missions.save(limitedMission);
