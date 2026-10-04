@@ -73,12 +73,12 @@ export class MissionScheduler{
  private validateTrigger(trigger:ScheduleTrigger){
   if(trigger.kind==="interval"){const intervalMs=trigger.intervalMs;if(intervalMs===undefined||!Number.isFinite(intervalMs)||!Number.isInteger(intervalMs)||intervalMs<1000)throw new Error("Interval must be an integer of at least 1000ms.");return;}
   if(trigger.kind==="once"){if(!trigger.runAt||Number.isNaN(Date.parse(trigger.runAt)))throw new Error("A valid runAt timestamp is required.");return;}
-  if(trigger.kind==="daily"){if(!Number.isInteger(trigger.hour)||trigger.hour<0||trigger.hour>23||!Number.isInteger(trigger.minute)||trigger.minute<0||trigger.minute>59)throw new Error("Daily trigger requires hour 0-23 and minute 0-59.");return;}
+  if(trigger.kind==="daily"){const hour=trigger.hour;const minute=trigger.minute;if(!Number.isInteger(hour)||hour<0||hour>23||!Number.isInteger(minute)||minute<0||minute>59)throw new Error("Daily trigger requires hour 0-23 and minute 0-59.");return;}
   throw new Error("Unknown schedule trigger.");
  }
  private nextTime(trigger:ScheduleTrigger,from:Date){
   if(trigger.kind==="once"){const at=new Date(trigger.runAt!);return at.getTime()>=from.getTime()?at:undefined;}
-  if(trigger.kind==="daily"){const next=new Date(from);next.setHours(trigger.hour,trigger.minute,0,0);if(next.getTime()<from.getTime())next.setDate(next.getDate()+1);return next;}
+  if(trigger.kind==="daily"){const next=new Date(from);next.setHours(trigger.hour!,trigger.minute!,0,0);if(next.getTime()<from.getTime())next.setDate(next.getDate()+1);return next;}
   const intervalMs=trigger.intervalMs;
   if(typeof intervalMs!=="number"||!Number.isFinite(intervalMs))throw new Error("Interval trigger is missing intervalMs.");
   const delayMs=trigger.runImmediately===true?0:intervalMs;
