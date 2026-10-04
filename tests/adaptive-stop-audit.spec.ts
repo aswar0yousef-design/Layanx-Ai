@@ -38,7 +38,7 @@ const planner:ModelProviderAdapter={
 const complete=setup("unused",async()=>({ok:true}));
 complete.models.register({id:"planner",provider:"stop-planner",capabilities:["reasoning"],local:true,enabled:true,priority:1});
 complete.providers.register(planner);
-const completeMission=complete.startMission("test planner completion");
+const completeMission=complete.startMission("test planner completion","project");
 completeMission.requiredPermission="L1_READ";
 complete.missions.save(completeMission);
 const completeResult=await complete.executeMissionAdaptive(completeMission.id,"project",3);
