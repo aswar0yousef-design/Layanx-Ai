@@ -155,7 +155,7 @@ export class ProjectIntelligence{
   private workspaceFor(projectId:string):string{
     const safe=projectId.trim();
     if(!safe||safe==="."||safe===".."||safe.includes("/")||safe.includes("\\\\"))throw new Error("Invalid project workspace identity.");
-    return resolve(this.root,safe);
+    return safe==="default"?this.root:resolve(this.root,safe);
   }
 
   private async exists(path:string):Promise<boolean>{
