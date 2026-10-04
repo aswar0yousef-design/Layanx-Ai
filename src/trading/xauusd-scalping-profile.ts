@@ -37,6 +37,7 @@ export function assertBacktestConfigMatchesData(
   config: PaperTradingConfig,
 ): void {
   if (symbol !== config.symbol) {
+    if(symbol==="XAUUSD")throw new Error("XAUUSD data requires an XAUUSD paper-trading configuration.");
     throw new Error(`Backtest data symbol ${symbol} does not match config symbol ${config.symbol}.`);
   }
   if (timeframe !== config.timeframe) {
