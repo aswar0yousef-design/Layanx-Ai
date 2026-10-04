@@ -112,7 +112,7 @@ export class ExecutionRuntime{
    return{ok:true,missionId:mission.id,verified:false,data:result.data,recoverable:true};
   }
   mission.status="verifying";
-  const verification=this.core.verifier.verify(mission,result.data,contract.successCriteria);
+  const verification=this.core.verifier.verify(mission,result.data,mission.successCriteria?.length?mission.successCriteria:contract.successCriteria);
   if(verification.verified){
    const verificationStep=mission.steps.find(step=>/verif|confirm|validate|check/i.test(step.description));
    if(verificationStep) verificationStep.status="completed";
@@ -134,7 +134,7 @@ export class ExecutionRuntime{
   const contract=this.core.agents.get(agentId);
   mission.status="verifying";
   this.core.executionStates.update(mission.id,{status:"running"});
-  const verification=this.core.verifier.verify(mission,result,contract.successCriteria);
+  const verification=this.core.verifier.verify(mission,result,mission.successCriteria?.length?mission.successCriteria:contract.successCriteria);
   if(!verification.verified){
    mission.status="failed";
    this.core.executionStates.update(mission.id,{status:"failed"});
