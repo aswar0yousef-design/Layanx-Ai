@@ -38,7 +38,9 @@ export class ExecutionRuntime{
   mission.status="running";
   this.core.executionStates.update(mission.id,{status:"running",recoverable:true});
   if(state.toolCalls>=contract.maxToolCalls)return this.block(mission,request,"Agent tool-call limit exceeded.");
+  const toolDefinition=this.core.tools.get(request.tool);
   const risk=this.core.risk.assess(request);
+  const requiresExplicitApproval=toolDefinition.dangerous && rank[request.permission]>=3;
   const rank:Record<import("./types.js").PermissionLevel,number>={L1_READ:1,L2_ANALYZE:2,L3_MODIFY:3,L4_EXECUTE:4,L5_CRITICAL:5};
   if(rank[request.permission]>=3){
    let impact;
@@ -51,13 +53,12 @@ export class ExecutionRuntime{
   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:risk.requiresApproval?"pending_approval":"allowed",metadata:{risk:risk.level,missionId:mission.id}});
   if(rank[request.permission]>rank[mission.requiredPermission])return this.block(mission,request,"Requested permission exceeds mission scope.");
   if(rank[request.permission]>rank[contract.requiredPermission])return this.block(mission,request,"Requested permission exceeds agent scope.");
-  const toolDefinition=this.core.tools.get(request.tool);
   if(rank[toolDefinition.permission]>rank[request.permission])return this.block(mission,request,"Requested permission is below the tool requirement.");
   const permission=this.core.permissions.authorize(request,contract,request.permission);
   if(!permission.allowed)return this.block(mission,request,permission.reason);
   const capability=this.core.capabilities.authorize(security.capabilityId,{missionId:mission.id,agentId:request.agentId,projectId:security.projectId,resource:request.tool,permission:request.permission});
   if(!capability.allowed)return this.block(mission,request,capability.reason);
-  if(risk.requiresApproval){
+  if(risk.requiresApproval||requiresExplicitApproval){
    if(!approvalId){
     const approval=this.ensureApproval(mission,request,"Explicit approval is required for this risk level.");
     return this.block(mission,request,"Explicit approval is required for this risk level.",approval.id);
