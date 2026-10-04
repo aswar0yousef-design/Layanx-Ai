@@ -19,6 +19,11 @@ export class ExecutionRuntime{
   if(["completed","cancelled"].includes(mission.status)){
    const replay=await this.core.idempotency.get(request.idempotencyKey);
    if(mission.status==="completed"&&replay?.status==="completed"&&replay.missionId===mission.id&&replay.agentId===request.agentId&&replay.tool===request.tool&&replay.action===request.action)
+    const executionStep=mission.steps.find(step=>/execute|run|perform|action/i.test(step.description));
+    if(executionStep)executionStep.status="completed";
+    mission.status="completed";
+    this.core.executionStates.update(mission.id,{status:"completed",recoverable:false});
+    await this.persist(mission);
     return{ok:true,missionId:mission.id,verified:true,data:replay.data,recoverable:false};
    return{ok:false,missionId:mission.id,verified:false,error:"Mission is not executable in its current state.",recoverable:false};
   }
