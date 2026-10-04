@@ -29,7 +29,12 @@ export class MissionScheduler{
  private readonly runs=new Map<string,SchedulerRun>();
  private timer?:ReturnType<typeof setInterval>;
  private readonly active=new Set<string>();
- constructor(private readonly core:LayanXCore,private readonly storage?:RuntimeStorage,private readonly tickMs=1000){}
+ private readonly storage?:RuntimeStorage;
+ private readonly tickMs:number;
+ constructor(private readonly core:LayanXCore,storageOrTick?:RuntimeStorage|number,tickMs=1000){
+  if(typeof storageOrTick==="number"){this.tickMs=storageOrTick;this.storage=undefined;}
+  else{this.storage=storageOrTick;this.tickMs=tickMs;}
+ }
 
  register(input:Omit<ScheduledMission,"id"|"createdAt"|"runCount"|"enabled"> & {enabled?:boolean}):ScheduledMission{
   if(!input.goal.trim())throw new Error("Scheduled mission goal is empty.");
