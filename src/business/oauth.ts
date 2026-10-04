@@ -15,14 +15,15 @@ const PROVIDER_DEFAULTS:Partial<Record<OAuthProvider,Partial<OAuthConfig>>>={
  pinterest:{authorize:"https://www.pinterest.com/oauth/",token:"https://api.pinterest.com/v5/oauth/token"} ,
 };
 export class OAuthConnectionCenter{
- private readonly vault=new LocalSecretVault();
+ private vault?:LocalSecretVault;
+ private getVault(){return this.vault??=new LocalSecretVault();}
  private readonly pending=new Map<string,Pending>();
  private readonly connectionsPath=process.env.LAYANX_OAUTH_CONNECTIONS_PATH??".layanx/oauth-connections.json";
  private connections:OAuthConnection[]=[];
  constructor(){this.load();}
  private load(){try{if(existsSync(this.connectionsPath))this.connections=JSON.parse(readFileSync(this.connectionsPath,"utf8")) as OAuthConnection[];}catch{this.connections=[];}}
  private persist(){mkdirSync(dirname(this.connectionsPath),{recursive:true});const tmp=this.connectionsPath+".tmp";writeFileSync(tmp,JSON.stringify(this.connections,null,2),"utf8");renameSync(tmp,this.connectionsPath);}
- private syncProviderToken(provider:OAuthProvider,token:string){if(provider==="meta"){this.vault.set("meta.social.token",token);this.vault.set("facebook.social.token",token);this.vault.set("instagram.social.token",token);}else if(["instagram","facebook","tiktok","youtube","linkedin","x","snapchat","pinterest"].includes(provider))this.vault.set(`${provider}.social.token`,token);if(["meta","tiktok","google","linkedin"].includes(provider))this.vault.set(`${provider}.ads.token`,token);}
+ private syncProviderToken(provider:OAuthProvider,token:string){if(provider==="meta"){this.getVault().set("meta.social.token",token);this.getVault().set("facebook.social.token",token);this.getVault().set("instagram.social.token",token);}else if(["instagram","facebook","tiktok","youtube","linkedin","x","snapchat","pinterest"].includes(provider))this.getVault().set(`${provider}.social.token`,token);if(["meta","tiktok","google","linkedin"].includes(provider))this.getVault().set(`${provider}.ads.token`,token);}
  list(){return this.connections.map(c=>this.status(c));}
  get(id:string){const c=this.connections.find(x=>x.id===id);if(!c)throw new Error("oauth_connection_not_found");return c;}
 
