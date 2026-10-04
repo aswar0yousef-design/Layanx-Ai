@@ -18,7 +18,6 @@ await persistence.saveAtomic(snapshot);
 const restored=await persistence.get("m1");
 if(restored?.mission.goal!=="persist mission")throw new Error("Runtime snapshot restore failed.");
 if(restored?.executionState.status!=="completed")throw new Error("Execution state was not persisted.");
-await rm(dir,{recursive:true,force:true});
 console.log("Runtime persistence test passed.");
 
 
@@ -52,3 +51,4 @@ await storage.set([oldSnapshot,activeSnapshot]);
 const cleanup=await persistence.cleanup();
 if(cleanup.removed!==1)throw new Error("Snapshot retention cleanup did not remove the expired snapshot.");
 if(!(await persistence.get("active")))throw new Error("Snapshot cleanup removed a resumable mission.");
+await rm(dir,{recursive:true,force:true});
