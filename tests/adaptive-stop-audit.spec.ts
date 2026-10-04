@@ -55,7 +55,7 @@ plannerFailure.providers.register({
   async health(){return{provider:"failing-planner",available:true,updatedAt:new Date().toISOString()};},
   async generate(){throw new Error("planner unavailable");}
 });
-const plannerFailureMission=plannerFailure.startMission("test planner failure");
+const plannerFailureMission=plannerFailure.startMission("test planner failure","project");
 plannerFailureMission.requiredPermission="L1_READ";
 plannerFailureMission.tools=[{tool:"planner.fail",action:"read test",permission:"L1_READ",reason:"seed"}];
 plannerFailure.missions.save(plannerFailureMission);
