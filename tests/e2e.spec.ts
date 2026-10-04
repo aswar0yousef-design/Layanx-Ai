@@ -7,6 +7,6 @@ const mission=core.startMission("E2E mission");
 const capability=core.capabilities.issue({missionId:mission.id,agentId:"e2e-agent",projectId:"default",resource:"echo",permission:"L1_READ",expiresAt:new Date(Date.now()+60000).toISOString()});
 const runner=new MissionRunner(core);
 const result=await runner.execute(mission,{missionId:mission.id,agentId:"e2e-agent",tool:"echo",action:"echo",permission:"L1_READ",idempotencyKey:crypto.randomUUID(),payload:"ok"},{execute:async r=>r.payload},undefined,{projectId:"default",capabilityId:capability.id});
-if(!result.ok||!result.verified)throw new Error("E2E mission failed");
+if(!result.ok||!result.verified)throw new Error("E2E mission failed: "+JSON.stringify(result));
 if(core.ledger.forMission(mission.id).length===0)throw new Error("Ledger did not record mission");
 console.log("E2E mission test passed.");
