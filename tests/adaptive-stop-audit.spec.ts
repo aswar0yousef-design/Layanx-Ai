@@ -21,7 +21,7 @@ if(limitedAudit?.metadata?.reason!=="step_limit")throw new Error("Step limit aud
 if(!limited.memory.list().some(entry=>entry.kind==="decision"&&entry.content&&typeof entry.content==="object"&&(entry.content as Record<string,unknown>).reason==="step_limit"))throw new Error("Step limit memory decision missing.");
 
 const failed=setup("step.fail",async()=>{throw new Error("controlled tool failure");});
-const failedMission=failed.startMission("test tool failure");
+const failedMission=failed.startMission("test tool failure","project");
 failedMission.requiredPermission="L1_READ";
 failedMission.tools=[{tool:"step.fail",action:"read test",permission:"L1_READ",reason:"test"}];
 failed.missions.save(failedMission);
