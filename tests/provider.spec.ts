@@ -20,7 +20,7 @@ const ollamaFetch:typeof fetch=async(_input,init)=>{
  if(ollamaCalls===1)return new Response(JSON.stringify({error:"model not found"}),{status:404});
  return new Response(JSON.stringify({message:{content:"fallback works"}}),{status:200,headers:{"content-type":"application/json"}});
 };
-const ollama=createOllamaProvider({baseUrl:"http://ollama.test",fetcher:ollamaFetch});
+const ollama=createOllamaProvider({baseUrl:"http://ollama.test",fetcher:ollamaFetch,autoSelectInstalledModel:true});
 const ollamaResult=await ollama.generate(
  {id:"llama3.2:3b",provider:"ollama",capabilities:["chat"],local:true,enabled:true,priority:1},
  {capability:"chat",input:"hello"}
