@@ -1,6 +1,7 @@
 import type { TradeSide } from "./execution-quality.js";
 import type { MarketCandle } from "./scalping-signal.js";
 import {roundDecimal} from "./numeric.js";
+import {roundDecimal} from "./numeric.js";
 
 export interface Mt5SymbolSnapshot {
   symbol: string;
