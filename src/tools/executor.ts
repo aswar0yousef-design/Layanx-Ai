@@ -14,7 +14,13 @@ export class ToolExecutor {
   const gate=this.sentinel.inspect(request.action);
   if(!gate.allowed)return {ok:false,verified:false,error:gate.reason};
 
-  const existing=await this.idempotency.get(request.idempotencyKey);\n  if(existing){\n   if(existing.missionId!==request.missionId||existing.agentId!==request.agentId||existing.tool!==request.tool||existing.action!==request.action)\n    return{ok:false,verified:false,error:"Idempotency key is already bound to a different operation."};\n   if(existing.status==="completed")return{ok:true,verified:true,data:existing.data,replayed:true};\n  }\n  const claim=await this.idempotency.begin(request);
+  const existing=await this.idempotency.get(request.idempotencyKey);
+  if(existing){
+   if(existing.missionId!==request.missionId||existing.agentId!==request.agentId||existing.tool!==request.tool||existing.action!==request.action)
+    return{ok:false,verified:false,error:"Idempotency key is already bound to a different operation."};
+   if(existing.status==="completed")return{ok:true,verified:true,data:existing.data,replayed:true};
+  }
+  const claim=await this.idempotency.begin(request);
   if(!claim.accepted){
    if(claim.replay)return{ok:true,verified:true,data:claim.record.data,replayed:true};
    return{ok:false,verified:false,error:claim.reason??"Duplicate operation rejected."};
