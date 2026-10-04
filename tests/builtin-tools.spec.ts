@@ -28,7 +28,7 @@ const inspected=await core.executionRuntime.run(inspectMission,{missionId:inspec
 if(!inspected.ok||!inspected.verified)throw new Error("mission.inspect execution failed: "+inspected.error);
 if((inspected.data as {id:string}).id!==inspectMission.id)throw new Error("mission.inspect returned wrong mission");
 
-core.memory.remember({missionId:inspectMission.id,kind:"fact",summary:"Oman shipping provider",content:{provider:"local"},confidence:1,tags:["shipping","provider"]});
+core.memory.remember({missionId:inspectMission.id,projectId:"test",kind:"fact",summary:"Oman shipping provider",content:{provider:"local"},confidence:1,tags:["shipping","provider"]});
 const memoryMission=core.startMission("recall shipping memory","test");
 const memoryCapability=core.capabilities.issue({missionId:memoryMission.id,agentId:"core",projectId:"test",resource:"memory.recall",permission:"L1_READ",expiresAt:new Date(Date.now()+60000).toISOString()});
 const recalled=await core.executionRuntime.run(memoryMission,{missionId:memoryMission.id,agentId:"core",tool:"memory.recall",action:"read shipping memory",permission:"L1_READ",idempotencyKey:"builtin-memory-1",payload:{query:"shipping provider",limit:5}},core.toolAdapters.get("memory.recall"),undefined,{projectId:"test",capabilityId:memoryCapability.id});
