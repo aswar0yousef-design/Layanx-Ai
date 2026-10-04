@@ -322,6 +322,7 @@ export class LayanXCore{
   }
 
   private async recordAdaptiveStop(mission:import("./types.js").Mission,decision:import("./adaptive-decision.js").AdaptiveDecision,stepsExecuted:number,agentId:string){
+    if(decision.reason==="blocked")this.executionStates.update(mission.id,{status:"blocked",recoverable:false});
     const metadata={missionId:mission.id,reason:decision.reason,stepsExecuted};
     this.audit.append({timestamp:new Date().toISOString(),actor:agentId,action:"mission.adaptive.stop",resource:mission.id,result:["tool_failure","planner_failure"].includes(decision.reason)?"failure":"success",metadata});
     this.memory.remember({missionId:mission.id,projectId:mission.projectId,kind:"decision",summary:"Adaptive mission stopped: "+decision.reason,content:{reason:decision.reason,detail:decision.detail,stepsExecuted},confidence:1,tags:["mission","adaptive","stop",decision.reason]});
