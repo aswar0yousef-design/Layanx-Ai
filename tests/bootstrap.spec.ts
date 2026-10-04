@@ -1,5 +1,5 @@
 import {execFileSync} from "node:child_process";
-import {mkdtempSync,writeFileSync,mkdirSync,cpSync} from "node:fs";
+import {mkdtempSync,writeFileSync,mkdirSync,cpSync,readFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 
