@@ -30,7 +30,12 @@ export class PersistentIdempotencyStore{
   async get(key:string){return(await this.store.load()??[]).find(x=>x.key===key);}
   async restore(records:IdempotencyRecord[]):Promise<void>{
     const release=await this.lock.acquire();
-    try{await this.store.save(structuredClone(records));}finally{await release();}
+    try{
+      const existing=await this.store.load()??[];
+      const merged=new Map(existing.map(record=>[record.key,record]));
+      for(const record of records)merged.set(record.key,structuredClone(record));
+      await this.store.save([...merged.values()]);
+    }finally{await release();}
   }
   private async update(key:string,patch:Partial<IdempotencyRecord>):Promise<void>{
     const release=await this.lock.acquire();
