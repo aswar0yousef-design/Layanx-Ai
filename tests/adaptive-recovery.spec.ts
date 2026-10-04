@@ -28,7 +28,7 @@ const persistence=new RuntimePersistence(storage);
 const calls1={planner:0,tool:0};
 const core1=new LayanXCore(undefined,persistence);
 setup(core1,[JSON.stringify({tool:"step.two",action:"read second",permission:"L1_READ",reason:"continue"}),"null"],calls1);
-const mission=core1.startMission("Recover a two-step mission");
+const mission=core1.startMission("Recover a two-step mission","project");
 mission.requiredPermission="L1_READ";
 mission.steps=[{id:crypto.randomUUID(),description:"Execute reads",status:"pending"},{id:crypto.randomUUID(),description:"Verify result",status:"pending"}];
 mission.tools=[{tool:"step.one",action:"read first",permission:"L1_READ",reason:"initial"}];
