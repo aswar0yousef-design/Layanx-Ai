@@ -7,6 +7,7 @@ core.toolAdapters.register("dangerous.read",{async execute(){return{approved:tru
 const mission=core.startMission("gateway approval","gateway-approval-project");
 mission.requiredPermission="L1_READ";
 mission.tools=[{tool:"dangerous.read",action:"run sensitive test",permission:"L1_READ",reason:"gateway approval"}];
+core.missions.save(mission);
 
 const first=await core.executeAgentLoop(mission.id,mission.projectId,2,{}, "core");
 if(!first.paused||first.status!=="awaiting_approval"||!first.approvalId)throw new Error("Gateway did not pause with an approval id.");
