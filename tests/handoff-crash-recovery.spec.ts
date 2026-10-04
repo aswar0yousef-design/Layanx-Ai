@@ -24,7 +24,7 @@ const core=new LayanXCore(undefined,persistence);
 const agent={agentId:"handoff-agent",purpose:"execute handoff",allowedTools:["terminal.run"],forbiddenResources:[],requiredPermission:"L4_EXECUTE" as const,maxToolCalls:5,maxRuntimeMs:10000,successCriteria:["done"],stopCondition:"stop"};
 core.registerAgent(agent);
 core.tools.register({name:"terminal.run",description:"Run command",permission:"L4_EXECUTE",dangerous:true});
-const mission=core.startMission("Crash-safe handoff");
+const mission=core.startMission("Crash-safe handoff","p");
 mission.requiredPermission="L4_EXECUTE";
 mission.steps=[{id:"execute",description:"Execute handoff action",status:"pending"},{id:"verify",description:"Verify result",status:"pending"}];
 const handoff=core.handoffs.create({
