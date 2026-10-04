@@ -4,18 +4,18 @@ import type {ToolRequest} from "../src/core/types.js";
 const core=new LayanXCore();
 core.registerAgent({
   agentId:"runner",purpose:"execute mission steps",allowedTools:["terminal.run"],forbiddenResources:[],
-  requiredPermission:"L4_EXECUTE",maxToolCalls:5,maxRuntimeMs:10000,successCriteria:["done"],stopCondition:"stop"
+  requiredPermission:"L2_ANALYZE",maxToolCalls:5,maxRuntimeMs:10000,successCriteria:["done"],stopCondition:"stop"
 });
-core.tools.register({name:"terminal.run",description:"Run command",permission:"L4_EXECUTE",dangerous:false});
+core.tools.register({name:"terminal.run",description:"Run command",permission:"L2_ANALYZE",dangerous:false});
 
 const mission=core.startMission("Run command","default");
 const capability=core.capabilities.issue({
   missionId:mission.id,agentId:"runner",projectId:"default",resource:"terminal.run",
-  permission:"L4_EXECUTE",expiresAt:new Date(Date.now()+60000).toISOString()
+  permission:"L2_ANALYZE",expiresAt:new Date(Date.now()+60000).toISOString()
 });
 const request:ToolRequest={
   missionId:mission.id,agentId:"runner",tool:"terminal.run",action:"run command",
-  permission:"L4_EXECUTE",idempotencyKey:"integration-1",payload:{command:"echo ok"}
+  permission:"L2_ANALYZE",idempotencyKey:"integration-1",payload:{command:"echo ok"}
 };
 const adapter={async execute(){return{done:true};}};
 const runner=new (await import("../src/core/mission-runner.js")).MissionRunner(core);
