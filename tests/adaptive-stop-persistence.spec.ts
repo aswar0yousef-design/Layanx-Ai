@@ -34,7 +34,7 @@ function setup(persistence:RuntimePersistence,tool:string,execute:()=>Promise<un
 const persistence=new RuntimePersistence(new RuntimeStorage(new MemoryStorage()));
 
 const limited=setup(persistence,"step.limit",async()=>({ok:true}));
-const limitedMission=limited.startMission("persist adaptive step limit");
+const limitedMission=limited.startMission("persist adaptive step limit","project");
 limitedMission.requiredPermission="L1_READ";
 limitedMission.tools=[{tool:"step.limit",action:"read test",permission:"L1_READ",reason:"test"}];
 limited.missions.save(limitedMission);
