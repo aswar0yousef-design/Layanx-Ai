@@ -26,8 +26,8 @@ function workspaceFor(root:string,projectId:string):string{
 function run(cwd:string,args:string[],timeout=30000):Promise<unknown>{
  return new Promise((resolvePromise,reject)=>{
   const isWindows=process.platform==="win32";
-  const binary=isWindows?(process.env.ComSpec??"cmd.exe"):"git";
-  const commandArgs=isWindows?["/d","/s","/c",["git",...args].map(value=>`"${value.replace(/"/g,'""')}"`).join(" ")]:args;
+  const binary=isWindows?"git.exe":"git";
+  const commandArgs=args;
   const child=spawn(binary,commandArgs,{cwd,shell:false,env:{...process.env,GIT_TERMINAL_PROMPT:"0"},timeout});
   let stdout="",stderr="";
   child.stdout.on("data",c=>{stdout+=String(c);if(stdout.length>128*1024)child.kill("SIGKILL");});
