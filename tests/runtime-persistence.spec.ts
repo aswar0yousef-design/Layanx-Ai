@@ -16,6 +16,14 @@ await persistence.saveAtomic(snapshot);
 const restored=await persistence.get("m1");
 if(restored?.mission.goal!=="persist mission")throw new Error("Runtime snapshot restore failed.");
 if(restored?.executionState.status!=="completed")throw new Error("Execution state was not persisted.");
+
+const inconsistent={...snapshot,mission:{...snapshot.mission,id:"inconsistent",status:"completed" as const},executionState:{...snapshot.executionState,missionId:"inconsistent",status:"running" as const,recoverable:true}};
+try{await persistence.saveAtomic(inconsistent);throw new Error("Inconsistent completed snapshot was accepted.");}
+catch(error){if(!(error instanceof Error)||!error.message.includes("completed mission"))throw error;}
+
+const failedRecoverable={...snapshot,mission:{...snapshot.mission,id:"recoverable",status:"failed" as const},executionState:{...snapshot.executionState,missionId:"recoverable",status:"failed" as const,recoverable:true}};
+await persistence.saveAtomic(failedRecoverable);
+if(!(await persistence.resumable()).some(item=>item.mission.id==="recoverable"))throw new Error("Recoverable failed mission was not resumable.");
 await rm(dir,{recursive:true,force:true});
 console.log("Runtime persistence test passed.");
 
