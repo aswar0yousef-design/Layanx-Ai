@@ -215,6 +215,8 @@ export function registerToolFabric(core:LayanXCore,options:{workspaceRoot?:strin
  core.toolAdapters.register("terminal.exec",createTerminalToolAdapter({root:workspaceRoot}));
  core.tools.register({name:"project.verify",description:"run one selected project verification script",permission:"L4_EXECUTE",dangerous:true,actions:["verify project"],tags:["project","verify"]});
  core.toolAdapters.register("project.verify",createProjectVerifyToolAdapter({root:workspaceRoot}));
+ core.tools.register({name:"project.bootstrap",description:"initialize an isolated npm project workspace",permission:"L4_EXECUTE",dangerous:true,actions:["bootstrap project"],tags:["project","bootstrap"]});
+ core.toolAdapters.register("project.bootstrap",createProjectBootstrapToolAdapter({root:workspaceRoot}));
 
  core.tools.register({
   name:"files.write",
