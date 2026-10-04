@@ -81,7 +81,7 @@ export class ExecutionRuntime{
   try{result=await this.core.executor.execute(request,adapter);}catch(error){this.core.tracer.end(trace,"failure",{error:error instanceof Error?error.message:"tool execution failed"});throw error;}
   const runtimeMs=Date.now()-started;
   this.core.tracer.end(trace,result.ok?"success":"failure",{runtimeMs,ok:result.ok});
-  this.core.memory.remember({
+  if(request.tool!=="memory.recall")this.core.memory.remember({
    missionId:mission.id,
    projectId:security.projectId,
    kind:result.ok?"experience":"failure",
