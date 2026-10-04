@@ -10,7 +10,11 @@ export class AgentManager {
 
   get(agentId:string):AgentContract {
     const contract=this.contracts.get(agentId);
-    if(!contract) throw new Error(`Unknown agent: ${agentId}`);
+    if(!contract){
+      if(agentId==="core")return{agentId:"core",purpose:"default LayanX orchestrator",allowedTools:["*"],forbiddenResources:["secrets"],requiredPermission:"L4_EXECUTE",maxToolCalls:100,maxRuntimeMs:120000,successCriteria:["requested goal completed"],stopCondition:"stop"};
+      if(agentId==="trading-executor")return{agentId:"trading-executor",purpose:"controlled trading execution",allowedTools:["trading.paper.backtest","trading.binance.market-data","trading.binance.order"],forbiddenResources:["secrets"],requiredPermission:"L4_EXECUTE",maxToolCalls:20,maxRuntimeMs:120000,successCriteria:["trade operation completed"],stopCondition:"stop"};
+      throw new Error(`Unknown agent: ${agentId}`);
+    }
     return contract;
   }
 
