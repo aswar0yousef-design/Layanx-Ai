@@ -115,7 +115,7 @@ export function importHistoricalCsv(
     const values = parseCsvLine(line);
     if (values.length > headers.length) throw new Error("CSV row does not match header length.");
     while(values.length<headers.length)values.push("");
-    return normalizeCandle(Object.fromEntries(headers.map((header, index) => [header, values[index]!])));
+    return normalizeCandle(Object.fromEntries(headers.map((header, index) => {const value=values[index];return [header,value===undefined||value===""?undefined:value];})));
   });
 
   return {
