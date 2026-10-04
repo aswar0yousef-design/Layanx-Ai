@@ -271,3 +271,23 @@ OAuth connections can discover native publishing accounts and advertising accoun
 
 ### Production hardening
 Business state hydrates from PostgreSQL when configured, scheduler definitions persist across restart, scheduler/event management endpoints require API authentication, social publishing uses platform-specific configured connectors, and content generation can route through the existing model router with local preference.
+
+## Visual Flow & Agent Orchestration
+
+LayanX includes a local-first visual Flow Builder at `http://127.0.0.1:3100/flow` when the API is running. It orchestrates the existing Agent Gateway, tools, memory, project isolation, approvals, audit, and recovery rather than creating a second agent runtime.
+
+Supported blocks include Trigger, AI Agent, Condition, Tool/Action, Message, CRM, Human Handoff, and End. Active flows can receive WhatsApp/Telegram messages through the existing channel service. Set `LAYANX_CHANNEL_PROJECT_ID` to choose the default project for channel messages that do not carry project metadata.
+
+Start it with:
+
+```bash
+npm run api
+```
+
+Then open `http://127.0.0.1:3100/flow` locally.
+
+## Quran Publisher
+
+The Quran Publisher is integrated as a guarded local automation. It uses the Quran Foundation source adapter, verse-safe 30–60 second planning, a rights/license gate, 1080×1920 FFmpeg rendering, an idempotency ledger, and YouTube/TikTok publication adapters. The agent tools are `quran.doctor`, `quran.prepare_next`, and `quran.publish_next`.
+
+Automatic publishing remains **fail-closed** until valid recitation social-video rights and the required platform OAuth/API configuration are supplied. Enable the two daily slots only with `LAYANX_QURAN_AUTOSCHEDULE=true`.
