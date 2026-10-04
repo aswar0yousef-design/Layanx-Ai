@@ -33,7 +33,7 @@ export class ExecutionRuntime{
   try{
    projectId=this.core.projectIsolation.normalize(projectId);
    this.core.projectIsolation.assertMissionProject(projectId,mission.projectId);
-   this.core.projectIsolation.assertRequestProject(projectId,request.projectId);
+   if(request.projectId)this.core.projectIsolation.assertRequestProject(projectId,request.projectId);
    request={...request,projectId};
   }catch(error){
    const message=error instanceof Error?error.message:"Project isolation violation.";
