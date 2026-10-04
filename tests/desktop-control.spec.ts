@@ -8,9 +8,10 @@ const base:ToolRequest={missionId:"m",agentId:"core",projectId:"p",tool:"desktop
 const moved=await adapter.execute(base) as {x:number;y:number};
 assert.equal(moved.x,100);assert.equal(moved.y,200);
 assert.equal(calls.length,1);
+const keyboardBase={...base,tool:"desktop.keyboard.type",action:"desktop type",payload:{}} as ToolRequest;
 
-await adapter.execute({...base,tool:"desktop.keyboard.type",action:"desktop type",idempotencyKey:"desktop-2",payload:{text:"LayanX"}});
-await adapter.execute({...base,tool:"desktop.keyboard.press",action:"desktop press key",idempotencyKey:"desktop-3",payload:{key:"ENTER"}});
+await adapter.execute({...keyboardBase,tool:"desktop.keyboard.type",action:"desktop type",idempotencyKey:"desktop-2",payload:{text:"LayanX"}});
+await adapter.execute({...keyboardBase,tool:"desktop.keyboard.press",action:"desktop press key",idempotencyKey:"desktop-3",payload:{key:"ENTER"}});
 assert.equal(calls.length,3);
 
 await adapter.execute({...base,tool:"desktop.keyboard.type",action:"desktop type",idempotencyKey:"desktop-4",payload:{text:"x".repeat(4000)}});
