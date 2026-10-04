@@ -118,8 +118,8 @@ export function buildBacktestReport(
     peak = Math.max(peak, balance);
 
     const drawdown = peak - balance;
-    maxDrawdown = Math.max(maxDrawdown, drawdown);
-    if (peak > 0) maxDrawdownPct = Math.max(maxDrawdownPct, (drawdown / peak) * 100);
+    maxDrawdown = Math.max(maxDrawdown, Number(drawdown.toFixed(12)));
+    if (peak > 0) maxDrawdownPct = Math.max(maxDrawdownPct, Number(((drawdown / peak) * 100).toFixed(12)));
 
     if (analysis.trueNetPnl > 0) {
       wins += 1;
