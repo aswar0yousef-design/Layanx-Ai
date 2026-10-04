@@ -14,9 +14,9 @@ export function ensureGitOnPath():void{
  for(const candidate of [gitDir,"C:\\Program Files\\Git\\cmd","C:\\Program Files\\Git\\bin","C:\\Program Files (x86)\\Git\\cmd","C:\\Program Files (x86)\\Git\\bin",(process.env.LocalAppData??"")+"\\Programs\\Git\\cmd",(process.env.LocalAppData??"")+"\\Programs\\Git\\bin"])
   if(candidate&&existsSync(candidate)&&!pathEntries.some(entry=>entry.toLowerCase()===candidate.toLowerCase()))pathEntries.unshift(candidate);
  const normalized=pathEntries.filter((entry,index,all)=>all.findIndex(value=>value.toLowerCase()===entry.toLowerCase())===index);
- delete process.env.PATH;
- delete process.env.Path;
- process.env.Path=normalized.join(";");
+ const canonicalPath=normalized.join(";");
+ process.env.PATH=canonicalPath;
+ process.env.Path=canonicalPath;
 }
 ensureGitOnPath();
 import {spawn} from "node:child_process";
