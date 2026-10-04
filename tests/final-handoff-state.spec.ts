@@ -22,7 +22,7 @@ const h=core.handoffs.create({missionId:mission.id,fromAgentId:a.agentId,toAgent
 if(JSON.stringify(h).includes(secret)||JSON.stringify(h).includes("Bearer abcdefghijk"))throw new Error("Handoff secret leaked.");
 core.handoffs.accept(h.id);
 const cap=core.capabilities.issue({missionId:mission.id,agentId:b.agentId,projectId:"p",resource:"terminal.run",permission:"L4_EXECUTE",expiresAt:new Date(Date.now()+60000).toISOString()});
-const result=await new MissionRunner(core).executeHandoff(mission,h,{async execute(){return{done:true};}},{projectId:"p",capabilityId:cap.id});
+const result=await new MissionRunner(core).executeHandoff(mission,core.handoffs.get(h.id),{async execute(){return{done:true};}},{projectId:"p",capabilityId:cap.id});
 if(!result.result.ok||core.handoffs.get(h.id).status!=="completed")throw new Error("Handoff did not complete.");
 const snap=await persistence.get(mission.id);
 if(!snap||snap.mission.status!=="completed"||snap.executionState.status!=="completed")throw new Error("Final completed state was not persisted.");
