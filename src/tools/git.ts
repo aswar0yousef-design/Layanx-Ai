@@ -8,9 +8,8 @@ export function ensureGitOnPath():void{
  const pathEntries=(process.env[pathKey]??"").split(";").filter(Boolean);
  for(const candidate of ["C:\\Program Files\\Git\\cmd","C:\\Program Files\\Git\\bin","C:\\Program Files (x86)\\Git\\cmd","C:\\Program Files (x86)\\Git\\bin",`${process.env.LocalAppData??""}\\Programs\\Git\\cmd`,`${process.env.LocalAppData??""}\\Programs\\Git\\bin`])
   if(existsSync(candidate)&&!pathEntries.some(entry=>entry.toLowerCase()===candidate.toLowerCase()))pathEntries.push(candidate);
- delete process.env.PATH;
- delete process.env.Path;
- process.env[pathKey]=pathEntries.join(";");
+ process.env.PATH=pathEntries.join(";");
+ process.env.Path=pathEntries.join(";");
 }
 ensureGitOnPath();
 import {spawn} from "node:child_process";
