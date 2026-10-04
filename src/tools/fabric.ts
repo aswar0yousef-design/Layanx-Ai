@@ -73,7 +73,7 @@ export function createTerminalToolAdapter(options:{root:string}):ToolAdapter{
   if(/[;&|$<>]/.test(command)||command.includes(String.fromCharCode(96)))throw new Error("Shell metacharacters are blocked.");
   return await new Promise((resolvePromise,reject)=>{
    const executable=binary==="git"&&process.platform==="win32"?"git.exe":binary==="npm"&&process.platform==="win32"?(process.env.ComSpec??"cmd.exe"):binary;
-   const executableArgs=binary==="npm"&&process.platform==="win32"?["/d","/s","/c",["npm.cmd",...parts].map(value=>`"${value.replaceAll("\\","\\\\").replaceAll(""","\\"")}"`).join(" ")]:parts;
+   const executableArgs=binary==="npm"&&process.platform==="win32"?["/d","/s","/c",["npm.cmd",...parts].join(" ")]:parts;
    const child=spawn(executable,executableArgs,{cwd:workspace,shell:false,env:{...process.env,CI:"1"},timeout:30000});
    let stdout="",stderr="";
    child.stdout.on("data",chunk=>{stdout+=String(chunk);if(stdout.length>128*1024)child.kill("SIGKILL");});
@@ -98,8 +98,10 @@ export function createProjectVerifyToolAdapter(options:{root:string}):ToolAdapte
     ?packageData.scripts as Record<string,unknown>:{};
   if(typeof packageScripts[requested]!=="string")throw new Error("Project does not define the requested verification script.");
   return await new Promise((resolvePromise,reject)=>{
-   const binary=process.platform==="win32"?"npm.cmd":"npm";
-   const child=spawn(binary,["run",requested],{cwd:workspace,shell:process.platform==="win32",env:{...process.env,CI:"1"},timeout:60000});
+   const isWindows=process.platform==="win32";
+   const binary=isWindows?(process.env.ComSpec??"cmd.exe"):"npm";
+   const commandArgs=isWindows?["/d","/s","/c",`npm.cmd run "${requested.replace(/"/g,'\\"' )}"`]:["run",requested];
+   const child=spawn(binary,commandArgs,{cwd:workspace,shell:false,env:{...process.env,CI:"1"},timeout:60000});
    let stdout="",stderr="";
    child.stdout.on("data",chunk=>{stdout+=String(chunk);if(stdout.length>128*1024)child.kill("SIGKILL");});
    child.stderr.on("data",chunk=>{stderr+=String(chunk);if(stderr.length>128*1024)child.kill("SIGKILL");});
@@ -121,7 +123,7 @@ function runNpm(cwd:string,args:string[],timeoutMs:number):Promise<{args:string[
   return new Promise((resolvePromise,reject)=>{
     const isWindows=process.platform==="win32";
     const binary=isWindows?(process.env.ComSpec??"cmd.exe"):"npm";
-    const commandArgs=isWindows?["/d","/s","/c",["npm.cmd",...args].map(value=>`"${value.replaceAll("\\","\\\\").replaceAll(""","\\"")}"`).join(" ")]:args;
+    const commandArgs=isWindows?["/d","/s","/c",["npm.cmd",...args].map(value=>`"${value.replace(/"/g,'\\"' )}"`).join(" ")]:args;
     const child=spawn(binary,commandArgs,{cwd,shell:false,env:{...process.env,CI:"1"},timeout:timeoutMs});
     let stdout="",stderr="";
     child.stdout.on("data",chunk=>{stdout+=String(chunk);if(stdout.length>128*1024)child.kill("SIGKILL");});
