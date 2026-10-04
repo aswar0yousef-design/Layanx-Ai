@@ -2,7 +2,7 @@ import {LayanXCore} from "../src/core/orchestrator.js";
 import {CoreRuntime} from "../src/core/core-runtime.js";
 
 const core=new LayanXCore();
-core.registerAgent({agentId:"integration-agent",purpose:"integration",allowedTools:["echo"],forbiddenResources:["secrets"],requiredPermission:"L1_READ",maxToolCalls:5,maxRuntimeMs:10000,successCriteria:["echo"],stopCondition:"stop"});
+core.registerAgent({agentId:"integration-agent",purpose:"integration",allowedTools:["echo"],forbiddenResources:["secrets"],requiredPermission:"L1_READ",maxToolCalls:5,maxRuntimeMs:10000,successCriteria:["result === \"hello\""],stopCondition:"stop"});
 core.tools.register({name:"echo",description:"echo",permission:"L1_READ",dangerous:false});
 const runtime=new CoreRuntime(core);
 const result=await runtime.run("integration mission",{agentId:"integration-agent",tool:"echo",action:"echo",permission:"L1_READ",idempotencyKey:crypto.randomUUID(),payload:"hello"},{execute:async request=>request.payload});
