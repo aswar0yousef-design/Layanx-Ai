@@ -68,8 +68,8 @@ function targetPrice(side: TradeSide, entry: number, distance?: number): number 
 }
 
 function currentSpread(spread: PaperTradingConfig["spread"], candle: MarketCandle): number {
-  if (candle.bid !== undefined && candle.ask !== undefined) return candle.ask - candle.bid;
-  return typeof spread === "function" ? spread(candle) : spread;
+  if (candle.bid !== undefined && candle.ask !== undefined) return Number((candle.ask - candle.bid).toFixed(12));
+  return Number((typeof spread === "function" ? spread(candle) : spread).toFixed(12));
 }
 
 function entrySpread(
@@ -77,10 +77,10 @@ function entrySpread(
   candle: MarketCandle,
 ): number {
   if (candle.bidOpen !== undefined && candle.askOpen !== undefined) {
-    return candle.askOpen - candle.bidOpen;
+    return Number((candle.askOpen - candle.bidOpen).toFixed(12));
   }
   if (candle.bid !== undefined && candle.ask !== undefined) {
-    return candle.ask - candle.bid;
+    return Number((candle.ask - candle.bid).toFixed(12));
   }
   return typeof spread === "function" ? spread(candle) : spread;
 }
