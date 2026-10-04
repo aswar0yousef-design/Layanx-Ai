@@ -31,7 +31,7 @@ assert.equal(result.candles, 40);
 assert.equal(result.simulation.quoteCoverage.percentage, 100);
 
 const noQuotes = importMt5HistoricalCsv(
-  rows.map((row) => row.replace(/,[0-9]+\.[0-9]+,[0-9]+\.[0-9]+$/, "")).reduce((acc, row, i) => i === 0 ? acc + row : acc + "\n" + row, "timestamp,open,high,low,close"),
+  ["timestamp,open,high,low,close", ...rows.map((row) => row.replace(/,[0-9]+\.[0-9]+,[0-9]+\.[0-9]+$/, ""))].join("\n"),
   { symbol: "XAUUSD", timeframe: "M1", requireBidAsk: false },
 );
 assert.throws(
