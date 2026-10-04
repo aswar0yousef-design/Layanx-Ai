@@ -30,3 +30,12 @@ let rejected=false;
 try{runtime.validate({...flow,edges:[...flow.edges,{id:"cycle",source:"e",target:"t"}]});}catch{rejected=true;}
 if(!rejected)throw new Error("Cycle validation failed.");
 console.log("Flow runtime tests passed.");
+
+const aiCore={projectIsolation:{normalize:(id:string)=>id},memory:{recall:()=>[],remember:(x:unknown)=>x},runAgentGateway:async()=>({completed:true,missionId:"m2",results:[],final:{data:"AI response"}})} as any;
+const aiRuntime=new FlowRuntime(aiCore);
+const aiFlow={...flow,nodes:[{id:"t",type:"trigger" as const,config:{eventType:"message"}},{id:"a",type:"ai_agent" as const,config:{goal:"Answer {{event.text}}"}},{id:"m",type:"message" as const,config:{text:"{{outputs.a.text}}"}},{id:"e",type:"end" as const,config:{}}],edges:[{id:"a1",source:"t",target:"a"},{id:"a2",source:"a",target:"m"},{id:"a3",source:"m",target:"e"}]};
+const aiResult=await aiRuntime.execute(aiFlow,{id:"e2",projectId:"p1",channel:"webchat",senderId:"u",chatId:"chat",text:"hello",timestamp:new Date().toISOString()});
+if(aiResult.status!=="completed"||((aiResult.outputs.m as {text?:string})?.text)!=="AI response")throw new Error("AI output was not propagated to message node.");
+const isolated=await aiRuntime.execute(aiFlow,{id:"e3",projectId:"other",channel:"webchat",senderId:"u",chatId:"chat",text:"hello",timestamp:new Date().toISOString()});
+if(isolated.status!=="failed"||!isolated.error?.includes("project isolation"))throw new Error("Project isolation was not enforced.");
+console.log("Flow AI propagation and project isolation tests passed.");
