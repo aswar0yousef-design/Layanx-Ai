@@ -4,7 +4,7 @@ const core=new LayanXCore();
 core.registerAgent({
   agentId:"core",
   purpose:"tool discovery",
-  allowedTools:["runtime.status","mission.inspect","memory.recall"],
+  allowedTools:["*"],
   forbiddenResources:["secrets"],
   requiredPermission:"L1_READ",
   maxToolCalls:10,
