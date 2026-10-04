@@ -10,7 +10,7 @@ const rows = Array.from({ length: 40 }, (_, i) => {
 const csv = ["timestamp,open,high,low,close,bid,ask", ...rows].join("\n");
 const data = importHistoricalCsv(csv, { source: "MT5-XAUUSD-test", symbol: "XAUUSD", timeframe: "M1" });
 
-assert.equal(data.candles[0].bid, data.candles[0].close);
+assert.equal(data.candles[0].bid, 2000);
 assert.equal(data.candles[0].ask, data.candles[0].close + 0.2);
 
 const result = runHistoricalBacktest({
