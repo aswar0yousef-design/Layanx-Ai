@@ -20,6 +20,7 @@ const result = runPaperScalping(candles, {
   riskPercent: 1,
   stopLossDistance: 1,
   spread: 0.05,
+  signalConfig: { minimumScore: 2 },
   slippage: 0.02,
 });
 
@@ -60,6 +61,7 @@ const quotedResult = runPaperScalping(quoteCandles, {
   riskPercent: 1,
   stopLossDistance: 1,
   spread: 0.05,
+  signalConfig: { minimumScore: 2 },
   slippage: 0.02,
 });
 for (const trade of quotedResult.trades) {
@@ -74,6 +76,7 @@ const forcedCloseResult = runPaperScalping(candles, {
   riskPercent: 1,
   stopLossDistance: 1000,
   spread: 0.05,
+  signalConfig: { minimumScore: 2 },
   slippage: 0.02,
   endOfDataPolicy: "close",
 });
@@ -88,6 +91,7 @@ const excludedResult = runPaperScalping(candles, {
   riskPercent: 1,
   stopLossDistance: 1000,
   spread: 0.05,
+  signalConfig: { minimumScore: 2 },
   slippage: 0.02,
   endOfDataPolicy: "exclude",
 });
@@ -113,6 +117,7 @@ const trailingResult = runPaperScalping(trailingCandles, {
   riskPercent: 1,
   stopLossDistance: 0.5,
   spread: 0.02,
+  signalConfig: { minimumScore: 2 },
   slippage: 0,
   trailingStopDistance: 0.2,
 });
