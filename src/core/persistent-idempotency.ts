@@ -28,6 +28,10 @@ export class PersistentIdempotencyStore{
   async complete(key:string,data:unknown):Promise<void>{await this.update(key,{status:"completed",completedAt:new Date().toISOString(),data:structuredClone(data)});}
   async fail(key:string,error:string):Promise<void>{await this.update(key,{status:"failed",completedAt:new Date().toISOString(),error});}
   async get(key:string){return(await this.store.load()??[]).find(x=>x.key===key);}
+  async restore(records:IdempotencyRecord[]):Promise<void>{
+    const release=await this.lock.acquire();
+    try{await this.store.save(structuredClone(records));}finally{await release();}
+  }
   private async update(key:string,patch:Partial<IdempotencyRecord>):Promise<void>{
     const release=await this.lock.acquire();
     try{
