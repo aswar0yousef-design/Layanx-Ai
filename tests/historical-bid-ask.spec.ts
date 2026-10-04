@@ -4,7 +4,7 @@ import { runHistoricalBacktest } from "../src/trading/historical-backtest.js";
 
 const rows = Array.from({ length: 40 }, (_, i) => {
   const close = 2000 + i * 0.3;
-  return `${new Date(Date.UTC(2026, 9, 3, 16, i)).toISOString()},${close - 0.1},${close + 0.4},${close - 0.2},${close + 0.1},${close},${close + 0.2}`;
+  return `${new Date(Date.UTC(2026, 9, 3, 16, i)).toISOString()},${close - 0.1},${close + 0.4},${close - 0.2},${close},${close},${close + 0.2}`;
 });
 
 const csv = ["timestamp,open,high,low,close,bid,ask", ...rows].join("\n");
