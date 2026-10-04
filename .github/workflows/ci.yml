@@ -9,8 +9,6 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    env:
-      GIT_EXECUTABLE: /usr/bin/git
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
