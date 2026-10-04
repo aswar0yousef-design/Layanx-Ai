@@ -12,7 +12,7 @@ const storage=new JsonStorageAdapter(join(dir,"runtime.json"));
 const persistence=new RuntimePersistence(new RuntimeStorage(storage));
 
 const original=new LayanXCore();
-const mission=original.startMission("resume after crash");
+const mission=original.startMission("resume after crash","recovery-project");
 const state=original.executionStates.get(mission.id);
 if(!state)throw new Error("Missing execution state.");
 original.recovery.checkpoint({missionId:mission.id,stepId:mission.steps[3]?.id??"mission",createdAt:new Date().toISOString(),state:{checkpoint:"before-crash"}});
