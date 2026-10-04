@@ -8,7 +8,7 @@ export function ensureGitOnPath():void{
  const pathEntries=(process.env.Path??process.env.PATH??"").split(";").filter(Boolean);
  let gitDir="";
  try{
-  const located=execFileSync("where.exe",["git.exe"],{encoding:"utf8",windowsHide:true}).split(/\r?\n/).map(value=>value.trim()).filter(Boolean)[0];
+  const located=execFileSync((process.env.SystemRoot??"C:\\Windows")+"\\System32\\where.exe",["git.exe"],{encoding:"utf8",windowsHide:true}).split(/\r?\n/).map(value=>value.trim()).filter(Boolean)[0];
   if(located)gitDir=dirname(located);
  }catch{}
  for(const candidate of [gitDir,"C:\\Program Files\\Git\\cmd","C:\\Program Files\\Git\\bin","C:\\Program Files (x86)\\Git\\cmd","C:\\Program Files (x86)\\Git\\bin",(process.env.LocalAppData??"")+"\\Programs\\Git\\cmd",(process.env.LocalAppData??"")+"\\Programs\\Git\\bin"])
