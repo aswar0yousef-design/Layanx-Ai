@@ -12,7 +12,7 @@ core.tools.register({
 });
 core.toolAdapters.register("sensitive.read",{async execute(){return{approved:true};}});
 
-const mission=core.startMission("Execute approved sensitive test");
+const mission=core.startMission("Execute approved sensitive test","project");
 mission.projectId="security-audit-project";
 mission.requiredPermission="L1_READ";
 mission.tools=[{tool:"sensitive.read",action:"delete record",permission:"L1_READ",reason:"approval audit test"}];
