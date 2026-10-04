@@ -50,7 +50,8 @@ export class AiMissionPlanner{
   constructor(private readonly models:ModelExecutionRouter){}
   async plan(goal:string,tools:ToolCatalogEntry[]=[],projectContext?:unknown,routing?:ModelRoutingOptions):Promise<PlannedMission>{
     if(!goal.trim())throw new Error("Mission goal is empty.");
-    const scopedTools=filterCatalogForGoal(goal,tools);\n    const catalog=scopedTools.length?scopedTools.map(tool=>({
+    const scopedTools=filterCatalogForGoal(goal,tools);
+    const catalog=scopedTools.length?scopedTools.map(tool=>({
       name:tool.name,description:tool.description,permission:tool.permission,
       dangerous:tool.dangerous,actions:tool.actions,tags:tool.tags
     })):[];
@@ -91,7 +92,8 @@ export class AiMissionPlanner{
   }
   async nextTool(input:{goal:string;result:unknown;tools:ToolCatalogEntry[];requiredPermission:PermissionLevel;completedTools:string[];memory?:Array<{kind:string;summary:string;content:unknown;tags:string[]}>;projectContext?:unknown;routing?:ModelRoutingOptions;visualContext?:{mimeType:string;base64:string}}):Promise<PlannedTool|null>{
     if(!input.goal.trim())throw new Error("Mission goal is empty.");
-    const scopedTools=filterCatalogForGoal(input.goal,input.tools);\n    const catalog=scopedTools.map(tool=>({name:tool.name,description:tool.description,permission:tool.permission,dangerous:tool.dangerous,actions:tool.actions,tags:tool.tags}));
+    const scopedTools=filterCatalogForGoal(input.goal,input.tools);
+    const catalog=scopedTools.map(tool=>({name:tool.name,description:tool.description,permission:tool.permission,dangerous:tool.dangerous,actions:tool.actions,tags:tool.tags}));
     const boundedResult=JSON.stringify(input.result).slice(0,12000);
     const boundedMemory=JSON.stringify(input.memory??[]).slice(0,8000);
     const prompt=[
