@@ -51,7 +51,7 @@ if(!limitedSnapshot.memory?.some(entry=>entry.kind==="decision"&&entry.content&&
   throw new Error("Persisted step-limit adaptive memory decision is missing.");
 
 const failed=setup(persistence,"step.fail",async()=>{throw new Error("controlled failure");});
-const failedMission=failed.startMission("persist adaptive tool failure");
+const failedMission=failed.startMission("persist adaptive tool failure","project");
 failedMission.requiredPermission="L1_READ";
 failedMission.tools=[{tool:"step.fail",action:"read test",permission:"L1_READ",reason:"test"}];
 failed.missions.save(failedMission);
