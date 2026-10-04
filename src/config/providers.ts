@@ -6,6 +6,8 @@ import {createOllamaProvider} from "../providers/ollama-provider.js";
 import {createAnthropicProvider} from "../providers/anthropic-provider.js";
 import {createGeminiProvider} from "../providers/gemini-provider.js";
 import {FreeCapacityProvider,type FreeCapacitySpec} from "../providers/free-capacity.js";
+import {FREE_LLM_DIRECTORY} from "../providers/free-llm-directory.js";
+import {localSecret} from "../security/local-secret-vault.js";
 export type ProviderMode="local"|"cloud"|"hybrid";
 export interface ProviderRuntimeConfig{
  mode:ProviderMode;
@@ -18,7 +20,11 @@ export interface ProviderRuntimeConfig{
 function loadFreePool(env:NodeJS.ProcessEnv){
  const enabled=env.LAYANX_FREE_POOL_ENABLED==="true";
  const configPath=env.LAYANX_FREE_POOL_CONFIG??".layanx/free-providers.json";
- if(!enabled||!existsSync(configPath))return{enabled,configPath,providers:[] as FreeCapacitySpec[]};
+ if(!enabled)return{enabled,configPath,providers:[] as FreeCapacitySpec[]};
+ if(!existsSync(configPath)){
+  const providers=FREE_LLM_DIRECTORY.map(entry=>({...entry,apiKey:localSecret(entry.keyEnv)??env[entry.keyEnv]})).filter(entry=>Boolean(entry.apiKey)).map(entry=>({name:entry.name,baseUrl:entry.baseUrl,apiKey:entry.apiKey,apiKeyEnv:entry.keyEnv,models:entry.models,capabilities:entry.capabilities,priority:entry.priority,tags:entry.tags}));
+  return{enabled,configPath,providers};
+ }
  try{
   const parsed=JSON.parse(readFileSync(configPath,"utf8")) as {providers?:FreeCapacitySpec[]};
   if(!Array.isArray(parsed.providers))throw new Error("free provider config must contain a providers array");
@@ -47,7 +53,7 @@ export function configureProviders(config=loadProviderConfig(),models=new ModelR
  if(config.openai.enabled&&allowCloud&&config.openai.apiKey){providers.register(createOpenAIProvider({apiKey:config.openai.apiKey,baseUrl:config.openai.baseUrl,healthUrl:config.openai.healthUrl}));models.register({id:config.openai.model,provider:"openai",capabilities:["chat","reasoning","coding","vision"],local:false,enabled:true,priority:priority++});}
  if(config.anthropic.enabled&&allowCloud&&config.anthropic.apiKey){providers.register(createAnthropicProvider({apiKey:config.anthropic.apiKey,baseUrl:config.anthropic.baseUrl,healthUrl:config.anthropic.healthUrl}));models.register({id:config.anthropic.model,provider:"anthropic",capabilities:["chat","reasoning","coding","vision"],local:false,enabled:true,priority:priority++});}
  if(config.gemini.enabled&&allowCloud&&config.gemini.apiKey){providers.register(createGeminiProvider({apiKey:config.gemini.apiKey,baseUrl:config.gemini.baseUrl,healthUrl:config.gemini.healthUrl}));models.register({id:config.gemini.model,provider:"gemini",capabilities:["chat","reasoning","coding","vision","audio"],local:false,enabled:true,priority:priority++});}
- if(config.freePool.enabled){
+ if(config.freePool.enabled&&allowCloud){
   for(const spec of config.freePool.providers){
    const provider=new FreeCapacityProvider(spec);providers.register(provider);
    const capabilities=spec.capabilities??["chat","reasoning","coding"];const providerPriority=spec.priority??priority++;
