@@ -22,7 +22,7 @@ let firstCalls=0,secondCalls=0;
 core.toolAdapters.register("step.one",{async execute(){firstCalls++;return{stage:1};}});
 core.toolAdapters.register("step.two",{async execute(){secondCalls++;return{stage:2};}});
 
-const mission=core.startMission("Use the first result to determine the second read");
+const mission=core.startMission("Use the first result to determine the second read","project-test");
 mission.requiredPermission="L1_READ";
 mission.steps=[
  {id:crypto.randomUUID(),description:"Execute the requested reads",status:"pending"},
