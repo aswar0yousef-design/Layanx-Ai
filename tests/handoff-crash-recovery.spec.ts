@@ -55,7 +55,7 @@ if(!persisted.idempotency?.some(record=>record.status==="completed"))throw new E
 
 const recovered=new LayanXCore(undefined,persistence);
 recovered.registerAgent(agent);
-recovered.tools.register({name:"terminal.run",description:"Run command",permission:"L4_EXECUTE",dangerous:true});
+recovered.tools.register({name:"terminal.run",description:"Run command",permission:"L4_EXECUTE",dangerous:false});
 const recovery=new RuntimeRecoveryManager(persistence,recovered);
 const request={missionId:mission.id,agentId:agent.agentId,tool:"terminal.run",action:"run command",permission:"L4_EXECUTE" as const,idempotencyKey:["handoff",handoff.id,mission.id,agent.agentId,"terminal.run","run command"].join(":"),payload:{command:"echo ok"}};
 const recoveredResult=await recovery.resume(mission.id,request,{async execute(){executions++;throw new Error("HANDOFF_EXECUTED_TWICE");}},{projectId:"p",capabilityId:recovered.capabilities.issue({missionId:mission.id,agentId:agent.agentId,projectId:"p",resource:"terminal.run",permission:"L4_EXECUTE",expiresAt:new Date(Date.now()+60000).toISOString()}).id});
