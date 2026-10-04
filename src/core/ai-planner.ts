@@ -78,6 +78,8 @@ export class AiMissionPlanner{
   async plan(goal:string,tools:ToolCatalogEntry[]=[],projectContext?:unknown,routing?:ModelRoutingOptions):Promise<PlannedMission>{
     if(!goal.trim())throw new Error("Mission goal is empty.");
     const scopedTools=filterCatalogForGoal(goal,tools);
+    const deterministic=deterministicDevelopmentPlan(goal,scopedTools);
+    if(deterministic)return deterministic;
     const catalog=scopedTools.length?scopedTools.map(tool=>({
       name:tool.name,description:tool.description,permission:tool.permission,
       dangerous:tool.dangerous,actions:tool.actions,tags:tool.tags
