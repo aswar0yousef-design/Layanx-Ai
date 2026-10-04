@@ -84,7 +84,7 @@ export class ExecutionRuntime{
    confidence:result.ok?0.9:1,
    tags:["mission","tool",request.tool,result.ok?"success":"failure"]
   });
-  this.core.executionStates.update(mission.id,{toolCalls:state.toolCalls+1,runtimeMs:state.runtimeMs+runtimeMs,status:result.ok?"completed":"failed",recoverable:!result.ok});
+  this.core.executionStates.update(mission.id,{toolCalls:state.toolCalls+1,runtimeMs:state.runtimeMs+runtimeMs});
   if(executionStep) executionStep.status=result.ok?"completed":"failed";
   this.core.ledger.append({id:crypto.randomUUID(),missionId:mission.id,agentId:request.agentId,action:request.action,status:result.ok?"completed":"failed",timestamp:new Date().toISOString(),detail:result.error});
   if(!result.ok){
