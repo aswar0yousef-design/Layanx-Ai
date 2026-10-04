@@ -73,7 +73,7 @@ core.tools.register({
   dangerous:false
 });
 
-const mission=await core.planAndStartMission("Read the integration fixture");
+const mission=await core.planAndStartMission("Read the integration fixture","integration-project");
 if(mission.status!=="planned"||mission.requiredPermission!=="L1_READ")throw new Error("AI planner did not produce a valid mission.");
 if(mission.steps.length!==3)throw new Error("Compiled AI mission steps are incorrect.");
 
