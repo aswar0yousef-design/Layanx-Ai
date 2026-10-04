@@ -23,6 +23,7 @@ const decision = evaluateScalpingDecision({
     atr: 1,
     timestamp: candles.at(-1)!.timestamp,
   },
+  signalConfig: { minimumScore: 2 },
   risk: {
     stopLossPrice: 2015,
     accountBalance: 1000,
