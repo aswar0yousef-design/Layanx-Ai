@@ -6,7 +6,7 @@ for(const [name,action] of [["step.one","read first"],["step.two","read second"]
  core.tools.register({name,description:"test read step",permission:"L1_READ",dangerous:false,actions:[action],tags:["test","read"]});
  core.toolAdapters.register(name,{async execute(request){return{step:name,action:request.action};}});
 }
-const mission=core.startMission("Execute two read steps");
+const mission=core.startMission("Execute two read steps","project");
 mission.requiredPermission="L1_READ";
 mission.tools=[
  {tool:"step.one",action:"read first",permission:"L1_READ",reason:"first"},
