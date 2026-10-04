@@ -64,3 +64,16 @@ try{
 }
 
 console.log("Canonical provider/model identity checks passed.");
+
+
+const canonicalModels=new ModelRegistry();
+canonicalModels.register({id:"canonical-model",provider:"canonical-provider",capabilities:["chat"],local:true,enabled:true,priority:1});
+const canonicalProviders=new ModelProviderRegistry();
+canonicalProviders.register({
+ name:"canonical-provider",
+ async health(){return{provider:"canonical-provider",available:true,updatedAt:new Date().toISOString()};},
+ async generate(model){return{modelId:model.id,provider:model.provider,output:"canonical"};}
+});
+const canonicalResult=await new ModelExecutionRouter(canonicalModels,canonicalProviders).execute({capability:"chat",input:"x"});
+if(canonicalResult.output!=="canonical"||canonicalResult.modelId!=="canonical-model")throw new Error("Canonical model execution path failed.");
+console.log("Canonical model selection/execution path passed.");
