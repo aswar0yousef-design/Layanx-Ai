@@ -113,7 +113,8 @@ export function importHistoricalCsv(
   const headers = parseCsvLine(lines[0]!).map(header => header.toLowerCase());
   const candles = lines.slice(1).map((line) => {
     const values = parseCsvLine(line);
-    if (values.length !== headers.length) throw new Error("CSV row does not match header length.");
+    if (values.length > headers.length) throw new Error("CSV row does not match header length.");
+    while(values.length<headers.length)values.push("");
     return normalizeCandle(Object.fromEntries(headers.map((header, index) => [header, values[index]!])));
   });
 
