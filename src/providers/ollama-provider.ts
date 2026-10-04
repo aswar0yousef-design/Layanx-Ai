@@ -15,7 +15,7 @@ function fallbackModel(requested:string,installed:string[]){
 export function createOllamaProvider(options:OllamaProviderOptions={}){
  const root=(options.baseUrl??"http://127.0.0.1:11434").replace(/\/$/,"");
  const fetcher=options.fetcher??fetch;
- const autoSelect=options.autoSelectInstalledModel!==false;
+ const autoSelect=options.autoSelectInstalledModel===true;
  const baseProvider=new HttpModelProvider({
   name:"ollama",baseUrl:root+"/api/chat",healthUrl:root+"/api/tags",timeoutMs:options.timeoutMs??30000,fetcher,
   buildBody:(model,request)=>({model:model.id,messages:[{role:"user",content:typeof request.input==="string"?request.input:request.input.filter(part=>part.type==="text").map(part=>part.text).join("\n"),...(typeof request.input==="string"?{}:{images:request.input.filter(part=>part.type==="image").map(part=>part.image.base64)})}],stream:false}),
