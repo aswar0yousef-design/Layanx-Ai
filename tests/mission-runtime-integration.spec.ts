@@ -6,7 +6,7 @@ core.registerAgent({
   agentId:"runner",purpose:"execute mission steps",allowedTools:["terminal.run"],forbiddenResources:[],
   requiredPermission:"L4_EXECUTE",maxToolCalls:5,maxRuntimeMs:10000,successCriteria:["done"],stopCondition:"stop"
 });
-core.tools.register({name:"terminal.run",description:"Run command",permission:"L4_EXECUTE",dangerous:true});
+core.tools.register({name:"terminal.run",description:"Run command",permission:"L4_EXECUTE",dangerous:false});
 
 const mission=core.startMission("Run command","project-1");
 const capability=core.capabilities.issue({
