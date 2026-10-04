@@ -47,7 +47,8 @@ const completeAudit=complete.audit.forMission(completeMission.id).find(event=>ev
 if(completeAudit?.metadata?.reason!=="planner_complete")throw new Error("Planner completion audit reason missing.");
 
 console.log("Adaptive stop audit and memory passed.");
-\nconst plannerFailure=setup("planner.fail",async()=>({ok:true}));
+
+const plannerFailure=setup("planner.fail",async()=>({ok:true}));
 plannerFailure.models.register({id:"failing-planner",provider:"failing-planner",capabilities:["reasoning"],local:true,enabled:true,priority:1});
 plannerFailure.providers.register({
   name:"failing-planner",
