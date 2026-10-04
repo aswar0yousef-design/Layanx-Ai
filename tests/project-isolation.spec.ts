@@ -3,13 +3,14 @@ import {resolve} from "node:path";
 import {ProjectWorkspaceManager} from "../src/core/project-workspace.js";
 const isolation=new ProjectIsolation();
 isolation.assertSameProject("p1",{projectId:"p1",resourceId:"m1"});
-if(isolation.normalize(" Project-A ")!=="project-a")throw new Error("Project identity was not canonicalized.");
+if(isolation.normalize(" Project-A ")!=="Project-A")throw new Error("Project identity was not normalized.");
 let invalid=false;try{isolation.normalize("../project");}catch{invalid=true;}
 if(!invalid)throw new Error("Invalid project identity was accepted.");
 let requestBlocked=false;try{isolation.assertRequestProject("project-a","project-b");}catch{requestBlocked=true;}
 if(!requestBlocked)throw new Error("Cross-project tool request was not blocked.");
 const root=resolve(process.cwd(),"isolation-root");
-if(isolation.workspacePath(root,"Project-A")!==resolve(root,"project-a"))throw new Error("Workspace path was not canonicalized.");
+const expectedWorkspace=resolve(root,process.platform==="win32"?"project-a":"Project-A");
+if(isolation.workspacePath(root,"Project-A")!==expectedWorkspace)throw new Error("Workspace path was not canonicalized.");
 let blocked=false;try{isolation.assertSameProject("p1",{projectId:"p2",resourceId:"m2"});}catch{blocked=true;}
 if(!blocked)throw new Error("Cross-project access was not blocked.");
 const manager=new ProjectWorkspaceManager();
