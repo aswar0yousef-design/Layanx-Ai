@@ -7,7 +7,7 @@ export class RiskEngine{
   if(rank[request.permission]>=5)reasons.push("Critical permission.");
   else if(rank[request.permission]>=4)reasons.push("Execution-level permission.");
   if(rank[request.permission]===3)reasons.push("Modification-level permission.");
-  if(/delete|drop|payment|transfer|secret|credential|live order|place order|execute order|withdraw|payout/i.test(request.action))reasons.push("Sensitive action keyword.");
+  if(/delete|drop|payment|transfer|secret|credential|sensitive|live[- ]?order|place[- ]?order|execute[- ]?order|withdraw|payout/i.test(request.action))reasons.push("Sensitive action keyword.");
   const level=reasons.length>=2&&rank[request.permission]>=5?"critical":reasons.length>=2?"high":reasons.length===1?"medium":"low";
   return{level,reasons,requiresApproval:level==="high"||level==="critical"};
  }
