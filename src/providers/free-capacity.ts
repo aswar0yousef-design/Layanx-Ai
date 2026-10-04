@@ -2,6 +2,8 @@ import {OpenAICompatibleProvider} from "../models/http-providers.js";
 import type {ModelDefinition} from "../models/registry.js";
 import type {ModelProviderAdapter,ModelRequest,ModelResponse} from "../models/inference.js";
 
+export function freeProviderRuntimeName(name:string){return "free:"+name.trim();}
+
 export interface FreeCapacitySpec{
   name:string;
   baseUrl:string;
