@@ -27,7 +27,9 @@ export class ContextFabric{
   if(!request.mission.projectId||request.mission.projectId!==projectId)throw new Error("Project isolation violation.");
   const limit=Math.min(Math.max(request.limit??8,1),50);
   const maxChars=Math.min(Math.max(request.maxChars??12000,500),50000);
-  const memories=this.memory.recall(request.query,limit,projectId);
+  const recalled=this.memory.recall(request.query,limit,projectId);
+  const missionScoped=this.memory.list().filter(entry=>entry.projectId===projectId&&entry.missionId===request.mission.id);
+  const memories=[...new Map([...missionScoped,...recalled].map(entry=>[entry.id,entry])).values()].slice(0,Math.max(limit,missionScoped.length));
   const prioritized=[...memories].sort((a,b)=>{
    const rank=(kind:MemoryEntry["kind"])=>kind==="failure"?5:kind==="decision"?4:kind==="success"?3:kind==="fact"?2:1;
    return rank(b.kind)-rank(a.kind);
