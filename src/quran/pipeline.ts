@@ -10,7 +10,7 @@ import {NativeSocialConnector} from "../business/native-social.js";
 import type {SocialAccount} from "../business/types.js";
 export interface QuranPipelineConfig extends QuranSourceConfig{outputDir:string;platforms:string[];backgroundPath?:string;fontFile?:string;fontName?:string;translationLanguage?:string;translationId?:number;channelName?:string;}
 export interface QuranPipelineResult{segment:QuranSegment;videoPath:string;idempotencyKey:string;creditText:string;readyForPublication:boolean;}
-export interface QuranLedgerEntry extends QuranPublishedSegment{recitationId:number;videoPath:string;platforms:string[];idempotencyKey:string;status:"submitted"|"published"|"partial";publicationResults?:Array<{platform:string;externalId:string;status:"submitted"|"published"}>;}
+export interface QuranLedgerEntry extends QuranPublishedSegment{recitationId:number;videoPath:string;platforms:string[];idempotencyKey:string;status:"submitted"|"published"|"partial"|"failed";publicationResults?:Array<{platform:string;externalId:string;status:"submitted"|"published"|"failed";detail?:string}>;}
 export class QuranPublicationLedger{
  constructor(private readonly path:string){}
  private read():QuranLedgerEntry[]{try{return JSON.parse(readFileSync(this.path,"utf8")) as QuranLedgerEntry[];}catch{return[];}}
@@ -41,7 +41,14 @@ export class QuranPipeline{
   const item={title:"Quran — Surah "+result.segment.surah+" • "+result.segment.fromAyah+"-"+result.segment.toAyah,body:(license.creditText+"\n\nQuran data provided by Quran Foundation.\n"+(this.config.channelName??"")).trim(),mediaUrls:[result.videoPath]};
   const entry:QuranLedgerEntry=existing??{surah:result.segment.surah,fromAyah:result.segment.fromAyah,toAyah:result.segment.toAyah,durationSec:result.segment.durationSec,publicationIds:[],publishedAt:new Date().toISOString(),recitationId:this.config.recitationId,videoPath:result.videoPath,platforms:[...this.config.platforms],idempotencyKey:result.idempotencyKey,status:"partial",publicationResults:[]};
   for(const platform of this.config.platforms){if(entry.publicationResults?.some(x=>x.platform===platform))continue;const account=accounts[platform];if(!account)throw new Error("quran_social_account_missing:"+platform);try{const published=await new NativeSocialConnector(platform as any).publish(account,item);entry.publicationIds.push(published.externalId);entry.publicationResults=[...(entry.publicationResults??[]),{platform,externalId:published.externalId,status:"submitted"}];this.ledger.upsert(entry);}catch(error){entry.status=entry.publicationResults?.length?"partial":"partial";this.ledger.upsert(entry);throw error;}}
-  entry.status=entry.publicationResults?.length===this.config.platforms.length?"published":"partial";return this.ledger.upsert(entry);
+  entry.status=entry.publicationResults?.length===this.config.platforms.length?"submitted":"partial";return this.ledger.upsert(entry);
+ }
+ async reconcile(result:QuranPipelineResult,accounts:Record<string,SocialAccount>){
+  const entry=this.ledger.find(result.idempotencyKey);if(!entry)throw new Error("quran_ledger_entry_missing");
+  let failed=false;let processing=false;
+  for(const item of entry.publicationResults??[]){const account=accounts[item.platform];if(!account)continue;const connector=new NativeSocialConnector(item.platform as any);if(!connector.status)continue;const status=await connector.status(account,item.externalId);item.status=status.status==="published"?"published":status.status==="failed"?"failed":"submitted";if(status.status==="failed"){item.detail=status.detail;failed=true;}if(status.status==="processing")processing=true;}
+  const results=entry.publicationResults??[];entry.status=failed?"failed":results.length===this.config.platforms.length&&results.every(x=>x.status==="published")?"published":processing||results.some(x=>x.status==="submitted")?"submitted":"partial";return this.ledger.upsert(entry);
+ }
  }
  private async probeDuration(path:string){return new Promise<number>((resolveResult,reject)=>{const ffprobe=process.env.LAYANX_FFPROBE_PATH??"ffprobe";const p=spawn(ffprobe,["-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",path],{stdio:["ignore","pipe","ignore"]});let out="";p.stdout.on("data",d=>out+=String(d));p.on("error",()=>reject(new Error("quran_ffprobe_not_available")));p.on("close",code=>{if(code!==0)reject(new Error("quran_ffprobe_failed"));else{const n=Number(out.trim());if(!Number.isFinite(n)||n<=0)reject(new Error("quran_audio_duration_invalid"));else resolveResult(n);}});});}
 }
