@@ -8,7 +8,7 @@ export function buildPooledBacktestReport(analyses:TradeAnalysis[]):PooledBackte
  let wins=0,grossProfit=0,grossLoss=0,estimatedRoundTripCosts=0,executionCosts=0,commissions=0,swaps=0,costErasedTrades=0,intrabarAmbiguousExits=0,gapThroughExits=0;
  for(const analysis of analyses){
   if(analysis.trueNetPnl>0){wins++;grossProfit+=analysis.trueNetPnl;}else if(analysis.trueNetPnl<0)grossLoss+=Math.abs(analysis.trueNetPnl);
-  estimatedRoundTripCosts+=analysis.estimatedRoundTripCost??0;executionCosts+=analysis.estimatedRoundTripCost??0;commissions+=analysis.commission;swaps+=analysis.swap;
+  estimatedRoundTripCosts+=analysis.estimatedRoundTripCost??0;executionCosts+=Math.max(0,analysis.grossPnl-analysis.netPnlAfterExecutionCosts);commissions+=analysis.commission;swaps+=analysis.swap;
   if(analysis.grossPnl>0&&analysis.trueNetPnl<=0)costErasedTrades++;
   if(analysis.metadata?.intrabarAmbiguous===true)intrabarAmbiguousExits++;
   if(analysis.metadata?.gapThrough===true)gapThroughExits++;
@@ -22,7 +22,7 @@ export function buildBacktestReport(initialBalance:number,analyses:TradeAnalysis
  for(const analysis of analyses){
   balance+=analysis.trueNetPnl;peak=Math.max(peak,balance);const drawdown=peak-balance;maxDrawdown=Math.max(maxDrawdown,drawdown);if(peak>0)maxDrawdownPct=Math.max(maxDrawdownPct,drawdown/peak*100);
   if(analysis.trueNetPnl>0){wins++;grossProfit+=analysis.trueNetPnl;}else if(analysis.trueNetPnl<0)grossLoss+=Math.abs(analysis.trueNetPnl);
-  estimatedRoundTripCosts+=analysis.estimatedRoundTripCost??0;executionCosts+=analysis.estimatedRoundTripCost??0;commissions+=analysis.commission;swaps+=analysis.swap;
+  estimatedRoundTripCosts+=analysis.estimatedRoundTripCost??0;executionCosts+=Math.max(0,analysis.grossPnl-analysis.netPnlAfterExecutionCosts);commissions+=analysis.commission;swaps+=analysis.swap;
   if(analysis.grossPnl>0&&analysis.trueNetPnl<=0)costErasedTrades++;
   if(analysis.metadata?.intrabarAmbiguous===true)intrabarAmbiguousExits++;
   if(analysis.metadata?.gapThrough===true)gapThroughExits++;
