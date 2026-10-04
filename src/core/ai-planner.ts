@@ -11,6 +11,22 @@ export interface PlannedTool{
   payload?:Record<string,unknown>;
 }
 
+function parseModelJson(raw:string,context:string):unknown{
+ const cleaned=raw.trim().replace(/^\x60\x60\x60(?:json)?\s*/i,"").replace(/\s*\x60\x60\x60$/,"").trim();
+ try{return JSON.parse(cleaned);}catch{}
+ const starts=[cleaned.indexOf("{"),cleaned.indexOf("[")].filter(x=>x>=0).sort((a,b)=>a-b);
+ for(const start of starts){
+  const opener=cleaned[start];const closer=opener==="{"?"}":"]";let depth=0;let quoted=false;let escaped=false;
+  for(let i=start;i<cleaned.length;i++){
+   const ch=cleaned[i];
+   if(quoted){if(escaped)escaped=false;else if(ch==="\\")escaped=true;else if(ch==='"')quoted=false;continue;}
+   if(ch==='"'){quoted=true;continue;}
+   if(ch===opener)depth++;else if(ch===closer){depth--;if(depth===0){const candidate=cleaned.slice(start,i+1);try{return JSON.parse(candidate);}catch{break;}}}
+  }
+ }
+ throw new Error(context+" returned invalid JSON.");
+}
+
 export interface PlannedMission{
   risk:"low"|"medium"|"high"|"critical";
   requiredPermission:PermissionLevel;
@@ -76,7 +92,7 @@ export class AiMissionPlanner{
       input:modelInput
     });
     let value:unknown;
-    try{value=JSON.parse(response.output);}catch{throw new Error("Adaptive planner returned invalid JSON.");}
+    value=parseModelJson(response.output,"Adaptive planner");
     if(value===null)return null;
     if(!value||typeof value!=="object")throw new Error("Adaptive planner returned an invalid tool.");
     return this.parseTools([value],input.tools,input.requiredPermission)[0]??null;
@@ -84,7 +100,7 @@ export class AiMissionPlanner{
 
   private parse(raw:string,catalog:ToolCatalogEntry[]):PlannedMission{
     let value:unknown;
-    try{value=JSON.parse(raw);}catch{throw new Error("Model planner returned invalid JSON.");}
+    value=parseModelJson(raw,"Model planner");
     if(!value||typeof value!=="object")throw new Error("Model planner returned an invalid plan.");
     const v=value as Record<string,unknown>;
     if(!["low","medium","high","critical"].includes(String(v.risk)))throw new Error("Invalid mission risk.");
