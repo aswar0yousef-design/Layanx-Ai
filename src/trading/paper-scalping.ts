@@ -31,6 +31,7 @@ export interface PaperTradingConfig {
   /** How an open position is handled when historical data ends. */
   endOfDataPolicy?: "close" | "exclude";
   signalConfig?: Partial<import("./scalping-signal.js").ScalpingSignalConfig>;
+  executionPolicy?: Partial<import("./pre-trade-execution-gate.js").PreTradeExecutionPolicy>;
 }
 
 export interface PaperTrade {
@@ -248,6 +249,7 @@ export function runPaperScalping(
         atr: signal.indicators.atr,
         timestamp: candle.timestamp,
       },
+      executionPolicy: config.executionPolicy ?? { maxSpreadAtrRatio: 0.35, maxExpectedSlippageAtrRatio: 0.20 },
       risk: {
         stopLossPrice: stop,
         entryPrice: entry,
