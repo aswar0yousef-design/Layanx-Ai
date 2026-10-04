@@ -52,22 +52,22 @@ export class OAuthConnectionCenter{
   const headers:Record<string,string>={"content-type":"application/x-www-form-urlencoded"};if(p.provider==="pinterest"&&c.clientSecret)headers.Authorization=`Basic ${Buffer.from(`${c.clientId}:${c.clientSecret}`).toString("base64")}`;
   const response=await fetch(c.token,{method:"POST",headers,body:form});const raw=await response.text();let d:any={};try{d=JSON.parse(raw);}catch{d={raw};}if(!response.ok)throw new Error(`oauth_token_exchange_${response.status}`);
   const token=String(d.access_token??"");if(!token)throw new Error("oauth_access_token_missing");
-  const id=randomUUID(),secret=`${p.provider}.oauth.access.${id}`;this.vault.set(secret,token);this.syncProviderToken(p.provider,token);
-  let refreshSecret:string|undefined;if(d.refresh_token){refreshSecret=`${p.provider}.oauth.refresh.${id}`;this.vault.set(refreshSecret,String(d.refresh_token));}
+  const id=randomUUID(),secret=`${p.provider}.oauth.access.${id}`;this.getVault().set(secret,token);this.syncProviderToken(p.provider,token);
+  let refreshSecret:string|undefined;if(d.refresh_token){refreshSecret=`${p.provider}.oauth.refresh.${id}`;this.getVault().set(refreshSecret,String(d.refresh_token));}
   const connection:OAuthConnection={id,provider:p.provider,accountId:p.accountId,scopes:typeof d.scope==="string"?d.scope.split(/[ ,]+/).filter(Boolean):c.scopes,tokenSecret:secret,refreshTokenSecret:refreshSecret,expiresAt:typeof d.expires_in==="number"?new Date(Date.now()+d.expires_in*1000).toISOString():undefined,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
   this.connections=this.connections.filter(x=>!(x.provider===connection.provider&&x.accountId===connection.accountId));this.connections.push(connection);this.persist();
   return connection;
  }
  async token(connection:OAuthConnection){
-  const value=this.vault.get(connection.tokenSecret);
+  const value=this.getVault().get(connection.tokenSecret);
   if(value&&(!connection.expiresAt||Date.parse(connection.expiresAt)>Date.now()+60_000))return value;
   if(!connection.refreshTokenSecret)throw new Error("oauth_access_token_expired");
-  const refresh=this.vault.get(connection.refreshTokenSecret);if(!refresh)throw new Error("oauth_refresh_token_missing");
+  const refresh=this.getVault().get(connection.refreshTokenSecret);if(!refresh)throw new Error("oauth_refresh_token_missing");
   const c=this.config(connection.provider);const form=new URLSearchParams({client_id:c.clientId,refresh_token:refresh,grant_type:"refresh_token"});if(c.clientSecret&&c.clientId&&connection.provider!=="pinterest")form.set("client_secret",c.clientSecret);const headers:Record<string,string>={"content-type":"application/x-www-form-urlencoded"};if(connection.provider==="pinterest"&&c.clientSecret)headers.Authorization=`Basic ${Buffer.from(`${c.clientId}:${c.clientSecret}`).toString("base64")}`;
   const response=await fetch(c.token,{method:"POST",headers,body:form});const raw=await response.text();let d:any={};try{d=JSON.parse(raw);}catch{d={raw};}if(!response.ok)throw new Error(`oauth_refresh_${response.status}`);
   const access=String(d.access_token??"");if(!access)throw new Error("oauth_access_token_missing");
-  this.vault.set(connection.tokenSecret,access);this.syncProviderToken(connection.provider,access);connection.expiresAt=typeof d.expires_in==="number"?new Date(Date.now()+d.expires_in*1000).toISOString():undefined;connection.updatedAt=new Date().toISOString();
-  if(d.refresh_token)this.vault.set(connection.refreshTokenSecret,String(d.refresh_token));this.persist();return access;
+  this.getVault().set(connection.tokenSecret,access);this.syncProviderToken(connection.provider,access);connection.expiresAt=typeof d.expires_in==="number"?new Date(Date.now()+d.expires_in*1000).toISOString():undefined;connection.updatedAt=new Date().toISOString();
+  if(d.refresh_token)this.getVault().set(connection.refreshTokenSecret,String(d.refresh_token));this.persist();return access;
  }
  async discover(id:string){
   const connection=this.get(id);
@@ -84,12 +84,12 @@ export class OAuthConnectionCenter{
     const accounts:Array<any>=[];
     for(const page of Array.isArray(data?.data)?data.data:[]){
      if(page.id){
-      if(page.access_token){this.vault.set(`meta.page.${page.id}.token`,String(page.access_token));}
+      if(page.access_token){this.getVault().set(`meta.page.${page.id}.token`,String(page.access_token));}
       accounts.push({platform:"facebook",externalId:String(page.id),name:String(page.name??page.id),tokenManaged:true});
      }
      const ig=page.instagram_business_account;
      if(ig?.id){
-      if(page.access_token)this.vault.set(`meta.page.${ig.id}.token`,String(page.access_token)); accounts.push({platform:"instagram",externalId:String(ig.id),name:String(ig.username??ig.name??ig.id),pageId:String(page.id),tokenManaged:Boolean(page.access_token)});
+      if(page.access_token)this.getVault().set(`meta.page.${ig.id}.token`,String(page.access_token)); accounts.push({platform:"instagram",externalId:String(ig.id),name:String(ig.username??ig.name??ig.id),pageId:String(page.id),tokenManaged:Boolean(page.access_token)});
      }
     }
     return {provider:"meta",accounts};
@@ -145,6 +145,6 @@ export class OAuthConnectionCenter{
   }
  }
 
- revoke(connection:OAuthConnection){this.vault.delete(connection.tokenSecret);if(connection.refreshTokenSecret)this.vault.delete(connection.refreshTokenSecret);for(const key of [connection.provider==="meta"?"meta.social.token":undefined,connection.provider==="meta"?"facebook.social.token":undefined,connection.provider==="meta"?"instagram.social.token":undefined,`${connection.provider}.social.token`,`${connection.provider}.ads.token`].filter(Boolean) as string[])this.vault.delete(key);this.connections=this.connections.filter(x=>x.id!==connection.id);this.persist();}
+ revoke(connection:OAuthConnection){this.getVault().delete(connection.tokenSecret);if(connection.refreshTokenSecret)this.getVault().delete(connection.refreshTokenSecret);for(const key of [connection.provider==="meta"?"meta.social.token":undefined,connection.provider==="meta"?"facebook.social.token":undefined,connection.provider==="meta"?"instagram.social.token":undefined,`${connection.provider}.social.token`,`${connection.provider}.ads.token`].filter(Boolean) as string[])this.getVault().delete(key);this.connections=this.connections.filter(x=>x.id!==connection.id);this.persist();}
  status(connection:OAuthConnection){return {id:connection.id,provider:connection.provider,accountId:connection.accountId,accountName:connection.accountName,scopes:connection.scopes,expiresAt:connection.expiresAt,configured:true};}
 }
