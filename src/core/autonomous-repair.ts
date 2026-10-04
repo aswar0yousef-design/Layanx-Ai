@@ -2,6 +2,7 @@ import type {Mission,PermissionLevel} from "./types.js";
 import type {RuntimeResult} from "./runtime.js";
 import type {ToolCatalogEntry} from "./tool-catalog.js";
 import type {AiMissionPlanner,PlannedTool} from "./ai-planner.js";
+import {setLifecycle} from "./lifecycle.js";
 
 export interface RepairAttempt{attempt:number;tool?:string;action?:string;ok:boolean;error?:string;data?:unknown;}
 export interface RepairLoopResult{missionId:string;completed:boolean;attempts:number;repaired:boolean;exhausted:boolean;blocked:boolean;results:RepairAttempt[];reason?:string;}
@@ -53,7 +54,7 @@ export class AutonomousRepairLoop{
    results.push({attempt,tool:plan.tool,action:plan.action,ok:next.ok,error:next.error,data:next.data});
    latest=next;
    if(next.ok&&next.verified){
-    mission.status="completed";
+    setLifecycle(mission,contextExecutionStates(context),"completed",false);
     return{missionId:mission.id,completed:true,attempts:attempt,repaired:true,exhausted:false,blocked:false,results};
    }
   }
