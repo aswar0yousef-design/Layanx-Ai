@@ -21,6 +21,6 @@ mission.requiredPermission="L4_EXECUTE";
 const capability=core.capabilities.issue({missionId:mission.id,agentId:agent.agentId,projectId:"p1",resource:"terminal.run",permission:"L4_EXECUTE",expiresAt:new Date(Date.now()+60000).toISOString()});
 const runner=new MissionRunner(core);
 const result=await runner.executeAction(mission,agent,"run command",{command:"echo ok"},{async execute(){return{done:true};}},undefined,{projectId:"p1",capabilityId:capability.id});
-if(!result.result.ok)throw new Error("Verified runtime result was not produced.");
+if(!result.result.ok)throw new Error("Verified runtime result was not produced: "+JSON.stringify(result.result));
 if(!core.memory.recall("Remember verified command").some(item=>item.missionId===mission.id))throw new Error("Verified mission result was not remembered.");
 console.log("Verified memory and final-result integration test passed.");
