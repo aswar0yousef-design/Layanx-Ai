@@ -31,7 +31,7 @@ mission.steps=[
 mission.tools=[{tool:"step.one",action:"read first",permission:"L1_READ",reason:"initial"}];
 core.missions.save(mission);
 
-const result=await core.executeMissionAdaptive(mission.id,"project-test",5);
+const result=await core.executeMissionAdaptive(mission.id,"project",5);
 if(!result.completed)throw new Error("Adaptive mission did not complete.");
 if(firstCalls!==1||secondCalls!==1)throw new Error("Adaptive execution did not execute each tool exactly once.");
 if(plannerCalls!==2)throw new Error("Adaptive planner did not replan from the tool result and then stop.");
