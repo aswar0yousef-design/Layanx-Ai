@@ -11,6 +11,7 @@ const openaiOptions=Object.assign({fetcher:async(input,init)=>{
  lastBody=String(init?.body);
  return new Response(JSON.stringify({output_text:"hello",usage:{input_tokens:3,output_tokens:4}}),{status:200});
 }});
+const openai=createOpenAIProvider({...openaiOptions,apiKey:testCredential});
 const health=await openai.health();
 if(!health.available)throw new Error("OpenAI health check failed.");
 const response=await openai.generate(model,{capability:"chat",input:"hi",maxOutputTokens:10});
