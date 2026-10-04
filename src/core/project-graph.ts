@@ -32,6 +32,7 @@ const IMPORT_RE=/(?:import\s+(?:[^'"]+?\s+from\s+)?|export\s+(?:[^'"]+?\s+from\s
 
 export class ProjectGraph{
   private readonly root:string;
+  private readonly projectIsolation=new ProjectIsolation();
   private readonly maxFiles:number;
   private readonly maxFileBytes:number;
   constructor(options:ProjectGraphOptions){
@@ -135,9 +136,5 @@ export class ProjectGraph{
     return candidates.find(candidate=>files.has(candidate));
   }
 
-  private workspaceFor(projectId:string):string{
-    const safe=projectId.trim();
-    if(!safe||safe==="."||safe===".."||safe.includes("/")||safe.includes("\\"))throw new Error("Invalid project workspace identity.");
-    return resolve(this.root,safe);
-  }
+  private workspaceFor(projectId:string):string{\n    return this.projectIsolation.workspacePath(this.root,projectId);\n  }
 }
