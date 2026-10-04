@@ -40,7 +40,7 @@ export class FlowRuntime{
     if(current.type==="handoff"){execution.status="paused";execution.handoff=out as FlowExecution["handoff"];execution.endedAt=new Date().toISOString();await this.store.saveExecution(execution);return execution;}
     if(current.type==="end"){execution.status="completed";execution.endedAt=new Date().toISOString();await this.store.saveExecution(execution);return execution;}
     const edges=flow.edges.filter(e=>e.source===current.id);
-    let edge=edges.find(e=>!e.condition||condition(template(e.condition,ctx),ctx));
+    let edge=edges.find(e=>!e.condition||condition(e.condition,ctx));
     if(!edge&&current.type==="condition")edge=edges.find(e=>e.label?.toLowerCase()==="false");
     if(!edge)throw new Error("No outgoing edge matched from node "+current.id);
     current=flow.nodes.find(n=>n.id===edge!.target)!;
