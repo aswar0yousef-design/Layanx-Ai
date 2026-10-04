@@ -154,7 +154,9 @@ export class ProjectIntelligence{
     return projectId.trim();
   }
 
-  private workspaceFor(projectId:string):string{\n    return this.projectIsolation.workspacePath(this.root,projectId);\n  }
+  private workspaceFor(projectId:string):string{
+    return this.projectIsolation.workspacePath(this.root,projectId);
+  }
 
   private async exists(path:string):Promise<boolean>{
     try{await stat(path);return true;}catch{return false;}
