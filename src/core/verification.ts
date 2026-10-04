@@ -27,6 +27,11 @@ export class VerificationEngine {
     const text=criteria.trim();
     const normalized=text.toLowerCase();
     if(normalized==="done"||normalized==="result exists"||normalized==="execution completed")return{supported:true,matched:result!==null&&result!==undefined,reason:result!==null&&result!==undefined?"":`Success criterion failed: ${text}`};
+    if(normalized==="approved"){
+      const approved=this.readPath(result,"approved");
+      return{supported:true,matched:approved===true,reason:approved===true?"":"Success criterion failed: approved"};
+    }
+    if(normalized==="echo")return{supported:true,matched:result!==null&&result!==undefined,reason:result!==null&&result!==undefined?"":"Success criterion failed: echo"};
     if(normalized==="mission exists")return{supported:true,matched:true,reason:""};
     if(normalized==="mission has goal")return{supported:true,matched:Boolean(mission.goal.trim()),reason:mission.goal.trim()?"":"Success criterion failed: mission has goal"};
     if(normalized==="mission has execution plan")return{supported:true,matched:mission.steps.length>0,reason:mission.steps.length>0?"":"Success criterion failed: mission has execution plan"};
