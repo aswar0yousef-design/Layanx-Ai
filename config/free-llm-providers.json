@@ -1,0 +1,17 @@
+{
+  "source": "https://github.com/open-free-llm-api/awesome-freellm-apis",
+  "sourceType": "metadata-only",
+  "secretPolicy": "API keys are never stored in GitHub. LayanX resolves them from the local encrypted vault first, then environment variables.",
+  "providers": [
+    {"id":"groq","env":"GROQ_API_KEY","keyUrl":"https://console.groq.com/keys"},
+    {"id":"nvidia-nim","env":"NVIDIA_API_KEY","keyUrl":"https://build.nvidia.com/"},
+    {"id":"openrouter","env":"OPENROUTER_API_KEY","keyUrl":"https://openrouter.ai/keys"},
+    {"id":"google-gemini","env":"GEMINI_API_KEY","keyUrl":"https://aistudio.google.com/apikey"},
+    {"id":"mistral","env":"MISTRAL_API_KEY","keyUrl":"https://console.mistral.ai/api-keys/"},
+    {"id":"cohere","env":"COHERE_API_KEY","keyUrl":"https://dashboard.cohere.com/api-keys"},
+    {"id":"huggingface","env":"HF_TOKEN","keyUrl":"https://huggingface.co/settings/tokens"},
+    {"id":"cerebras","env":"CEREBRAS_API_KEY","keyUrl":"https://cloud.cerebras.ai/"},
+    {"id":"zai","env":"ZAI_API_KEY","keyUrl":"https://open.bigmodel.cn/"},
+    {"id":"github-models","env":"GITHUB_TOKEN","keyUrl":"https://github.com/settings/tokens"}
+  ]
+}
