@@ -1,13 +1,17 @@
 import {mkdtemp,rm,readFile} from "node:fs/promises";
 import {join} from "node:path";
 import {execFile} from "node:child_process";
+import {execFileSync} from "node:child_process";
 import {promisify} from "node:util";
 import {createFileWriteToolAdapter} from "../src/tools/fabric.js";
 import {createGitToolAdapter} from "../src/tools/git.js";
 import {ApprovalEngine} from "../src/security/approval.js";
 import type {ToolRequest} from "../src/core/types.js";
 
-const exec=promisify(execFile); const gitBinary="git";
+const exec=promisify(execFile);
+const gitBinary=process.platform==="win32"
+ ? execFileSync((process.env.SystemRoot??"C:\\Windows")+"\\System32\\where.exe",["git.exe"],{encoding:"utf8"}).split(/\r?\n/).map(v=>v.trim()).find(Boolean)??"git"
+ : "git";
 const dir=await mkdtemp(join(process.cwd(),"project-agent-test-"));
 await exec(gitBinary,["init","-q"],{cwd:dir});
 await exec(gitBinary,["init","-q"],{cwd:join(dir,"project-a")});
