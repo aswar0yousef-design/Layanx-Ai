@@ -1,9 +1,12 @@
 import {localSecret} from "../security/local-secret-vault.js";
+import {readFile} from "node:fs/promises";
 import type {SocialAccount,SocialPlatform} from "./types.js";
 
 export interface PublishItem{title:string;body:string;mediaUrls:string[]}
 export interface NativeSocialResult{externalId:string;url?:string}
-export interface PlatformSocialConnector{platform:SocialPlatform;publish(account:SocialAccount,item:PublishItem):Promise<NativeSocialResult>}
+export type NativeSocialStatus = "processing"|"published"|"failed"|"unknown";
+export interface NativeSocialStatusResult { externalId:string; status:NativeSocialStatus; detail?:string; }
+export interface PlatformSocialConnector{platform:SocialPlatform;publish(account:SocialAccount,item:PublishItem):Promise<NativeSocialResult>;status?(account:SocialAccount,externalId:string):Promise<NativeSocialStatusResult>}
 
 async function jsonRequest(url:string,init:RequestInit={}):Promise<any>{
  const r=await fetch(url,init);const text=await r.text();let data:any={};try{data=text?JSON.parse(text):{}}catch{data={raw:text}};
@@ -55,19 +58,33 @@ export class NativeSocialConnector implements PlatformSocialConnector{
   const externalId=String(d.id??"");if(!externalId)throw new Error("facebook_post_id_missing");return {externalId,url:`https://www.facebook.com/${externalId}`};
  }
  private async tiktok(access:string,item:PublishItem){
-  const media=item.mediaUrls.find(x=>/^https?:\/\//i.test(x));if(!media)throw new Error("tiktok_requires_public_media_url");
+  const media=item.mediaUrls.find(x=>/^https?:\/\//i.test(x)||x.startsWith("file://")||x.startsWith("/")||/^[A-Za-z]:\\/.test(x));if(!media)throw new Error("tiktok_requires_video_media");
   const api=base("tiktok","https://open.tiktokapis.com");
-  const info=await jsonRequest(`${api}/v2/post/publish/creator_info/query/`,{method:"POST",headers:{Authorization:`Bearer ${access}`,"content-type":"application/json"}});
+  const info=await jsonRequest(api+"/v2/post/publish/creator_info/query/",{method:"POST",headers:{Authorization:"Bearer "+access,"content-type":"application/json"}});
   const options=info?.data?.privacy_level_options??[];const privacy=process.env.LAYANX_TIKTOK_PRIVACY_LEVEL??"SELF_ONLY";if(!options.includes(privacy))throw new Error("tiktok_privacy_level_not_allowed");
-  const isImage=/\.(jpe?g|png|webp)(\?|$)/i.test(media);const body=isImage?
-   {post_info:{title:item.title,description:item.body,privacy_level:privacy},source_info:{source:"PULL_FROM_URL",photo_images:[media],photo_cover_index:0},post_mode:"DIRECT_POST",media_type:"PHOTO"}:
-   {post_info:{title:item.title,description:item.body,privacy_level:privacy},source_info:{source:"PULL_FROM_URL",video_url:media},post_mode:"DIRECT_POST",media_type:"VIDEO"};
-  const d=await jsonRequest(`${api}/v2/post/publish/content/init/`,{method:"POST",headers:{Authorization:`Bearer ${access}`,"content-type":"application/json"},body:JSON.stringify(body)});
+  if(media.startsWith("file://")||media.startsWith("/")||/^[A-Za-z]:\\/.test(media))return this.tiktokFileUpload(access,item,media,api,privacy);
+  const body={post_info:{title:item.title,description:item.body,privacy_level:privacy},source_info:{source:"PULL_FROM_URL",video_url:media},post_mode:"DIRECT_POST",media_type:"VIDEO"};
+  const d=await jsonRequest(api+"/v2/post/publish/content/init/",{method:"POST",headers:{Authorization:"Bearer "+access,"content-type":"application/json"},body:JSON.stringify(body)});
   const id=String(d?.data?.publish_id??"");if(!id)throw new Error("tiktok_publish_id_missing");return {externalId:id};
- }
+}
+private async tiktokFileUpload(access:string,item:PublishItem,media:string,api:string,privacy:string){
+  const filePath=media.startsWith("file://")?new URL(media):media;const data=await readFile(filePath as any);const size=data.byteLength;const chunkSize=Math.min(10*1024*1024,size);
+  const init=await jsonRequest(api+"/v2/post/publish/video/init/",{method:"POST",headers:{Authorization:"Bearer "+access,"content-type":"application/json"},body:JSON.stringify({post_info:{title:item.title,description:item.body,privacy_level:privacy},source_info:{source:"FILE_UPLOAD",video_size:size,chunk_size:chunkSize,total_chunk_count:Math.ceil(size/chunkSize)}})});
+  const uploadUrl=String(init?.data?.upload_url??"");const publishId=String(init?.data?.publish_id??"");if(!uploadUrl||!publishId)throw new Error("tiktok_upload_init_missing");
+  for(let start=0;start<size;start+=chunkSize){const end=Math.min(start+chunkSize,size)-1;const chunk=data.subarray(start,end+1);const r=await fetch(uploadUrl,{method:"PUT",headers:{"Content-Type":"video/mp4","Content-Length":String(chunk.byteLength),"Content-Range":"bytes "+start+"-"+end+"/"+size},body:chunk});if(!r.ok)throw new Error("tiktok_upload_http_"+r.status);}
+  return {externalId:publishId};
+}
+async status(account:SocialAccount,externalId:string):Promise<NativeSocialStatusResult>{
+  const access=token(this.platform,account);if(!access)throw new Error("LAYANX_"+this.platform.toUpperCase()+"_SOCIAL_TOKEN is required");
+  if(this.platform==="tiktok"){const api=base("tiktok","https://open.tiktokapis.com");const d=await jsonRequest(api+"/v2/post/publish/status/fetch/",{method:"POST",headers:{Authorization:"Bearer "+access,"content-type":"application/json"},body:JSON.stringify({publish_id:externalId})});const s=String(d?.data?.status??"");return {externalId,status:s==="PUBLISH_COMPLETE"?"published":s==="FAILED"?"failed":"processing",detail:d?.data?.fail_reason};}
+  if(this.platform==="youtube"){const d=await jsonRequest("https://www.googleapis.com/youtube/v3/videos?part=status,processingDetails&id="+encodeURIComponent(externalId),{headers:{Authorization:"Bearer "+access}});const item=d?.items?.[0];if(!item)return {externalId,status:"failed",detail:"youtube_video_not_found"};const upload=item.status?.uploadStatus;const processing=item.processingDetails?.processingStatus;if(upload==="processed"&&processing==="succeeded")return {externalId,status:"published"};if(upload==="rejected"||processing==="failed")return {externalId,status:"failed",detail:item.status?.failureReason??item.processingDetails?.processingFailureReason};return {externalId,status:"processing"};}
+  return {externalId,status:"unknown"};
+}
+
  private async youtube(access:string,item:PublishItem){
-  const video=item.mediaUrls.find(x=>/\.(mp4|mov|webm|m4v)(\?|$)/i.test(x));if(!video)throw new Error("youtube_requires_video_url");
-  const source=await fetch(video);if(!source.ok)throw new Error(`youtube_media_fetch_${source.status}`);const blob=await source.blob();
+  const video=item.mediaUrls.find(x=>/\.(mp4|mov|webm|m4v)(\?|$)/i.test(x)||x.startsWith("file://")||x.startsWith("/")||/^[A-Za-z]:\\/.test(x));if(!video)throw new Error("youtube_requires_video_media");
+  const blob=video.startsWith("file://")||video.startsWith("/")||/^[A-Za-z]:\\/.test(video)?new Blob([await readFile(video.startsWith("file://")?new URL(video):video as any)],{type:"video/mp4"}):await (async()=>{const source=await fetch(video);if(!source.ok)throw new Error("youtube_media_fetch_"+source.status);return source.blob();})();
+
   const metadata={snippet:{title:item.title.slice(0,100),description:item.body},status:{privacyStatus:process.env.LAYANX_YOUTUBE_PRIVACY_STATUS??"private"}};
   const form=new FormData();form.append("metadata",new Blob([JSON.stringify(metadata)],{type:"application/json"}));form.append("media",blob,"upload");
   const d=await jsonRequest("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=multipart&part=snippet,status",{method:"POST",headers:{Authorization:`Bearer ${access}`},body:form});

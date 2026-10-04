@@ -25,12 +25,17 @@ Do not redistribute a recitation merely because it is playable on a third-party 
 
 ## Remaining layers
 - Quran source adapter.
+- Reviewed timing source catalog (`LAYANX_QURAN_TIMING_SOURCE`); timing data never grants recitation rights.
 - Licensed recitation catalog.
 - Arabic RTL subtitle renderer.
 - FFmpeg composition using CreatorEngine.
 - Two-publications-per-day scheduler.
 - OAuth and publication-status reconciliation.
 - End-to-end tests with local fixture media.
+## Production reconciliation
+
+Platform publication is asynchronous. LayanX records each external publication ID as `submitted`, then `quran.reconcile` queries TikTok/YouTube and changes the ledger to `published`, `failed`, or `submitted`. `quran.publish_next` reconciles outstanding entries before creating another publication, and failed platform submissions can be retried without duplicating successful platforms.
+
 ## Runtime configuration
 
 Quran Foundation credentials stay on the LayanX backend. Use `QF_ENV=prelive` for testing and `QF_ENV=production` only after production access is approved. The Content API uses Client Credentials with the `content` scope and token caching.
@@ -39,6 +44,7 @@ Required before automatic publication:
 - `QF_CLIENT_ID`
 - `QF_CLIENT_SECRET`
 - `LAYANX_QURAN_RECITATION_ID`
+- `LAYANX_QURAN_TIMING_SOURCE` (default reviewed source: `qud-universal-audio`)
 - an approved recitation rights record
 - YouTube and TikTok OAuth connections/tokens
 - FFmpeg and FFprobe
@@ -68,3 +74,13 @@ A green pipeline/CI result does not mean external platform accounts are authoriz
 ## Validation status
 
 Strict TypeScript indexing checks and scheduler tuple validation are fixed; CI must pass before merge. External recitation licensing and platform approvals remain fail-closed prerequisites for live publication.
+
+
+## Admin configuration
+
+Quran Foundation credentials are managed from the LayanX Admin Quran branch. Use `GET /v1/quran/admin` to read non-secret status, `PUT /v1/quran/admin` to save settings, and `POST /v1/quran/admin/test` to validate the configured account against Surah 1. Client ID and Client Secret are stored in the local encrypted secret vault and are never returned by the admin read endpoint. You can clear them with `POST /v1/quran/admin/clear-credentials`.
+
+YouTube and TikTok OAuth connections can be selected in the same Quran admin settings using their connection IDs. The existing OAuth connection center keeps access/refresh tokens in the local encrypted vault and refreshes them before publication.
+
+Environment variables remain supported as a backward-compatible fallback for local development, but they are no longer the primary configuration path.
+
