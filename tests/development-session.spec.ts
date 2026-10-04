@@ -3,6 +3,7 @@ import {join} from "node:path";
 import {LayanXCore} from "../src/core/orchestrator.js";
 import {registerBuiltinTools,registerToolFabric} from "../src/tools/builtin.js";
 const root=await mkdtemp(join(process.cwd(),"dev-session-test-"));
+const previousRoot=process.env.LAYANX_WORKSPACE_ROOT; process.env.LAYANX_WORKSPACE_ROOT=root;
 await mkdir(join(root,"p"),{recursive:true});
 await writeFile(join(root,"p","package.json"),JSON.stringify({scripts:{test:"echo test",typecheck:"echo typecheck"}}),"utf8");
 const core=new LayanXCore();
@@ -15,5 +16,5 @@ const result=await core.toolAdapters.get("development.prepare").execute({
 }) as {verification:{available:string[];requiresApproval:boolean};dangerousActions:Record<string,string>};
 if(!result.verification.available.includes("test")||!result.verification.requiresApproval)throw new Error("Verification plan is incomplete.");
 if(result.dangerousActions.branch!=="git.branch"||result.dangerousActions.rollback!=="git.rollback")throw new Error("Dangerous action map is incomplete.");
-await rm(root,{recursive:true,force:true});
+await rm(root,{recursive:true,force:true}); if(previousRoot===undefined)delete process.env.LAYANX_WORKSPACE_ROOT; else process.env.LAYANX_WORKSPACE_ROOT=previousRoot;
 console.log("Development session safety test passed.");
