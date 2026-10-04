@@ -27,7 +27,7 @@ export class JsonStateStore<T>{
     const handle=await open(temp,"wx",0o600);
     try{
       await handle.writeFile(payload,"utf8");
-      await handle.sync();
+      try{await handle.sync();}catch(error){\n        const code=(error as NodeJS.ErrnoException).code;\n        if(process.platform!=="win32"||!(["EPERM","ENOTSUP","EINVAL"] as string[]).includes(code??""))throw error;\n      }
     }finally{
       await handle.close();
     }
