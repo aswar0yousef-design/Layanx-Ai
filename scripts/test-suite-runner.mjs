@@ -22,11 +22,11 @@ async function discover(dir) {
 }
 
 function runTest(file) {
-  const command = resolve(root, process.platform === "win32" ? "node_modules/.bin/tsx.cmd" : "node_modules/.bin/tsx");
+  const tsxEntry = resolve(root, "node_modules/tsx/dist/cli.mjs");
   const rel = relative(root, file);
   return new Promise((resolveResult) => {
     const started = Date.now();
-    const child = spawn(command, [rel], {
+    const child = spawn(process.execPath, [tsxEntry, rel], {
       cwd: root,
       shell: false,
       windowsHide: true,
