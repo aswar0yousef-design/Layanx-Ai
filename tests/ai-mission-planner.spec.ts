@@ -46,3 +46,16 @@ const brokenModels=new ModelRegistry();
 brokenModels.register({id:"broken",provider:"broken",capabilities:["reasoning"],local:true,enabled:true,priority:1});
 try{await new AiMissionPlanner(new ModelExecutionRouter(brokenModels,brokenProviders)).plan("x");throw new Error("Expected invalid planner output.");}catch(error){if(!(error instanceof Error)||!error.message.includes("invalid JSON"))throw error;}
 console.log("AI mission planner test passed.");
+
+const intentModels=new ModelRegistry();
+intentModels.register({id:"intent",provider:"intent",capabilities:["reasoning"],local:true,enabled:true,priority:1});
+const intentProviders=new ModelProviderRegistry();
+intentProviders.register({name:"intent",async health(){return{provider:"intent",available:true,updatedAt:new Date().toISOString()};},async generate(model){return{modelId:model.id,provider:model.provider,output:JSON.stringify({risk:"medium",requiredPermission:"L1_READ",steps:[{description:"run tests"}],successCriteria:["tests pass"],stopCondition:"stop",tools:[{tool:"trading.binance.market-data",action:"market-data",permission:"L1_READ",reason:"wrong domain"}]})};}});
+const intentPlanner=new AiMissionPlanner(new ModelExecutionRouter(intentModels,intentProviders));
+const scopedTools=[
+ {name:"project.verify",description:"run project verification",permission:"L4_EXECUTE",dangerous:true,actions:["verify project"],tags:["project","verify"]},
+ {name:"trading.binance.market-data",description:"read market data",permission:"L1_READ",dangerous:false,actions:["market-data"],tags:["trading","market-data"]}
+] as ToolCatalogEntry[];
+let intentRejected=false;
+try{await intentPlanner.plan("شغّل اختبارات المشروع",scopedTools);}catch(error){intentRejected=error instanceof Error&&error.message.includes("outside the allowed catalog");}
+if(!intentRejected)throw new Error("Development intent did not exclude trading tools.");
