@@ -1,3 +1,4 @@
+import {setLifecycle} from "./lifecycle.js";
 import {MissionPlanner} from "./mission.js";
 import {AgentManager} from "./agent-manager.js";
 import {VerificationEngine} from "./verification.js";
@@ -322,7 +323,7 @@ export class LayanXCore{
   }
 
   private async recordAdaptiveStop(mission:import("./types.js").Mission,decision:import("./adaptive-decision.js").AdaptiveDecision,stepsExecuted:number,agentId:string){
-    if(decision.reason==="blocked")this.executionStates.update(mission.id,{status:"blocked",recoverable:false});
+    if(decision.reason==="blocked")setLifecycle(mission,this.executionStates,"blocked",false);
     const metadata={missionId:mission.id,reason:decision.reason,stepsExecuted};
     this.audit.append({timestamp:new Date().toISOString(),actor:agentId,action:"mission.adaptive.stop",resource:mission.id,result:["tool_failure","planner_failure"].includes(decision.reason)?"failure":"success",metadata});
     this.memory.remember({missionId:mission.id,projectId:mission.projectId,kind:"decision",summary:"Adaptive mission stopped: "+decision.reason,content:{reason:decision.reason,detail:decision.detail,stepsExecuted},confidence:1,tags:["mission","adaptive","stop",decision.reason]});
@@ -504,8 +505,7 @@ export class LayanXCore{
       if(!current)throw new Error("Mission not found.");
       const activeFailure=failure??{attempt:attempt-1,ok:false,error:"Previous repair attempt failed."};
       if(current.status==="blocked")return{missionId,completed:false,attempts:attempt-1,repaired,exhausted:false,blocked:true,results,reason:activeFailure.error};
-      current.status="running";
-      this.executionStates.update(missionId,{status:"running",recoverable:true});
+      setLifecycle(current,this.executionStates,"running",true);
       this.missions.save(current);
 
       const context=await this.projectIntelligence.scan(projectId).then(intelligence=>({
@@ -613,8 +613,7 @@ export class LayanXCore{
           if(verification.verified){
             const executionStep=current.steps.find(step=>/execute|run|perform|action/i.test(step.description));
             if(executionStep)executionStep.status="completed";
-            current.status="completed";
-            this.executionStates.update(current.id,{status:"completed",recoverable:false});
+            setLifecycle(current,this.executionStates,"completed",false);
             this.missions.save(current);
             await this.executionRuntime.persist(current);
             this.memory.remember({missionId:current.id,projectId:current.projectId,kind:"success",summary:"Mission completed and verified",content:{result:latest},confidence:1,tags:["mission","success","verified"]});
