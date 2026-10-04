@@ -7,6 +7,7 @@ core.toolAdapters.register("runtime.status",{async execute(){return{ok:true};}})
 const mission=core.startMission("Reject invalid tool before capability issuance","project-test");
 mission.requiredPermission="L1_READ";
 mission.tools=[{tool:"unknown.tool",action:"read unknown",permission:"L1_READ",reason:"invalid"}];
+core.missions.save(mission);
 const before=core.capabilities.active().length;
 let rejected=false;
 try{await core.executeMissionTool(mission.id,"project-test");}catch(error){rejected=error instanceof Error&&error.message.includes("outside the allowed catalog");}
