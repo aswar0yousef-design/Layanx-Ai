@@ -8,7 +8,7 @@ core.registerAgent({
 });
 core.tools.register({name:"terminal.run",description:"Run command",permission:"L4_EXECUTE",dangerous:true});
 
-const mission=core.startMission("Run command");
+const mission=core.startMission("Run command","project-1");
 const capability=core.capabilities.issue({
   missionId:mission.id,agentId:"runner",projectId:"project-1",resource:"terminal.run",
   permission:"L4_EXECUTE",expiresAt:new Date(Date.now()+60000).toISOString()
