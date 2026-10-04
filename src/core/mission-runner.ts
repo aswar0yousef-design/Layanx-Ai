@@ -14,6 +14,9 @@ export class MissionRunner{
  async execute(mission:Mission,request:ToolRequest,adapter:ToolAdapter,approvalId?:string,security?:RuntimeSecurityContext){
   let current=mission;
   let currentRequest=request;
+  const agent=this.core.agents.get(request.agentId);
+  const rank:Record<import("./types.js").PermissionLevel,number>={L1_READ:1,L2_ANALYZE:2,L3_MODIFY:3,L4_EXECUTE:4,L5_CRITICAL:5};
+  if(rank[request.permission]>rank[current.requiredPermission] && rank[request.permission]<=rank[agent.requiredPermission])current.requiredPermission=request.permission;
   for(let attempt=0;attempt<2;attempt++){
    const result=await this.runtime.run(current,currentRequest,adapter,approvalId,security);
    if(result.ok){
