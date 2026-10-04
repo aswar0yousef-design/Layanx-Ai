@@ -27,7 +27,10 @@ export class JsonStateStore<T>{
     const handle=await open(temp,"wx",0o600);
     try{
       await handle.writeFile(payload,"utf8");
-      try{await handle.sync();}catch(error){\n        const code=(error as NodeJS.ErrnoException).code;\n        if(process.platform!=="win32"||!(["EPERM","ENOTSUP","EINVAL"] as string[]).includes(code??""))throw error;\n      }
+      try{await handle.sync();}catch(error){
+        const code=(error as NodeJS.ErrnoException).code;
+        if(process.platform!=="win32"||!(["EPERM","ENOTSUP","EINVAL"] as string[]).includes(code??""))throw error;
+      }
     }finally{
       await handle.close();
     }
