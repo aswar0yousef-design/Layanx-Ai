@@ -1,4 +1,7 @@
 import {createServer,IncomingMessage,ServerResponse} from "node:http";
+import {readFile} from "node:fs/promises";
+import {join} from "node:path";
+
 import type {LayanXCore} from "./core/orchestrator.js";
 import type {RuntimePersistence} from "./core/runtime-persistence.js";
 import {runtimeHealth,runtimeStatus} from "./runtime.js";
@@ -30,6 +33,10 @@ export function startRuntimeApi(options:RuntimeApiOptions){
  const business=options.business??new BusinessManager(); const ads=options.ads??new AdsManager(business.store); const media=options.media??new MediaManager(); const growth=options.growth;
  const server=createServer(async(request,response)=>{
   response.setHeader("cache-control","no-store");
+  if(request.method==="GET"&&(request.url==="/"||request.url==="/index.html"||request.url==="/app.js"||request.url==="/styles.css")){
+   const file=request.url==="/app.js"?"app.js":request.url==="/styles.css"?"styles.css":"index.html";
+   try{const content=await readFile(join(process.cwd(),"web",file));response.statusCode=200;response.setHeader("content-type",file.endsWith(".js")?"text/javascript; charset=utf-8":file.endsWith(".css")?"text/css; charset=utf-8":"text/html; charset=utf-8");response.end(content);return;}catch{json(response,404,{ok:false,error:"ui_asset_not_found"});return;}
+  }
   const publicWebhook=request.url==="/v1/channels/whatsapp/webhook";
   if(requireToken&&!authorized(request,options.token)&&!publicWebhook&&request.url!=="/v1/health"&&request.url!=="/voice"){json(response,401,{ok:false,error:"unauthorized"});return;}
   if(request.method==="GET"&&request.url==="/v1/device/identity"){
