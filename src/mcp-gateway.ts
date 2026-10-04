@@ -8,7 +8,12 @@ function response(id:string|number|undefined,result:unknown):RpcResponse{return{
 function error(id:string|number|undefined,code:number,message:string,data?:unknown):RpcResponse{return{id,error:{code,message,data}};}
 
 export class McpGateway{
- constructor(private readonly core:LayanXCore){}
+ constructor(private readonly core:LayanXCore){
+  if(!this.core.tools.list().some(tool=>tool.name==="runtime.status")){
+   this.core.tools.register({name:"runtime.status",description:"read runtime status, configured providers, and registered models",permission:"L1_READ",dangerous:false,actions:["read runtime status","runtime status"],tags:["runtime","status","health"]});
+   this.core.toolAdapters.register("runtime.status",{async execute(){return{system:"LayanX AI",ready:this.core.isReady(),agents:this.core.agents.list().map(agent=>agent.agentId),providers:this.core.providers.list().map(provider=>provider.name),models:this.core.models.list().map(model=>({id:model.id,provider:model.provider,local:model.local,enabled:model.enabled,priority:model.priority}))};}});
+  }
+ }
  async handle(input:unknown):Promise<RpcResponse|undefined>{
   if(!input||typeof input!=="object"||Array.isArray(input))return error(undefined,-32600,"Invalid Request.");
   const request=input as RpcRequest;
