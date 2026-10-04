@@ -31,6 +31,23 @@ Do not redistribute a recitation merely because it is playable on a third-party 
 - Two-publications-per-day scheduler.
 - OAuth and publication-status reconciliation.
 - End-to-end tests with local fixture media.
+
+## Reviewed GitHub auxiliary sources
+
+The publisher now contains a reviewed auxiliary-source registry in `src/quran/catalog.ts`.
+
+Approved uses:
+- **Qur'anic Universal Audio (QUD):** project-owned timestamps, segmentation, alignment and catalog metadata are CC BY 4.0 and commercially reusable with attribution.
+- **quran-align:** generated word timing data is CC BY 4.0; the MIT code is separate.
+- **Mushaf-Learning/quran-audio:** MIT-licensed metadata/tools/timing integration; its README explicitly says the hosted EveryAyah recordings are not contained in the repository.
+- **quran-json:** useful as a provenance/licensing reference; its source-specific audio records must still be evaluated independently.
+
+### Hard rights boundary
+
+A license for timestamps, metadata, code, or a GitHub repository **does not grant rights to the underlying recitation recording**. LayanX therefore keeps audio rights as a separate gate. An audio source remains unusable for automatic social publication unless its recording rights explicitly permit the intended use and the evidence is stored in the recitation rights catalog.
+
+The default timing source is `qud-universal-audio`. It can be changed with `LAYANX_QURAN_TIMING_SOURCE`. This setting affects timing metadata only; it never bypasses `QuranRightsCatalog`.
+
 ## Runtime configuration
 
 Quran Foundation credentials stay on the LayanX backend. Use `QF_ENV=prelive` for testing and `QF_ENV=production` only after production access is approved. The Content API uses Client Credentials with the `content` scope and token caching.
