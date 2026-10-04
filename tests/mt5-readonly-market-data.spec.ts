@@ -20,7 +20,7 @@ const transport: Mt5ReadOnlyTransport = {
     return {
       broker: "CFI",
       accountType: "CFI2-Real",
-      symbol,
+      symbol: symbol==="XAGUSD" ? "XAUUSD" : symbol,
       volumeMin: 0.01,
       volumeStep: 0.01,
       volumeMax: 50,
