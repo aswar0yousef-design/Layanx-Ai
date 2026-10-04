@@ -23,7 +23,7 @@ export class QuranFoundationSource{
   if(!data.access_token)throw new Error("quran_auth_token_missing");
   this.tokenState={token:data.access_token,expiresAt:Date.now()+(data.expires_in??3600)*1000};return data.access_token;
  }
- private async get(path:string,query:Record<string,string>={},retry=true){
+ private async get(path:string,query:Record<string,string>={},retry=true):Promise<any>{
   const env=this.config.environment??"prelive";const token=await this.token();const url=new URL(API_BASE[env]+path);for(const [k,v] of Object.entries(query))url.searchParams.set(k,v);
   const response=await this.fetchImpl(url,{headers:{"x-auth-token":token,"x-client-id":this.config.clientId}});
   if(response.status===401&&retry){this.tokenState=undefined;return this.get(path,query,false);}
