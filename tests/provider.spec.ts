@@ -25,5 +25,5 @@ const ollamaResult=await ollama.generate(
  {id:"llama3.2:3b",provider:"ollama",capabilities:["chat"],local:true,enabled:true,priority:1},
  {capability:"chat",input:"hello"}
 );
-if(ollamaResult.modelId!=="qwen2.5:3b"||ollamaResult.output!=="fallback works")throw new Error("Ollama installed-model fallback failed");
+if(ollamaResult.modelId!=="llama3.2:3b"||ollamaResult.output!=="fallback works")throw new Error("Ollama installed-model fallback failed");
 console.log("Ollama installed-model fallback passed.");
