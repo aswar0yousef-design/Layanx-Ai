@@ -10,7 +10,8 @@ export function ensureGitOnPath():void{
  const hasGit=entries.some(entry=>entry.toLowerCase()==="c:\\program files\\git\\cmd"||entry.toLowerCase()==="c:\\program files\\git\\bin");
  if(hasGit)return;
  try{
-  const located=execFileSync((process.env.SystemRoot??"C:\\Windows")+"\\System32\\where.exe",["git.exe"],{encoding:"utf8",windowsHide:true}).split(/\r?\n/).map(value=>value.trim()).filter(Boolean)[0];
+  const located=execFileSync((process.env.SystemRoot??"C:\\Windows")+"\\System32\\where.exe",["git.exe"],{encoding:"utf8",windowsHide:true}).split(/\r?
+/).map(value=>value.trim()).filter(Boolean)[0];
   if(located){
    const dir=dirname(located);
    if(existsSync(dir))process.env.PATH=dir+";"+current;
@@ -20,7 +21,8 @@ export function ensureGitOnPath():void{
 ensureGitOnPath();
 import {spawn} from "node:child_process";
 import type {ToolRequest} from "../core/types.js";
-import type {ToolAdapter} from "./executor.js";\nimport {ProjectIsolation} from "../security/project-isolation.js";
+import type {ToolAdapter} from "./executor.js";
+import {ProjectIsolation} from "../security/project-isolation.js";
 
 function payload(request:ToolRequest):Record<string,unknown>{return request.payload&&typeof request.payload==="object"&&!Array.isArray(request.payload)?request.payload as Record<string,unknown>:{};}
 function workspaceFor(root:string,projectId:string):string{
@@ -55,7 +57,8 @@ export function createGitToolAdapter(options:{root:string}):ToolAdapter{
   const input=payload(request);
   switch(request.action){
    case "git status": return run(workspace,["status","--short"]);
-   case "git checkpoint": { const result=await run(workspace,["rev-parse","HEAD"]) as {stdout:string;exitCode:number|null}; return {...result,stdout:result.stdout.trim()+"\n"}; }
+   case "git checkpoint": { const result=await run(workspace,["rev-parse","HEAD"]) as {stdout:string;exitCode:number|null}; return {...result,stdout:result.stdout.trim()+"
+"}; }
    case "git branch": {
     const branch=typeof input.branch==="string"?input.branch.trim():"";
     if(!/^[A-Za-z0-9._/-]+$/.test(branch)||branch.startsWith("-")||branch.includes("..")||branch.includes("//"))throw new Error("Invalid Git branch name.");
