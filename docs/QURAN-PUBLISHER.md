@@ -25,6 +25,7 @@ Do not redistribute a recitation merely because it is playable on a third-party 
 
 ## Remaining layers
 - Quran source adapter.
+- Reviewed timing source catalog (`LAYANX_QURAN_TIMING_SOURCE`); timing data never grants recitation rights.
 - Licensed recitation catalog.
 - Arabic RTL subtitle renderer.
 - FFmpeg composition using CreatorEngine.
@@ -43,6 +44,7 @@ Required before automatic publication:
 - `QF_CLIENT_ID`
 - `QF_CLIENT_SECRET`
 - `LAYANX_QURAN_RECITATION_ID`
+- `LAYANX_QURAN_TIMING_SOURCE` (default reviewed source: `qud-universal-audio`)
 - an approved recitation rights record
 - YouTube and TikTok OAuth connections/tokens
 - FFmpeg and FFprobe
