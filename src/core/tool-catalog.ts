@@ -39,6 +39,12 @@ export class ToolCatalog{
       .map(item=>item.tool);
   }
 }
-function toolActionMatch(tool:import("../tools/registry.js").ToolDefinition,terms:string[]):boolean{\n  const actions=[...(tool.actions??[])].map(action=>action.toLowerCase());\n  return new Set(actions.flatMap(action=>action.split(/[^a-z0-9_]+/).filter(Boolean))).size>0 && terms.filter(term=>actions.some(action=>action.split(/[^a-z0-9_]+/).includes(term))).length>=Math.min(2,terms.length);\n}\nfunction toPublic(tool:import("../tools/registry.js").ToolDefinition):ToolCatalogEntry{
+
+function toolActionMatch(tool:import("../tools/registry.js").ToolDefinition,terms:string[]):boolean{
+  const actions=[...(tool.actions??[])].map(action=>action.toLowerCase());
+  return terms.filter(term=>actions.some(action=>action.split(/[^a-z0-9_]+/).includes(term))).length>=Math.min(2,terms.length);
+}
+
+function toPublic(tool:import("../tools/registry.js").ToolDefinition):ToolCatalogEntry{
   return {name:tool.name,description:tool.description,permission:tool.permission,dangerous:tool.dangerous,actions:[...(tool.actions??[])],tags:[...(tool.tags??[])]};
 }
