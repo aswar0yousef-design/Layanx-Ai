@@ -78,7 +78,11 @@ export class MissionDependencyManager{
 
   assertReady(missionId:string){
     const snapshot=this.status(missionId);
-    if(snapshot.failedDependencies.length)throw new Error("Mission dependency failed: "+snapshot.failedDependencies.join(", "));
+    if(snapshot.failedDependencies.length){
+      const mission=this.requireMission(missionId);
+      if(mission.status!=="completed"&&mission.status!=="cancelled")this.core.missions.save({...mission,status:"blocked"});
+      throw new Error("Mission dependency failed: "+snapshot.failedDependencies.join(", "));
+    }
     if(snapshot.pendingDependencies.length)throw new Error("Mission dependencies are not completed: "+snapshot.pendingDependencies.join(", "));
     return snapshot;
   }
