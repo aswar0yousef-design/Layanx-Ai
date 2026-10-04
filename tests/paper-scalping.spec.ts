@@ -38,9 +38,9 @@ for (const trade of result.trades) {
 
 for (const trade of result.trades) {
   if (trade.side === "long") {
-    assert.ok(trade.exit.fillPrice < trade.entry.fillPrice);
-  } else {
     assert.ok(trade.exit.fillPrice > trade.entry.fillPrice);
+  } else {
+    assert.ok(trade.exit.fillPrice < trade.entry.fillPrice);
   }
 }
 
