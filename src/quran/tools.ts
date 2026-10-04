@@ -6,6 +6,7 @@ import {QURAN_AUXILIARY_SOURCES,getQuranAuxiliarySource} from "./catalog.js";
 import {OAuthConnectionCenter} from "../business/oauth.js";
 import type {SocialAccount} from "../business/types.js";
 import {join} from "node:path";
+import {QuranAdminConfigStore} from "./admin-config.js";
 function config(){
  const clientId=process.env.QF_CLIENT_ID??"";const clientSecret=process.env.QF_CLIENT_SECRET??"";const recitationId=Number(process.env.LAYANX_QURAN_RECITATION_ID??process.env.QF_RECITATION_ID??"0");
  return {clientId,clientSecret,environment:(process.env.QF_ENV==="production"?"production":"prelive") as "production"|"prelive",recitationId,translationId:Number(process.env.LAYANX_QURAN_TRANSLATION_ID??process.env.QF_TRANSLATION_ID??"0")||undefined,outputDir:process.env.LAYANX_QURAN_OUTPUT_DIR??".layanx/quran",platforms:(process.env.LAYANX_QURAN_PLATFORMS??"youtube,tiktok").split(",").map(x=>x.trim()).filter(Boolean),backgroundPath:process.env.LAYANX_QURAN_BACKGROUND_PATH,fontFile:process.env.LAYANX_QURAN_FONT_FILE,fontName:process.env.LAYANX_QURAN_FONT_NAME??"Amiri",channelName:process.env.LAYANX_QURAN_CHANNEL_NAME,translationLanguage:process.env.LAYANX_QURAN_TRANSLATION_LANGUAGE??"en"};
