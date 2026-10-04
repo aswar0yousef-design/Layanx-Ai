@@ -53,7 +53,7 @@ export function analyzeExecutionQuality(trade: ExecutionTrade): ExecutionQuality
     : (exitSpread !== undefined ? exitSpread / 2 : 0);
   const totalExecutionDrag = (entryDrag + exitDrag) * trade.quantity * multiplier;
   const netPnlAfterExecutionCosts = grossPnl - totalExecutionDrag;
-  const executionCostPctOfGross = grossPnl > 0 ? (totalExecutionDrag / grossPnl) * 100 : null;
+  const executionCostPctOfGross = grossPnl > 0 ? Number(((totalExecutionDrag / grossPnl) * 100).toFixed(12)) : null;
 
   let quality: ExecutionQuality = "unknown";
   if (spreadAtrRatio !== undefined) {
