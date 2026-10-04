@@ -1,0 +1,10 @@
+import assert from "node:assert/strict";
+import {QuranPublisher} from "../src/quran/publisher.js";
+const verses=Array.from({length:12},(_,i)=>({surah:81,ayah:15+i,arabic:"آية",recitationDurationSec:[6,7,8,5,9,6,7,5,8,6,7,5][i],translation:"translation"}));
+const publisher=new QuranPublisher();
+const segment=publisher.planSegment(verses);
+assert.equal(segment.fromAyah,15);assert.equal(segment.toAyah,21);assert.ok(segment.durationSec>=30&&segment.durationSec<=60);assert.equal(segment.verses.length,7);
+const plan=publisher.buildPlan(segment,"en");assert.equal(plan.idempotencyKey.length,24);assert.match(plan.title,/Surah 81/);assert.ok(plan.hashtags.includes("#Quran"));
+assert.throws(()=>publisher.planSegment(verses,0,[{surah:81,fromAyah:15,toAyah:21,durationSec:49,publicationIds:["x"],publishedAt:new Date().toISOString()}]),/quran_segment_already_published/);
+assert.throws(()=>new QuranPublisher({minDurationSec:60,maxDurationSec:30}),/quran_invalid_duration_policy/);
+console.log("quran publisher: ok");
