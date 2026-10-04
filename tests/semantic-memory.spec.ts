@@ -13,6 +13,6 @@ if(recalled.some(item=>item.projectId==="p2"))throw new Error("Project memory is
 
 const mission={id:"m5",goal:"database migration",status:"running",risk:"medium",requiredPermission:"L3_MODIFY" as const,steps:[],projectId:"p1",createdAt:new Date().toISOString()};
 const context=new ContextFabric(memory).build({projectId:"p1",mission,query:"PostgreSQL migration",limit:3,maxChars:5000});
-if(!context.memories.length||context.memories[0]?.kind!=="failure")throw new Error("Context prioritization failed.");
+if(!context.memories.length||context.memories[0]?.kind!=="decision")throw new Error("Context prioritization failed.");
 if(context.text.length>5000)throw new Error("Context budget failed.");
 console.log("Semantic memory and context fabric tests passed.");
