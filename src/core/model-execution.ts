@@ -1,4 +1,5 @@
 import type {ModelRegistry} from "../models/registry.js";
+import {ModelRouter} from "./model-router.js";
 import type {ModelExecutionAttempt,ModelExecutionResult,ModelProviderAdapter,ModelRequest,ModelRoutingOptions} from "../models/inference.js";
 export class ModelProviderRegistry{
  private readonly providers=new Map<string,ModelProviderAdapter>();
@@ -7,10 +8,11 @@ export class ModelProviderRegistry{
  list(){return[...this.providers.values()];}
 }
 export class ModelExecutionRouter{
- constructor(private readonly models:ModelRegistry,private readonly providers:ModelProviderRegistry,private readonly defaultRouting:ModelRoutingOptions={}){}
+ private readonly router:ModelRouter;
+ constructor(private readonly models:ModelRegistry,private readonly providers:ModelProviderRegistry,private readonly defaultRouting:ModelRoutingOptions={}){this.router=new ModelRouter(models);}
  async execute(request:ModelRequest):Promise<ModelExecutionResult>{
   const routing={...this.defaultRouting,...(request.routing??{})};
-  const candidates=this.models.select({capability:request.capability,...routing});
+  const candidates=this.router.selectAll(request.capability,routing);
   const attempts:ModelExecutionAttempt[]=[];
   for(const model of candidates){
    let provider:ModelProviderAdapter;
