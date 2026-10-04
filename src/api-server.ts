@@ -787,7 +787,12 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"event emission failed"});}
    return;
   }
-  if(request.method==="GET"&&request.url==="/v1/missions"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}json(response,200,{ok:true,missions:options.core.missions.list()});return;}
+  if(request.method==="GET"&&request.url?.split("?")[0]==="/v1/missions"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const projectId=new URL(request.url,"http://localhost").searchParams.get("projectId")?.trim()||"";
+   const missions=projectId?options.core.missions.list().filter(m=>m.projectId===projectId):options.core.missions.list();
+   json(response,200,{ok:true,missions});return;
+  }
    if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/tools\/execute-adaptive$/)){
     if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
     const id=request.url.split("/")[3] as string;
@@ -804,7 +809,17 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     }
     return;
    }
-  if(request.method==="GET"&&request.url?.startsWith("/v1/missions/")){const id=request.url.slice("/v1/missions/".length);const mission=options.core.missions.get(id);if(!mission){json(response,404,{ok:false,error:"mission_not_found"});return;}json(response,200,{ok:true,mission,execution:options.core.executionStates.get(id),audit:options.core.audit.forMission(id),ledger:options.core.ledger.forMission(id)});return;}
+  if(request.method==="GET"&&request.url?.startsWith("/v1/missions/")){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const id=request.url.slice("/v1/missions/".length).split("?")[0];
+   const mission=options.core.missions.get(id);
+   if(!mission){json(response,404,{ok:false,error:"mission_not_found"});return;}
+   const projectId=new URL(request.url,"http://localhost").searchParams.get("projectId")?.trim()||"";
+   if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
+   try{options.core.projectIsolation.assertMissionProject(projectId,mission.projectId);}
+   catch{json(response,403,{ok:false,error:"project isolation scope violation"});return;}
+   json(response,200,{ok:true,mission,execution:options.core.executionStates.get(id),audit:options.core.audit.forMission(id),ledger:options.core.ledger.forMission(id)});return;
+  }
    if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/tools\/execute-all$/)){
     if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
     const id=request.url.split("/")[3] as string;
