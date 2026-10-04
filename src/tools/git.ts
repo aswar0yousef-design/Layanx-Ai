@@ -6,7 +6,7 @@ export function ensureGitOnPath():void{
  if(process.platform!=="win32")return;
  const pathKey=Object.keys(process.env).find(key=>key.toLowerCase()==="path")??"PATH";
  const pathEntries=(process.env[pathKey]??"").split(";").filter(Boolean);
- for(const candidate of ["C:\\Program Files\\Git\\cmd","C:\\Program Files\\Git\\bin","C:\\Program Files (x86)\\Git\\cmd","C:\\Program Files (x86)\\Git\\bin"])
+ for(const candidate of ["C:\\Program Files\\Git\\cmd","C:\\Program Files\\Git\\bin","C:\\Program Files (x86)\\Git\\cmd","C:\\Program Files (x86)\\Git\\bin",`${process.env.LocalAppData??""}\\Programs\\Git\\cmd`,`${process.env.LocalAppData??""}\\Programs\\Git\\bin`])
   if(existsSync(candidate)&&!pathEntries.some(entry=>entry.toLowerCase()===candidate.toLowerCase()))pathEntries.push(candidate);
  delete process.env.PATH;
  delete process.env.Path;
