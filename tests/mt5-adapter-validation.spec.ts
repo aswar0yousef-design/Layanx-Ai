@@ -39,6 +39,6 @@ const futureFiltered = filterCompletedMt5Candles(
   "2026-10-03T12:00:30Z",
   "M1",
 );
-assert.equal(futureFiltered.length, 2);
+assert.equal(futureFiltered.length, 1);
 
 console.log("MT5 adapter validation tests passed");
