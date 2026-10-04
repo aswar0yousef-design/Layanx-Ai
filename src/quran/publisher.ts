@@ -12,12 +12,12 @@ export class QuranPublisher{
  constructor(policy:Partial<QuranPublisherPolicy>={}){this.policy={...DEFAULT_POLICY,...policy};if(this.policy.minDurationSec<=0||this.policy.maxDurationSec<this.policy.minDurationSec)throw new Error("quran_invalid_duration_policy");}
  planSegment(verses:QuranVerse[],startIndex=0,published:QuranPublishedSegment[]=[]):QuranSegment{
   if(!verses.length)throw new Error("quran_verses_required");if(startIndex<0||startIndex>=verses.length)throw new Error("quran_start_index_out_of_range");
-  const first=verses[startIndex];if(first.recitationDurationSec<=0)throw new Error("quran_invalid_recitation_duration");
+  const first=verses[startIndex]!;if(first.recitationDurationSec<=0)throw new Error("quran_invalid_recitation_duration");
   const publishedKeys=new Set(published.map(x=>x.surah+":"+x.fromAyah+":"+x.toAyah));let total=0;let end=startIndex;
-  for(let i=startIndex;i<verses.length;i++){const verse=verses[i];if(verse.surah!==first.surah)break;if(verse.recitationDurationSec<=0)throw new Error("quran_invalid_recitation_duration");const next=normalize(total+verse.recitationDurationSec);if(i>startIndex&&next>this.policy.maxDurationSec)break;total=next;end=i;if(total>=this.policy.targetDurationSec)break;}
+  for(let i=startIndex;i<verses.length;i++){const verse=verses[i]!;if(verse.surah!==first.surah)break;if(verse.recitationDurationSec<=0)throw new Error("quran_invalid_recitation_duration");const next=normalize(total+verse.recitationDurationSec);if(i>startIndex&&next>this.policy.maxDurationSec)break;total=next;end=i;if(total>=this.policy.targetDurationSec)break;}
   if(total<this.policy.minDurationSec){for(let i=end+1;i<verses.length;i++){const verse=verses[i];if(verse.surah!==first.surah)break;const next=normalize(total+verse.recitationDurationSec);if(next>this.policy.maxDurationSec)break;total=next;end=i;if(total>=this.policy.minDurationSec)break;}}
   const segmentVerses=verses.slice(startIndex,end+1);if(!segmentVerses.length)throw new Error("quran_segment_empty");
-  const candidateKey=first.surah+":"+first.ayah+":"+segmentVerses[segmentVerses.length-1].ayah;const overlaps=published.some(p=>p.surah===first.surah&&first.ayah<=p.toAyah&&segmentVerses[segmentVerses.length-1].ayah>=p.fromAyah);if(this.policy.avoidPublishedSegments&&(publishedKeys.has(candidateKey)||overlaps))throw new Error("quran_segment_already_published");
+  const candidateKey=first.surah+":"+first.ayah+":"+segmentVerses[segmentVerses.length-1]!.ayah;const overlaps=published.some(p=>p.surah===first.surah&&first.ayah<=p.toAyah&&segmentVerses[segmentVerses.length-1].ayah>=p.fromAyah);if(this.policy.avoidPublishedSegments&&(publishedKeys.has(candidateKey)||overlaps))throw new Error("quran_segment_already_published");
   return {surah:first.surah,fromAyah:first.ayah,toAyah:segmentVerses[segmentVerses.length-1].ayah,durationSec:normalize(total),verses:segmentVerses};
  }
  buildPlan(segment:QuranSegment,translationLanguage="en"):QuranPublicationPlan{
