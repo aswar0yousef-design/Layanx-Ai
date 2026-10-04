@@ -19,7 +19,7 @@ core.providers.register({
     modelId:model.id,provider:model.provider,
     output:JSON.stringify({
       risk:"low",
-      requiredPermission:"L4_EXECUTE",
+      requiredPermission:"L2_ANALYZE",
       steps:[
         {description:"Understand the requested operation"},
         {description:"Prepare the execution"},
@@ -35,18 +35,18 @@ core.providers.register({
 const agent={
   agentId:"e2e-agent",purpose:"execute the planned command",
   allowedTools:["terminal.run"],forbiddenResources:[],
-  requiredPermission:"L4_EXECUTE" as const,maxToolCalls:5,maxRuntimeMs:10000,
+  requiredPermission:"L2_ANALYZE" as const,maxToolCalls:5,maxRuntimeMs:10000,
   successCriteria:["done"],stopCondition:"stop"
 };
 core.registerAgent(agent);
-core.tools.register({name:"terminal.run",description:"Run the requested command",permission:"L4_EXECUTE",dangerous:true});
+core.tools.register({name:"terminal.run",description:"Run the requested command",permission:"L2_ANALYZE",dangerous:true});
 
 const mission=await core.planAndStartMission("Run the requested command safely.","default");
-if(mission.status!=="planned"||mission.requiredPermission!=="L4_EXECUTE")throw new Error("Planned mission was not compiled correctly.");
+if(mission.status!=="planned"||mission.requiredPermission!=="L2_ANALYZE")throw new Error("Planned mission was not compiled correctly.");
 
 const capability=core.capabilities.issue({
   missionId:mission.id,agentId:agent.agentId,projectId:"default",
-  resource:"terminal.run",permission:"L4_EXECUTE",
+  resource:"terminal.run",permission:"L2_ANALYZE",
   expiresAt:new Date(Date.now()+60000).toISOString()
 });
 
