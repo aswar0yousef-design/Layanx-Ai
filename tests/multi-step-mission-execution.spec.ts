@@ -12,6 +12,7 @@ mission.tools=[
  {tool:"step.one",action:"read first",permission:"L1_READ",reason:"first"},
  {tool:"step.two",action:"read second",permission:"L1_READ",reason:"second"}
 ];
+core.missions.save(mission);
 const first=await core.executeMissionTool(mission.id,"project-test",0,{});
 if(!first.ok||first.verified)throw new Error("first step should succeed without final verification");
 if(first.recoverable!==true)throw new Error("first step should leave mission recoverable");
