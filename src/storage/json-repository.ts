@@ -1,7 +1,10 @@
 import type {Repository,StorageAdapter} from "./repository.js";
+import {StateStoreAdapter} from "./state-store-adapter.js";
+import type {JsonStateStore} from "../core/persistence.js";
 
 export class JsonRepository<T extends {id:string}> implements Repository<T>{
-  constructor(private readonly storage:StorageAdapter,private readonly key:string){}
+  constructor(storage:StorageAdapter|JsonStateStore<T[]>,private readonly key="items"){this.storage=storage instanceof Object && "transaction" in storage ? storage as StorageAdapter : new StateStoreAdapter(storage as JsonStateStore<T[]>,key);}
+  private readonly storage:StorageAdapter;
   async get(id:string):Promise<T|undefined>{
     return this.storage.transaction(async tx=>(await tx.get<T[]>(this.key)??[]).find(x=>x.id===id));
   }
