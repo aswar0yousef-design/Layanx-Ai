@@ -45,7 +45,7 @@ assert.equal(highSpread?.costErasedTrades, 1);
 
 assert.equal(report.duration.find(x => x.key === "0-60s")?.trades, 1);
 assert.equal(report.duration.find(x => x.key === "61-180s")?.trades, 1);
-assert.equal(report.duration.find(x => x.key === "181-300s")?.trades, 1);
+assert.equal(report.duration.find(x => x.key === ">300s")?.trades, 1);
 
 const highSlippage = report.slippage.find(x => x.key === ">10% ATR");
 assert.equal(highSlippage?.trades, 1);
