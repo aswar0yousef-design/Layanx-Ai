@@ -11,7 +11,8 @@ core.toolAdapters.register("echo",{async execute(request:ToolRequest){calls++;re
 const provider:ModelProviderAdapter={name:"test",async health(){return{provider:"test",available:true,updatedAt:new Date().toISOString()};},async generate(model){return{provider:"test",modelId:model.id,output:JSON.stringify({risk:"low",requiredPermission:"L1_READ",steps:[{description:"read"}],successCriteria:["done"],stopCondition:"stop"})};}};
 core.models.register({id:"test-model",provider:"test",capabilities:["reasoning"],local:true,enabled:true,priority:1});core.providers.register(provider);
 
-const mission=core.startMission("execute echo");
+const mission=core.startMission("execute echo","p1");
+core.missions.save(mission);
 const token=core.capabilities.issue({missionId:mission.id,agentId:"runner",projectId:"p1",resource:"echo",permission:"L1_READ",expiresAt:new Date(Date.now()+60000).toISOString()});
 const server=startRuntimeApi({core,host:"127.0.0.1",port:0});
 await new Promise<void>(resolve=>server.on("listening",resolve));
