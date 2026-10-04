@@ -25,4 +25,4 @@ Live trading remains behind explicit MT5 live-trading and auto-scalping flags pl
 
 ## Release rule
 
-A green CI result is not a production claim unless the full test count is reported and all quality gates complete successfully.
+The full test count and every quality gate are authoritative; a partial or stale CI run must never be treated as a release signal.
