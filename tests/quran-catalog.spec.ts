@@ -8,5 +8,8 @@ assert.equal(qud?.audioRightsSeparate,true);
 assert.equal(assertAuxiliarySourceUsable("qud-universal-audio","timing").id,"qud-universal-audio");
 assert.throws(()=>assertAuxiliarySourceUsable("qud-universal-audio","audio"),/kind_mismatch/);
 assert.throws(()=>assertAuxiliarySourceUsable("missing","timing"),/source_unknown/);
+const quranJson=getQuranAuxiliarySource("quran-json");
+assert.equal(quranJson?.status,"unknown");
+assert.throws(()=>assertAuxiliarySourceUsable("quran-json","metadata"),/not_commercially_usable/);
 assert.equal(QURAN_AUXILIARY_SOURCES.some(x=>x.id==="mushaf-learning-quran-audio"&&x.status==="granted"),true);
 console.log("quran catalog: ok");
