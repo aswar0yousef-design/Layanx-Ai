@@ -5,6 +5,7 @@ import {ToolSelector} from "./tool-selection.js";
 import {ExecutionRuntime} from "./runtime.js";
 import {Replanner} from "./replan.js";
 import type {RuntimeSecurityContext} from "./runtime.js";
+import {setLifecycle} from "./lifecycle.js";
 
 export class MissionRunner{
  private readonly runtime:ExecutionRuntime;
@@ -28,7 +29,7 @@ export class MissionRunner{
    if(replanned===current)return result;
    current=replanned;
    Object.assign(mission,current);
-   this.core.executionStates.update(current.id,{status:"running"});
+   setLifecycle(current,this.core.executionStates,"running");
    await this.runtime.persist(current);
    currentRequest={...currentRequest,idempotencyKey:`${request.idempotencyKey}:retry:${attempt+1}`};
   }
