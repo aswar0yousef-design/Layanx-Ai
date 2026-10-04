@@ -25,8 +25,8 @@ const result=await controller.evaluate({
 if(result.decision.action!=="keep")throw new Error("Recovery controller did not verify the rollback target.");
 if(result.decision.target?.version!=="1.0.0")throw new Error("Recovery controller selected the wrong deployment.");
 if(result.attempts!==1)throw new Error("Recovery controller attempt count is incorrect.");
-const active=await controller.inspectActiveRecovery();
-if(!active||active.action!=="complete")throw new Error("Persisted recovery was not visible after completion.");
+const active=await persistence.get("recovery-controller-test");
+if(!active||active.state!=="verified")throw new Error("Persisted recovery was not visible after completion.");
 if(!result.audit.started||!result.audit.rollback||!result.audit.verified||!result.audit.complete)
  throw new Error("Recovery controller did not produce a complete audit trail.");
 
