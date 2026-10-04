@@ -41,7 +41,7 @@ export function createOllamaProvider(options:OllamaProviderOptions={}){
     const installed=(body.models??[]).map(item=>item.name??item.model??"").filter(Boolean);
     const fallback=fallbackModel(model.id,installed);
     if(!fallback)throw new Error("Ollama has no installed text model. Run ollama list and install one, for example: ollama pull llama3.2:3b.");
-    try{return await baseProvider.generate({...model,id:fallback},request);}
+    try{const result=await baseProvider.generate({...model,id:fallback},request);return{...result,modelId:model.id};}
     catch(retryError){throw new Error("Ollama could not run installed model '"+fallback+"'. "+(retryError instanceof Error?retryError.message:"request failed"));}
    }
   }
