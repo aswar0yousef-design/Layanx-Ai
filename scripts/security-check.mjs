@@ -1,6 +1,6 @@
 import {readFile} from "node:fs/promises";
 import {readdir} from "node:fs/promises";
-const roots=["src","tests"];
+const roots=["src","tests","scripts","config"];
 const forbidden=/(api[_ -]?key|secret[_ -]?key|private[_ -]?key|password)\s*[:=]\s*["'`][^"'`]{8,}["'`]/i;
 let failures=[];
 async function walk(dir){
