@@ -34,7 +34,9 @@ export class ToolSelector{
   }
 
   discover(action:string,contract:AgentContract,requiredPermission:PermissionLevel){
-    return this.select(action,contract,requiredPermission).map(selection=>({
+    return this.select(action,contract,requiredPermission)
+      .filter(selection=>rank[selection.tool.permission]<=rank[requiredPermission])
+      .map(selection=>({
       name:selection.tool.name,description:selection.tool.description,permission:selection.tool.permission,
       dangerous:selection.tool.dangerous,actions:[...(selection.tool.actions??[])],tags:[...(selection.tool.tags??[])],
       recommendedAction:selection.recommendedAction,score:selection.score,reasons:selection.reasons
