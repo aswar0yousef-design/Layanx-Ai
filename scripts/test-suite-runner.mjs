@@ -26,7 +26,7 @@ function runTest(file) {
   const rel = relative(root, file);
   return new Promise((resolveResult) => {
     const started = Date.now();
-    const child = spawn(command, ["--test", rel], {
+    const child = spawn(command, [rel], {
       cwd: root,
       shell: false,
       windowsHide: true,
