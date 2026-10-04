@@ -20,6 +20,7 @@ const result = runPaperScalping(candles, {
   stopLossDistance: 0.8,
   takeProfitDistance: 0.5,
   spread: 0.2,
+  signalConfig: { minimumScore: 2 },
   slippage: 0.05,
 });
 
