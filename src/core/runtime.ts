@@ -40,8 +40,8 @@ export class ExecutionRuntime{
   if(state.toolCalls>=contract.maxToolCalls)return this.block(mission,request,"Agent tool-call limit exceeded.");
   const toolDefinition=this.core.tools.get(request.tool);
   const risk=this.core.risk.assess(request);
-  const requiresExplicitApproval=toolDefinition.dangerous && rank[request.permission]>=3;
   const rank:Record<import("./types.js").PermissionLevel,number>={L1_READ:1,L2_ANALYZE:2,L3_MODIFY:3,L4_EXECUTE:4,L5_CRITICAL:5};
+  const requiresExplicitApproval=toolDefinition.dangerous && rank[request.permission]>=3;
   if(rank[request.permission]>=3){
    let impact;
    try{
