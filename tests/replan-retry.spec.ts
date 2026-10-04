@@ -9,12 +9,12 @@ await mkdir(join(root,"retry-project"),{recursive:true});
 process.env.LAYANX_WORKSPACE_ROOT=root;
 const core=new LayanXCore();
 const agent={
-  agentId:"retry-agent",purpose:"recover failed execution",allowedTools:["terminal.run"],
+  agentId:"retry-agent",purpose:"recover failed execution",allowedTools:["retry.tool"],
   forbiddenResources:[],requiredPermission:"L4_EXECUTE" as const,maxToolCalls:5,maxRuntimeMs:10000,
   successCriteria:["done"],stopCondition:"stop"
 };
 core.registerAgent(agent);
-core.tools.register({name:"terminal.run",description:"Run command",permission:"L4_EXECUTE",dangerous:true});
+core.tools.register({name:"retry.tool",description:"Run command",permission:"L1_READ",dangerous:false});
 
 const mission=core.startMission("Recover a failed command","retry-project");
 mission.requiredPermission="L4_EXECUTE";
@@ -26,14 +26,14 @@ mission.steps=[
 
 const capability=core.capabilities.issue({
   missionId:mission.id,agentId:agent.agentId,projectId:"retry-project",
-  resource:"terminal.run",permission:"L4_EXECUTE",expiresAt:new Date(Date.now()+60000).toISOString()
+  resource:"retry.tool",permission:"L4_EXECUTE",expiresAt:new Date(Date.now()+60000).toISOString()
 });
 
 const runner=new MissionRunner(core);
 let calls=0;
 const result=await runner.execute(
   mission,
-  {missionId:mission.id,agentId:agent.agentId,tool:"terminal.run",action:"run command",permission:"L4_EXECUTE",idempotencyKey:"retry-flow",payload:{}},
+  {missionId:mission.id,agentId:agent.agentId,tool:"retry.tool",action:"run command",permission:"L4_EXECUTE",idempotencyKey:"retry-flow",payload:{}},
   {async execute(){
     calls++;
     if(calls===1)throw new Error("temporary failure");
