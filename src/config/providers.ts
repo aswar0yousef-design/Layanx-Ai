@@ -5,7 +5,7 @@ import {createOpenAIProvider} from "../providers/openai-provider.js";
 import {createOllamaProvider} from "../providers/ollama-provider.js";
 import {createAnthropicProvider} from "../providers/anthropic-provider.js";
 import {createGeminiProvider} from "../providers/gemini-provider.js";
-import {FreeCapacityProvider,type FreeCapacitySpec} from "../providers/free-capacity.js";
+import {FreeCapacityProvider,freeProviderRuntimeName,type FreeCapacitySpec} from "../providers/free-capacity.js";
 import {FREE_LLM_DIRECTORY} from "../providers/free-llm-directory.js";
 import {localSecret} from "../security/local-secret-vault.js";
 export type ProviderMode="local"|"cloud"|"hybrid";
@@ -30,7 +30,7 @@ function loadFreePool(env:NodeJS.ProcessEnv){
   if(!Array.isArray(parsed.providers))throw new Error("free provider config must contain a providers array");
   const providers=parsed.providers.map((item,index)=>{
    if(!item.name||!item.baseUrl||!Array.isArray(item.models)||!item.models.length)throw new Error("Invalid free provider entry at index "+index);
-   return{...item,apiKey:item.apiKey??(item.apiKeyEnv?env[item.apiKeyEnv]:undefined)};
+   return{...item,apiKey:item.apiKey??(item.apiKeyEnv?localSecret(item.apiKeyEnv)??env[item.apiKeyEnv]:undefined)};
   });
   return{enabled,configPath,providers};
  }catch(error){throw new Error("Invalid LAYANX_FREE_POOL_CONFIG: "+(error instanceof Error?error.message:"unable to read config"));}
@@ -55,11 +55,11 @@ export function configureProviders(config=loadProviderConfig(),models=new ModelR
  if(config.gemini.enabled&&allowCloud&&config.gemini.apiKey){providers.register(createGeminiProvider({apiKey:config.gemini.apiKey,baseUrl:config.gemini.baseUrl,healthUrl:config.gemini.healthUrl}));models.register({id:config.gemini.model,provider:"gemini",capabilities:["chat","reasoning","coding","vision","audio"],local:false,enabled:true,priority:priority++});}
  if(config.freePool.enabled&&allowCloud){
   for(const spec of config.freePool.providers){
-   const provider=new FreeCapacityProvider(spec);providers.register(provider);
+   const runtimeName=freeProviderRuntimeName(spec.name);const provider=new FreeCapacityProvider({...spec,name:runtimeName});providers.register(provider);
    const capabilities=spec.capabilities??["chat","reasoning","coding"];const providerPriority=spec.priority??priority++;
    for(const providerModelId of spec.models){
-    const id="free:"+spec.name+":"+providerModelId;
-    models.register({id,provider:spec.name,providerModelId,capabilities,local:false,enabled:true,priority:providerPriority,costPer1kInputUsd:0,costPer1kOutputUsd:0,tags:[...(spec.tags??[]),"free"]});
+    const id=runtimeName+":"+providerModelId;
+    models.register({id,provider:runtimeName,providerModelId,capabilities,local:false,enabled:true,priority:providerPriority,costPer1kInputUsd:0,costPer1kOutputUsd:0,tags:[...(spec.tags??[]),"free"]});
    }
   }
  }
