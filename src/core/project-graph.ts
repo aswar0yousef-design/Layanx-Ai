@@ -1,5 +1,6 @@
 import {readFile,readdir,stat} from "node:fs/promises";
 import {resolve,relative,sep,extname,dirname,join} from "node:path";
+import {ProjectIsolation} from "../security/project-isolation.js";
 
 export interface ProjectGraphOptions{root:string;maxFiles?:number;maxFileBytes?:number;}
 export interface ProjectGraphNode{
