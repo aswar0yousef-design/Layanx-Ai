@@ -9,13 +9,13 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    env:
+      GIT_EXECUTABLE: /usr/bin/git
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-        env:
-          GIT_EXECUTABLE: /usr/bin/git
       - run: npm install
       - run: npm run security:check
       - run: LAYANX_SECRET_VAULT_KEY=ci-test-key-0123456789abcdef npm run free:check
