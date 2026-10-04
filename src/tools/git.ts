@@ -37,7 +37,7 @@ export function createGitToolAdapter(options:{root:string}):ToolAdapter{
   const input=payload(request);
   switch(request.action){
    case "git status": return run(workspace,["status","--short"]);
-   case "git checkpoint": return run(workspace,["rev-parse","HEAD"]);
+   case "git checkpoint": { const result=await run(workspace,["rev-parse","HEAD"]) as {stdout:string;exitCode:number|null}; return {...result,stdout:result.stdout.trim()+"\n"}; }
    case "git branch": {
     const branch=typeof input.branch==="string"?input.branch.trim():"";
     if(!/^[A-Za-z0-9._/-]+$/.test(branch)||branch.startsWith("-")||branch.includes("..")||branch.includes("//"))throw new Error("Invalid Git branch name.");
