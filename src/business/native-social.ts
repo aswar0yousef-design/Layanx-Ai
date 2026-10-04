@@ -1,3 +1,4 @@
+import {readFile} from "node:fs/promises";
 import {localSecret} from "../security/local-secret-vault.js";
 import type {SocialAccount,SocialPlatform} from "./types.js";
 
@@ -55,19 +56,21 @@ export class NativeSocialConnector implements PlatformSocialConnector{
   const externalId=String(d.id??"");if(!externalId)throw new Error("facebook_post_id_missing");return {externalId,url:`https://www.facebook.com/${externalId}`};
  }
  private async tiktok(access:string,item:PublishItem){
-  const media=item.mediaUrls.find(x=>/^https?:\/\//i.test(x));if(!media)throw new Error("tiktok_requires_public_media_url");
+  const media=item.mediaUrls[0];if(!media)throw new Error("tiktok_media_required");
   const api=base("tiktok","https://open.tiktokapis.com");
   const info=await jsonRequest(`${api}/v2/post/publish/creator_info/query/`,{method:"POST",headers:{Authorization:`Bearer ${access}`,"content-type":"application/json"}});
   const options=info?.data?.privacy_level_options??[];const privacy=process.env.LAYANX_TIKTOK_PRIVACY_LEVEL??"SELF_ONLY";if(!options.includes(privacy))throw new Error("tiktok_privacy_level_not_allowed");
-  const isImage=/\.(jpe?g|png|webp)(\?|$)/i.test(media);const body=isImage?
+  const isRemote=/^https?:\/\//i.test(media);const isImage=/\.(jpe?g|png|webp)(\?|$)/i.test(media);let body:any;let localBytes:Buffer|undefined;
+  if(isRemote){body=isImage?
    {post_info:{title:item.title,description:item.body,privacy_level:privacy},source_info:{source:"PULL_FROM_URL",photo_images:[media],photo_cover_index:0},post_mode:"DIRECT_POST",media_type:"PHOTO"}:
    {post_info:{title:item.title,description:item.body,privacy_level:privacy},source_info:{source:"PULL_FROM_URL",video_url:media},post_mode:"DIRECT_POST",media_type:"VIDEO"};
+  }else{localBytes=await readFile(media);if(isImage)throw new Error("tiktok_local_image_upload_not_supported");body={post_info:{title:item.title,description:item.body,privacy_level:privacy},source_info:{source:"FILE_UPLOAD",video_size:localBytes.length,chunk_size:localBytes.length,total_chunk_count:1},post_mode:"DIRECT_POST",media_type:"VIDEO"};}
   const d=await jsonRequest(`${api}/v2/post/publish/content/init/`,{method:"POST",headers:{Authorization:`Bearer ${access}`,"content-type":"application/json"},body:JSON.stringify(body)});
-  const id=String(d?.data?.publish_id??"");if(!id)throw new Error("tiktok_publish_id_missing");return {externalId:id};
+  const id=String(d?.data?.publish_id??"");if(!id)throw new Error("tiktok_publish_id_missing");const uploadUrl=String(d?.data?.upload_url??"");if(localBytes){if(!uploadUrl)throw new Error("tiktok_upload_url_missing");const upload=await fetch(uploadUrl,{method:"PUT",headers:{"Content-Type":"video/mp4","Content-Length":String(localBytes.length)},body:localBytes});if(!upload.ok)throw new Error(`tiktok_upload_http_${upload.status}`);}return {externalId:id};
  }
  private async youtube(access:string,item:PublishItem){
-  const video=item.mediaUrls.find(x=>/\.(mp4|mov|webm|m4v)(\?|$)/i.test(x));if(!video)throw new Error("youtube_requires_video_url");
-  const source=await fetch(video);if(!source.ok)throw new Error(`youtube_media_fetch_${source.status}`);const blob=await source.blob();
+  const video=item.mediaUrls.find(x=>/\.(mp4|mov|webm|m4v)(\?|$)/i.test(x));if(!video)throw new Error("youtube_requires_video_media");
+  let blob:Blob;if(/^https?:\/\//i.test(video)){const source=await fetch(video);if(!source.ok)throw new Error(`youtube_media_fetch_${source.status}`);blob=await source.blob();}else{const bytes=await readFile(video);blob=new Blob([bytes],{type:"video/mp4"});}
   const metadata={snippet:{title:item.title.slice(0,100),description:item.body},status:{privacyStatus:process.env.LAYANX_YOUTUBE_PRIVACY_STATUS??"private"}};
   const form=new FormData();form.append("metadata",new Blob([JSON.stringify(metadata)],{type:"application/json"}));form.append("media",blob,"upload");
   const d=await jsonRequest("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=multipart&part=snippet,status",{method:"POST",headers:{Authorization:`Bearer ${access}`},body:form});
