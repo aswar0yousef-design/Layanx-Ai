@@ -36,8 +36,10 @@ export class JsonStateStore<T>{
     }
     try{
       await rename(temp,this.path);
-      const directoryHandle=await open(directory,"r");
-      try{await directoryHandle.sync();}finally{await directoryHandle.close();}
+      if(process.platform!=="win32"){
+        const directoryHandle=await open(directory,"r");
+        try{await directoryHandle.sync();}finally{await directoryHandle.close();}
+      }
     }catch(error){
       try{await (await import("node:fs/promises")).rm(temp,{force:true});}catch{}
       throw error;
