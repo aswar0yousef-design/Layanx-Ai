@@ -1,6 +1,5 @@
 import {mkdir,rm} from "node:fs/promises";
 import {dirname} from "node:path";
-import {dirname} from "node:path";
 
 export class FileLock{
   constructor(private readonly lockPath:string,private readonly retryMs=25,private readonly timeoutMs=5000){}
