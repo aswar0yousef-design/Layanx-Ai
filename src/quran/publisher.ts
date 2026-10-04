@@ -17,8 +17,8 @@ export class QuranPublisher{
   for(let i=startIndex;i<verses.length;i++){const verse=verses[i]!;if(verse.surah!==first.surah)break;if(verse.recitationDurationSec<=0)throw new Error("quran_invalid_recitation_duration");const next=normalize(total+verse.recitationDurationSec);if(i>startIndex&&next>this.policy.maxDurationSec)break;total=next;end=i;if(total>=this.policy.targetDurationSec)break;}
   if(total<this.policy.minDurationSec){for(let i=end+1;i<verses.length;i++){const verse=verses[i]!;if(verse.surah!==first.surah)break;const next=normalize(total+verse.recitationDurationSec);if(next>this.policy.maxDurationSec)break;total=next;end=i;if(total>=this.policy.minDurationSec)break;}}
   const segmentVerses=verses.slice(startIndex,end+1);if(!segmentVerses.length)throw new Error("quran_segment_empty");
-  const candidateKey=first.surah+":"+first.ayah+":"+segmentVerses[segmentVerses.length-1]!.ayah;const overlaps=published.some(p=>p.surah===first.surah&&first.ayah<=p.toAyah&&segmentVerses[segmentVerses.length-1].ayah>=p.fromAyah);if(this.policy.avoidPublishedSegments&&(publishedKeys.has(candidateKey)||overlaps))throw new Error("quran_segment_already_published");
-  return {surah:first.surah,fromAyah:first.ayah,toAyah:segmentVerses[segmentVerses.length-1].ayah,durationSec:normalize(total),verses:segmentVerses};
+  const lastVerse=segmentVerses[segmentVerses.length-1]!;const candidateKey=first.surah+":"+first.ayah+":"+lastVerse.ayah;const overlaps=published.some(p=>p.surah===first.surah&&first.ayah<=p.toAyah&&lastVerse.ayah>=p.fromAyah);if(this.policy.avoidPublishedSegments&&(publishedKeys.has(candidateKey)||overlaps))throw new Error("quran_segment_already_published");
+  return {surah:first.surah,fromAyah:first.ayah,toAyah:lastVerse.ayah,durationSec:normalize(total),verses:segmentVerses};
  }
  buildPlan(segment:QuranSegment,translationLanguage="en"):QuranPublicationPlan{
   const key=keyOf(segment.surah,segment.fromAyah,segment.toAyah);const translation=segment.verses.map(v=>v.translation).filter(Boolean).join(" ");
