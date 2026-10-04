@@ -16,7 +16,7 @@ const agent: AgentContract = {
   requiredPermission: "L4_EXECUTE",
   maxToolCalls: 5,
   maxRuntimeMs: 30000,
-  successCriteria: ["execution auditable"],
+  successCriteria: ["done"],
   stopCondition: "Stop on approval denial.",
   profile: {
     role: "analyst",
