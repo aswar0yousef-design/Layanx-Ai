@@ -7,12 +7,13 @@ core.toolAdapters.register("runtime.status",{async execute(){calls++;return{read
 const mission=core.startMission("Read runtime status","project");
 mission.requiredPermission="L1_READ";
 mission.tools=[{tool:"runtime.status",action:"read runtime status",permission:"L1_READ",reason:"test"}];
+core.missions.save(mission);
 const result=await core.executeMissionTool(mission.id,"project",0,{});
 if(!result.ok||!result.verified)throw new Error("planned execution did not complete and verify");
 if(result.tool!=="runtime.status"||calls!==1)throw new Error("wrong tool execution");
 const stored=core.missions.get(mission.id);
 if(stored?.status!=="completed")throw new Error("mission was not persisted as completed");
-const replay=await core.executeMissionTool(mission.id,"project-test",0,{});
+const replay=await core.executeMissionTool(mission.id,"project",0,{});
 if(!replay.ok||!replay.verified||replay.recoverable!==false)throw new Error("safe replay did not succeed");
 if(calls!==1)throw new Error("replay executed the adapter twice");
 console.log("Planned mission tool execution passed.");
