@@ -132,9 +132,9 @@ function durationBucket(value: number | undefined): string {
 }
 
 function slippageBucket(trade: TradeAnalysis): string {
-  const values = finiteValues([trade.entrySlippage, trade.exitSlippage]);
-  if (!values.length || !Number.isFinite(trade.atr ?? NaN) || (trade.atr ?? 0) <= 0) return "unknown";
-  const ratio = Math.max(...values) / (trade.atr as number);
+  const ratios = finiteValues([trade.entrySlippageAtrRatio, trade.exitSlippageAtrRatio]);
+  if (!ratios.length) return "unknown";
+  const ratio = Math.max(...ratios);
   if (ratio <= 0.05) return "0-5% ATR";
   if (ratio <= 0.10) return "5-10% ATR";
   return ">10% ATR";
