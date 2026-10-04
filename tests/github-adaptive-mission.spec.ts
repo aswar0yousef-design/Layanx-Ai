@@ -33,7 +33,7 @@ mission.requiredPermission="L1_READ";
 mission.steps=[{id:crypto.randomUUID(),description:"Execute repository reads",status:"pending"}];
 mission.tools=[{tool:"github.repo.read",action:"read repository",permission:"L1_READ",reason:"initial",payload:{repository:"aswar0yousef-design/Layanx-Ai"}}];
 core.missions.save(mission);
-const result=await core.executeMissionAdaptive(mission.id,"project-test",3);
+const result=await core.executeMissionAdaptive(mission.id,"project",3);
 if(!result.completed)throw new Error("Connector adaptive mission did not complete.");
 if(requests.length!==2)throw new Error("Expected exactly two GitHub requests.");
 if(!requests[1]?.includes("/repos/aswar0yousef-design/Layanx-Ai/issues?state=open"))throw new Error("Adaptive payload did not reach GitHub connector.");
