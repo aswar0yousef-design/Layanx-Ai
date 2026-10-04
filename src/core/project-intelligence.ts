@@ -1,5 +1,6 @@
 import {readFile,readdir,stat} from "node:fs/promises";
 import {resolve,relative,sep,extname,basename} from "node:path";
+import {ProjectIsolation} from "../security/project-isolation.js";
 
 export interface ProjectIntelligenceOptions{
   root:string;
@@ -63,6 +64,7 @@ const EXTENSION_CATEGORY:Record<string,string>={
 
 export class ProjectIntelligence{
   private readonly root:string;
+  private readonly projectIsolation=new ProjectIsolation();
   private readonly maxFiles:number;
   private readonly maxDepth:number;
   private readonly maxMetadataBytes:number;
@@ -152,11 +154,7 @@ export class ProjectIntelligence{
     return projectId.trim();
   }
 
-  private workspaceFor(projectId:string):string{
-    const safe=projectId.trim();
-    if(!safe||safe==="."||safe===".."||safe.includes("/")||safe.includes("\\\\"))throw new Error("Invalid project workspace identity.");
-    return resolve(this.root,safe);
-  }
+  private workspaceFor(projectId:string):string{\n    return this.projectIsolation.workspacePath(this.root,projectId);\n  }
 
   private async exists(path:string):Promise<boolean>{
     try{await stat(path);return true;}catch{return false;}
