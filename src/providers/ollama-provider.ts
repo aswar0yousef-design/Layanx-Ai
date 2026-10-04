@@ -7,8 +7,8 @@ export interface OllamaProviderOptions{baseUrl?:string;timeoutMs?:number;fetcher
 
 function fallbackModel(requested:string,installed:string[]){
  const exact=installed.find(name=>name===requested);if(exact)return exact;
- const base=requested.split(":")[0].toLowerCase();
- const family=installed.find(name=>name.split(":")[0].toLowerCase()===base);if(family)return family;
+ const base=(requested.split(":")[0]??"").toLowerCase();
+ const family=installed.find(name=>(name.split(":")[0]??"").toLowerCase()===base);if(family)return family;
  return installed.find(name=>!/(embed|nomic-embed|bge-m3|snowflake-arctic-embed)/i.test(name));
 }
 
