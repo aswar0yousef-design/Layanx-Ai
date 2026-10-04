@@ -258,7 +258,12 @@ export class LayanXCore{
 
   async prepareChangeImpact(mission:import("./types.js").Mission,projectId:string,request?:{tool?:string;action?:string}){
     this.projectIsolation.assertMissionProject(projectId,mission.projectId);
-    let graph:Awaited<ReturnType<typeof this.projectGraph.scan>>;\n    try{graph=await this.projectGraph.scan(projectId);}catch(error){\n      const code=error&&typeof error==="object"&&"code" in error?(error as {code?:string}).code:undefined;\n      if(code!=="ENOENT")throw error;\n      graph={projectId,generatedAt:new Date().toISOString(),truncated:false,nodes:[],edges:[],entryPoints:[],routes:[],tests:[],dependencies:{}};\n    }
+    let graph:Awaited<ReturnType<typeof this.projectGraph.scan>>;
+    try{graph=await this.projectGraph.scan(projectId);}catch(error){
+      const code=error&&typeof error==="object"&&"code" in error?(error as {code?:string}).code:undefined;
+      if(code!=="ENOENT")throw error;
+      graph={projectId,generatedAt:new Date().toISOString(),truncated:false,nodes:[],edges:[],entryPoints:[],routes:[],tests:[],dependencies:{}};
+    }
     const query=[mission.goal,request?.action,request?.tool].filter(Boolean).join(" ");
     const impact=this.impactAnalyzer.analyze(graph,query);
     const selection=this.testSelector.select(graph,impact);
@@ -602,7 +607,8 @@ export class LayanXCore{
           projectContext:context
         })??undefined;
         if(!plan){
-          const contract=this.agents.get(agentId);\n          const verification=this.verifier.verify(current,latest,current.successCriteria?.length?current.successCriteria:contract.successCriteria);
+          const contract=this.agents.get(agentId);
+          const verification=this.verifier.verify(current,latest,current.successCriteria?.length?current.successCriteria:contract.successCriteria);
           if(verification.verified){
             const executionStep=current.steps.find(step=>/execute|run|perform|action/i.test(step.description));
             if(executionStep)executionStep.status="completed";
