@@ -4,7 +4,7 @@ const core=new LayanXCore();
 core.registerAgent({agentId:"core",purpose:"gateway approval",allowedTools:["dangerous.read"],forbiddenResources:[],requiredPermission:"L1_READ",maxToolCalls:10,maxRuntimeMs:10000,successCriteria:["approved"],stopCondition:"stop"});
 core.tools.register({name:"dangerous.read",description:"gateway approval test",permission:"L1_READ",dangerous:true,actions:["run sensitive test"],tags:["test"]});
 core.toolAdapters.register("dangerous.read",{async execute(){return{approved:true};}});
-const mission=core.startMission("gateway approval");
+const mission=core.startMission("gateway approval","project");
 mission.projectId="gateway-approval-project";
 mission.requiredPermission="L1_READ";
 mission.tools=[{tool:"dangerous.read",action:"run sensitive test",permission:"L1_READ",reason:"gateway approval"}];
