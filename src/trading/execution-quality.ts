@@ -17,7 +17,7 @@ export function analyzeExecutionQuality(trade:ExecutionTrade):ExecutionQualityRe
  const entryDrag=finite(trade.entry.referencePrice)?Math.abs(trade.entry.fillPrice-entryRef):(entrySpread!==undefined?entrySpread/2:0);
  const exitDrag=finite(trade.exit.referencePrice)?Math.abs(trade.exit.fillPrice-exitRef):(exitSpread!==undefined?exitSpread/2:0);
  const totalExecutionDrag=roundDecimal((entryDrag+exitDrag)*trade.quantity*multiplier);
- const netPnlAfterExecutionCosts=roundDecimal(grossPnl-totalExecutionDrag);
+ const netPnlAfterExecutionCosts=roundDecimal(grossPnl-totalExecutionDrag,10);
  const executionCostPctOfGross=grossPnl>0?roundDecimal(totalExecutionDrag/grossPnl*100):null;
  let quality:ExecutionQuality="unknown";
  if(spreadAtrRatio!==undefined){if(spreadAtrRatio<=0.10)quality="excellent";else if(spreadAtrRatio<=0.20)quality="good";else if(spreadAtrRatio<=0.35)quality="marginal";else quality="poor";}
