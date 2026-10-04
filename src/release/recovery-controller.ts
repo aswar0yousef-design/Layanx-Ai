@@ -169,7 +169,8 @@ export class ProductionRecoveryController{
   if(record)return this.resumeEngine.plan(record);
   const history=await this.persistence.history(1);
   const latest=history[0];
-  return latest?this.resumeEngine.plan(latest):undefined;
+  const plan=latest?this.resumeEngine.plan(latest):undefined;
+  return plan?.action==="complete"?plan:undefined;
  }
 
  private async persistState(deployment:Deployment,state:PersistedRecoveryRecord["state"],attempts:number,reason?:string,target?:Deployment):Promise<void>{
