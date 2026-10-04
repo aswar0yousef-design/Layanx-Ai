@@ -11,6 +11,16 @@ export interface PlannedTool{
   payload?:Record<string,unknown>;
 }
 
+function isDevelopmentGoal(goal:string):boolean{
+ const value=goal.toLowerCase();
+ return ["test","tests","testing","typecheck","build","compile","lint","debug","error","bug","fix","code","project","repository","repo","npm","git","اختبار","اختبارات","فحص المشروع","المشروع","خطأ","اخطاء","إصلاح","الكود","برمجة","بناء"].some(term=>value.includes(term));
+}
+function filterCatalogForGoal(goal:string,catalog:ToolCatalogEntry[]):ToolCatalogEntry[]{
+ if(!isDevelopmentGoal(goal))return catalog;
+ const allowedPrefixes=["project.","terminal.","files.","git.","development.","runtime.","mission.","memory.","browser.read","github.repo.read","github.issues.list","github.prs.list"];
+ return catalog.filter(tool=>allowedPrefixes.some(prefix=>tool.name===prefix||tool.name.startsWith(prefix)));
+}
+
 function parseModelJson(raw:string,context:string):unknown{
  const cleaned=raw.trim().replace(/^\x60\x60\x60(?:json)?\s*/i,"").replace(/\s*\x60\x60\x60$/,"").trim();
  try{return JSON.parse(cleaned);}catch{}
@@ -40,7 +50,7 @@ export class AiMissionPlanner{
   constructor(private readonly models:ModelExecutionRouter){}
   async plan(goal:string,tools:ToolCatalogEntry[]=[],projectContext?:unknown,routing?:ModelRoutingOptions):Promise<PlannedMission>{
     if(!goal.trim())throw new Error("Mission goal is empty.");
-    const catalog=tools.length?tools.map(tool=>({
+    const scopedTools=filterCatalogForGoal(goal,tools);\n    const catalog=scopedTools.length?scopedTools.map(tool=>({
       name:tool.name,description:tool.description,permission:tool.permission,
       dangerous:tool.dangerous,actions:tool.actions,tags:tool.tags
     })):[];
@@ -60,7 +70,7 @@ export class AiMissionPlanner{
       "Goal: "+goal
     ].join("\n");
     const response=await this.models.execute({capability:"reasoning",routing,input:basePrompt});
-    try{return this.parse(response.output,tools);}
+    try{return this.parse(response.output,scopedTools);}
     catch(error){
       if(!(error instanceof Error)||error.message!=="Incomplete mission plan.")throw error;
       const repair=await this.models.execute({
@@ -75,12 +85,12 @@ export class AiMissionPlanner{
           "Goal: "+goal
         ].join("\n")
       });
-      return this.parse(repair.output,tools);
+      return this.parse(repair.output,scopedTools);
     }
   }
   async nextTool(input:{goal:string;result:unknown;tools:ToolCatalogEntry[];requiredPermission:PermissionLevel;completedTools:string[];memory?:Array<{kind:string;summary:string;content:unknown;tags:string[]}>;projectContext?:unknown;routing?:ModelRoutingOptions;visualContext?:{mimeType:string;base64:string}}):Promise<PlannedTool|null>{
     if(!input.goal.trim())throw new Error("Mission goal is empty.");
-    const catalog=input.tools.map(tool=>({name:tool.name,description:tool.description,permission:tool.permission,dangerous:tool.dangerous,actions:tool.actions,tags:tool.tags}));
+    const scopedTools=filterCatalogForGoal(input.goal,input.tools);\n    const catalog=scopedTools.map(tool=>({name:tool.name,description:tool.description,permission:tool.permission,dangerous:tool.dangerous,actions:tool.actions,tags:tool.tags}));
     const boundedResult=JSON.stringify(input.result).slice(0,12000);
     const boundedMemory=JSON.stringify(input.memory??[]).slice(0,8000);
     const prompt=[
@@ -109,7 +119,7 @@ export class AiMissionPlanner{
     value=parseModelJson(response.output,"Adaptive planner");
     if(value===null)return null;
     if(!value||typeof value!=="object")throw new Error("Adaptive planner returned an invalid tool.");
-    return this.parseTools([value],input.tools,input.requiredPermission)[0]??null;
+    return this.parseTools([value],scopedTools,input.requiredPermission)[0]??null;
   }
 
   private parse(raw:string,catalog:ToolCatalogEntry[]):PlannedMission{
