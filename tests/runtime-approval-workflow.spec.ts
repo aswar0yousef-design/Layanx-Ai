@@ -9,7 +9,7 @@ core.tools.register({name:"dangerous.read",description:"approval test",permissio
 let calls=0;
 core.toolAdapters.register("dangerous.read",{async execute(){calls++;return{approved:true};}});
 
-const mission=core.startMission("approval workflow");
+const mission=core.startMission("approval workflow","project");
 mission.projectId="approval-project";
 mission.requiredPermission="L1_READ";
 mission.tools=[{tool:"dangerous.read",action:"run sensitive test",permission:"L1_READ",reason:"approval workflow"}];
