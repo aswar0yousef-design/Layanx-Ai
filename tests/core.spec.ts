@@ -18,7 +18,7 @@ if(mission.status!=="completed")throw new Error("Successful mission did not comp
 
 const failedCore=makeCore();
 const failedMission=failedCore.startMission("Verification failure test");
-failedMission.steps[0]!.status="failed";
+failedMission.successCriteria=["result === \"never\""];
 const failedRuntime=new ExecutionRuntime(failedCore);
 const failedResult=await failedRuntime.run(failedMission,{missionId:failedMission.id,agentId:"test-agent",tool:"echo",action:"echo",permission:"L1_READ",idempotencyKey:crypto.randomUUID(),payload:"hello"},{execute:async()=> "ok"});
 if(failedResult.ok||failedResult.verified)throw new Error("Invalid execution state should fail verification.");
