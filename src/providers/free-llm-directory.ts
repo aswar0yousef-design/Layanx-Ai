@@ -1,5 +1,5 @@
 import {localSecret} from "../security/local-secret-vault.js";
-import {FreeCapacityProvider, type FreeCapacitySpec} from "./free-capacity.js";
+import {FreeCapacityProvider,freeProviderRuntimeName,type FreeCapacitySpec} from "./free-capacity.js";
 
 export interface FreeLlmDirectoryEntry extends FreeCapacitySpec{
   providerId:string;
@@ -61,7 +61,7 @@ export function createConfiguredFreeProviders():FreeCapacityProvider[]{
    name:entry.name,baseUrl:entry.baseUrl,apiKey:key.value,apiKeyEnv:entry.keyEnv,
    models:entry.models,capabilities:entry.capabilities,priority:entry.priority,tags:entry.tags
   };
-  return[new FreeCapacityProvider(spec)];
+  return[new FreeCapacityProvider({...spec,name:freeProviderRuntimeName(spec.name)})];
  });
 }
 
