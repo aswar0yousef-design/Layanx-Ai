@@ -6,5 +6,6 @@ const segment=publisher.planSegment(verses);
 assert.equal(segment.fromAyah,15);assert.equal(segment.toAyah,21);assert.ok(segment.durationSec>=30&&segment.durationSec<=60);assert.equal(segment.verses.length,7);
 const plan=publisher.buildPlan(segment,"en");assert.equal(plan.idempotencyKey.length,24);assert.match(plan.title,/Surah 81/);assert.ok(plan.hashtags.includes("#Quran"));
 assert.throws(()=>publisher.planSegment(verses,0,[{surah:81,fromAyah:15,toAyah:21,durationSec:49,publicationIds:["x"],publishedAt:new Date().toISOString()}]),/quran_segment_already_published/);
-assert.throws(()=>publisher.planSegment(verses,3,[{surah:81,fromAyah:17,toAyah:19,durationSec:22,publicationIds:["x"],publishedAt:new Date().toISOString()}]),/quran_segment_already_published/);\nassert.throws(()=>new QuranPublisher({minDurationSec:60,maxDurationSec:30}),/quran_invalid_duration_policy/);
+assert.throws(()=>publisher.planSegment(verses,3,[{surah:81,fromAyah:17,toAyah:19,durationSec:22,publicationIds:["x"],publishedAt:new Date().toISOString()}]),/quran_segment_already_published/);
+assert.throws(()=>new QuranPublisher({minDurationSec:60,maxDurationSec:30}),/quran_invalid_duration_policy/);
 console.log("quran publisher: ok");
