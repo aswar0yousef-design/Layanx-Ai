@@ -88,10 +88,10 @@ export class ExecutionRuntime{
   this.core.executionStates.update(mission.id,{toolCalls:state.toolCalls+1,runtimeMs:state.runtimeMs+runtimeMs,status:result.ok?"completed":"failed",recoverable:!result.ok});
   if(executionStep) executionStep.status=result.ok?"completed":"failed";
   this.core.ledger.append({id:crypto.randomUUID(),missionId:mission.id,agentId:request.agentId,action:request.action,status:result.ok?"completed":"failed",timestamp:new Date().toISOString(),detail:result.error});
-  await this.persist(mission);
   if(!result.ok){
    this.core.failureLearning.record({missionId:mission.id,projectId:security.projectId,error:result.error,tool:request.tool,action:request.action,recoverable:true});
    mission.status="failed";
+   this.core.executionStates.update(mission.id,{status:"failed",recoverable:true});
    this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"failure",metadata:{error:result.error,missionId:mission.id}});
    await this.persist(mission);
    return{ok:false,missionId:mission.id,verified:false,error:result.error,recoverable:true};
@@ -107,6 +107,8 @@ export class ExecutionRuntime{
    return{ok:true,missionId:mission.id,verified:false,data:result.data,recoverable:true};
   }
   mission.status="verifying";
+  this.core.executionStates.update(mission.id,{status:"running",recoverable:true});
+  await this.persist(mission);
   const verification=this.core.verifier.verify(mission,result.data,mission.successCriteria?.length?mission.successCriteria:contract.successCriteria);
   if(verification.verified){
    const verificationStep=mission.steps.find(step=>/verif|confirm|validate|check/i.test(step.description));
