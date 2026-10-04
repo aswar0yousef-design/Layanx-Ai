@@ -6,6 +6,8 @@ core.registerAgent({
  agentId:"core",purpose:"MCP test",allowedTools:["runtime.status"],forbiddenResources:[],
  requiredPermission:"L1_READ",maxToolCalls:10,maxRuntimeMs:10000,successCriteria:[],stopCondition:"stop"
 });
+core.tools.register({name:"runtime.status",description:"runtime status",permission:"L1_READ",dangerous:false});
+core.toolAdapters.register("runtime.status",{async execute(){return{ok:true};}});
 core.startMission("mcp fixture","project-a");
 const gateway=new McpGateway(core);
 
