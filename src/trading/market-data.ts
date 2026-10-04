@@ -1,6 +1,5 @@
 import type {Candle} from "./strategy.js";
 import {roundDecimal} from "./numeric.js";
-import {roundDecimal} from "./numeric.js";
 
 export interface MarketBar extends Candle{bidOpen?:number;bidHigh?:number;bidLow?:number;bidClose?:number;askOpen?:number;askHigh?:number;askLow?:number;askClose?:number;spread?:number;}
 export interface MarketDataQuality{bars:number;duplicateTimestamps:number;outOfOrderPairs:number;negativeSpreads:number;estimatedIntervalMs:number;gaps:number;valid:boolean;}
