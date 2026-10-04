@@ -21,6 +21,7 @@ const result = runPaperScalping(candles, {
   takeProfitDistance: 0.5,
   spread: 0.2,
   slippage: 0.05,
+  signalConfig:{minimumScore:1},
   brokerSymbol: {
     broker: "CFI",
     accountType: "CFI2-Real",
