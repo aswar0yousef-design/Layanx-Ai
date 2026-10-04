@@ -71,9 +71,8 @@ export function createTerminalToolAdapter(options:{root:string}):ToolAdapter{
   const workspace=workspaceFor(root,request.projectId);await mkdir(workspace,{recursive:true});
   const input=payload(request),command=typeof input.command==="string"?input.command.trim():"",parts=command.split(/\s+/).filter(Boolean),binary=parts.shift()?.toLowerCase();
   if(!binary||!COMMANDS.has(binary))throw new Error("Terminal command is not allowed.");
-  const allowed=COMMANDS.get(binary)??[];
-  const normalizedCommand=[binary,...parts].map(value=>value.trim().toLowerCase()).filter(Boolean).join(" ");
-  const permitted=COMMANDS.has(binary)&&allowed.map(value=>`${binary} ${value}`).includes(normalizedCommand);
+  const normalizedCommand=command.toLowerCase().replace(/\s+/g," ");
+  const permitted=["git status","git status --short","git diff","git log","npm test","npm run typecheck","npm run build"].includes(normalizedCommand);
   if(!permitted)throw new Error("Terminal command is not allowed.");
   if(/[;&|$<>]/.test(command)||command.includes(String.fromCharCode(96)))throw new Error("Shell metacharacters are blocked.");
   return await new Promise((resolvePromise,reject)=>{
