@@ -2,7 +2,6 @@ import type {LayanXCore} from "../core/orchestrator.js";
 import type {ToolAdapter} from "../tools/executor.js";
 import {QuranPipeline,QuranPublicationLedger} from "./pipeline.js";
 import {QuranRightsCatalog} from "./rights.js";
-import {QuranRenderer} from "./renderer.js";
 import {OAuthConnectionCenter} from "../business/oauth.js";
 import type {SocialAccount} from "../business/types.js";
 import {join} from "node:path";
