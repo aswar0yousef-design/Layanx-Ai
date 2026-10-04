@@ -109,10 +109,10 @@ export function createProjectVerifyToolAdapter(options:{root:string}):ToolAdapte
 
 
 function validatePackageName(value:string):boolean{
-  return /^(?:(?:@[a-z0-9._-]+\\/)?[a-z0-9._-]+)(?:@[a-z0-9._*^~<>=+ -]+)?$/i.test(value)
+  return /^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+(?:@[a-z0-9._*^~<>=+ -]+)?$/i.test(value)
     && !value.includes("://")
     && !value.includes("\\\\")
-    && !/[;&|$`<>]/.test(value)
+    && !/[;&|$\`<>]/.test(value)
     && !value.startsWith("-");
 }
 function runNpm(cwd:string,args:string[],timeoutMs:number):Promise<{args:string[];cwd:string;exitCode:number|null;signal:NodeJS.Signals|null;stdout:string;stderr:string}>{
