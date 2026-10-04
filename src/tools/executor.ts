@@ -19,6 +19,8 @@ export class ToolExecutor {
    if(claim.replay)return{ok:true,verified:true,data:claim.record.data,replayed:true};
    return{ok:false,verified:false,error:claim.reason??"Duplicate operation rejected."};
   }
+  const durable=await this.idempotency.get(request.idempotencyKey);
+  if(durable?.status==="completed")return{ok:true,verified:true,data:durable.data,replayed:true};
 
   try{
    const data=await adapter.execute(request);
