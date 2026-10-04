@@ -12,6 +12,7 @@ core.toolAdapters.register("dangerous.read",{async execute(){calls++;return{appr
 const mission=core.startMission("approval workflow","approval-project");
 mission.requiredPermission="L1_READ";
 mission.tools=[{tool:"dangerous.read",action:"run sensitive test",permission:"L1_READ",reason:"approval workflow"}];
+core.missions.save(mission);
 
 const blocked=await core.executeMissionTool(mission.id,mission.projectId,0,{});
 if(blocked.ok||!blocked.approvalId)throw new Error("Missing approval did not create an approval request.");
