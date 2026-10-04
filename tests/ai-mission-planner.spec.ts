@@ -18,6 +18,12 @@ const provider:ModelProviderAdapter={
 };
 providers.register(provider);
 const planner=new AiMissionPlanner(new ModelExecutionRouter(models,providers));
+const fencedProviderModels=new ModelRegistry();
+fencedProviderModels.register({id:"fenced",provider:"fenced",capabilities:["reasoning"],local:true,enabled:true,priority:1});
+const fencedProviders=new ModelProviderRegistry();
+fencedProviders.register({name:"fenced",async health(){return{provider:"fenced",available:true,updatedAt:new Date().toISOString()};},async generate(model){return{modelId:model.id,provider:model.provider,output:"Here is the plan:\n\x60\x60\x60json\n{\"risk\":\"low\",\"requiredPermission\":\"L1_READ\",\"steps\":[{\"description\":\"inspect\"}],\"successCriteria\":[\"done\"],\"stopCondition\":\"stop\",\"tools\":[]}\n\x60\x60\x60"};}});
+const fencedPlan=await new AiMissionPlanner(new ModelExecutionRouter(fencedProviderModels,fencedProviders)).plan("x");
+if(fencedPlan.steps[0]?.description!=="inspect")throw new Error("Planner did not parse fenced JSON.");
 const plan=await planner.plan("Create a safe read-only report.");
 if(plan.risk!=="low"||plan.requiredPermission!=="L1_READ"||plan.steps.length!==3)throw new Error("AI mission plan parsing failed.");
 const visualTool=await planner.nextTool({goal:"Inspect the screen",result:{status:"screenshot"},tools:[{name:"desktop.screenshot",description:"Capture screen",permission:"L2_ANALYZE",dangerous:false,actions:["desktop screenshot"],tags:["desktop"]}],requiredPermission:"L2_ANALYZE",completedTools:[],visualContext:{mimeType:"image/png",base64:"aGVsbG8="}});
