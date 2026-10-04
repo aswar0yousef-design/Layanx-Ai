@@ -10,6 +10,8 @@ function record(request:ToolRequest):Record<string,unknown>{
 }
 function repo(input:unknown):string{
  if(typeof input!=="string"||!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(input)||input.length>MAX_REPO_LENGTH)throw new Error("GitHub repository must use owner/repository format.");
+ const [owner,name]=input.split("/");
+ if(owner==="."||owner===".."||name==="."||name==="..")throw new Error("GitHub repository must use owner/repository format.");
  return input;
 }
 function count(input:unknown):number{
