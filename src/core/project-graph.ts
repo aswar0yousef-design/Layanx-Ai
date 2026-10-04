@@ -92,9 +92,10 @@ export class ProjectGraph{
         const specifier=match[2];
         if(typeof specifier!=="string"||!specifier.startsWith("."))continue;
         const target=this.resolveImport(path,specifier,fileSet);
-        if(target)edges.push({from:path,to:target,kind:"import"});
-      if(/(^|\/)(test|tests|__tests__)(\/)|\.(spec|test)\./i.test(path))edges.push({from:path,to:target,kind:"test"});
-      }
+        if(target){
+          edges.push({from:path,to:target,kind:"import"});
+          if(/(^|\/)(test|tests|__tests__)(\/)|\.(spec|test)\./i.test(path))edges.push({from:path,to:target,kind:"test"});
+        }
       IMPORT_RE.lastIndex=0;
       if(/(?:app|router|route|api).{0,80}(?:get|post|put|patch|delete|options|head)\s*\(/i.test(source)||
          /(?:app|router)\\.(?:get|post|put|patch|delete)\s*\(/i.test(source)){
