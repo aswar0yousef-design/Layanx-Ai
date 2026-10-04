@@ -758,7 +758,7 @@ export class LayanXCore{
   }
 
   async planMission(goal:string,projectId="default",routing?:ModelRoutingOptions){
-    if(agentId==="core")this.ensureCoreAgent();
+    this.ensureCoreAgent();
     const contract=this.agents.get("core");
     const tools=this.toolCatalog.list(contract,contract.requiredPermission);
     let projectContext:unknown=null;
