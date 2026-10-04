@@ -10,13 +10,15 @@ import {NativeSocialConnector} from "../business/native-social.js";
 import type {SocialAccount} from "../business/types.js";
 export interface QuranPipelineConfig extends QuranSourceConfig{outputDir:string;platforms:string[];backgroundPath?:string;fontFile?:string;fontName?:string;translationLanguage?:string;translationId?:number;channelName?:string;}
 export interface QuranPipelineResult{segment:QuranSegment;videoPath:string;idempotencyKey:string;creditText:string;readyForPublication:boolean;}
-export interface QuranLedgerEntry extends QuranPublishedSegment{recitationId:number;videoPath:string;platforms:string[];idempotencyKey:string;}
+export interface QuranLedgerEntry extends QuranPublishedSegment{recitationId:number;videoPath:string;platforms:string[];idempotencyKey:string;status:"submitted"|"published"|"partial";publicationResults?:Array<{platform:string;externalId:string;status:"submitted"|"published"}>;}
 export class QuranPublicationLedger{
  constructor(private readonly path:string){}
  private read():QuranLedgerEntry[]{try{return JSON.parse(readFileSync(this.path,"utf8")) as QuranLedgerEntry[];}catch{return[];}}
  private write(items:QuranLedgerEntry[]){mkdirSync(join(this.path,".."),{recursive:true});const tmp=this.path+".tmp";writeFileSync(tmp,JSON.stringify(items,null,2),"utf8");renameSync(tmp,this.path);}
  has(key:string){return this.read().some(x=>x.idempotencyKey===key);}
+ find(key:string){return this.read().find(x=>x.idempotencyKey===key);}
  add(entry:QuranLedgerEntry){const items=this.read();if(items.some(x=>x.idempotencyKey===entry.idempotencyKey))return false;items.push(entry);this.write(items);return true;}
+ upsert(entry:QuranLedgerEntry){const items=this.read();const index=items.findIndex(x=>x.idempotencyKey===entry.idempotencyKey);if(index<0)items.push(entry);else items[index]=entry;this.write(items);return structuredClone(entry);}
  list(){return this.read();}
 }
 export class QuranPipeline{
@@ -35,10 +37,11 @@ export class QuranPipeline{
   }finally{rmSync(tempDir,{recursive:true,force:true});}
  }
  async publishPrepared(result:QuranPipelineResult,accounts:Record<string,SocialAccount>){
-  if(!result.readyForPublication)throw new Error("quran_video_not_ready");const license=this.rights.assertPublishable(this.config.recitationId,this.config.platforms);if(this.ledger.has(result.idempotencyKey))throw new Error("quran_video_already_published");
+  if(!result.readyForPublication)throw new Error("quran_video_not_ready");const license=this.rights.assertPublishable(this.config.recitationId,this.config.platforms);const existing=this.ledger.find(result.idempotencyKey);if(existing&&existing.status==="published")throw new Error("quran_video_already_published");
   const item={title:"Quran — Surah "+result.segment.surah+" • "+result.segment.fromAyah+"-"+result.segment.toAyah,body:(license.creditText+"\n\nQuran data provided by Quran Foundation.\n"+(this.config.channelName??"")).trim(),mediaUrls:[result.videoPath]};
-  const publications:string[]=[];for(const platform of this.config.platforms){const account=accounts[platform];if(!account)throw new Error("quran_social_account_missing:"+platform);const published=await new NativeSocialConnector(platform as any).publish(account,item);publications.push(published.externalId);}
-  const entry:QuranLedgerEntry={surah:result.segment.surah,fromAyah:result.segment.fromAyah,toAyah:result.segment.toAyah,durationSec:result.segment.durationSec,publicationIds:publications,publishedAt:new Date().toISOString(),recitationId:this.config.recitationId,videoPath:result.videoPath,platforms:[...this.config.platforms],idempotencyKey:result.idempotencyKey};this.ledger.add(entry);return entry;
+  const entry:QuranLedgerEntry=existing??{surah:result.segment.surah,fromAyah:result.segment.fromAyah,toAyah:result.segment.toAyah,durationSec:result.segment.durationSec,publicationIds:[],publishedAt:new Date().toISOString(),recitationId:this.config.recitationId,videoPath:result.videoPath,platforms:[...this.config.platforms],idempotencyKey:result.idempotencyKey,status:"partial",publicationResults:[]};
+  for(const platform of this.config.platforms){if(entry.publicationResults?.some(x=>x.platform===platform))continue;const account=accounts[platform];if(!account)throw new Error("quran_social_account_missing:"+platform);try{const published=await new NativeSocialConnector(platform as any).publish(account,item);entry.publicationIds.push(published.externalId);entry.publicationResults=[...(entry.publicationResults??[]),{platform,externalId:published.externalId,status:"submitted"}];this.ledger.upsert(entry);}catch(error){entry.status=entry.publicationResults?.length?"partial":"partial";this.ledger.upsert(entry);throw error;}}
+  entry.status=entry.publicationResults?.length===this.config.platforms.length?"published":"partial";return this.ledger.upsert(entry);
  }
  private async probeDuration(path:string){return new Promise<number>((resolveResult,reject)=>{const ffprobe=process.env.LAYANX_FFPROBE_PATH??"ffprobe";const p=spawn(ffprobe,["-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",path],{stdio:["ignore","pipe","ignore"]});let out="";p.stdout.on("data",d=>out+=String(d));p.on("error",()=>reject(new Error("quran_ffprobe_not_available")));p.on("close",code=>{if(code!==0)reject(new Error("quran_ffprobe_failed"));else{const n=Number(out.trim());if(!Number.isFinite(n)||n<=0)reject(new Error("quran_audio_duration_invalid"));else resolveResult(n);}});});}
 }
