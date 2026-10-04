@@ -30,6 +30,7 @@ export class ToolCatalog{
   discover(query:ToolDiscoveryQuery,contract:import("./contracts.js").AgentContract):ToolCatalogEntry[]{
     const terms=query.action.toLowerCase().split(/[^a-z0-9_]+/).filter(Boolean);
     return this.list(contract,query.permission)
+      .filter(tool=>rank[tool.permission]<=rank[query.permission])
       .map(tool=>{const haystack=[tool.name,tool.description,...tool.actions,...tool.tags].join(" ").toLowerCase();const score=terms.reduce((sum,term)=>sum+(haystack.includes(term)?1:0),0);return{tool,score};})
       .filter(item=>item.score>0)
       .sort((a,b)=>b.score-a.score||a.tool.name.localeCompare(b.tool.name))
