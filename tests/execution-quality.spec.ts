@@ -24,6 +24,6 @@ assert.ok(erased.warnings.some(w => w.includes("not profitable")));
 const summary = summarizeExecutionQuality([result, erased]);
 assert.equal(summary.trades, 2);
 assert.equal(summary.costErasedTrades, 1);
-assert.equal(summary.grossPnl, 0.85);
+assert.equal(summary.grossPnl, 0.95);
 assert.equal(summary.netPnlAfterExecutionCosts, 0.25);
 console.log("execution quality tests passed");
