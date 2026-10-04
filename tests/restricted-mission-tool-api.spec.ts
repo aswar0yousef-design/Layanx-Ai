@@ -11,7 +11,7 @@ core.toolAdapters.register("echo",{async execute(request:ToolRequest){calls++;re
 const provider:ModelProviderAdapter={name:"test",async health(){return{provider:"test",available:true,updatedAt:new Date().toISOString()};},async generate(model){return{provider:"test",modelId:model.id,output:JSON.stringify({risk:"low",requiredPermission:"L1_READ",steps:[{description:"read"}],successCriteria:["done"],stopCondition:"stop"})};}};
 core.models.register({id:"test-model",provider:"test",capabilities:["reasoning"],local:true,enabled:true,priority:1});core.providers.register(provider);
 
-const mission=core.startMission("execute echo");
+const mission=core.startMission("execute echo","p1");
 const token=core.capabilities.issue({missionId:mission.id,agentId:"runner",projectId:"p1",resource:"echo",permission:"L1_READ",expiresAt:new Date(Date.now()+60000).toISOString()});
 const server=startRuntimeApi({core,host:"127.0.0.1",port:0});
 await new Promise<void>(resolve=>server.on("listening",resolve));
@@ -25,12 +25,12 @@ const replay=await fetch(base+"/v1/missions/"+mission.id+"/tools",{method:"POST"
 if(replay.status!==200)throw new Error("idempotent replay failed");
 if(calls!==1)throw new Error("idempotent replay executed adapter twice");
 
-const deniedMission=core.startMission("execute echo");
+const deniedMission=core.startMission("execute echo","p1");
 const deniedToken=core.capabilities.issue({missionId:deniedMission.id,agentId:"runner",projectId:"p1",resource:"echo",permission:"L1_READ",expiresAt:new Date(Date.now()+60000).toISOString()});
 const denied=await fetch(base+"/v1/missions/"+deniedMission.id+"/tools",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...common,idempotencyKey:"api-echo-2",capabilityId:deniedToken.id,permission:"L2_ANALYZE"})});
 if(denied.status!==403)throw new Error("scope denial failed: "+denied.status);
 
-const sentinelMission=core.startMission("blocked action");
+const sentinelMission=core.startMission("blocked action","p1");
 const sentinelToken=core.capabilities.issue({missionId:sentinelMission.id,agentId:"runner",projectId:"p1",resource:"echo",permission:"L1_READ",expiresAt:new Date(Date.now()+60000).toISOString()});
 const sentinel=await fetch(base+"/v1/missions/"+sentinelMission.id+"/tools",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...common,idempotencyKey:"api-echo-3",capabilityId:sentinelToken.id,action:"disable_security"})});
 if(sentinel.status!==403)throw new Error("sentinel denial failed: "+sentinel.status);
