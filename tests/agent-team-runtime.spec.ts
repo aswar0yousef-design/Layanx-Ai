@@ -6,7 +6,7 @@ const agent={agentId:"ops",purpose:"run commands",allowedTools:["terminal.run"],
 core.registerAgent(agent);
 core.tools.register({name:"terminal.run",description:"Run command",permission:"L4_EXECUTE",dangerous:true});
 
-const mission=core.startMission("Run command");
+const mission=core.startMission("Run command","project-1");
 mission.requiredPermission="L4_EXECUTE";
 const runner=new MissionRunner(core);
 const tasks=runner.buildTeam(mission,[agent]);
