@@ -1,5 +1,6 @@
 import type { MarketCandle } from "./scalping-signal.js";
 import { inspectCandleQuality, type CandleQualityReport } from "./candle-quality.js";
+import {roundDecimal} from "./numeric.js";
 
 export interface MarketDataDiagnostics {
   symbol: string;
@@ -73,7 +74,7 @@ export function diagnoseMarketData(
 
   const bidAskSpreads = candles
     .filter(c => c.bid !== undefined && c.ask !== undefined)
-    .map(c => c.ask! - c.bid!);
+    .map(c => roundDecimal(c.ask! - c.bid!));
   const closes = candles.map(c => c.close).filter(Number.isFinite);
   const spread = summary(bidAskSpreads);
   const intervalSummary = summary(intervals);
