@@ -19,7 +19,7 @@ try{
  const first=new LayanXCore(undefined,persistence);
  setup(first);
  const mission=first.startMission("approval restart","project");
- mission.projectId="approval-restart-project";
+ mission.projectId="default";
  mission.tools=[{tool:"sensitive.read",action:"delete record",permission:"L4_EXECUTE",reason:"approval restart"}];
  first.missions.save(mission);
  mission.requiredPermission="L4_EXECUTE";
