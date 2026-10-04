@@ -54,7 +54,7 @@ export function createRuntime(options:RuntimeOptions={}){
  registerSkillLearningTools(core);
  let channels!: MessagingChannels;
  const flows=new FlowRuntime(core,async(channel,chatId,text)=>{if(channel==="whatsapp")await channels.whatsapp.sendText(chatId,text);else if(channel==="telegram")await channels.telegram.sendText(chatId,text);});
- channels=new MessagingChannels(core,async message=>{const result=await flows.handleInbound({id:message.messageId,projectId:message.projectId,channel:message.channel,senderId:message.senderId,chatId:message.chatId,text:message.text,timestamp:new Date().toISOString(),metadata:{...(message.raw&&typeof message.raw==="object"?message.raw as Record<string,unknown>:{}),eventType:"message"}});return result.matched>0;});
+ channels=new MessagingChannels(core,async message=>{const raw=message.raw&&typeof message.raw==="object"?message.raw as Record<string,unknown>:{};const projectId=typeof raw.projectId==="string"&&raw.projectId.trim()?raw.projectId:process.env.LAYANX_CHANNEL_PROJECT_ID??"default";const result=await flows.handleInbound({id:message.messageId,projectId,channel:message.channel,senderId:message.senderId,chatId:message.chatId,text:message.text,timestamp:new Date().toISOString(),metadata:{...raw,eventType:"message"}});return result.matched>0;});
  const agent:AgentContract={
   agentId:"core",
   purpose:"Safely orchestrate LayanX missions.",
