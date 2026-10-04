@@ -78,7 +78,7 @@ export class MissionScheduler{
  }
  private nextTime(trigger:ScheduleTrigger,from:Date){
   if(trigger.kind==="once"){const at=new Date(trigger.runAt!);return at.getTime()>=from.getTime()?at:undefined;}
-  if(trigger.kind==="daily"){const next=new Date(from);next.setHours(trigger.hour!,trigger.minute!,0,0);if(next.getTime()<from.getTime())next.setDate(next.getDate()+1);return next;}
+  if(trigger.kind==="daily"){const hour=trigger.hour;if(hour===undefined||!Number.isInteger(hour)||hour<0||hour>23)throw new Error("Daily trigger requires hour 0-23.");const minute=trigger.minute;if(minute===undefined||!Number.isInteger(minute)||minute<0||minute>59)throw new Error("Daily trigger requires minute 0-59.");const next=new Date(from);next.setHours(hour,minute,0,0);if(next.getTime()<from.getTime())next.setDate(next.getDate()+1);return next;}
   const intervalMs=trigger.intervalMs;
   if(typeof intervalMs!=="number"||!Number.isFinite(intervalMs))throw new Error("Interval trigger is missing intervalMs.");
   const delayMs=trigger.runImmediately===true?0:intervalMs;
