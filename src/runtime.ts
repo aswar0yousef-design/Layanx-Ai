@@ -21,6 +21,7 @@ import {registerYahooMailTools} from "./yahoo-tools.js";
 import {registerSkillLearningTools} from "./skills/tools.js";
 import {MessagingChannels} from "./channels/service.js";
 import {FlowRuntime} from "./flows/runtime.js";
+import {registerQuranTools,configureQuranDailySchedules} from "./quran/tools.js";
 
 export interface RuntimeOptions{storagePath?:string;}
 
@@ -47,6 +48,7 @@ export function createRuntime(options:RuntimeOptions={}){
  core.setLiveScreenObserver(liveScreen);
  registerBusinessTools(core,business,ads,media,growth);
  registerCreatorTools(core,creator);
+ registerQuranTools(core);
  registerGoogleWorkspaceTools(core,{accessToken:process.env.GOOGLE_ACCESS_TOKEN,clientId:process.env.GOOGLE_CLIENT_ID,clientSecret:process.env.GOOGLE_CLIENT_SECRET,refreshToken:process.env.GOOGLE_REFRESH_TOKEN});
  const googleInvoices=new GoogleInvoiceAgent(core);
  registerGoogleInvoiceTool(core,googleInvoices);
@@ -58,7 +60,7 @@ export function createRuntime(options:RuntimeOptions={}){
  const agent:AgentContract={
   agentId:"core",
   purpose:"Safely orchestrate LayanX missions.",
-  allowedTools:["runtime.status","mission.inspect","memory.recall","http.read","github.repo.read","github.issues.list","github.prs.list","browser.read","files.read","files.list","files.stat","files.write","project.bootstrap","project.verify","terminal.exec","git.status","git.diff","git.log","git.checkpoint","git.branch","git.add","git.commit","git.rollback","git.push","project.inspect","project.verify","development.prepare","desktop.status","desktop.mouse.move","desktop.mouse.click","desktop.keyboard.type","desktop.keyboard.press","desktop.screenshot","ads.snapshot","ads.account.create","ads.campaign.create","ads.adgroup.create","ads.creative.create","ads.ad.create","ads.campaign.launch","ads.campaign.pause","ads.insights.sync","commerce.snapshot","commerce.store.create","commerce.product.create","commerce.product.update","commerce.product.publish","commerce.orders.sync","media.add","media.inspect","content.generate","content.publish","content.schedule","content.process_scheduled","commerce.analytics","campaign.create","growth.snapshot","growth.dashboard","growth.experiment.create","growth.plan_cycle","growth.metric.record","growth.action.complete","creator.doctor","creator.plan","creator.generate_assets","creator.render","google.gmail.search","google.gmail.read","google.gmail.send","google.drive.list","google.drive.folder.create","google.sheets.create","google.sheets.append","google.calendar.upcoming","google.merchant.accounts","google.merchant.products","email.invoices.scan","yahoo.mail.search","yahoo.mail.read","yahoo.mail.send","skill.learn","skill.pending","skill.approve","skill.enable","skill.execute","trading.paper.backtest","trading.binance.market-data","trading.binance.order"],
+  allowedTools:["runtime.status","mission.inspect","memory.recall","http.read","github.repo.read","github.issues.list","github.prs.list","browser.read","files.read","files.list","files.stat","files.write","project.bootstrap","project.verify","terminal.exec","git.status","git.diff","git.log","git.checkpoint","git.branch","git.add","git.commit","git.rollback","git.push","project.inspect","project.verify","development.prepare","desktop.status","desktop.mouse.move","desktop.mouse.click","desktop.keyboard.type","desktop.keyboard.press","desktop.screenshot","ads.snapshot","ads.account.create","ads.campaign.create","ads.adgroup.create","ads.creative.create","ads.ad.create","ads.campaign.launch","ads.campaign.pause","ads.insights.sync","commerce.snapshot","commerce.store.create","commerce.product.create","commerce.product.update","commerce.product.publish","commerce.orders.sync","media.add","media.inspect","content.generate","content.publish","content.schedule","content.process_scheduled","commerce.analytics","campaign.create","growth.snapshot","growth.dashboard","growth.experiment.create","growth.plan_cycle","growth.metric.record","growth.action.complete","creator.doctor","creator.plan","creator.generate_assets","creator.render","quran.doctor","quran.prepare_next","quran.publish_next","google.gmail.search","google.gmail.read","google.gmail.send","google.drive.list","google.drive.folder.create","google.sheets.create","google.sheets.append","google.calendar.upcoming","google.merchant.accounts","google.merchant.products","email.invoices.scan","yahoo.mail.search","yahoo.mail.read","yahoo.mail.send","skill.learn","skill.pending","skill.approve","skill.enable","skill.execute","trading.paper.backtest","trading.binance.market-data","trading.binance.order"],
   forbiddenResources:["secrets","security-controls"],
   requiredPermission:"L4_EXECUTE",
   maxToolCalls:100,
@@ -80,6 +82,7 @@ export function createRuntime(options:RuntimeOptions={}){
 export async function restoreRuntime(runtime:ReturnType<typeof createRuntime>):Promise<{restored:number}>{
  await runtime.business.hydrate();
  await runtime.core.scheduler.hydrate();
+ if(process.env.LAYANX_QURAN_AUTOSCHEDULE==="true")configureQuranDailySchedules(runtime.core);
  if(!runtime.persistence)return{restored:0};
  const snapshots=await runtime.persistence.list();
  for(const snapshot of snapshots)runtime.core.restoreRuntimeSnapshot(snapshot);
