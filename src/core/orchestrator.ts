@@ -169,7 +169,7 @@ export class LayanXCore{
     registerPaperTradingAgentTool(this.tools,this.toolAdapters);
     registerBinanceMarketDataTool(this.tools,this.toolAdapters);
     registerBinanceLiveOrderTool(this.tools,this.toolAdapters);
-    if(!this.agents.list().some(agent=>agent.agentId==="trading-executor"))this.agents.register({agentId:"trading-executor",purpose:"Execute explicitly approved trading workflows within bounded risk controls.",allowedTools:["trading.paper.backtest","trading.binance.market-data","trading.binance.order"],forbiddenResources:["secrets"],requiredPermission:"L4_EXECUTE",maxToolCalls:20,maxRuntimeMs:30000,successCriteria:["execution completed"],stopCondition:"Stop on approval, risk, or policy denial.",profile:{role:"trading",description:"Trading execution agent constrained by runtime approvals and risk controls.",preferredCapabilities:["analysis","reasoning"],memoryTags:["trading","risk"]}});
+    if(!this.agents.list().some(agent=>agent.agentId==="trading-executor"))this.agents.register({agentId:"trading-executor",purpose:"Execute explicitly approved trading workflows within bounded risk controls.",allowedTools:["trading.paper.backtest","trading.binance.market-data","trading.binance.order"],forbiddenResources:["secrets"],requiredPermission:"L4_EXECUTE",maxToolCalls:20,maxRuntimeMs:30000,successCriteria:["done"],stopCondition:"Stop on approval, risk, or policy denial.",profile:{role:"trading",description:"Trading execution agent constrained by runtime approvals and risk controls.",preferredCapabilities:["analysis","reasoning"],memoryTags:["trading","risk"]}});
     this.prGenerator=new PullRequestGenerator();
     this.releaseManager=new ReleaseManager();
     this.strategies.register(new HtfStructureLiquidityStrategy());
