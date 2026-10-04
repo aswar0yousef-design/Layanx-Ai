@@ -1,5 +1,5 @@
 import {createHash} from "node:crypto";
-import {existsSync,mkdirSync,rmSync,writeFileSync,readFileSync,renameSync} from "node:fs";
+import {mkdirSync,rmSync,writeFileSync,readFileSync,renameSync} from "node:fs";
 import {join,resolve} from "node:path";
 import {spawn} from "node:child_process";
 import {QuranPublisher,QuranVerse,QuranSegment,QuranPublishedSegment} from "./publisher.js";
