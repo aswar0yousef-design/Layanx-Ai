@@ -20,7 +20,7 @@ const request:ToolRequest={
 const adapter={async execute(){return{done:true};}};
 const runner=new (await import("../src/core/mission-runner.js")).MissionRunner(core);
 const blocked=await runner.execute(mission,request,adapter,undefined,{projectId:"wrong-project",capabilityId:capability.id});
-if(blocked.ok||!String(blocked.error).includes("scope"))throw new Error("Capability scope was not enforced.");
+if(blocked.ok||!String(blocked.error).includes("Project isolation"))throw new Error("Capability scope was not enforced.");
 
 const successful=await runner.execute(mission,request,adapter,undefined,{projectId:"project-1",capabilityId:capability.id});
 if(!successful.ok||!successful.verified||mission.status!=="completed")throw new Error("Secured mission execution failed.");
