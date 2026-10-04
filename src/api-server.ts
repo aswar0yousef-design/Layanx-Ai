@@ -37,7 +37,7 @@ function authorized(request:IncomingMessage,token?:string){
 }
 function validJsonContentType(request:IncomingMessage){
  const header=request.headers["content-type"];
- const contentType=typeof header==="string"?header.split(";")[0].trim().toLowerCase():"";
+ const contentType=typeof header==="string"?(header.split(";")[0]??"").trim().toLowerCase():"";
  return contentType==="application/json";
 }
 function runtimeView(core:LayanXCore,persistence:RuntimePersistence|undefined,business:BusinessManager,ads:AdsManager,media:MediaManager){return {core,models:core.models,providers:core.providers,providerSummary:providerSummary(),persistence,business,ads,media};}
