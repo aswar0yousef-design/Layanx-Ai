@@ -52,7 +52,7 @@ assert.throws(
       stopLossDistance: 0.001, spread: 0.0001,
     },
   }),
-  /XAUUSD data requires an XAUUSD paper-trading configuration/,
+  /does not match config symbol/,
 );
 
 const wrongSymbolData = importMt5HistoricalCsv(
