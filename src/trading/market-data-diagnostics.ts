@@ -1,7 +1,6 @@
 import type { MarketCandle } from "./scalping-signal.js";
 import { inspectCandleQuality, type CandleQualityReport } from "./candle-quality.js";
 import {roundDecimal} from "./numeric.js";
-import {roundDecimal} from "./numeric.js";
 
 export interface MarketDataDiagnostics {
   symbol: string;
