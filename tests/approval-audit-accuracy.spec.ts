@@ -7,7 +7,7 @@ core.registerAgent({
  requiredPermission:"L4_EXECUTE",maxToolCalls:10,maxRuntimeMs:10000,successCriteria:["approved"],stopCondition:"stop"
 });
 core.tools.register({
- name:"sensitive.read",description:"test sensitive action",permission:"L4_EXECUTE",dangerous:false,
+ name:"sensitive.read",description:"test sensitive action",permission:"L4_EXECUTE",dangerous:true,
  actions:["delete record"],tags:["test"]
 });
 core.toolAdapters.register("sensitive.read",{async execute(){return{approved:true};}});
