@@ -14,10 +14,10 @@ import type {ToolRequest} from "../src/core/types.js";
   registerToolFabric(core,{workspaceRoot:root});
   const names=core.tools.list().map(tool=>tool.name);
   assert.ok(names.includes("project.verify"));
-  assert.ok(names.includes("project.bootstrap"));
+  assert.ok(names.includes("project.inspect"));
   assert.equal(new Set(names).size,names.length);
   assert.equal(core.toolAdapters.has("project.verify"),true);
-  assert.equal(core.toolAdapters.has("project.bootstrap"),true);
+  assert.equal(core.toolAdapters.has("project.inspect"),true);
  }finally{await rm(root,{recursive:true,force:true});}
 }
 {
