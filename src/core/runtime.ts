@@ -170,6 +170,7 @@ export class ExecutionRuntime{
  }
  private async block(mission:Mission,request:ToolRequest,error:string,approvalId?:string):Promise<RuntimeResult>{
   mission.status="blocked";
+  if(!this.core.executionStates.get(mission.id))this.core.executionStates.start(mission.id);
   this.core.executionStates.update(mission.id,{status:"blocked",recoverable:false});
   this.core.ledger.append({id:crypto.randomUUID(),missionId:mission.id,agentId:request.agentId,action:request.action,status:"blocked",timestamp:new Date().toISOString(),detail:error});
   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"denied",metadata:{reason:error}});
