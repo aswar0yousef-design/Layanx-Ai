@@ -10,7 +10,7 @@ function setup(tool:string,execute:(request:unknown)=>Promise<unknown>){
 }
 
 const limited=setup("step.limit",async()=>({ok:true}));
-const limitedMission=limited.startMission("test step limit");
+const limitedMission=limited.startMission("test step limit","project");
 limitedMission.requiredPermission="L1_READ";
 limitedMission.tools=[{tool:"step.limit",action:"read test",permission:"L1_READ",reason:"test"}];
 limited.missions.save(limitedMission);
@@ -21,7 +21,7 @@ if(limitedAudit?.metadata?.reason!=="step_limit")throw new Error("Step limit aud
 if(!limited.memory.list().some(entry=>entry.kind==="decision"&&entry.content&&typeof entry.content==="object"&&(entry.content as Record<string,unknown>).reason==="step_limit"))throw new Error("Step limit memory decision missing.");
 
 const failed=setup("step.fail",async()=>{throw new Error("controlled tool failure");});
-const failedMission=failed.startMission("test tool failure");
+const failedMission=failed.startMission("test tool failure","project");
 failedMission.requiredPermission="L1_READ";
 failedMission.tools=[{tool:"step.fail",action:"read test",permission:"L1_READ",reason:"test"}];
 failed.missions.save(failedMission);
@@ -38,7 +38,7 @@ const planner:ModelProviderAdapter={
 const complete=setup("unused",async()=>({ok:true}));
 complete.models.register({id:"planner",provider:"stop-planner",capabilities:["reasoning"],local:true,enabled:true,priority:1});
 complete.providers.register(planner);
-const completeMission=complete.startMission("test planner completion");
+const completeMission=complete.startMission("test planner completion","project");
 completeMission.requiredPermission="L1_READ";
 complete.missions.save(completeMission);
 const completeResult=await complete.executeMissionAdaptive(completeMission.id,"project",3);
@@ -55,7 +55,7 @@ plannerFailure.providers.register({
   async health(){return{provider:"failing-planner",available:true,updatedAt:new Date().toISOString()};},
   async generate(){throw new Error("planner unavailable");}
 });
-const plannerFailureMission=plannerFailure.startMission("test planner failure");
+const plannerFailureMission=plannerFailure.startMission("test planner failure","project");
 plannerFailureMission.requiredPermission="L1_READ";
 plannerFailureMission.tools=[{tool:"planner.fail",action:"read test",permission:"L1_READ",reason:"seed"}];
 plannerFailure.missions.save(plannerFailureMission);
