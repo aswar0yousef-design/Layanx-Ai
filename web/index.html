@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1220"><title>LayanX AI Control Center</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="shell">
+<aside class="sidebar">
+  <div class="brand"><div class="brand-mark">LX</div><div><strong>LayanX AI</strong><small>Agent Control Center</small></div></div>
+  <nav>
+    <button class="nav active" data-view="agent">🤖 الوكيل</button>
+    <button class="nav" data-view="missions">📋 المهام</button>
+    <button class="nav" data-view="approvals">🔐 الموافقات</button>
+    <button class="nav" data-view="computer">🖥️ سطح المكتب</button>
+    <button class="nav" data-view="system">⚙️ النظام</button>
+  </nav>
+  <div class="sidebar-foot"><span id="healthDot" class="dot"></span><span id="healthText">جاري الفحص...</span></div>
+</aside>
+<main class="main">
+<header class="topbar">
+  <div><button id="menu" class="icon-btn">☰</button><div><div class="eyebrow">LOCAL-FIRST</div><h1 id="viewTitle">الوكيل</h1></div></div>
+  <div class="top-actions"><label class="project">المشروع <input id="projectId" value="default" maxlength="64"></label><button id="refresh" class="icon-btn" title="تحديث">↻</button></div>
+</header>
+<section id="agentView" class="view">
+  <div class="hero"><div><span class="badge">جاهز للعمل</span><h2>ماذا تريد من LayanX أن يفعل؟</h2><p>اكتب المهمة كما تشرحها لمطور أو مساعد على جهازك. سيخطط الوكيل وينفذ ضمن الصلاحيات والموافقات.</p></div><div class="hero-orb">✦</div></div>
+  <div class="quick-grid">
+    <button class="quick" data-goal="حل أخطاء المشروع ثم شغّل الاختبارات وتأكد من نجاحها">🛠️ إصلاح الأخطاء</button>
+    <button class="quick" data-goal="حلل المشروع واقترح أهم التحسينات">🔎 تحليل المشروع</button>
+    <button class="quick" data-goal="شغّل اختبارات المشروع وأخبرني بالنتيجة">🧪 تشغيل الاختبارات</button>
+    <button class="quick" data-goal="راجع حالة Git للمشروع واذكر الملفات المعدلة">🌿 حالة Git</button>
+  </div>
+  <div class="chat card"><div id="chatLog" class="chat-log"><div class="msg agent"><strong>LayanX</strong><div>أنا جاهز. أعطني هدفاً وسأبدأ التخطيط والتنفيذ.</div></div></div>
+    <form id="goalForm"><textarea id="goal" rows="3" placeholder="مثال: افحص المشروع، أصلح الاختبارات الفاشلة، ثم شغّل typecheck والاختبارات..."></textarea><button class="send" type="submit">تشغيل الوكيل <span>➜</span></button></form>
+  </div>
+</section>
+<section id="missionsView" class="view hidden"><div class="section-head"><div><h2>المهام</h2><p>المهام الحقيقية المسجلة في Runtime.</p></div><button class="secondary" id="missionsRefresh">تحديث</button></div><div id="missionsList" class="list"></div></section>
+<section id="approvalsView" class="view hidden"><div class="section-head"><div><h2>الموافقات</h2><p>لن ينفذ الوكيل الإجراء المحمي قبل الموافقة المطلوبة.</p></div><button class="secondary" id="approvalsRefresh">تحديث</button></div><div id="approvalsList" class="list"></div></section>
+<section id="computerView" class="view hidden"><div class="section-head"><div><h2>سطح المكتب</h2><p>مراقبة الشاشة الحية عندما تكون ميزة Live Screen مفعلة.</p></div><div><button id="liveStart" class="secondary">بدء</button><button id="liveStop" class="secondary danger">إيقاف</button></div></div><div class="screen-card card"><div id="liveStatus" class="muted">غير متصل</div><img id="liveFrame" alt="Live desktop frame" hidden></div></section>
+<section id="systemView" class="view hidden"><div class="section-head"><div><h2>حالة النظام</h2><p>Providers، models، persistence والجاهزية.</p></div><button class="secondary" id="systemRefresh">تحديث</button></div><div id="systemGrid" class="stats"></div><pre id="systemRaw" class="raw"></pre><div class="settings card"><h3>اتصال API</h3><p>للتشغيل المحلي بدون Token اتركه فارغاً. إذا فعّلت LAYANX_API_TOKEN أدخله هنا.</p><div class="token-row"><input id="apiToken" type="password" placeholder="API token (اختياري)"><button id="saveToken" class="secondary">حفظ محلياً</button></div></div></section>
+</main>
+</div>
+<script src="/app.js" defer></script>
+</body></html>
