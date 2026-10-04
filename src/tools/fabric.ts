@@ -66,7 +66,7 @@ export function createTerminalToolAdapter(options:{root:string}):ToolAdapter{
  const root=resolve(options.root);
  return{async execute(request){
   const workspace=workspaceFor(root,request.projectId);await mkdir(workspace,{recursive:true});
-  const input=payload(request),command=typeof input.command==="string"?input.command.trim():"",parts=command.split(/\s+/).filter(Boolean),binary=parts.shift();
+  const input=payload(request),command=typeof input.command==="string"?input.command.trim():"",parts=command.split(/\s+/).filter(Boolean),binary=parts.shift()?.toLowerCase();
   if(!binary||!COMMANDS.has(binary))throw new Error("Terminal command is not allowed.");
   const allowed=COMMANDS.get(binary)??[],normalized=parts.join(" ");
   if(!allowed.includes(normalized))throw new Error("Terminal command is not allowed.");
