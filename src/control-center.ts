@@ -1,6 +1,7 @@
 import type {LayanXCore} from "./core/orchestrator.js";
 import type {ObservatorySnapshot} from "./core/observatory.js";
 import type {ProviderHealth} from "./core/provider.js";
+import {setLifecycle} from "./core/lifecycle.js";
 
 export interface ControlCenterSnapshot extends Omit<ObservatorySnapshot,"missions">{
  generatedAt:string;
@@ -47,8 +48,7 @@ export class ControlCenter{
   if(!mission)throw new Error("Mission not found.");
   this.core.projectIsolation.assertMissionProject(projectId,mission.projectId);
   if(["completed","cancelled"].includes(mission.status))return;
-  mission.status="cancelled";
-  this.core.executionStates.update(mission.id,{status:"blocked",recoverable:false});
+  setLifecycle(mission,this.core.executionStates,"cancelled",false);
   this.core.audit.append({
    timestamp:new Date().toISOString(),actor:"control-center",action:"mission.cancel",
    resource:mission.id,result:"success",metadata:{missionId:mission.id,projectId}
