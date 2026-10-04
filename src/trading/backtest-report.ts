@@ -16,6 +16,8 @@ export interface BacktestReport {
   maxDrawdown: number;
   maxDrawdownPct: number;
   estimatedRoundTripCosts: number;
+  /** Backward-compatible alias for estimated round-trip execution costs. */
+  executionCosts: number;
   commissions: number;
   swaps: number;
   costErasedTrades: number;
@@ -85,6 +87,7 @@ export function buildPooledBacktestReport(analyses: TradeAnalysis[]): PooledBack
     profitFactor: grossLossValue === 0 ? (grossProfit > 0 ? Infinity : 0) : grossProfit / grossLossValue,
     expectancyPerTrade: trades === 0 ? 0 : netPnl / trades,
     estimatedRoundTripCosts,
+    executionCosts: estimatedRoundTripCosts,
     commissions,
     swaps,
     costErasedTrades,
