@@ -29,7 +29,7 @@ core.executionRuntime.approvals.approve(approval.id);
 const result=await core.executeMissionTool(mission.id,mission.projectId,0,payload,approval.id);
 if(!result.ok||!result.verified)throw new Error(result.error??"Approved sensitive execution failed.");
 const audit=core.audit.forMission(mission.id);
-const riskEvent=audit.find(event=>event.action==="delete record"&&event.metadata?.risk==="medium");
+const riskEvent=audit.find(event=>event.action==="delete record"&&event.metadata?.risk==="high");
 if(!riskEvent||riskEvent.result!=="pending_approval")throw new Error("Risk audit did not record pending approval accurately.");
 const successEvent=audit.filter(event=>event.action==="delete record"&&event.result==="success").at(-1);
 if(!successEvent)throw new Error("Approved execution did not produce a success audit event.");
