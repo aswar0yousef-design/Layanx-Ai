@@ -192,7 +192,7 @@ export class LayanXCore{
   }
 
   isReady():boolean{
-    return this.agents.list().some(agent=>agent.agentId==="core");
+    return this.agents.list().some(agent=>agent.agentId!=="trading-executor");
   }
 
   registerAgent(c:Parameters<AgentManager["register"]>[0]){this.agents.register(c);}
