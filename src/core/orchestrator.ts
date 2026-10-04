@@ -195,6 +195,10 @@ export class LayanXCore{
   }
 
   registerAgent(c:Parameters<AgentManager["register"]>[0]){this.agents.register(c);}
+  private ensureCoreAgent(){
+    if(this.agents.list().some(agent=>agent.agentId==="core"))return;
+    this.agents.register({agentId:"core",purpose:"Safely orchestrate LayanX missions.",allowedTools:[],forbiddenResources:["secrets","security-controls"],requiredPermission:"L1_READ",maxToolCalls:100,maxRuntimeMs:30000,successCriteria:["result exists"],stopCondition:"Stop on policy denial or Sentinel block.",profile:{role:"orchestrator",description:"Coordinates missions within LayanX policy.",preferredCapabilities:["reasoning","chat"],memoryTags:["orchestration","bootstrap"]}});
+  }
   learnSkill(trace:LearningTrace){return this.skillLearning.propose(trace);}
   approveLearnedSkill(id:string){
     const existing=this.skills.list().find(skill=>skill.id===id);
@@ -213,6 +217,7 @@ export class LayanXCore{
   }
   private restoreLearnedSkills(){for(const pending of this.skillLearning.list()){if(pending.manifest.source!=="agent-learning"||!pending.findings.safe||!this.skillLearning.verify(pending.id))continue;try{const status=pending.manifest.status;if(status!=="approved"&&status!=="enabled")continue;this.skills.register({...pending.manifest,status:"quarantined"});this.skills.approve(pending.id);if(status==="enabled")this.skills.enable(pending.id);}catch{continue;}}}
   discoverTools(action:string,permission:import("./types.js").PermissionLevel,agentId="core"){
+    if(agentId==="core")this.ensureCoreAgent();
     const contract=this.agents.get(agentId);
     return this.toolSelector.discover(action,contract,permission);
   }
@@ -270,6 +275,7 @@ export class LayanXCore{
   }
 
   async executeMissionTool(missionId:string,projectId:string,toolIndex=0,payload:unknown={},approvalId?:string,agentId="core",runtimeOptions:{deferVerification?:boolean}={}){
+    if(agentId==="core")this.ensureCoreAgent();
     const mission=this.missions.get(missionId);
     if(!mission)throw new Error("Mission not found.");
     this.projectIsolation.assertMissionProject(projectId,mission.projectId);
@@ -324,6 +330,7 @@ export class LayanXCore{
   }
 
   async executeMissionAdaptive(missionId:string,projectId:string,maxSteps=10,agentId="core"){
+    if(agentId==="core")this.ensureCoreAgent();
     const mission=this.missions.get(missionId);
     if(!mission)throw new Error("Mission not found.");
     if(["completed","cancelled"].includes(mission.status))return{missionId,results:[],completed:mission.status==="completed",reason:"Mission is already terminal."};
@@ -751,6 +758,7 @@ export class LayanXCore{
   }
 
   async planMission(goal:string,projectId="default",routing?:ModelRoutingOptions){
+    if(agentId==="core")this.ensureCoreAgent();
     const contract=this.agents.get("core");
     const tools=this.toolCatalog.list(contract,contract.requiredPermission);
     let projectContext:unknown=null;
