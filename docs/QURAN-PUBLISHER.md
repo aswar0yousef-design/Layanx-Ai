@@ -83,3 +83,4 @@ Quran Foundation credentials are managed from the LayanX Admin Quran branch. Use
 YouTube and TikTok OAuth connections can be selected in the same Quran admin settings using their connection IDs. The existing OAuth connection center keeps access/refresh tokens in the local encrypted vault and refreshes them before publication.
 
 Environment variables remain supported as a backward-compatible fallback for local development, but they are no longer the primary configuration path.
+
