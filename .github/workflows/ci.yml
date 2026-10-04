@@ -16,7 +16,7 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run security:check
-      - run: npm run free:bootstrap
+      - run: LAYANX_SECRET_VAULT_KEY= npm run free:bootstrap
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
