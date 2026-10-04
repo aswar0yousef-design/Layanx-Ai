@@ -41,7 +41,7 @@ assert.match(source,/nextToolIndex/);
 console.log("VS Code live mission workflow checks passed.");
 
 assert.match(source,/Build \/ Repair Project/);
-assert.match(source,//v1\/missions\//);
+assert.match(source,/\/v1\/missions\//);
 assert.match(source,/\/cancel/);
 assert.match(source,/\/repair/);
 assert.match(source,/function executeMissionLoop/);
