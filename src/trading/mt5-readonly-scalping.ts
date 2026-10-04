@@ -5,6 +5,7 @@ import type { RiskInput } from "./risk-engine.js";
 import type { PreTradeExecutionPolicy } from "./pre-trade-execution-gate.js";
 import type { ScalpingSignalConfig } from "./scalping-signal.js";
 import { XAUUSD_SCALPING_PROFILE } from "./xauusd-scalping-profile.js";
+import { roundDecimal } from "./numeric.js";
 
 export interface Mt5ReadOnlyScalpingInput {
   transport: Mt5ReadOnlyTransport;
@@ -57,7 +58,7 @@ export async function evaluateMt5ReadOnlyScalping(
     decision,
     bid: market.snapshot.bid,
     ask: market.snapshot.ask,
-    spread: market.snapshot.ask - market.snapshot.bid,
+    spread: roundDecimal(market.snapshot.ask - market.snapshot.bid),
     specificationSymbol: market.specification.symbol,
   };
 }
