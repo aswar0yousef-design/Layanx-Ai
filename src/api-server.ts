@@ -47,7 +47,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
  const control=new ControlCenter(options.core);
  const voice=new VoiceService();
  const oauth=new OAuthConnectionCenter();
- const business=options.business; const ads=options.ads??new AdsManager(business.store); const media=options.media??new MediaManager(); const growth=options.growth;
+ const business=options.business??new BusinessManager(); const ads=options.ads??new AdsManager(business.store); const media=options.media??new MediaManager(); const growth=options.growth;
  const server=createServer(async(request,response)=>{
   response.setHeader("cache-control","no-store");
   const publicWebhook=request.url==="/v1/channels/whatsapp/webhook";
