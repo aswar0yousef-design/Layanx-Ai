@@ -5,7 +5,6 @@ import {QuranRightsCatalog} from "./rights.js";
 import {QuranRenderer} from "./renderer.js";
 import {OAuthConnectionCenter} from "../business/oauth.js";
 import type {SocialAccount} from "../business/types.js";
-import {existsSync} from "node:fs";
 import {join} from "node:path";
 function config(){
  const clientId=process.env.QF_CLIENT_ID??"";const clientSecret=process.env.QF_CLIENT_SECRET??"";const recitationId=Number(process.env.LAYANX_QURAN_RECITATION_ID??process.env.QF_RECITATION_ID??"0");
@@ -27,4 +26,9 @@ export function registerQuranTools(core:LayanXCore){
   }
  };
  for(const [name,description,permission,dangerous] of defs){core.tools.register({name,description,permission:permission as any,dangerous,actions:[name],tags:["quran","media","publishing"]});const adapter:ToolAdapter={async execute(request){const fn=handlers[name];if(!fn)throw new Error("Unknown Quran tool");return fn(request.payload??{});}};core.toolAdapters.register(name,adapter);}
+}
+export function configureQuranDailySchedules(core:LayanXCore){
+ const firstHour=Number(process.env.LAYANX_QURAN_FIRST_HOUR??8);const firstMinute=Number(process.env.LAYANX_QURAN_FIRST_MINUTE??0);const secondHour=Number(process.env.LAYANX_QURAN_SECOND_HOUR??20);const secondMinute=Number(process.env.LAYANX_QURAN_SECOND_MINUTE??0);if(![firstHour,firstMinute,secondHour,secondMinute].every(Number.isInteger))throw new Error("quran_schedule_time_invalid");
+ const goals=["quran.publish_next","quran.publish_next"];const times=[[firstHour,firstMinute],[secondHour,secondMinute]];const existing=core.scheduler.list();for(let i=0;i<2;i++){const goal=goals[i];if(existing.some(s=>s.goal===goal&&s.enabled))continue;core.scheduler.register({goal,projectId:"quran-channel",trigger:{kind:"daily",hour:times[i][0],minute:times[i][1]},enabled:true,maxSteps:12,agentId:"core"});}
+ return core.scheduler.list().filter(s=>s.projectId==="quran-channel");
 }
