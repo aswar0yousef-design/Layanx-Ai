@@ -14,6 +14,8 @@ export class ToolExecutor {
   const gate=this.sentinel.inspect(request.action);
   if(!gate.allowed)return {ok:false,verified:false,error:gate.reason};
 
+  const existing=await this.idempotency.get(request.idempotencyKey);
+  if(existing?.status==="completed")return{ok:true,verified:true,data:existing.data,replayed:true};
   const claim=await this.idempotency.begin(request);
   if(!claim.accepted){
    if(claim.replay)return{ok:true,verified:true,data:claim.record.data,replayed:true};
