@@ -73,7 +73,7 @@ export class MissionScheduler{
  private validateTrigger(trigger:ScheduleTrigger){
   if(trigger.kind==="interval"){const intervalMs=trigger.intervalMs;if(intervalMs===undefined||!Number.isFinite(intervalMs)||!Number.isInteger(intervalMs)||intervalMs<1000)throw new Error("Interval must be an integer of at least 1000ms.");return;}
   if(trigger.kind==="once"){if(!trigger.runAt||Number.isNaN(Date.parse(trigger.runAt)))throw new Error("A valid runAt timestamp is required.");return;}
-  if(trigger.kind==="daily"){const hour=trigger.hour;const minute=trigger.minute;if(!Number.isInteger(hour)||hour<0||hour>23||!Number.isInteger(minute)||minute<0||minute>59)throw new Error("Daily trigger requires hour 0-23 and minute 0-59.");return;}
+  if(trigger.kind==="daily"){const hour=trigger.hour;const minute=trigger.minute;if(hour===undefined||!Number.isInteger(hour)||hour<0||hour>23)throw new Error("Daily trigger requires hour 0-23.");if(minute===undefined||!Number.isInteger(minute)||minute<0||minute>59)throw new Error("Daily trigger requires minute 0-59.");return;}
   throw new Error("Unknown schedule trigger.");
  }
  private nextTime(trigger:ScheduleTrigger,from:Date){
