@@ -1,4 +1,5 @@
 import {localSecret} from "../security/local-secret-vault.js";
+import {readFile,stat} from "node:fs/promises";
 import type {SocialAccount,SocialPlatform} from "./types.js";
 
 export interface PublishItem{title:string;body:string;mediaUrls:string[]}
