@@ -64,17 +64,18 @@ export function createBrowserToolAdapter(options:{fetcher?:typeof fetch}={}):Too
   return{url:url.toString(),status:response.status,contentType:response.headers.get("content-type"),body};
  }};
 }
-const COMMANDS=new Map<string,string[]>([["git",["status","status --short","diff","log"]],["npm",["test","run typecheck","run build"]]]);
+const COMMANDS=new Set(["git","npm"]);
 export function createTerminalToolAdapter(options:{root:string}):ToolAdapter{
  const root=resolve(options.root);
  return{async execute(request){
   const workspace=workspaceFor(root,request.projectId);await mkdir(workspace,{recursive:true});
-  const input=payload(request),command=typeof input.command==="string"?input.command.trim():"",parts=command.split(/\s+/).filter(Boolean),binary=parts.shift()?.toLowerCase();
+  const input=payload(request),command=typeof input.command==="string"?input.command.trim():"";
+  if(/[;&|$<>%"^]/.test(command)||command.includes(String.fromCharCode(96)))throw new Error("Shell metacharacters are blocked.");
+  const parts=command.split(/\s+/).filter(Boolean),binary=parts.shift()?.toLowerCase();
   if(!binary||!COMMANDS.has(binary))throw new Error("Terminal command is not allowed.");
   const args=parts.map(value=>value.toLowerCase());
   const permitted=(binary==="git"&&((args.length===1&&args[0]==="status")||(args.length===2&&args[0]==="status"&&args[1]==="--short")||(args.length===1&&args[0]==="diff")||(args.length===1&&args[0]==="log")))||(binary==="npm"&&((args.length===1&&args[0]==="test")||(args.length===2&&args[0]==="run"&&args[1]==="typecheck")||(args.length===2&&args[0]==="run"&&args[1]==="build")));
   if(!permitted)throw new Error("Terminal command is not allowed.");
-  if(/[;&|$<>]/.test(command)||command.includes(String.fromCharCode(96)))throw new Error("Shell metacharacters are blocked.");
   return await new Promise((resolvePromise,reject)=>{
    const executable=binary==="git"&&process.platform==="win32"?"git.exe":binary==="npm"&&process.platform==="win32"?(process.env.ComSpec??"cmd.exe"):binary;
    const executableArgs=binary==="npm"&&process.platform==="win32"?["/d","/s","/c",["npm.cmd",...parts].join(" ")]:parts;
