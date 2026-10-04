@@ -64,7 +64,7 @@ const result=await recovery.resume(
   {projectId:"recovery-project",capabilityId:recoveryCapability.id}
 );
 if(!result.ok||!result.verified)throw new Error(result.error??"Recovery resume failed.");
-if(mission.steps[3]?.status!=="completed")throw new Error("Recovery did not resume through the execution step.");
+if(restoredCore.missions.get(mission.id)?.steps[3]?.status!=="completed")throw new Error("Recovery did not resume through the execution step.");
 if(calls!==0)throw new Error("Persisted idempotency record was not replayed safely after recovery.");
 
 const after=await persistence.get(mission.id);
