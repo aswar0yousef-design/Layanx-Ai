@@ -3,7 +3,7 @@ import {ExecutionRuntime} from "../src/core/runtime.js";
 
 const makeCore=()=>{
  const core=new LayanXCore();
- core.registerAgent({agentId:"test-agent",purpose:"test",allowedTools:["echo"],forbiddenResources:["secrets"],requiredPermission:"L1_READ",maxToolCalls:5,maxRuntimeMs:10000,successCriteria:["echo"],stopCondition:"stop on denial"});
+ core.registerAgent({agentId:"test-agent",purpose:"test",allowedTools:["echo"],forbiddenResources:["secrets"],requiredPermission:"L1_READ",maxToolCalls:5,maxRuntimeMs:10000,successCriteria:["result === \"hello\""],stopCondition:"stop on denial"});
  core.tools.register({name:"echo",description:"test echo",permission:"L1_READ",dangerous:false});
  return core;
 };
