@@ -601,7 +601,21 @@ export class LayanXCore{
           memory:this.contextFabric.build({projectId,mission:current,query:current.goal,limit:8,maxChars:6000}).memories.map(e=>({kind:e.kind,summary:e.summary,content:e.content,tags:e.tags})),
           projectContext:context
         })??undefined;
-        if(!plan)break;
+        if(!plan){
+          const verification=this.verifier.verify(current,latest,this.agents.get(agentId).successCriteria);
+          if(verification.verified){
+            const executionStep=current.steps.find(step=>/execute|run|perform|action/i.test(step.description));
+            if(executionStep)executionStep.status="completed";
+            current.status="completed";
+            this.executionStates.update(current.id,{status:"completed",recoverable:false});
+            this.missions.save(current);
+            await this.executionRuntime.persist(current);
+            this.memory.remember({missionId:current.id,projectId:current.projectId,kind:"success",summary:"Mission completed and verified",content:{result:latest},confidence:1,tags:["mission","success","verified"]});
+            cleanupLiveScreen();
+            return{missionId,completed:true,status:"completed",steps,results,final:{data:latest}};
+          }
+          break;
+        }
         current.tools=current.tools??[];
         current.tools.push(plan);
         this.missions.save(current);
