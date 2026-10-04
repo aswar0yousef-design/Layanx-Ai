@@ -28,6 +28,6 @@ export function registerQuranTools(core:LayanXCore){
 }
 export function configureQuranDailySchedules(core:LayanXCore){
  const firstHour=Number(process.env.LAYANX_QURAN_FIRST_HOUR??8);const firstMinute=Number(process.env.LAYANX_QURAN_FIRST_MINUTE??0);const secondHour=Number(process.env.LAYANX_QURAN_SECOND_HOUR??20);const secondMinute=Number(process.env.LAYANX_QURAN_SECOND_MINUTE??0);if(![firstHour,firstMinute,secondHour,secondMinute].every(Number.isInteger))throw new Error("quran_schedule_time_invalid");
- const goals=["quran.publish_next","quran.publish_next"];const times=[[firstHour,firstMinute],[secondHour,secondMinute]];const existing=core.scheduler.list();for(let i=0;i<2;i++){const goal=goals[i];if(existing.some(s=>s.goal===goal&&s.enabled))continue;core.scheduler.register({goal,projectId:"quran-channel",trigger:{kind:"daily",hour:times[i][0],minute:times[i][1]},enabled:true,maxSteps:12,agentId:"core"});}
+ const goals=["quran.publish_next","quran.publish_next"] as const;const times=[[firstHour,firstMinute],[secondHour,secondMinute]] as const;const existing=core.scheduler.list();for(let i=0;i<times.length;i++){const goal=goals[i]!;const [hour,minute]=times[i]!;if(existing.some(s=>s.goal===goal&&s.enabled))continue;core.scheduler.register({goal,projectId:"quran-channel",trigger:{kind:"daily",hour,minute},enabled:true,maxSteps:12,agentId:"core"});}
  return core.scheduler.list().filter(s=>s.projectId==="quran-channel");
 }
