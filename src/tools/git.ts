@@ -5,17 +5,18 @@ import {execFileSync} from "node:child_process";
 
 export function ensureGitOnPath():void{
  if(process.platform!=="win32")return;
- const pathKey=Object.keys(process.env).find(key=>key.toLowerCase()==="path")??"PATH";
- const pathEntries=(process.env[pathKey]??"").split(";").filter(Boolean);
+ const pathEntries=(process.env.Path??process.env.PATH??"").split(";").filter(Boolean);
+ let gitDir="";
  try{
-  const located=execFileSync("where.exe",["git"],{encoding:"utf8",windowsHide:true}).split(/\r?\n/).map(value=>value.trim()).filter(Boolean)[0];
-  if(located)pathEntries.unshift(dirname(located));
+  const located=execFileSync("where.exe",["git.exe"],{encoding:"utf8",windowsHide:true}).split(/\r?\n/).map(value=>value.trim()).filter(Boolean)[0];
+  if(located)gitDir=dirname(located);
  }catch{}
- for(const candidate of ["C:\\Program Files\\Git\\cmd","C:\\Program Files\\Git\\bin","C:\\Program Files (x86)\\Git\\cmd","C:\\Program Files (x86)\\Git\\bin",`${process.env.LocalAppData??""}\\Programs\\Git\\cmd`,`${process.env.LocalAppData??""}\\Programs\\Git\\bin`])
-  if(existsSync(candidate)&&!pathEntries.some(entry=>entry.toLowerCase()===candidate.toLowerCase()))pathEntries.push(candidate);
+ for(const candidate of [gitDir,"C:\\Program Files\\Git\\cmd","C:\\Program Files\\Git\\bin","C:\\Program Files (x86)\\Git\\cmd","C:\\Program Files (x86)\\Git\\bin",(process.env.LocalAppData??"")+"\\Programs\\Git\\cmd",(process.env.LocalAppData??"")+"\\Programs\\Git\\bin"])
+  if(candidate&&existsSync(candidate)&&!pathEntries.some(entry=>entry.toLowerCase()===candidate.toLowerCase()))pathEntries.unshift(candidate);
  const normalized=pathEntries.filter((entry,index,all)=>all.findIndex(value=>value.toLowerCase()===entry.toLowerCase())===index);
- for(const key of Object.keys(process.env))if(key.toLowerCase()==="path")delete process.env[key];
- process.env.PATH=normalized.join(";");
+ delete process.env.PATH;
+ delete process.env.Path;
+ process.env.Path=normalized.join(";");
 }
 ensureGitOnPath();
 import {spawn} from "node:child_process";
