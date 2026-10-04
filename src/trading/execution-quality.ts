@@ -52,7 +52,7 @@ export function analyzeExecutionQuality(trade: ExecutionTrade): ExecutionQuality
     ? Math.abs(trade.exit.fillPrice - exitRef)
     : (exitSpread !== undefined ? exitSpread / 2 : 0);
   const totalExecutionDrag = (entryDrag + exitDrag) * trade.quantity * multiplier;
-  const netPnlAfterExecutionCosts = grossPnl - totalExecutionDrag;
+  const netPnlAfterExecutionCosts = Number((grossPnl - totalExecutionDrag).toFixed(12));
   const executionCostPctOfGross = grossPnl > 0 ? Number(((totalExecutionDrag / grossPnl) * 100).toFixed(12)) : null;
 
   let quality: ExecutionQuality = "unknown";
@@ -81,9 +81,9 @@ export function analyzeExecutionQuality(trade: ExecutionTrade): ExecutionQuality
 
 export function summarizeExecutionQuality(results: ExecutionQualityResult[]) {
   const valid = results.filter(r => r.quality !== "unknown");
-  const grossPnl = results.reduce((sum, r) => sum + r.grossPnl, 0);
-  const netPnl = results.reduce((sum, r) => sum + r.netPnlAfterExecutionCosts, 0);
-  const totalCosts = results.reduce((sum, r) => sum + (r.estimatedRoundTripCost ?? 0), 0);
+  const grossPnl = Number(results.reduce((sum, r) => sum + r.grossPnl, 0).toFixed(12));
+  const netPnl = Number(results.reduce((sum, r) => sum + r.netPnlAfterExecutionCosts, 0).toFixed(12));
+  const totalCosts = Number(results.reduce((sum, r) => sum + (r.estimatedRoundTripCost ?? 0), 0).toFixed(12));
   const avgSpreadAtrRatio = valid.length
     ? valid.reduce((sum, r) => sum + (r.spreadAtrRatio ?? 0), 0) / valid.length
     : null;
