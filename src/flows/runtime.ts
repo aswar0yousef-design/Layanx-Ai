@@ -60,7 +60,10 @@ export class FlowRuntime{
     const result=await this.core.runAgentGateway(goal,projectId,typeof c.maxSteps==="number"?Math.min(Math.max(c.maxSteps,1),25):8,{},agentId,{preferLocal:true});
     if(result.paused)return{status:"awaiting_approval",result};
     if(!result.completed)throw new Error(result.reason??"AI agent node failed");
-    return{status:"completed",result};
+    const finalData=((result as {final?:{data?:unknown}}).final)?.data;
+    const lastData=(result.results?.at(-1) as {data?:unknown}|undefined)?.data;
+    const text=typeof finalData==="string"?finalData:typeof lastData==="string"?lastData:undefined;
+    return{text,status:"completed",result};
    }
    case "tool":{
     const goal=String(resolve(c.goal??c.action??"",ctx));if(!goal)throw new Error("tool node requires goal");
