@@ -152,6 +152,7 @@ export class RuntimeRecoveryManager{
     if(result.ok){
       const executionStep=snapshot.mission.steps.find(step=>/execute|run|perform|action/i.test(step.description));
       if(executionStep)executionStep.status="completed";
+      this.core.missions.save(snapshot.mission);
     }
     const updated=this.core.executionStates.get(missionId);
     if(updated){
