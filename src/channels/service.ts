@@ -33,7 +33,8 @@ export class MessagingChannels{
   for(const [id,seenAt] of this.processed)if(now-seenAt>this.dedupeTtlMs)this.processed.delete(id);
   if(this.processed.has(key))return;
   this.processed.set(key,now);
-  if(this.flowHandler&&await this.flowHandler(message))return;\n  const reply=await this.router.handle(message);
+  if(this.flowHandler&&await this.flowHandler(message))return;
+  const reply=await this.router.handle(message);
   if(message.channel==="whatsapp")await this.whatsapp.sendText(message.chatId,reply);
   else await this.telegram.sendText(message.chatId,reply);
  }
