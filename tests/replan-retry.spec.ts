@@ -1,6 +1,12 @@
+import {mkdtemp,mkdir,rm} from "node:fs/promises";
+import {join} from "node:path";
+import {tmpdir} from "node:os";
 import {LayanXCore} from "../src/core/orchestrator.js";
 import {MissionRunner} from "../src/core/mission-runner.js";
 
+const root=await mkdtemp(join(tmpdir(),"layanx-retry-"));
+await mkdir(join(root,"retry-project"),{recursive:true});
+process.env.LAYANX_WORKSPACE_ROOT=root;
 const core=new LayanXCore();
 const agent={
   agentId:"retry-agent",purpose:"recover failed execution",allowedTools:["terminal.run"],
@@ -45,4 +51,5 @@ if(core.idempotency instanceof Object){
   if(!records.some(record=>record.key==="retry-flow"&&record.status==="failed"))throw new Error("Original failed attempt was not preserved.");
   if(!records.some(record=>record.key==="retry-flow:retry:1"&&record.status==="completed"))throw new Error("Retry attempt was not recorded independently.");
 }
+await rm(root,{recursive:true,force:true});
 console.log("Failure, replan, retry, verification and idempotency test passed.");
