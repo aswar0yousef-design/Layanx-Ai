@@ -5,6 +5,7 @@ import {BudgetGovernor} from "./budget-governor.js";
 import {createHash} from "node:crypto";
 import {ApprovalEngine} from "../security/approval.js";
 import type {RuntimePersistence} from "./runtime-persistence.js";
+import {setLifecycle} from "./lifecycle.js";
 
 export interface RuntimeSecurityContext{projectId:string;capabilityId:string;}
 
@@ -21,8 +22,7 @@ export class ExecutionRuntime{
    if(mission.status==="completed"&&replay?.status==="completed"&&replay.missionId===mission.id&&replay.agentId===request.agentId&&replay.tool===request.tool&&replay.action===request.action){
     const executionStep=mission.steps.find(step=>/execute|run|perform|action/i.test(step.description));
     if(executionStep)executionStep.status="completed";
-    mission.status="completed";
-    this.core.executionStates.update(mission.id,{status:"completed",recoverable:false});
+    setLifecycle(mission,this.core.executionStates,"completed",false);
     await this.persist(mission);
     return{ok:true,missionId:mission.id,verified:true,data:replay.data,recoverable:false};
    }
@@ -34,8 +34,7 @@ export class ExecutionRuntime{
   const started=Date.now();
   const trace=this.core.tracer.start("mission-tool","tool",{missionId:mission.id,projectId:security.projectId,agentId:request.agentId,tool:request.tool,action:request.action});
   const contract=this.core.agents.get(request.agentId);
-  mission.status="running";
-  this.core.executionStates.update(mission.id,{status:"running",recoverable:true});
+  setLifecycle(mission,this.core.executionStates,"running",true);
   if(state.toolCalls>=contract.maxToolCalls)return this.block(mission,request,"Agent tool-call limit exceeded.");
   const toolDefinition=this.core.tools.get(request.tool);
   const risk=this.core.risk.assess(request);
@@ -90,8 +89,7 @@ export class ExecutionRuntime{
   this.core.ledger.append({id:crypto.randomUUID(),missionId:mission.id,agentId:request.agentId,action:request.action,status:result.ok?"completed":"failed",timestamp:new Date().toISOString(),detail:result.error});
   if(!result.ok){
    this.core.failureLearning.record({missionId:mission.id,projectId:security.projectId,error:result.error,tool:request.tool,action:request.action,recoverable:true});
-   mission.status="failed";
-   this.core.executionStates.update(mission.id,{status:"failed",recoverable:true});
+   setLifecycle(mission,this.core.executionStates,"failed",true);
    this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"failure",metadata:{error:result.error,missionId:mission.id}});
    await this.persist(mission);
    return{ok:false,missionId:mission.id,verified:false,error:result.error,recoverable:true};
@@ -100,14 +98,12 @@ export class ExecutionRuntime{
   const currentPlanIndex=request.planIndex??(planCount>0?planCount-1:0);
   const hasNextTool=planCount>0&&currentPlanIndex<planCount-1;
   if(runtimeOptions.deferVerification||hasNextTool){
-   mission.status="running";
-   this.core.executionStates.update(mission.id,{status:"running"});
+   setLifecycle(mission,this.core.executionStates,"running");
    this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"success",metadata:{missionId:mission.id,planIndex:currentPlanIndex,nextPlanIndex:currentPlanIndex+1}});
    await this.persist(mission);
    return{ok:true,missionId:mission.id,verified:false,data:result.data,recoverable:true};
   }
-  mission.status="verifying";
-  this.core.executionStates.update(mission.id,{status:"running",recoverable:true});
+  setLifecycle(mission,this.core.executionStates,"verifying",true);
   await this.persist(mission);
   const verification=this.core.verifier.verify(mission,result.data,mission.successCriteria?.length?mission.successCriteria:contract.successCriteria);
   if(verification.verified){
@@ -115,13 +111,11 @@ export class ExecutionRuntime{
    if(verificationStep) verificationStep.status="completed";
   }
   if(!verification.verified){
-   mission.status="failed";
-   this.core.executionStates.update(mission.id,{status:"failed",recoverable:false});
+   setLifecycle(mission,this.core.executionStates,"failed",false);
    await this.persist(mission);
    return{ok:false,missionId:mission.id,verified:false,error:verification.failures.join("; "),recoverable:false};
   }
-  mission.status="completed";
-  this.core.executionStates.update(mission.id,{status:"completed",recoverable:false});
+  setLifecycle(mission,this.core.executionStates,"completed",false);
   this.core.memory.remember({missionId:mission.id,projectId:security.projectId,kind:"success",summary:mission.goal,content:{result:result.data,verified:true,tool:request.tool,action:request.action},confidence:1,tags:[request.tool]});
   this.approvals.revokeMission(mission.id);
   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"success",metadata:{missionId:mission.id}});
@@ -130,17 +124,14 @@ export class ExecutionRuntime{
  }
  async finalize(mission:Mission,result:unknown,agentId="core"):Promise<RuntimeResult>{
   const contract=this.core.agents.get(agentId);
-  mission.status="verifying";
-  this.core.executionStates.update(mission.id,{status:"running"});
+  setLifecycle(mission,this.core.executionStates,"verifying",true);
   const verification=this.core.verifier.verify(mission,result,mission.successCriteria?.length?mission.successCriteria:contract.successCriteria);
   if(!verification.verified){
-   mission.status="failed";
-   this.core.executionStates.update(mission.id,{status:"failed"});
+   setLifecycle(mission,this.core.executionStates,"failed",false);
    await this.persist(mission);
    return{ok:false,missionId:mission.id,verified:false,error:verification.failures.join("; "),recoverable:false};
   }
-  mission.status="completed";
-  this.core.executionStates.update(mission.id,{status:"completed",recoverable:false});
+  setLifecycle(mission,this.core.executionStates,"completed",false);
   this.core.memory.remember({missionId:mission.id,kind:"success",summary:mission.goal,content:{result,verified:true},confidence:1,tags:["mission"]});
   this.approvals.revokeMission(mission.id);
   this.core.audit.append({timestamp:new Date().toISOString(),actor:agentId,action:"mission.verify",resource:mission.id,result:"success",metadata:{missionId:mission.id}});
@@ -172,9 +163,8 @@ export class ExecutionRuntime{
   return this.approvals.ensure({missionId:mission.id,agentId:request.agentId,tool:request.tool,action:request.action,permission:request.permission,payloadHash:createHash("sha256").update(JSON.stringify(request.payload??null)).digest("hex"),reason,expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
  }
  private async block(mission:Mission,request:ToolRequest,error:string,approvalId?:string):Promise<RuntimeResult>{
-  mission.status="blocked";
   if(!this.core.executionStates.get(mission.id))this.core.executionStates.start(mission.id);
-  this.core.executionStates.update(mission.id,{status:"blocked",recoverable:false});
+  setLifecycle(mission,this.core.executionStates,"blocked",false);
   this.core.ledger.append({id:crypto.randomUUID(),missionId:mission.id,agentId:request.agentId,action:request.action,status:"blocked",timestamp:new Date().toISOString(),detail:error});
   this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"denied",metadata:{reason:error}});
   await this.persist(mission);
