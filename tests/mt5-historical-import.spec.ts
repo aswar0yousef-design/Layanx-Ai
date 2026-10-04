@@ -25,7 +25,7 @@ assert.ok(ready.diagnostics.spread?.median !== undefined);
 assert.doesNotThrow(() => assertMt5HistoricalReady(ready));
 
 const withoutQuotes = importMt5HistoricalCsv(
-  csv.replace(/,[0-9]+\.[0-9]+,[0-9]+\.[0-9]+$/gm, ""),
+  csv.replace(/,1,[0-9]+\.[0-9]+,[0-9]+\.[0-9]+$/gm, ""),
   { symbol: "XAUUSD", timeframe: "M1", requireBidAsk: true },
 );
 assert.equal(withoutQuotes.readyForBacktest, false);
