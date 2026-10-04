@@ -4,9 +4,9 @@ import {MissionRunner} from "../src/core/mission-runner.js";
 const core=new LayanXCore();
 const agent={agentId:"ops",purpose:"run commands",allowedTools:["terminal.run"],forbiddenResources:[],requiredPermission:"L4_EXECUTE" as const,maxToolCalls:5,maxRuntimeMs:10000,successCriteria:["done"],stopCondition:"stop"};
 core.registerAgent(agent);
-core.tools.register({name:"terminal.run",description:"Run command",permission:"L4_EXECUTE",dangerous:true});
+core.tools.register({name:"terminal.run",description:"Run command",permission:"L4_EXECUTE",dangerous:false});
 
-const mission=core.startMission("Run command","project-1");
+const mission=core.startMission("Run command","default");
 mission.requiredPermission="L4_EXECUTE";
 const runner=new MissionRunner(core);
 const tasks=runner.buildTeam(mission,[agent]);
