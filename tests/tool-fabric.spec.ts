@@ -25,7 +25,7 @@ if(browserCalls!==1||(page as {status:number}).status!==200)throw new Error("Bro
 await browser.execute({...base,tool:"browser.read",action:"read web page",payload:{url:"http://127.0.0.1"}}).then(()=>{throw new Error("Browser loopback was not blocked.");}).catch(error=>{if(!String(error).includes("Local browser targets"))throw error;});
 
 const terminal=createTerminalToolAdapter({root:dir});
-const status=await terminal.execute({...base,tool:"terminal.exec",action:"run terminal command",permission:"L4_EXECUTE",payload:{command:"git status --short"}});
+const status=await terminal.execute({...base,tool:"terminal.exec",action:"run terminal command",permission:"L4_EXECUTE",payload:{command:"git status"}});
 if(typeof (status as {stdout:string}).stdout!=="string")throw new Error("Terminal did not return stdout.");
 await terminal.execute({...base,tool:"terminal.exec",action:"run terminal command",permission:"L4_EXECUTE",payload:{command:"node -e process.exit(0)"}}).then(()=>{throw new Error("Disallowed terminal command executed.");}).catch(error=>{if(!String(error).includes("not allowed"))throw error;});
 await terminal.execute({...base,tool:"terminal.exec",action:"run terminal command",permission:"L4_EXECUTE",payload:{command:"git status; echo unsafe"}}).then(()=>{throw new Error("Shell metacharacter was not blocked.");}).catch(error=>{if(!String(error).includes("metacharacters"))throw error;});
