@@ -31,6 +31,10 @@ Do not redistribute a recitation merely because it is playable on a third-party 
 - Two-publications-per-day scheduler.
 - OAuth and publication-status reconciliation.
 - End-to-end tests with local fixture media.
+## Production reconciliation
+
+Platform publication is asynchronous. LayanX records each external publication ID as `submitted`, then `quran.reconcile` queries TikTok/YouTube and changes the ledger to `published`, `failed`, or `submitted`. `quran.publish_next` reconciles outstanding entries before creating another publication, and failed platform submissions can be retried without duplicating successful platforms.
+
 ## Runtime configuration
 
 Quran Foundation credentials stay on the LayanX backend. Use `QF_ENV=prelive` for testing and `QF_ENV=production` only after production access is approved. The Content API uses Client Credentials with the `content` scope and token caching.
