@@ -96,7 +96,8 @@ export function createProjectVerifyToolAdapter(options:{root:string}):ToolAdapte
     ?packageData.scripts as Record<string,unknown>:{};
   if(typeof packageScripts[requested]!=="string")throw new Error("Project does not define the requested verification script.");
   return await new Promise((resolvePromise,reject)=>{
-   const child=spawn("npm",["run",requested],{cwd:workspace,shell:false,env:{...process.env,CI:"1"},timeout:60000});
+   const binary=process.platform==="win32"?"npm.cmd":"npm";
+   const child=spawn(binary,["run",requested],{cwd:workspace,shell:false,env:{...process.env,CI:"1"},timeout:60000});
    let stdout="",stderr="";
    child.stdout.on("data",chunk=>{stdout+=String(chunk);if(stdout.length>128*1024)child.kill("SIGKILL");});
    child.stderr.on("data",chunk=>{stderr+=String(chunk);if(stderr.length>128*1024)child.kill("SIGKILL");});
@@ -113,7 +114,8 @@ function validatePackageName(value:string):boolean{
 }
 function runNpm(cwd:string,args:string[],timeoutMs:number):Promise<{args:string[];cwd:string;exitCode:number|null;signal:NodeJS.Signals|null;stdout:string;stderr:string}>{
   return new Promise((resolvePromise,reject)=>{
-    const child=spawn("npm",args,{cwd,shell:false,env:{...process.env,CI:"1"},timeout:timeoutMs});
+    const binary=process.platform==="win32"?"npm.cmd":"npm";
+    const child=spawn(binary,args,{cwd,shell:false,env:{...process.env,CI:"1"},timeout:timeoutMs});
     let stdout="",stderr="";
     child.stdout.on("data",chunk=>{stdout+=String(chunk);if(stdout.length>128*1024)child.kill("SIGKILL");});
     child.stderr.on("data",chunk=>{stderr+=String(chunk);if(stderr.length>128*1024)child.kill("SIGKILL");});
