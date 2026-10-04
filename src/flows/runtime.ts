@@ -23,7 +23,7 @@ export class FlowRuntime{
   walk(flow.nodes[0]!.id);
   return flow;
  }
- async execute(flow:FlowDefinition,event:FlowEvent):Promise<FlowExecution>{
+ async handleInbound(event:FlowEvent){const flows=await this.store.listFlows(event.projectId);const triggerType=String(event.metadata?.eventType??"message");const candidates=flows.filter(f=>f.status==="active"&&f.nodes.some(n=>n.type==="trigger"&&(n.config.eventType===triggerType||n.config.eventType==="*")));const results=[];for(const flow of candidates)results.push(await this.execute(flow,event));return{matched:candidates.length,results};}\n async execute(flow:FlowDefinition,event:FlowEvent):Promise<FlowExecution>{
   this.validate(flow);if(flow.status!=="active")throw new Error("flow is not active");
   this.core.projectIsolation.normalize(event.projectId);
   if(flow.projectId!==event.projectId)throw new Error("Flow project isolation violation.");
@@ -67,12 +67,12 @@ export class FlowRuntime{
     if(!result.completed)throw new Error(result.reason??"tool node failed");
     return result;
    }
-   case "message": return{channel:ctx.event.channel,chatId:ctx.event.chatId,text:String(resolve(c.text??"",ctx))};
+   case "message":{const text=String(resolve(c.text??"",ctx));if(this.sendMessage)await this.sendMessage(ctx.event.channel,ctx.event.chatId,text);return{channel:ctx.event.channel,chatId:ctx.event.chatId,text,sent:Boolean(this.sendMessage)};}
    case "crm_upsert":{
     const customerId=String(resolve(c.customerId??ctx.event.senderId,ctx));
     const key="crm:"+ctx.event.projectId+":"+customerId;
-    const existing=this.core.memory.recall(ctx.event.projectId,customerId,20);
-    this.core.memory.remember({missionId:"flow:"+ctx.execution.id,projectId:ctx.event.projectId,kind:"context",summary:"CRM flow profile "+customerId,content:{key,customerId,data:resolve(c.data??{},ctx)},confidence:1,tags:["flow","crm",customerId]});
+    const existing=this.core.memory.recall(customerId,20,ctx.event.projectId);
+    this.core.memory.remember({missionId:"flow:"+ctx.execution.id,projectId:ctx.event.projectId,kind:"fact",summary:"CRM flow profile "+customerId,content:{key,customerId,data:resolve(c.data??{},ctx)},confidence:1,tags:["flow","crm",customerId]});
     return{customerId,stored:true,previousContext:existing};
    }
    case "handoff": return{queue:String(resolve(c.queue??"human-agent",ctx)),reason:String(resolve(c.reason??"Human handoff requested.",ctx))};
