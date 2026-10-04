@@ -11,7 +11,7 @@ export class GitBranchManager{
   async status():Promise<BranchStatus>{
     const branch=(await this.git(["branch","--show-current"])).stdout.trim();
     const porcelain=(await this.git(["status","--porcelain"])).stdout.trim();
-    return{branch,clean:!porcelain,changes:porcelain?porcelain.split("\n").filter(Boolean):[]};
+    return{branch:branch||"DETACHED",clean:!porcelain,changes:porcelain?porcelain.split("\n").filter(Boolean):[]};
   }
   async createBranch(branchName:string,baseRef?:string,requireClean=true){
     this.validateBranch(branchName);
