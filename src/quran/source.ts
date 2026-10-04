@@ -9,8 +9,8 @@ export class QuranFoundationSource{
  private tokenState?:TokenState;
  private inflight?:Promise<string>;
  constructor(private readonly config:QuranSourceConfig,private readonly fetchImpl:typeof fetch=fetch){}
- private async token(force=false){
-  if(!force&&this.tokenState&&Date.now()<this.tokenState.expiresAt-30000)return this.tokenState.token;
+ private async token(){
+  if(this.tokenState&&Date.now()<this.tokenState.expiresAt-30000)return this.tokenState.token;
   if(this.inflight)return this.inflight;
   this.inflight=this.fetchToken().finally(()=>{this.inflight=undefined;});
   return this.inflight;
