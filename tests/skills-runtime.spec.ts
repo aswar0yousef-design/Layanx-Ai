@@ -14,6 +14,7 @@ mission.requiredPermission="L1_READ";
 mission.successCriteria=["result.ready === true"];
 mission.steps=[{id:"execute",description:"execute runtime status",status:"completed"}];
 mission.tools=[{tool:"runtime.status",action:"read runtime status",permission:"L1_READ",reason:"skill fixture"}];
+core.missions.save(mission);
 
 core.skills.register({
  id:"status-skill",name:"Status Skill",version:"1.0.0",description:"read runtime status",
