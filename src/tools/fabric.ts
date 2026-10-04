@@ -4,6 +4,7 @@ import {spawn} from "node:child_process";
 import type {ToolRequest} from "../core/types.js";
 import type {ToolAdapter} from "./executor.js";
 import {ensureGitOnPath} from "./git.js";
+import {ProjectIsolation} from "../security/project-isolation.js";
 
 ensureGitOnPath();
 function payload(request:ToolRequest):Record<string,unknown>{return request.payload&&typeof request.payload==="object"&&!Array.isArray(request.payload)?request.payload as Record<string,unknown>:{};}
