@@ -39,7 +39,7 @@ export class MemoryEngine{
   }
 
   recall(query:string,limit=10,projectId?:string){
-    const terms=query.toLowerCase().split(/[^a-z0-9_]+/).filter(term=>term.length>2);
+    const terms=query.toLowerCase().split(/[^\p{L}\p{N}_]+/u).filter(term=>term.length>1);
     const now=Date.now();
     return [...this.entries.values()]
       .filter(entry=>!projectId||entry.projectId===projectId)
