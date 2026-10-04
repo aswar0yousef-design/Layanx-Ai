@@ -1,5 +1,5 @@
 import {readFile,readdir,stat} from "node:fs/promises";
-import {resolve,relative,sep,extname} from "node:path";
+import {resolve,relative,sep,extname,dirname,join} from "node:path";
 
 export interface ProjectGraphOptions{root:string;maxFiles?:number;maxFileBytes?:number;}
 export interface ProjectGraphNode{
@@ -125,10 +125,10 @@ export class ProjectGraph{
   }
 
   private resolveImport(from:string,specifier:string,files:Set<string>):string|undefined{
-    const base=resolve("/",from).replace(/\\/g,"/").replace(/^\//,"");
-    const candidateBase=resolve("/",base.substring(0,base.lastIndexOf("/")+1),specifier).replace(/\\/g,"/").replace(/^\//,"");
-    const sourceLike=candidateBase.replace(/\.(?:js|jsx|mjs|cjs)$/,"");
-    const candidates=[candidateBase,sourceLike,...[".ts",".tsx",".js",".jsx",".mjs",".cjs"].flatMap(ext=>[candidateBase+ext,sourceLike+ext]),...["index.ts","index.tsx","index.js","index.jsx","index.mjs","index.cjs"].map(name=>candidateBase+"/"+name),...["index.ts","index.tsx","index.js","index.jsx","index.mjs","index.cjs"].map(name=>sourceLike+"/"+name)];
+    const base=dirname(from).split(sep).join("/");
+    const raw=join(base,specifier).split(sep).join("/").replace(/^\.\//,"");
+    const sourceLike=raw.replace(/\.(?:js|jsx|mjs|cjs)$/,"");
+    const candidates=[raw,sourceLike,...[".ts",".tsx",".js",".jsx",".mjs",".cjs"].flatMap(ext=>[raw+ext,sourceLike+ext]),...["index.ts","index.tsx","index.js","index.jsx","index.mjs","index.cjs"].map(name=>raw+"/"+name),...["index.ts","index.tsx","index.js","index.jsx","index.mjs","index.cjs"].map(name=>sourceLike+"/"+name)];
     return candidates.find(candidate=>files.has(candidate));
   }
 
