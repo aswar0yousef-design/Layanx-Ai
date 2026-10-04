@@ -14,7 +14,7 @@ core.registerAgent({
   requiredPermission:"L1_READ",
   maxToolCalls:5,
   maxRuntimeMs:10000,
-  successCriteria:["echo"],
+  successCriteria:["result === \"hello\""],
   stopCondition:"stop"
 });
 core.tools.register({name:"echo",description:"echo",permission:"L1_READ",dangerous:false});
