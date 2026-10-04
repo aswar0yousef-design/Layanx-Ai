@@ -2,6 +2,7 @@ import {ModelRegistry} from "../src/models/registry.js";
 import {ModelExecutionRouter,ModelProviderRegistry} from "../src/core/model-execution.js";
 import {AiMissionPlanner} from "../src/core/ai-planner.js";
 import type {ModelProviderAdapter} from "../src/models/inference.js";
+import type {ToolCatalogEntry} from "../src/core/tool-catalog.js";
 
 const models=new ModelRegistry();
 models.register({id:"planner",provider:"fake",capabilities:["reasoning"],local:true,enabled:true,priority:1});
