@@ -63,6 +63,7 @@ export class AiMissionPlanner{
       "steps must be an array of concise objects with description strings.",
       "tools must be an array of objects with tool, action, permission, reason, and optional JSON payload.",
       "Only choose tools from the supplied catalog. Do not invent tool names or actions.",
+      "For project.verify use payload {script:\"test\"}, {script:\"typecheck\"}, or {script:\"build\"} according to the goal. For terminal.exec include a safe allowlisted command payload.",
       "For computer-use goals, prefer desktop.screenshot before any coordinate-based mouse or keyboard action unless the user supplied exact coordinates.",
       "Do not request secrets or bypass security controls.",
       "Available tool catalog: "+JSON.stringify(catalog),
