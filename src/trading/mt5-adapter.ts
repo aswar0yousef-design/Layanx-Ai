@@ -54,7 +54,7 @@ export function toPreTradeMarketSnapshot(
     timeframe,
     bid: snapshot.bid,
     ask: snapshot.ask,
-    spread: Math.abs(snapshot.ask - snapshot.bid),
+    spread: Number(Math.abs(snapshot.ask - snapshot.bid).toFixed(12)),
     atr,
     expectedSlippage,
     timestamp: snapshot.timestamp,
