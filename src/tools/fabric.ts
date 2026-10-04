@@ -72,7 +72,9 @@ export function createTerminalToolAdapter(options:{root:string}):ToolAdapter{
   if(!allowed.includes(normalized))throw new Error("Terminal command is not allowed.");
   if(/[;&|$<>]/.test(command)||command.includes(String.fromCharCode(96)))throw new Error("Shell metacharacters are blocked.");
   return await new Promise((resolvePromise,reject)=>{
-   const child=spawn(binary,parts,{cwd:workspace,shell:false,env:{...process.env,CI:"1"},timeout:30000});
+   const executable=binary==="git"&&process.platform==="win32"?"git.exe":binary==="npm"&&process.platform==="win32"?(process.env.ComSpec??"cmd.exe"):binary;
+   const executableArgs=binary==="npm"&&process.platform==="win32"?["/d","/s","/c",["npm.cmd",...parts].map(value=>`"${value.replaceAll("\\","\\\\").replaceAll(""","\\"")}"`).join(" ")]:parts;
+   const child=spawn(executable,executableArgs,{cwd:workspace,shell:false,env:{...process.env,CI:"1"},timeout:30000});
    let stdout="",stderr="";
    child.stdout.on("data",chunk=>{stdout+=String(chunk);if(stdout.length>128*1024)child.kill("SIGKILL");});
    child.stderr.on("data",chunk=>{stderr+=String(chunk);if(stderr.length>128*1024)child.kill("SIGKILL");});
@@ -117,8 +119,10 @@ function validatePackageName(value:string):boolean{
 }
 function runNpm(cwd:string,args:string[],timeoutMs:number):Promise<{args:string[];cwd:string;exitCode:number|null;signal:NodeJS.Signals|null;stdout:string;stderr:string}>{
   return new Promise((resolvePromise,reject)=>{
-    const binary=process.platform==="win32"?"npm.cmd":"npm";
-    const child=spawn(binary,args,{cwd,shell:process.platform==="win32",env:{...process.env,CI:"1"},timeout:timeoutMs});
+    const isWindows=process.platform==="win32";
+    const binary=isWindows?(process.env.ComSpec??"cmd.exe"):"npm";
+    const commandArgs=isWindows?["/d","/s","/c",["npm.cmd",...args].map(value=>`"${value.replaceAll("\\","\\\\").replaceAll(""","\\"")}"`).join(" ")]:args;
+    const child=spawn(binary,commandArgs,{cwd,shell:false,env:{...process.env,CI:"1"},timeout:timeoutMs});
     let stdout="",stderr="";
     child.stdout.on("data",chunk=>{stdout+=String(chunk);if(stdout.length>128*1024)child.kill("SIGKILL");});
     child.stderr.on("data",chunk=>{stderr+=String(chunk);if(stderr.length>128*1024)child.kill("SIGKILL");});
