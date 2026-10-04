@@ -28,7 +28,7 @@ core.tools.register({name:"github.issues.list",description:"list open GitHub iss
 const adapter=createGitHubReadAdapter({fetcher:async(input)=>{requests.push(String(input));return new Response(JSON.stringify({items:[]} ),{status:200,headers:{"content-type":"application/json"}});}});
 core.toolAdapters.register("github.repo.read",adapter);
 core.toolAdapters.register("github.issues.list",adapter);
-const mission=core.startMission("Read repository metadata and then inspect its open issues");
+const mission=core.startMission("Read repository metadata and then inspect its open issues","project-test");
 mission.requiredPermission="L1_READ";
 mission.steps=[{id:crypto.randomUUID(),description:"Execute repository reads",status:"pending"}];
 mission.tools=[{tool:"github.repo.read",action:"read repository",permission:"L1_READ",reason:"initial",payload:{repository:"aswar0yousef-design/Layanx-Ai"}}];
