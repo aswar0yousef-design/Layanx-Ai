@@ -51,9 +51,9 @@ export class MemoryEngine{
         const confidence=Math.max(0,Math.min(1,entry.confidence));
         const ageDays=Math.max(0,(now-Date.parse(entry.createdAt))/86400000);
         const recencyBoost=1/(1+ageDays/30);
-        return{entry,score:lexical*kindBoost*confidence*recencyBoost};
+        return{entry,haystack,score:lexical*kindBoost*confidence*recencyBoost};
       })
-      .filter(item=>item.score>0)
+      .filter(item=>terms.length===0||terms.every(term=>item.haystack.includes(term)))
       .sort((a,b)=>b.score-a.score)
       .slice(0,limit)
       .map(item=>structuredClone(item.entry));
