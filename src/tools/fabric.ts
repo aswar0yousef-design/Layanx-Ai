@@ -97,7 +97,7 @@ export function createProjectVerifyToolAdapter(options:{root:string}):ToolAdapte
   if(typeof packageScripts[requested]!=="string")throw new Error("Project does not define the requested verification script.");
   return await new Promise((resolvePromise,reject)=>{
    const binary=process.platform==="win32"?"npm.cmd":"npm";
-   const child=spawn(binary,["run",requested],{cwd:workspace,shell:false,env:{...process.env,CI:"1"},timeout:60000});
+   const child=spawn(binary,["run",requested],{cwd:workspace,shell:process.platform==="win32",env:{...process.env,CI:"1"},timeout:60000});
    let stdout="",stderr="";
    child.stdout.on("data",chunk=>{stdout+=String(chunk);if(stdout.length>128*1024)child.kill("SIGKILL");});
    child.stderr.on("data",chunk=>{stderr+=String(chunk);if(stderr.length>128*1024)child.kill("SIGKILL");});
