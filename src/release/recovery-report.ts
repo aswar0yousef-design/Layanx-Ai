@@ -63,8 +63,8 @@ export function createRecoveryReport(
   audit,
   resume,
   evidence:{
-   rollbackPerformed:Boolean(audit.rollback),
-   verificationCompleted:Boolean(audit.verified),
+   rollbackPerformed:Boolean(audit.rollback||target),
+   verificationCompleted:Boolean(audit.verified||record.state==="verified"),
    auditComplete:audit.complete
   }
  };
