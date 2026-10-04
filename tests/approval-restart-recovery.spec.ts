@@ -10,8 +10,8 @@ const dir=await mkdtemp(join(tmpdir(),"layanx-approval-restart-"));
 const persistence=new RuntimePersistence(new RuntimeStorage(new JsonStorageAdapter(join(dir,"runtime.json"))));
 
 function setup(core:LayanXCore){
- core.registerAgent({agentId:"core",purpose:"approval restart",allowedTools:["dangerous.read"],forbiddenResources:[],requiredPermission:"L1_READ",maxToolCalls:10,maxRuntimeMs:10000,successCriteria:["approved"],stopCondition:"stop"});
- core.tools.register({name:"dangerous.read",description:"approval test",permission:"L1_READ",dangerous:true,actions:["run sensitive test"],tags:["test"]});
+ core.registerAgent({agentId:"core",purpose:"approval restart",allowedTools:["dangerous.read"],forbiddenResources:[],requiredPermission:"L4_EXECUTE",maxToolCalls:10,maxRuntimeMs:10000,successCriteria:["approved"],stopCondition:"stop"});
+ core.tools.register({name:"dangerous.read",description:"approval test",permission:"L4_EXECUTE",dangerous:true,actions:["run sensitive test"],tags:["test"]});
  core.toolAdapters.register("dangerous.read",{async execute(){return{approved:true};}});
 }
 
@@ -19,8 +19,8 @@ try{
  const first=new LayanXCore(undefined,persistence);
  setup(first);
  const mission=first.startMission("approval restart","approval-restart-project");
- mission.requiredPermission="L1_READ";
- mission.tools=[{tool:"dangerous.read",action:"run sensitive test",permission:"L1_READ",reason:"restart test"}];
+ mission.requiredPermission="L4_EXECUTE";
+ mission.tools=[{tool:"dangerous.read",action:"run sensitive test",permission:"L4_EXECUTE",reason:"restart test"}];
  first.missions.save(mission);
 
  const blocked=await first.executeMissionTool(mission.id,mission.projectId,0,{});
