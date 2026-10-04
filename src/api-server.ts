@@ -789,6 +789,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   }
   if(request.method==="GET"&&request.url?.split("?")[0]==="/v1/missions"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const url=request.url??"";
    const projectId=new URL(url,"http://localhost").searchParams.get("projectId")?.trim()||"";
    const missions=projectId?options.core.missions.list().filter(m=>m.projectId===projectId):options.core.missions.list();
    json(response,200,{ok:true,missions});return;
