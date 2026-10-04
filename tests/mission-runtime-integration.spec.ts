@@ -8,9 +8,9 @@ core.registerAgent({
 });
 core.tools.register({name:"terminal.run",description:"Run command",permission:"L4_EXECUTE",dangerous:false});
 
-const mission=core.startMission("Run command","project-1");
+const mission=core.startMission("Run command","default");
 const capability=core.capabilities.issue({
-  missionId:mission.id,agentId:"runner",projectId:"project-1",resource:"terminal.run",
+  missionId:mission.id,agentId:"runner",projectId:"default",resource:"terminal.run",
   permission:"L4_EXECUTE",expiresAt:new Date(Date.now()+60000).toISOString()
 });
 const request:ToolRequest={
@@ -22,6 +22,6 @@ const runner=new (await import("../src/core/mission-runner.js")).MissionRunner(c
 const blocked=await runner.execute(mission,request,adapter,undefined,{projectId:"wrong-project",capabilityId:capability.id});
 if(blocked.ok||!String(blocked.error).includes("Project isolation"))throw new Error("Capability scope was not enforced.");
 
-const successful=await runner.execute(mission,request,adapter,undefined,{projectId:"project-1",capabilityId:capability.id});
+const successful=await runner.execute(mission,request,adapter,undefined,{projectId:"default",capabilityId:capability.id});
 if(!successful.ok||!successful.verified||mission.status!=="completed")throw new Error("Secured mission execution failed.");
 console.log("Mission runner and capability integration test passed.");
