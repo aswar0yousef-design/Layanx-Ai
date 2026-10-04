@@ -4,14 +4,14 @@ import {MissionRunner} from "../src/core/mission-runner.js";
 const core=new LayanXCore();
 const agent={
   agentId:"retry-agent",purpose:"recover failed execution",allowedTools:["terminal.run"],
-  forbiddenResources:[],requiredPermission:"L4_EXECUTE" as const,maxToolCalls:5,maxRuntimeMs:10000,
+  forbiddenResources:[],requiredPermission:"L2_ANALYZE" as const,maxToolCalls:5,maxRuntimeMs:10000,
   successCriteria:["done"],stopCondition:"stop"
 };
 core.registerAgent(agent);
-core.tools.register({name:"terminal.run",description:"Run command",permission:"L4_EXECUTE",dangerous:false});
+core.tools.register({name:"terminal.run",description:"Run command",permission:"L2_ANALYZE",dangerous:false});
 
 const mission=core.startMission("Recover a failed command","default");
-mission.requiredPermission="L4_EXECUTE";
+mission.requiredPermission="L2_ANALYZE";
 mission.steps=[
   {id:"prepare",description:"Prepare execution",status:"pending"},
   {id:"execute",description:"Execute command",status:"pending"},
@@ -20,14 +20,14 @@ mission.steps=[
 
 const capability=core.capabilities.issue({
   missionId:mission.id,agentId:agent.agentId,projectId:"retry-project",
-  resource:"terminal.run",permission:"L4_EXECUTE",expiresAt:new Date(Date.now()+60000).toISOString()
+  resource:"terminal.run",permission:"L2_ANALYZE",expiresAt:new Date(Date.now()+60000).toISOString()
 });
 
 const runner=new MissionRunner(core);
 let calls=0;
 const result=await runner.execute(
   mission,
-  {missionId:mission.id,agentId:agent.agentId,tool:"terminal.run",action:"run command",permission:"L4_EXECUTE",idempotencyKey:"retry-flow",payload:{}},
+  {missionId:mission.id,agentId:agent.agentId,tool:"terminal.run",action:"run command",permission:"L2_ANALYZE",idempotencyKey:"retry-flow",payload:{}},
   {async execute(){
     calls++;
     if(calls===1)throw new Error("temporary failure");
