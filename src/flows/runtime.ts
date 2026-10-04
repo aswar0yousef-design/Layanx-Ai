@@ -23,7 +23,8 @@ export class FlowRuntime{
   walk(flow.nodes[0]!.id);
   return flow;
  }
- async handleInbound(event:FlowEvent){const flows=await this.store.listFlows(event.projectId);const triggerType=String(event.metadata?.eventType??"message");const candidates=flows.filter(f=>f.status==="active"&&f.nodes.some(n=>n.type==="trigger"&&(n.config.eventType===triggerType||n.config.eventType==="*")));const results=[];for(const flow of candidates)results.push(await this.execute(flow,event));return{matched:candidates.length,results};}\n async execute(flow:FlowDefinition,event:FlowEvent):Promise<FlowExecution>{
+ async handleInbound(event:FlowEvent){const flows=await this.store.listFlows(event.projectId);const triggerType=String(event.metadata?.eventType??"message");const candidates=flows.filter(f=>f.status==="active"&&f.nodes.some(n=>n.type==="trigger"&&(n.config.eventType===triggerType||n.config.eventType==="*")));const results=[];for(const flow of candidates)results.push(await this.execute(flow,event));return{matched:candidates.length,results};}
+ async execute(flow:FlowDefinition,event:FlowEvent):Promise<FlowExecution>{
   this.validate(flow);if(flow.status!=="active")throw new Error("flow is not active");
   this.core.projectIsolation.normalize(event.projectId);
   if(flow.projectId!==event.projectId)throw new Error("Flow project isolation violation.");
