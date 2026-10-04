@@ -3,6 +3,7 @@ import {join} from "node:path";
 import {LayanXCore} from "../src/core/orchestrator.js";
 import {registerBuiltinTools,registerToolFabric} from "../src/tools/builtin.js";
 const root=await mkdtemp(join(process.cwd(),"dev-session-test-"));
+process.env.LAYANX_WORKSPACE_ROOT=root;
 await mkdir(join(root,"p"),{recursive:true});
 await writeFile(join(root,"p","package.json"),JSON.stringify({scripts:{test:"echo test",typecheck:"echo typecheck"}}),"utf8");
 const core=new LayanXCore();
