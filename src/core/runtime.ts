@@ -20,7 +20,7 @@ export class ExecutionRuntime{
    const replay=await this.core.idempotency.get(request.idempotencyKey);
    if(mission.status==="completed"&&replay?.status==="completed"&&replay.missionId===mission.id&&replay.agentId===request.agentId&&replay.tool===request.tool&&replay.action===request.action)
     const executionStep=mission.steps.find(step=>/execute|run|perform|action/i.test(step.description));
-    if(executionStep)executionStep.status="completed";
+    if(executionStep){executionStep.status="completed";}
     mission.status="completed";
     this.core.executionStates.update(mission.id,{status:"completed",recoverable:false});
     await this.persist(mission);
