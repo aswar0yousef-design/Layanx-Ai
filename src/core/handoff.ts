@@ -28,7 +28,7 @@ export interface HandoffRequest{
 }
 
 const sensitiveKey=/api[_ -]?key|secret|password|token|authorization|private[_ -]?key|credential/i;
-const bearer=/bearer\\s+[A-Za-z0-9._-]{8,}/gi;
+const bearer=/bearer\s+[A-Za-z0-9._-]{8,}/gi;
 function sanitize(value:unknown):unknown{if(typeof value==="string")return value.replace(bearer,"[REDACTED]");if(Array.isArray(value))return value.map(sanitize);if(value&&typeof value==="object"){const out:Record<string,unknown>={};for(const [key,item] of Object.entries(value))out[key]=sensitiveKey.test(key)?"[REDACTED]":sanitize(item);return out;}return value;}
 
 export class MissionHandoffManager{
