@@ -149,6 +149,10 @@ export class RuntimeRecoveryManager{
     const runner=new MissionRunner(this.core);
     if(!security)throw new Error("Recovery security context is required.");
     const result=await runner.execute(snapshot.mission,request,adapter,approvalId,security);
+    if(result.ok){
+      const executionStep=snapshot.mission.steps.find(step=>/execute|run|perform|action/i.test(step.description));
+      if(executionStep)executionStep.status="completed";
+    }
     const updated=this.core.executionStates.get(missionId);
     if(updated){
       await this.persistence.saveAtomic({
