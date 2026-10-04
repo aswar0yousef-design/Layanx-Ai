@@ -29,7 +29,7 @@ export class ContextFabric{
   const maxChars=Math.min(Math.max(request.maxChars??12000,500),50000);
   const memories=this.memory.recall(request.query,limit,projectId);
   const prioritized=[...memories].sort((a,b)=>{
-   const rank=(kind:MemoryEntry["kind"])=>kind==="decision"?5:kind==="failure"?4:kind==="success"?3:kind==="fact"?2:1;
+   const rank=(kind:MemoryEntry["kind"])=>kind==="failure"?5:kind==="decision"?4:kind==="success"?3:kind==="fact"?2:1;
    return rank(b.kind)-rank(a.kind);
   });
   const sections:string[]=[];
