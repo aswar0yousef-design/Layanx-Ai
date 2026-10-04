@@ -44,25 +44,39 @@ export class AiMissionPlanner{
       name:tool.name,description:tool.description,permission:tool.permission,
       dangerous:tool.dangerous,actions:tool.actions,tags:tool.tags
     })):[];
-    const response=await this.models.execute({
-      capability:"reasoning",
-      routing,
-      input:[
-        "You are the LayanX mission planner.",
-        "Return ONLY valid JSON with keys: risk, requiredPermission, steps, successCriteria, stopCondition, tools.",
-        "risk must be low|medium|high|critical.",
-        "requiredPermission must be L1_READ|L2_ANALYZE|L3_MODIFY|L4_EXECUTE|L5_CRITICAL.",
-        "steps must be an array of concise objects with description strings.",
-        "tools must be an array of objects with tool, action, permission, reason, and optional JSON payload.",
-        "Only choose tools from the supplied catalog. Do not invent tool names or actions.",
-        "For computer-use goals, prefer desktop.screenshot before any coordinate-based mouse or keyboard action unless the user supplied exact coordinates.",
-        "Do not request secrets or bypass security controls.",
-        "Available tool catalog: "+JSON.stringify(catalog),
-        "Project intelligence context: "+JSON.stringify(projectContext??null).slice(0,8000),
-        "Goal: "+goal
-      ].join("\n")
-    });
-    return this.parse(response.output,tools);
+    const basePrompt=[
+      "You are the LayanX mission planner.",
+      "Return ONLY valid JSON with keys: risk, requiredPermission, steps, successCriteria, stopCondition, tools.",
+      "Every required key must be present. steps and successCriteria must each contain at least one item.",
+      "risk must be low|medium|high|critical.",
+      "requiredPermission must be L1_READ|L2_ANALYZE|L3_MODIFY|L4_EXECUTE|L5_CRITICAL.",
+      "steps must be an array of concise objects with description strings.",
+      "tools must be an array of objects with tool, action, permission, reason, and optional JSON payload.",
+      "Only choose tools from the supplied catalog. Do not invent tool names or actions.",
+      "For computer-use goals, prefer desktop.screenshot before any coordinate-based mouse or keyboard action unless the user supplied exact coordinates.",
+      "Do not request secrets or bypass security controls.",
+      "Available tool catalog: "+JSON.stringify(catalog),
+      "Project intelligence context: "+JSON.stringify(projectContext??null).slice(0,8000),
+      "Goal: "+goal
+    ].join("\n");
+    const response=await this.models.execute({capability:"reasoning",routing,input:basePrompt});
+    try{return this.parse(response.output,tools);}
+    catch(error){
+      if(!(error instanceof Error)||error.message!=="Incomplete mission plan.")throw error;
+      const repair=await this.models.execute({
+        capability:"reasoning",routing,
+        input:[
+          "Repair the following LayanX mission plan.",
+          "Return ONLY valid JSON. Preserve valid fields exactly and add missing required fields.",
+          "Required fields: risk, requiredPermission, steps (at least one description), successCriteria (at least one string), stopCondition (non-empty string), tools (array).",
+          "Do not invent tools. Only use tools from this catalog. Do not increase permissions.",
+          "Original plan: "+response.output,
+          "Tool catalog: "+JSON.stringify(catalog),
+          "Goal: "+goal
+        ].join("\n")
+      });
+      return this.parse(repair.output,tools);
+    }
   }
   async nextTool(input:{goal:string;result:unknown;tools:ToolCatalogEntry[];requiredPermission:PermissionLevel;completedTools:string[];memory?:Array<{kind:string;summary:string;content:unknown;tags:string[]}>;projectContext?:unknown;routing?:ModelRoutingOptions;visualContext?:{mimeType:string;base64:string}}):Promise<PlannedTool|null>{
     if(!input.goal.trim())throw new Error("Mission goal is empty.");
