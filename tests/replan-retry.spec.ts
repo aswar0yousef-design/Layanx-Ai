@@ -10,7 +10,7 @@ const agent={
 core.registerAgent(agent);
 core.tools.register({name:"terminal.run",description:"Run command",permission:"L4_EXECUTE",dangerous:true});
 
-const mission=core.startMission("Recover a failed command");
+const mission=core.startMission("Recover a failed command","retry-project");
 mission.requiredPermission="L4_EXECUTE";
 mission.steps=[
   {id:"prepare",description:"Prepare execution",status:"pending"},
