@@ -4,7 +4,7 @@ core.registerAgent({agentId:"core",purpose:"test",allowedTools:["runtime.status"
 core.tools.register({name:"runtime.status",description:"read runtime status",permission:"L1_READ",dangerous:false,actions:["read runtime status"],tags:["runtime","status"]});
 let calls=0;
 core.toolAdapters.register("runtime.status",{async execute(){calls++;return{ready:true,calls};}});
-const mission=core.startMission("Read runtime status");
+const mission=core.startMission("Read runtime status","project");
 mission.requiredPermission="L1_READ";
 mission.tools=[{tool:"runtime.status",action:"read runtime status",permission:"L1_READ",reason:"test"}];
 const result=await core.executeMissionTool(mission.id,"project-test",0,{});
