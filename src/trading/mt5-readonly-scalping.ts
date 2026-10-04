@@ -57,7 +57,7 @@ export async function evaluateMt5ReadOnlyScalping(
     decision,
     bid: market.snapshot.bid,
     ask: market.snapshot.ask,
-    spread: market.snapshot.ask - market.snapshot.bid,
+    spread: Number((market.snapshot.ask - market.snapshot.bid).toFixed(12)),
     specificationSymbol: market.specification.symbol,
   };
 }
