@@ -1,5 +1,6 @@
 import type { TradeSide } from "./execution-quality.js";
 import type { MarketCandle } from "./scalping-signal.js";
+import {roundDecimal} from "./numeric.js";
 
 export interface Mt5SymbolSnapshot {
   symbol: string;
@@ -54,7 +55,7 @@ export function toPreTradeMarketSnapshot(
     timeframe,
     bid: snapshot.bid,
     ask: snapshot.ask,
-    spread: Math.abs(snapshot.ask - snapshot.bid),
+    spread: roundDecimal(Math.abs(snapshot.ask - snapshot.bid)),
     atr,
     expectedSlippage,
     timestamp: snapshot.timestamp,
