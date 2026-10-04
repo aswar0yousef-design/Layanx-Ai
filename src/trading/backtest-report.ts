@@ -138,14 +138,14 @@ export function buildBacktestReport(
 
   const trades = analyses.length;
   const losses = trades - wins;
-  const netPnl = balance - initialBalance;
+  const netPnl = Number((balance - initialBalance).toFixed(12));
   const profitFactor = grossLoss === 0 ? (grossProfit > 0 ? Infinity : 0) : grossProfit / grossLoss;
 
   return {
     initialBalance,
     finalBalance: balance,
     netPnl,
-    returnPct: (netPnl / initialBalance) * 100,
+    returnPct: Number(((netPnl / initialBalance) * 100).toFixed(12)),
     trades,
     wins,
     losses,
