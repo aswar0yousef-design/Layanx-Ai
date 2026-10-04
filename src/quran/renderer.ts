@@ -4,7 +4,6 @@ import {spawn} from "node:child_process";
 import type {QuranSegment} from "./publisher.js";
 export interface QuranRenderOptions{outputPath:string;backgroundPath?:string;fontFile?:string;fontName?:string;translation?:boolean;creditText?:string;}
 export interface QuranRenderResult{outputPath:string;durationSec:number;width:1080;height:1920;}
-const safe=(s:string)=>s.replace(/[\\/:*?"<>|]/g,"_");
 const assTime=(seconds:number)=>{const cs=Math.round(seconds*100);const h=Math.floor(cs/360000);const m=Math.floor((cs%360000)/6000);const s=Math.floor((cs%6000)/100);const c=cs%100;return `${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}.${String(c).padStart(2,"0")}`;};
 function assEscape(s:string){return s.replace(/\\/g,"\\\\").replace(/\{/g,"\\{").replace(/\}/g,"\\}").replace(/\r?\n/g,"\\N");}
 function run(command:string,args:string[],timeout=300000){return new Promise<void>((resolve,reject)=>{const p=spawn(command,args,{stdio:["ignore","pipe","pipe"]});let err="";const timer=setTimeout(()=>{p.kill("SIGKILL");reject(new Error("quran_renderer_timeout"));},timeout);p.stderr.on("data",d=>{err+=String(d).slice(-5000);});p.on("error",e=>{clearTimeout(timer);reject(e);});p.on("close",code=>{clearTimeout(timer);if(code===0)resolve();else reject(new Error("quran_renderer_failed:"+code+":"+err.slice(-1500)));});});}
