@@ -21,7 +21,7 @@ export class ToolCatalog{
     const rank:Record<PermissionLevel,number>={L1_READ:1,L2_ANALYZE:2,L3_MODIFY:3,L4_EXECUTE:4,L5_CRITICAL:5};
     const max=permission&&contract?Math.min(rank[permission],rank[contract.requiredPermission]):permission?rank[permission]:undefined;
     return this.registry.list()
-      .filter(tool=>!contract||contract.allowedTools.includes(tool.name))
+      .filter(tool=>!contract||contract.allowedTools.includes("*")||contract.allowedTools.includes(tool.name))
       .filter(tool=>!contract||!contract.forbiddenResources.includes(tool.name))
       .filter(tool=>max===undefined||rank[tool.permission]<=max)
       .map(toPublic);
