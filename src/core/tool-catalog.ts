@@ -33,6 +33,7 @@ export class ToolCatalog{
       .map(tool=>{const haystack=[tool.name,tool.description,...tool.actions,...tool.tags].join(" ").toLowerCase();const score=terms.reduce((sum,term)=>sum+(haystack.includes(term)?1:0),0);return{tool,score};})
       .filter(item=>item.score>0)
       .sort((a,b)=>b.score-a.score||a.tool.name.localeCompare(b.tool.name))
+      .filter((item,index,items)=>index===0||item.score===items[0]!.score)
       .map(item=>item.tool);
   }
 }
