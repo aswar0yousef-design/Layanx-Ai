@@ -70,11 +70,16 @@ export class AiMissionPlanner{
     const modelInput=input.visualContext
       ? [{type:"text" as const,text:prompt},{type:"image" as const,image:input.visualContext}]
       : prompt;
-    const response=await this.models.execute({
-      capability:input.visualContext?"vision":"reasoning",
-      routing:input.routing,
-      input:modelInput
-    });
+    let response;
+    try{
+      response=await this.models.execute({
+        capability:input.visualContext?"vision":"reasoning",
+        routing:input.routing,
+        input:modelInput
+      });
+    }catch(error){
+      throw new Error("Adaptive planner execution failed: "+(error instanceof Error?error.message:String(error)));
+    }
     let value:unknown;
     try{value=JSON.parse(response.output);}catch{throw new Error("Adaptive planner returned invalid JSON.");}
     if(value===null)return null;
