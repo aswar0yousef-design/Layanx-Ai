@@ -31,7 +31,7 @@ export class ExecutionRuntime{
   if(!security)return this.block(mission,request,"Capability context is required.");
   let projectId:string;
   try{
-   projectId=this.core.projectIsolation.normalize(security.projectId);
+   projectId=this.core.projectIsolation.canonical(security.projectId);
    this.core.projectIsolation.assertMissionProject(projectId,mission.projectId);
    if(request.projectId)this.core.projectIsolation.assertRequestProject(projectId,request.projectId);
    request={...request,projectId};
