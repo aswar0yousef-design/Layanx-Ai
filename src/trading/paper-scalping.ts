@@ -250,6 +250,7 @@ export function runPaperScalping(
         timestamp: candle.timestamp,
       },
       executionPolicy: config.executionPolicy ?? { maxSpreadAtrRatio: Number.POSITIVE_INFINITY, maxExpectedSlippageAtrRatio: Number.POSITIVE_INFINITY, requireSpread: false, requireAtr: false },
+      signalConfig: config.signalConfig,
       risk: {
         stopLossPrice: stop,
         entryPrice: entry,
