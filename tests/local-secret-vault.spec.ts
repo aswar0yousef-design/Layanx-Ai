@@ -14,7 +14,7 @@ assert.equal(vault.get("missing"),undefined);
 const raw=readFileSync(path,"utf8");
 assert.equal(raw.includes("super-secret-value"),false);
 const mode=statSync(path).mode&0o777;
-assert.equal(mode,0o600);
+if(process.platform!=="win32")assert.equal(mode,0o600);
 const restored=new LocalSecretVault(path,"local-master-key-123456");
 assert.equal(restored.get("meta.token"),"super-secret-value");
 assert.equal(restored.delete("meta.token"),true);
