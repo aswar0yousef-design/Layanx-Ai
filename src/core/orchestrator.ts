@@ -602,7 +602,7 @@ export class LayanXCore{
           projectContext:context
         })??undefined;
         if(!plan){
-          const verification=this.verifier.verify(current,latest,this.agents.get(agentId).successCriteria);
+          const contract=this.agents.get(agentId);\n          const verification=this.verifier.verify(current,latest,current.successCriteria?.length?current.successCriteria:contract.successCriteria);
           if(verification.verified){
             const executionStep=current.steps.find(step=>/execute|run|perform|action/i.test(step.description));
             if(executionStep)executionStep.status="completed";
