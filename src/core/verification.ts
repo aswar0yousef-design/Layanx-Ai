@@ -25,6 +25,7 @@ export class VerificationEngine {
 
   private evaluateCriterion(criteria:string,result:unknown):{supported:boolean;matched:boolean;reason:string}{
     const text=criteria.trim();
+    if(text==="done"||text==="echo")return{supported:true,matched:result!==null&&result!==undefined,reason:result!==null&&result!==undefined?"":`Success criterion failed: ${text}`};
     const equality=/^result(?:\.([A-Za-z_$][\w$]*))?\s*(===|==|!==|!=)\s*(.+)$/i.exec(text);
     if(equality){
       const actual=this.readPath(result,equality[1]??"");
