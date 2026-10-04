@@ -30,6 +30,7 @@ export interface PaperTradingConfig {
   signalOnClosedCandle?: boolean;
   /** How an open position is handled when historical data ends. */
   endOfDataPolicy?: "close" | "exclude";
+  signalConfig?: Partial<import("./scalping-signal.js").ScalpingSignalConfig>;
 }
 
 export interface PaperTrade {
@@ -206,7 +207,7 @@ export function runPaperScalping(
       continue;
     }
 
-    const signal = generateScalpingSignal(history);
+    const signal = generateScalpingSignal(history, config.signalConfig);
     if (signal.action === "neutral") {
       blockedSignals += 1;
       continue;
