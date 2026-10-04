@@ -2,7 +2,7 @@ import {LayanXCore} from "../src/core/orchestrator.js";
 const core=new LayanXCore();
 core.registerAgent({agentId:"core",purpose:"test",allowedTools:["runtime.status"],forbiddenResources:["secrets"],requiredPermission:"L1_READ",maxToolCalls:10,maxRuntimeMs:10000,successCriteria:["done"],stopCondition:"stop"});
 core.tools.register({name:"runtime.status",description:"read runtime status",permission:"L1_READ",dangerous:false,actions:["read runtime status"],tags:["runtime","status"]});
-const mission=core.startMission("Read runtime status","project");
+const mission=core.startMission("Read runtime status","project-test");
 mission.requiredPermission="L1_READ";
 mission.tools=[{tool:"runtime.status",action:"read runtime status",permission:"L1_READ",reason:"test"}];
 const prepared=core.prepareMissionToolRequests(mission,"project-test");
