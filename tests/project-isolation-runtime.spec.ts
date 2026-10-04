@@ -47,5 +47,19 @@ const matching=await runner.execute(
  {projectId:"project-a",capabilityId:matchingCapability.id}
 );
 if(!matching.ok)throw new Error("Matching project execution was incorrectly blocked.");
+const explicitMismatch=core.startMission("explicit project mismatch","project-a");
+const explicitCapability=core.capabilities.issue({
+ missionId:explicitMismatch.id,agentId:agent.agentId,projectId:"project-a",resource:"echo",permission:"L1_READ",
+ expiresAt:new Date(Date.now()+60000).toISOString()
+});
+let explicitExecuted=false;
+const explicitResult=await runner.execute(
+ explicitMismatch,
+ {missionId:explicitMismatch.id,agentId:agent.agentId,projectId:"project-b",tool:"echo",action:"echo",permission:"L1_READ",idempotencyKey:"project-isolation-explicit-mismatch",payload:"x"},
+ {async execute(){explicitExecuted=true;return{ok:true};}},
+ undefined,
+ {projectId:"project-a",capabilityId:explicitCapability.id}
+);
+if(explicitResult.ok||explicitExecuted||!String(explicitResult.error).includes("Project isolation"))throw new Error("Explicit cross-project tool request was not blocked.");
 
 console.log("Project isolation enforcement passed.");
