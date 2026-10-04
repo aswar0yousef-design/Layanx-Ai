@@ -11,7 +11,7 @@ const candles = Array.from({ length: 35 }, (_, i) => ({
 
 const transport: Mt5ReadOnlyTransport = {
   async getSymbolSnapshot(symbol) {
-    return { symbol, bid: 2000.1, ask: 2000.3, timestamp: new Date(Date.parse(candles.at(-1)!.timestamp) + 60_000).toISOString() };
+    return { symbol: "XAUUSD", bid: 2000.1, ask: 2000.3, timestamp: new Date(Date.parse(candles.at(-1)!.timestamp) + 60_000).toISOString() };
   },
   async getCandles() {
     return candles;
