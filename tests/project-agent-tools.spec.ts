@@ -1,7 +1,6 @@
 import {mkdtemp,rm,readFile} from "node:fs/promises";
 import {join} from "node:path";
 import {execFile} from "node:child_process";
-import {execFileSync} from "node:child_process";
 import {promisify} from "node:util";
 import {createFileWriteToolAdapter} from "../src/tools/fabric.js";
 import {createGitToolAdapter} from "../src/tools/git.js";
@@ -9,14 +8,17 @@ import {ApprovalEngine} from "../src/security/approval.js";
 import type {ToolRequest} from "../src/core/types.js";
 
 const exec=promisify(execFile);
-const gitBinary=process.platform==="win32"
- ? execFileSync((process.env.SystemRoot??"C:\\Windows")+"\\System32\\where.exe",["git.exe"],{encoding:"utf8"}).split(/\r?\n/).map(v=>v.trim()).find(Boolean)??"git"
- : "git";
+const runGit=async(args:string[],cwd:string)=>{
+ if(process.platform==="win32"){
+  return await exec(process.env.ComSpec??"cmd.exe",["/d","/s","/c",["git",...args].join(" ")],{cwd});
+ }
+ return await exec("git",args,{cwd});
+};
 const dir=await mkdtemp(join(process.cwd(),"project-agent-test-"));
-await exec(gitBinary,["init","-q"],{cwd:dir});
-await exec(gitBinary,["init","-q"],{cwd:join(dir,"project-a")});
-await exec(gitBinary,["config","user.email","test@example.com"],{cwd:join(dir,"project-a")});
-await exec(gitBinary,["config","user.name","LayanX Test"],{cwd:join(dir,"project-a")});
+await runGit(["init","-q"],dir);
+await runGit(["init","-q"],join(dir,"project-a"));
+await runGit(["config","user.email","test@example.com"],join(dir,"project-a"));
+await runGit(["config","user.name","LayanX Test"],join(dir,"project-a"));
 
 const base:ToolRequest={missionId:"m",agentId:"core",projectId:"project-a",tool:"files.write",action:"write file",permission:"L3_MODIFY",idempotencyKey:"write-1"};
 const write=createFileWriteToolAdapter({root:dir});
