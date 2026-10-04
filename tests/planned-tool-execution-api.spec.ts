@@ -4,7 +4,7 @@ const core=new LayanXCore();
 core.registerAgent({agentId:"core",purpose:"test",allowedTools:["runtime.status"],forbiddenResources:["secrets"],requiredPermission:"L1_READ",maxToolCalls:10,maxRuntimeMs:10000,successCriteria:["done"],stopCondition:"stop"});
 core.tools.register({name:"runtime.status",description:"read runtime status",permission:"L1_READ",dangerous:false,actions:["read runtime status"],tags:["runtime","status"]});
 core.toolAdapters.register("runtime.status",{async execute(){return{executed:true};}});
-const mission=core.startMission("Read runtime status");
+const mission=core.startMission("Read runtime status","project-test");
 mission.requiredPermission="L1_READ";
 mission.tools=[{tool:"runtime.status",action:"read runtime status",permission:"L1_READ",reason:"test"}];
 const server=startRuntimeApi({core,host:"127.0.0.1",port:0});await new Promise<void>(resolve=>server.on("listening",resolve));
