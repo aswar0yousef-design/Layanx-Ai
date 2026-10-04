@@ -10,7 +10,7 @@ const analyses = [
     strategy: "scalp", timeframe: "M1", session: "London",
     commission: 0, swap: 0, grossPnl: 1, executionCost: 0.1,
     executionCostPct: 10, netPnlAfterExecutionCosts: 0.9, trueNetPnl: 0.9,
-    executionQuality: "excellent" as const, warnings: [],
+    quality: "excellent" as const, warnings: [],
   },
   {
     id: "2", symbol: "XAUUSD", side: "short" as const, quantity: 1,
@@ -19,7 +19,7 @@ const analyses = [
     strategy: "scalp", timeframe: "M1", session: "New York",
     commission: 0, swap: 0, grossPnl: 1, executionCost: 0.2,
     executionCostPct: 20, netPnlAfterExecutionCosts: 0.8, trueNetPnl: 0.8,
-    executionQuality: "good" as const, warnings: [],
+    quality: "good" as const, warnings: [],
   },
 ];
 
