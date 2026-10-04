@@ -8,11 +8,12 @@ import {ApprovalEngine} from "../src/security/approval.js";
 import type {ToolRequest} from "../src/core/types.js";
 
 const exec=promisify(execFile);
+const gitExecutable=process.env.GIT_EXECUTABLE??"git";
 const dir=await mkdtemp(join(process.cwd(),"project-agent-test-"));
-await exec("git",["init","-q"],{cwd:dir});
-await exec("git",["init","-q"],{cwd:join(dir,"project-a")});
-await exec("git",["config","user.email","test@example.com"],{cwd:join(dir,"project-a")});
-await exec("git",["config","user.name","LayanX Test"],{cwd:join(dir,"project-a")});
+await exec(gitExecutable,["init","-q"],{cwd:dir});
+await exec(gitExecutable,["init","-q"],{cwd:join(dir,"project-a")});
+await exec(gitExecutable,["config","user.email","test@example.com"],{cwd:join(dir,"project-a")});
+await exec(gitExecutable,["config","user.name","LayanX Test"],{cwd:join(dir,"project-a")});
 
 const base:ToolRequest={missionId:"m",agentId:"core",projectId:"project-a",tool:"files.write",action:"write file",permission:"L3_MODIFY",idempotencyKey:"write-1"};
 const write=createFileWriteToolAdapter({root:dir});
