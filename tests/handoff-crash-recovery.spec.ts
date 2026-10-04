@@ -41,7 +41,7 @@ core.executionRuntime.persist=async current=>{
 };
 let crashed=false;
 try{
- await new MissionRunner(core).executeHandoff(mission,handoff,{async execute(){executions++;return{done:true};}},{projectId:"p",capabilityId:cap.id});
+ await new MissionRunner(core).executeHandoff(mission,core.handoffs.get(handoff.id),{async execute(){executions++;return{done:true};}},{projectId:"p",capabilityId:cap.id});
 }catch(error){
  crashed=error instanceof Error && error.message==="SIMULATED_CRASH_BEFORE_FINAL_PERSIST";
 }
