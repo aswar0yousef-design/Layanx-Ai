@@ -55,6 +55,14 @@ export class RuntimePersistence{
   private validate(snapshot:RuntimeSnapshot):void{
     if(snapshot.schemaVersion!==RUNTIME_SNAPSHOT_VERSION)throw new Error("Unsupported runtime snapshot version.");
     if(snapshot.mission.id!==snapshot.executionState.missionId)throw new Error("Runtime snapshot mission/state mismatch.");
+    const missionStatus=snapshot.mission.status;
+    const executionStatus=snapshot.executionState.status;
+    if(missionStatus==="completed"&&executionStatus!=="completed")throw new Error("Runtime snapshot completed mission has non-completed execution state.");
+    if(missionStatus==="cancelled"&&executionStatus!=="blocked"&&executionStatus!=="completed")throw new Error("Runtime snapshot cancelled mission has invalid execution state.");
+    if(missionStatus==="running"&&(executionStatus!=="running"||snapshot.executionState.recoverable===false))throw new Error("Runtime snapshot running mission is not marked recoverable.");
+    if(missionStatus==="verifying"&&executionStatus!=="running")throw new Error("Runtime snapshot verifying mission must have a running execution state.");
+    if(missionStatus==="failed"&&snapshot.executionState.recoverable!==true&&executionStatus!=="failed")throw new Error("Runtime snapshot failed mission has invalid execution state.");
+    if(missionStatus==="blocked"&&executionStatus!=="blocked")throw new Error("Runtime snapshot blocked mission has non-blocked execution state.");
     if(snapshot.ledger.some(entry=>entry.missionId!==snapshot.mission.id))throw new Error("Runtime snapshot ledger mismatch.");
     if(snapshot.audit.some(event=>event.metadata?.missionId!==undefined && event.metadata.missionId!==snapshot.mission.id))throw new Error("Runtime snapshot audit mismatch.");
     if(snapshot.checkpoint && snapshot.checkpoint.missionId!==snapshot.mission.id)throw new Error("Runtime snapshot checkpoint mismatch.");
