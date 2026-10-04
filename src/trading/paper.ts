@@ -24,7 +24,8 @@ export class PaperTradingEngine{
  placeMarket(input:{symbol:string;side:TradingSide;quantity:number;price?:number;stopLoss?:number;takeProfit?:number}):TradingOrder{
   const symbol=normalizeSymbol(input.symbol); const quantity=finitePositive(input.quantity,"quantity"); const quote=this.quote(symbol);
   const price=input.price??(input.side==="buy"?quote.ask:quote.bid); finitePositive(price,"price");
-  if(quantity*price>this.account.available*0.02)throw new Error("Paper trading risk limit exceeded: order notional is above 2% of available equity.");
+  const maxNotional=this.account.available*0.05;
+  if(quantity*price>maxNotional)throw new Error("Paper trading risk limit exceeded: order notional is above 5% of available equity.");
   if(input.stopLoss!==undefined)validateStop(input.side,price,input.stopLoss);
   if(input.takeProfit!==undefined)validateTarget(input.side,price,input.takeProfit);
   const order:TradingOrder={orderId:crypto.randomUUID(),symbol,side:input.side,quantity,price,status:"filled",createdAt:new Date().toISOString()};
