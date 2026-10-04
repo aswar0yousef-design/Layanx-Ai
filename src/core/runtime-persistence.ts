@@ -59,7 +59,7 @@ export class RuntimePersistence{
     const executionStatus=snapshot.executionState.status;
     if(missionStatus==="completed"&&executionStatus!=="completed")throw new Error("Runtime snapshot completed mission has non-completed execution state.");
     if(missionStatus==="cancelled"&&executionStatus!=="blocked"&&executionStatus!=="completed")throw new Error("Runtime snapshot cancelled mission has invalid execution state.");
-    if(missionStatus==="running"&&(executionStatus!=="running"||snapshot.executionState.recoverable===false))throw new Error("Runtime snapshot running mission is not marked recoverable.");
+    if(missionStatus==="running"&&executionStatus!=="running")throw new Error("Runtime snapshot running mission has non-running execution state.");
     if(missionStatus==="verifying"&&executionStatus!=="running")throw new Error("Runtime snapshot verifying mission must have a running execution state.");
     if(missionStatus==="failed"&&snapshot.executionState.recoverable!==true&&executionStatus!=="failed")throw new Error("Runtime snapshot failed mission has invalid execution state.");
     if(missionStatus==="blocked"&&executionStatus!=="blocked")throw new Error("Runtime snapshot blocked mission has non-blocked execution state.");
