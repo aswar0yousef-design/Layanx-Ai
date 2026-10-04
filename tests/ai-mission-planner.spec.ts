@@ -48,19 +48,19 @@ brokenModels.register({id:"broken",provider:"broken",capabilities:["reasoning"],
 try{await new AiMissionPlanner(new ModelExecutionRouter(brokenModels,brokenProviders)).plan("x");throw new Error("Expected invalid planner output.");}catch(error){if(!(error instanceof Error)||!error.message.includes("invalid JSON"))throw error;}
 console.log("AI mission planner test passed.");
 
+let plannerModelCalls=0;
 const intentModels=new ModelRegistry();
 intentModels.register({id:"intent",provider:"intent",capabilities:["reasoning"],local:true,enabled:true,priority:1});
 const intentProviders=new ModelProviderRegistry();
-intentProviders.register({name:"intent",async health(){return{provider:"intent",available:true,updatedAt:new Date().toISOString()};},async generate(model){return{modelId:model.id,provider:model.provider,output:JSON.stringify({risk:"medium",requiredPermission:"L1_READ",steps:[{description:"run tests"}],successCriteria:["tests pass"],stopCondition:"stop",tools:[{tool:"trading.binance.market-data",action:"market-data",permission:"L1_READ",reason:"wrong domain"}]})};}});
+intentProviders.register({name:"intent",async health(){return{provider:"intent",available:true,updatedAt:new Date().toISOString()};},async generate(model){plannerModelCalls++;return{modelId:model.id,provider:model.provider,output:"should not be called"};}});
 const intentPlanner=new AiMissionPlanner(new ModelExecutionRouter(intentModels,intentProviders));
 const scopedTools=[
- {name:"project.verify",description:"run project verification",permission:"L4_EXECUTE",dangerous:true,actions:["verify project"],tags:["project","verify"]},
- {name:"trading.binance.market-data",description:"read market data",permission:"L1_READ",dangerous:false,actions:["market-data"],tags:["trading","market-data"]}
+ {name:"project.verify",description:"run project verification",permission:"L4_EXECUTE" as const,dangerous:true,actions:["verify project"],tags:["project","verify"]},
+ {name:"trading.binance.market-data",description:"read market data",permission:"L1_READ" as const,dangerous:false,actions:["market-data"],tags:["trading","market-data"]}
 ] as ToolCatalogEntry[];
-let intentRejected=false;
-try{await intentPlanner.plan("شغّل اختبارات المشروع",scopedTools);}catch(error){intentRejected=error instanceof Error&&error.message.includes("outside the allowed catalog");}
-if(!intentRejected)throw new Error("Development intent did not exclude trading tools.");
-
+const guarded=await intentPlanner.plan("شغّل اختبارات المشروع",scopedTools);
+if(guarded.tools.length!==1||guarded.tools[0].tool!=="project.verify"||guarded.tools[0].payload?.script!=="test")throw new Error("Development intent did not select project verification.");
+if(plannerModelCalls!==0)throw new Error("Deterministic project verification unexpectedly called the model.");
 
 const deterministicPlanner=new AiMissionPlanner(new ModelExecutionRouter(models,new ModelProviderRegistry()));
 const verifyCatalog=[
