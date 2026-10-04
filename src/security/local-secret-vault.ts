@@ -46,7 +46,7 @@ export class LocalSecretVault{
 
 export function localSecret(name:string,fallback?:string){
  try{const vault=new LocalSecretVault();return vault.get(name)??fallback;}catch(error){
-  if(error instanceof Error&&["secret_vault_key_missing","secret_vault_corrupt","secret_vault_decryption_failed"].includes(error.message))throw error;
+  if(error instanceof Error&&["secret_vault_corrupt","secret_vault_decryption_failed"].includes(error.message))throw error;
   return fallback;
  }
 }
