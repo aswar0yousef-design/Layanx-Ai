@@ -105,7 +105,8 @@ export class RuntimePersistence{
     return snapshot;
   }
   async list():Promise<RuntimeSnapshot[]>{
-    const snapshots=(await this.storage.get<RuntimeSnapshot[]>())??[];
+    const raw=(await this.storage.get<unknown[]>())??[];
+    const snapshots=raw.map(snapshot=>this.migrate(snapshot));
     snapshots.forEach(snapshot=>this.validate(snapshot));
     return snapshots;
   }
