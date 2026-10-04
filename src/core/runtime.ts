@@ -23,7 +23,7 @@ export class ExecutionRuntime{
    return{ok:false,missionId:mission.id,verified:false,error:"Mission is not executable in its current state.",recoverable:false};
   }
   if(!security)return this.block(mission,request,"Capability context is required.");
-  try{this.core.projectIsolation.assertMissionProject(security.projectId,mission.projectId);}catch(error){return this.block(mission,request,error instanceof Error?error.message:"Project isolation violation.");}
+  try{this.core.projectIsolation.assertMissionProject(security.projectId,mission.projectId);}catch(error){const message=error instanceof Error?error.message:"Project isolation violation.";this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"denied",metadata:{reason:message,missionId:mission.id,projectId:security.projectId}});return{ok:false,missionId:mission.id,verified:false,error:message,recoverable:false};}
   const state=this.core.executionStates.get(mission.id)??this.core.executionStates.start(mission.id);
   await this.persist(mission);
   const started=Date.now();
