@@ -22,7 +22,7 @@ async function discover(dir) {
 }
 
 function runTest(file) {
-  const command = process.platform === "win32" ? "node_modules/.bin/tsx.cmd" : "node_modules/.bin/tsx";
+  const command = resolve(root, process.platform === "win32" ? "node_modules/.bin/tsx.cmd" : "node_modules/.bin/tsx");
   const rel = relative(root, file);
   return new Promise((resolveResult) => {
     const started = Date.now();
