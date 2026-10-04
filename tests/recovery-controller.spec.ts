@@ -10,6 +10,7 @@ let calls=0;
 const probe=new ReleaseHealthProbe([{name:"api",check:async()=>++calls>1}]);
 const audit=new RecoveryAuditTrail();
 const rollback=new RollbackController();
+rollback.record({version:"1.0.0",commitSha:"good1234",manifestChecksum:"c".repeat(64),deployedAt:"2025-12-01T00:00:00Z"});
 const executor=new InMemoryRollbackExecutor();
 const persistence=new RecoveryPersistence(new JsonStorageAdapter("/tmp/layanx-controller-recovery.json"));
 const controller=new ProductionRecoveryController(probe,rollback,audit,executor,{maxAttempts:1,persistence,recoveryId:"recovery-controller-test"});
