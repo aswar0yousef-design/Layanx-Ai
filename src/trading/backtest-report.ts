@@ -8,7 +8,7 @@ export function buildPooledBacktestReport(analyses:TradeAnalysis[]):PooledBackte
  let wins=0,grossProfit=0,grossLoss=0,estimatedRoundTripCosts=0,executionCosts=0,commissions=0,swaps=0,costErasedTrades=0,intrabarAmbiguousExits=0,gapThroughExits=0;
  for(const analysis of analyses){
   if(analysis.trueNetPnl>0){wins++;grossProfit+=analysis.trueNetPnl;}else if(analysis.trueNetPnl<0)grossLoss+=Math.abs(analysis.trueNetPnl);
-  estimatedRoundTripCosts+=analysis.estimatedRoundTripCost??0;executionCosts+=analysis.executionCost??0;commissions+=analysis.commission;swaps+=analysis.swap;
+  estimatedRoundTripCosts+=analysis.estimatedRoundTripCost??0;commissions+=analysis.commission;swaps+=analysis.swap;
   if(analysis.grossPnl>0&&analysis.trueNetPnl<=0)costErasedTrades++;
   if(analysis.metadata?.intrabarAmbiguous===true)intrabarAmbiguousExits++;
   if(analysis.metadata?.gapThrough===true)gapThroughExits++;
