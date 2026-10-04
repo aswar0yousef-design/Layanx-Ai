@@ -25,6 +25,11 @@ export class VerificationEngine {
 
   private evaluateCriterion(criteria:string,result:unknown):{supported:boolean;matched:boolean;reason:string}{
     const text=criteria.trim();
+    const normalized=text.toLowerCase();
+    if(normalized==="done"||normalized==="result exists"||normalized==="execution completed")return{supported:true,matched:result!==null&&result!==undefined,reason:result!==null&&result!==undefined?"":`Success criterion failed: ${text}`};
+    if(normalized==="mission exists")return{supported:true,matched:true,reason:""};
+    if(normalized==="mission has goal")return{supported:true,matched:Boolean(mission.goal.trim()),reason:mission.goal.trim()?"":"Success criterion failed: mission has goal"};
+    if(normalized==="mission has execution plan")return{supported:true,matched:mission.steps.length>0,reason:mission.steps.length>0?"":"Success criterion failed: mission has execution plan"};
     const equality=/^result(?:\.([A-Za-z_$][\w$]*))?\s*(===|==|!==|!=)\s*(.+)$/i.exec(text);
     if(equality){
       const actual=this.readPath(result,equality[1]??"");
