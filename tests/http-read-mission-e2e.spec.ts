@@ -7,6 +7,7 @@ core.toolAdapters.register("http.read",{async execute(request){executed++;return
 const mission=core.startMission("Read a public URL","project");
 mission.requiredPermission="L1_READ";
 mission.tools=[{tool:"http.read",action:"read url",permission:"L1_READ",reason:"read public resource"}];
+core.missions.save(mission);
 const result=await core.executeMissionTool(mission.id,"project",0,{url:"https://example.com"});
 if(!result.ok||!result.verified||executed!==1)throw new Error("HTTP planned tool did not execute");
 if(core.missions.get(mission.id)?.status!=="completed")throw new Error("HTTP mission did not complete");
