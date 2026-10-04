@@ -28,12 +28,12 @@ export class FlowRuntime{
  async execute(flow:FlowDefinition,event:FlowEvent):Promise<FlowExecution>{
   this.validate(flow);if(flow.status!=="active")throw new Error("flow is not active");
   this.core.projectIsolation.normalize(event.projectId);
-  if(flow.projectId!==event.projectId)throw new Error("Flow project isolation violation.");
   const execution:FlowExecution={id:id(),flowId:flow.id,projectId:flow.projectId,eventId:event.id,status:"running",startedAt:new Date().toISOString(),outputs:{},trace:[]};
   const ctx:FlowContext={event,variables:{},outputs:execution.outputs,execution};
   let current=flow.nodes.find(n=>n.type==="trigger")??flow.nodes[0]!;
   const visited=new Set<string>();
   try{
+   if(flow.projectId!==event.projectId)throw new Error("Flow project isolation violation.");
    for(let steps=0;steps<flow.nodes.length*3;steps++){
     if(visited.has(current.id))throw new Error("flow revisited a node; possible cycle");
     visited.add(current.id);execution.currentNodeId=current.id;execution.trace.push(current.id);await this.store.saveExecution(execution);
