@@ -6,8 +6,9 @@ core.registerAgent({agentId:"recovery-test",purpose:"test",allowedTools:["unstab
 core.tools.register({name:"unstable",description:"test",permission:"L1_READ",dangerous:false});
 const mission=core.startMission("Recovery test");
 const runtime=new ExecutionRuntime(core);
+const capability=core.capabilities.issue({missionId:mission.id,agentId:"recovery-test",projectId:"default",resource:"unstable",permission:"L1_READ",expiresAt:new Date(Date.now()+60000).toISOString()});
 let attempts=0;
-const result=await runtime.run(mission,{missionId:mission.id,agentId:"recovery-test",tool:"unstable",action:"unstable",permission:"L1_READ",idempotencyKey:crypto.randomUUID(),payload:"x"},{execute:async()=>{attempts++;if(attempts===1)throw new Error("transient");return"recovered";}});
+const result=await runtime.run(mission,{missionId:mission.id,agentId:"recovery-test",tool:"unstable",action:"unstable",permission:"L1_READ",idempotencyKey:crypto.randomUUID(),payload:"x"},{execute:async()=>{attempts++;if(attempts===1)throw new Error("transient");return"recovered";}},undefined,{projectId:"default",capabilityId:capability.id});
 if(result.ok)throw new Error("Direct runtime should expose transient failure.");
 if(!result.recoverable)throw new Error("Transient execution failure should be recoverable.");
 if(mission.status!=="failed")throw new Error("Failed execution must transition mission to failed.");
