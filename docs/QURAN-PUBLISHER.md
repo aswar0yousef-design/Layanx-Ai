@@ -74,3 +74,12 @@ A green pipeline/CI result does not mean external platform accounts are authoriz
 ## Validation status
 
 Strict TypeScript indexing checks and scheduler tuple validation are fixed; CI must pass before merge. External recitation licensing and platform approvals remain fail-closed prerequisites for live publication.
+
+
+## Admin configuration
+
+Quran Foundation credentials are managed from the LayanX Admin Quran branch. Use `GET /v1/quran/admin` to read non-secret status, `PUT /v1/quran/admin` to save settings, and `POST /v1/quran/admin/test` to validate the configured account against Surah 1. Client ID and Client Secret are stored in the local encrypted secret vault and are never returned by the admin read endpoint. You can clear them with `POST /v1/quran/admin/clear-credentials`.
+
+YouTube and TikTok OAuth connections can be selected in the same Quran admin settings using their connection IDs. The existing OAuth connection center keeps access/refresh tokens in the local encrypted vault and refreshes them before publication.
+
+Environment variables remain supported as a backward-compatible fallback for local development, but they are no longer the primary configuration path.
