@@ -49,11 +49,11 @@ function summary(values: number[]) {
   if (!values.length) return undefined;
   const sorted = [...values].sort((a, b) => a - b);
   return {
-    min: sorted[0]!,
-    median: percentile(sorted, 0.5)!,
-    max: sorted[sorted.length - 1]!,
-    average: values.reduce((sum, value) => sum + value, 0) / values.length,
-    p95: percentile(sorted, 0.95)!,
+    min: Number(sorted[0]!.toFixed(12)),
+    median: Number(percentile(sorted, 0.5)!.toFixed(12)),
+    max: Number(sorted[sorted.length - 1]!.toFixed(12)),
+    average: Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(12)),
+    p95: Number(percentile(sorted, 0.95)!.toFixed(12)),
   };
 }
 
