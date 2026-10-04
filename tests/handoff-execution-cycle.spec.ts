@@ -6,7 +6,7 @@ const agentA={agentId:"agent-a",purpose:"prepare",allowedTools:["terminal.run"],
 const agentB={agentId:"agent-b",purpose:"execute handoff",allowedTools:["terminal.run"],forbiddenResources:[],requiredPermission:"L4_EXECUTE" as const,maxToolCalls:5,maxRuntimeMs:10000,successCriteria:["done"],stopCondition:"stop"};
 core.registerAgent(agentA);core.registerAgent(agentB);
 core.tools.register({name:"terminal.run",description:"Run command",permission:"L4_EXECUTE",dangerous:true});
-const mission=core.startMission("Execute delegated handoff");
+const mission=core.startMission("Execute delegated handoff","p");
 mission.requiredPermission="L4_EXECUTE";
 mission.steps=[
  {id:"execute",description:"Execute handoff action",status:"pending"},
