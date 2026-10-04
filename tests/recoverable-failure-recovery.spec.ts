@@ -14,10 +14,11 @@ const agent={agentId:"recovery-agent",purpose:"resume recoverable failures",allo
 core.registerAgent(agent);
 core.tools.register({name:"echo",description:"Echo",permission:"L1_READ",dangerous:false});
 
-const mission=core.startMission("recover a transient failure");
+const mission=core.startMission("recover a transient failure","recovery-project");
 mission.requiredPermission="L1_READ";
 mission.steps=[{id:"execute",description:"Execute echo",status:"pending"}];
 mission.tools=[{tool:"echo",action:"echo",permission:"L1_READ",reason:"recover"}];
+core.missions.save(mission);
 
 const capability=core.capabilities.issue({missionId:mission.id,agentId:agent.agentId,projectId:"recovery-project",resource:"echo",permission:"L1_READ",expiresAt:new Date(Date.now()+60000).toISOString()});
 const request={missionId:mission.id,agentId:agent.agentId,tool:"echo",action:"echo",permission:"L1_READ" as const,idempotencyKey:"recoverable-failure-key",payload:"ok",planIndex:0};
