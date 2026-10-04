@@ -38,7 +38,7 @@ assert.equal(result.specification.symbol, "XAUUSD");
 
 await assert.rejects(
   () => readMt5MarketData(transport, "XAGUSD", "M1", 35),
-  /specification does not match/,
+  /snapshot symbol does not match requested symbol/,
 );
 
 const invalidChronologyTransport: Mt5ReadOnlyTransport = {
