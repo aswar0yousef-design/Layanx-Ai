@@ -12,12 +12,12 @@ mission.tools=[
  {tool:"step.one",action:"read first",permission:"L1_READ",reason:"first"},
  {tool:"step.two",action:"read second",permission:"L1_READ",reason:"second"}
 ];
-const first=await core.executeMissionTool(mission.id,"project-test",0,{});
+const first=await core.executeMissionTool(mission.id,"project",0,{});
 if(!first.ok||first.verified)throw new Error("first step should succeed without final verification");
 if(first.recoverable!==true)throw new Error("first step should leave mission recoverable");
 const mid=core.missions.get(mission.id);
 if(mid?.status!=="running")throw new Error("mission should remain running after first step");
-const all=await core.executeMissionTools(mission.id,"project-test");
+const all=await core.executeMissionTools(mission.id,"project");
 if(!all.completed||all.results.length!==2)throw new Error("batch execution should safely replay the first step and execute the remaining step");
 const stored=core.missions.get(mission.id);
 if(stored?.status!=="completed")throw new Error("mission should complete after final step");
