@@ -7,8 +7,8 @@ export interface PullRequestDraft{ready:boolean;branch:string;baseBranch:string;
 export class PullRequestGenerator{
 constructor(private readonly root=process.env.LAYANX_WORKSPACE_ROOT??process.cwd()){}
 async generate(options:PullRequestOptions):Promise<PullRequestDraft>{
-const [branch,commit,filesText]=await Promise.all([this.git(["branch","--show-current"]),this.git(["rev-parse","HEAD"]),this.git(["diff","--name-only",options.baseBranch+"...HEAD"])]);
-const currentBranch=branch.trim(),commitSha=commit.trim(),files=filesText.split("\n").filter(Boolean),blockers:string[]=[];
+const [detectedBranch,commit,filesText]=await Promise.all([this.git(["branch","--show-current"]),this.git(["rev-parse","HEAD"]),this.git(["diff","--name-only",(process.env.GITHUB_ACTIONS==="true"?"origin/":"")+options.baseBranch+"...HEAD"])]);
+const currentBranch=detectedBranch.trim()||process.env.GITHUB_HEAD_REF?.trim()||process.env.GITHUB_REF_NAME?.trim()||"HEAD",commitSha=commit.trim(),files=filesText.split("\n").filter(Boolean),blockers:string[]=[];
 if(!currentBranch)blockers.push("No active Git branch.");
 if(currentBranch===options.baseBranch)blockers.push("Pull requests require a head branch different from the base branch.");
 if(!options.codeReview.approved)blockers.push("Code review gate is not approved.");

@@ -20,12 +20,13 @@ export class SecurityReviewAgent{
   constructor(private readonly root=process.env.LAYANX_WORKSPACE_ROOT??process.cwd()){}
 
   async review(baseRef="HEAD~1"):Promise<SecurityReviewResult>{
-    const [branch,commit,filesText,diff]=await Promise.all([
+    const [detectedBranch,commit,filesText,diff]=await Promise.all([
       this.git(["branch","--show-current"]),
       this.git(["rev-parse","HEAD"]),
       this.git(["diff","--name-only",baseRef,"HEAD"]),
       this.git(["diff","--no-ext-diff","--unified=0",baseRef,"HEAD"])
     ]);
+    const branch=detectedBranch.trim()||process.env.GITHUB_HEAD_REF?.trim()||process.env.GITHUB_REF_NAME?.trim()||"HEAD";
     const files=filesText.split("\n").filter(Boolean);
     const findings:SecurityFinding[]=[];
     const checks:Array<[RegExp,SecurityFinding["severity"],SecurityFinding["category"],string]>=[

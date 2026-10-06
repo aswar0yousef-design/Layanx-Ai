@@ -9,7 +9,8 @@ export class GitBranchManager{
   private readonly root:string;
   constructor(options:GitBranchManagerOptions){this.root=resolve(options.root);}
   async status():Promise<BranchStatus>{
-    const branch=(await this.git(["branch","--show-current"])).stdout.trim();
+    const detected=(await this.git(["branch","--show-current"])).stdout.trim();
+    const branch=detected||process.env.GITHUB_HEAD_REF?.trim()||process.env.GITHUB_REF_NAME?.trim()||"HEAD";
     const porcelain=(await this.git(["status","--porcelain"])).stdout.trim();
     return{branch,clean:!porcelain,changes:porcelain?porcelain.split("\n").filter(Boolean):[]};
   }
