@@ -98,7 +98,13 @@ npm run layanx -- health
 - PostgreSQL is an optional persistence backend; it is not required for the current local-first target.
 - Runtime snapshots remain validated by `RuntimePersistence` before commit.
 
-### Local AI
+### Agent Reach internet research
+
+LayanX can optionally use the upstream Agent Reach capability layer for bounded, read-only internet research across supported channels such as web, GitHub, YouTube, RSS, and social/community sources. Agent Reach remains an external local CLI; LayanX owns missions, permissions, approvals, verification, recovery, memory, scheduling, and audit.
+
+See `docs/AGENT_REACH.md`. Configure `LAYANX_AGENT_REACH_COMMAND` when the CLI is not available as `agent-reach` on PATH.
+
+## Local AI
 
 Ollama is the default local provider path when enabled. The default model is configured by the provider configuration and can be changed through environment variables.
 
