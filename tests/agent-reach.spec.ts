@@ -24,6 +24,8 @@ if(!(status as any).installed)throw new Error("Agent Reach status did not report
 
 const collected=await adapter.execute(request("agent reach collect",{channel:"github",operation:"search",input:"LayanX AI",limit:3}));
 if(!Array.isArray((collected as any).items))throw new Error("Agent Reach collection was not parsed.");
+const research=await adapter.execute(request("agent reach research",{query:"GitHub AI agents",limit:2}));
+if(!(research as any).channels?.includes("github")||!(research as any).results?.length)throw new Error("Automatic Agent Reach research routing failed.");
 
 const safe=await adapter.execute(request("agent reach setup",{system:false,dryRun:true}));
 if((safe as any).system!==false||!calls.some(call=>call.args.includes("--safe")))throw new Error("Safe Agent Reach setup was not enforced.");
@@ -38,6 +40,8 @@ for(const name of ["agent-reach.status","agent-reach.channels","agent-reach.upda
  if(!core.tools.get(name))throw new Error("Missing Agent Reach tool: "+name);
 }
 if(core.tools.get("agent-reach.collect").permission!=="L2_ANALYZE")throw new Error("Collection must be analysis-level.");
+if(!core.tools.get("research.internet"))throw new Error("Missing automatic research tool.");
+if(core.tools.get("research.internet").permission!=="L2_ANALYZE")throw new Error("Automatic research must be analysis-level.");
 if(core.tools.get("agent-reach.setup").permission!=="L4_EXECUTE"||!core.tools.get("agent-reach.setup").dangerous)
  throw new Error("Setup must remain an explicit execute-level action.");
 

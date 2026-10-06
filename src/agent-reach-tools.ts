@@ -46,6 +46,16 @@ export function registerAgentReachTools(core:LayanXCore):void{
   core.toolAdapters.register("agent-reach.collect",adapter);
 
   core.tools.register({
+    name:"research.internet",
+    description:"automatically choose available Agent Reach channels and collect bounded read-only internet research",
+    permission:"L2_ANALYZE",
+    dangerous:false,
+    actions:["research internet","deep research internet","search across internet","بحث شامل في الإنترنت","بحث شامل"],
+    tags:["research","internet","agent-reach","search","web","social","github","youtube"]
+  });
+  core.toolAdapters.register("research.internet",adapter);
+
+  core.tools.register({
     name:"agent-reach.setup",
     description:"prepare or install Agent Reach and its approved external research dependencies; system installation requires explicit approval",
     permission:"L4_EXECUTE",
