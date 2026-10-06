@@ -1,5 +1,5 @@
 import {spawn} from "node:child_process";
-import type {ToolRequest} from "./core/types.js";
+import type {ToolRequest} from "../core/types.js";
 
 type RunnerResult={stdout:string;stderr:string;code:number|null};
 type Runner=(command:string,args:string[],timeoutMs:number)=>Promise<RunnerResult>;
