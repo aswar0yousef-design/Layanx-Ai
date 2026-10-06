@@ -26,3 +26,6 @@ User: ابحث عن آخر النقاشات حول وكلاء الذكاء ال�
 LayanX: يفحص Agent Reach، يحدد القنوات المتاحة، ثم ينفذ جمعًا محدودًا للبيانات عبر القنوات المناسبة.
 
 Agent Reach is a capability source, not a second orchestrator. LayanX continues to own missions, permissions, approvals, verification, recovery, memory, scheduling, and audit.
+## Automatic research routing
+
+For a normal user request such as `ابحث عن آخر تطورات وكلاء الذكاء الاصطناعي وآراء المستخدمين في GitHub وReddit وYouTube`, LayanX can call `research.internet`. It discovers available channels, chooses relevant channels from the request, runs bounded searches in parallel, and returns normalized per-channel evidence. LayanX remains responsible for synthesis, ranking, memory, citations, and final decisions.
