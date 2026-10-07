@@ -38,6 +38,12 @@ assert.equal(osv[0]!.severity,"high");assert.match(osv[0]!.message,/lodash 4\.17
 const og=parseOpengrep(JSON.stringify({results:[{check_id:"config.opengrep-rules.layanx.js.eval",path:path.join(dir,"src","a.js"),start:{line:3},extra:{message:"Dynamic code execution",severity:"ERROR"}}]}),dir);
 assert.deepEqual({rule:og[0]!.rule,severity:og[0]!.severity,file:og[0]!.file,line:og[0]!.line},{rule:"layanx.js.eval",severity:"high",file:"src/a.js",line:3});
 
+// The bundled Opengrep rules: every pattern is a YAML block scalar ("shell: true" inside a plain value broke the file once).
+const rules=fs.readFileSync(new URL("../config/opengrep-rules.yml",import.meta.url),"utf8").split("\n");
+const plain=rules.filter(l=>/^\s*(- )?(pattern|pattern-not|pattern-inside): /.test(l)&&!/: \|\s*$/.test(l));
+assert.deepEqual(plain,[],"pattern lines must use block scalars");
+assert.equal(rules.filter(l=>/^\s+- id: layanx\./.test(l)).length,12);
+
 // 4. Absent scanners are skipped cleanly and reported; the report lists them.
 const env={...process.env,LAYANX_TOOLS_DIR:path.join(dir,"none"),LAYANX_SCANNERS_FROM_PATH:"off"};
 assert.equal(findScanner("gitleaks",env),null);
