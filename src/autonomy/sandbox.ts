@@ -104,7 +104,8 @@ export function dockerRun(info:ProjectInfo,task:string,opts:{script?:string;devP
     "--cap-drop","ALL","--security-opt","no-new-privileges","--pids-limit","512",
     "--memory",env.LAYANX_DOCKER_MEMORY&&/^\d+[mg]$/i.test(env.LAYANX_DOCKER_MEMORY)?env.LAYANX_DOCKER_MEMORY:"4g",
     "--cpus",env.LAYANX_DOCKER_CPUS&&/^\d+(\.\d+)?$/.test(env.LAYANX_DOCKER_CPUS)?env.LAYANX_DOCKER_CPUS:"2",
-    "--network",inner.network?"bridge":"none",
+    // Tests and builds run offline unless the owner allows the network (LAYANX_SANDBOX_NETWORK=on).
+    "--network",inner.network||env.LAYANX_SANDBOX_NETWORK==="on"?"bridge":"none",
     ...(dev&&opts.devPort?["-p",`127.0.0.1:${opts.devPort}:${opts.devPort}`]:[]),
     ...(opts.uid&&process.platform!=="win32"?["--user",opts.uid]:[]),
     "-e","CI=1","-e","HOME=/tmp","-e","npm_config_update_notifier=false","-e","NO_COLOR=1",

@@ -45,6 +45,24 @@ await check("screenshot is a JPEG",async()=>{
   assert.equal(shot.mimeType,"image/jpeg");assert.ok(shot.bytes>1000);
   return shot.screen+" "+shot.bytes+" bytes";
 });
+await check("LayanX local host starts: gateway, setup page, runtime (what LayanX.cmd launches)",async()=>{
+  const {readFileSync,existsSync}=await import("node:fs");
+  const dataDir=mkdtempSync(join(tmpdir(),"lx-host-"));
+  const tsx=join(process.cwd(),"node_modules","tsx","dist","cli.mjs");
+  const host=spawn(process.execPath,[tsx,"src/start-local.ts"],{cwd:process.cwd(),windowsHide:true,stdio:"ignore",
+    env:{...process.env,LAYANX_DATA_DIR:dataDir,LAYANX_PUBLIC_PORT:"3310",LAYANX_FLOW_PUBLIC_PORT:"3410",LAYANX_WORKSPACE_ROOT:join(dataDir,"projects"),LAYANX_DESKTOP_PREWARM:"off"}});
+  try{
+    let health:any=null;
+    for(let i=0;i<90&&!health;i++){await new Promise(r=>setTimeout(r,1000));health=await fetch("http://127.0.0.1:3310/v1/gateway/health").then(r=>r.ok?r.json():null).catch(()=>null);}
+    assert.ok(health?.ok,"gateway answered");
+    const setup=await fetch("http://127.0.0.1:3310/setup");assert.equal(setup.status,200);assert.match(await setup.text(),/LayanX/);
+    const log=join(dataDir,"logs","layanx.log");
+    let running=false;for(let i=0;i<60&&!running;i++){running=existsSync(log)&&/runtime running/.test(readFileSync(log,"utf8"));if(!running)await new Promise(r=>setTimeout(r,1000));}
+    assert.ok(running,"runtime started: "+(existsSync(log)?readFileSync(log,"utf8").slice(-600):"no log"));
+    const unauth=await fetch("http://127.0.0.1:3310/v1/missions");assert.equal(unauth.status,401,"API refuses requests without a session");
+    return "gateway ok, setup 200, runtime running, API locked";
+  }finally{host.kill();await new Promise(r=>setTimeout(r,1500));try{rmSync(dataDir,{recursive:true,force:true});}catch{}}
+});
 if(!noUi){
   await check("Notepad: focus, read elements, set Arabic text, read it back",async()=>{
     const notepad=spawn("notepad.exe",[],{detached:true,stdio:"ignore"});notepad.unref();

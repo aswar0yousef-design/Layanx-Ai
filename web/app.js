@@ -153,7 +153,7 @@ async function mcpPanel(){
    el("div",{class:"a"},pill(s.connected?"run":s.approved?"fail":"pend",s.connected?"on":s.approved?"off":t("mcpPending")),
     s.connected?el("button",{class:"btn small",text:t("mcpDisable"),onclick:act(s.id,"disable")}):el("button",{class:"btn small primary",text:t("mcpApprove"),onclick:act(s.id,"approve")}),
     el("button",{class:"btn small",text:t("mcpRemove"),onclick:act(s.id,"remove")}))))):el("p",{class:"muted",text:t("mcpNone")});
-  const q=el("input",{type:"search",placeholder:t("mcpSearch"),dir:"auto",style:"flex:1"});
+  const q=el("input",{class:"text",type:"search",placeholder:t("mcpSearch"),dir:"auto",style:"flex:1"});
   const results=el("div",{class:"rows",style:"margin-top:.6rem"});
   const search=async()=>{results.textContent="";const r=await safe(api("/v1/mcp/registry?q="+encodeURIComponent(q.value)),{results:[]});
    for(const x of (r.results||[]).slice(0,10))results.append(el("div",{class:"row"},el("div",{class:"t",dir:"auto",text:x.name+" "+x.version}),el("div",{class:"s",dir:"auto",text:x.description||""}),

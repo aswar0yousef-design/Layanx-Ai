@@ -30,6 +30,7 @@ assert.ok(test.args.some(x=>/^type=volume,source=layanx-nm-[0-9a-f]{12},target=\
 assert.deepEqual(test.args.slice(-2),["npm","test"]);
 assert.ok(!a.includes("OPENAI")&&!a.includes("TOKEN"),"no secrets in the container environment");
 assert.match(dockerRun(info,"install",{env:{}}).args.join(" "),/--network bridge .* npm install --no-audit --no-fund$/,"network only while installing");
+assert.match(dockerRun(info,"test",{env:{LAYANX_SANDBOX_NETWORK:"on"}}).args.join(" "),/--network bridge/,"owner can allow the network for tests");
 const dev=dockerRun(info,"dev:start",{env:{},devPort:43210});
 assert.ok(dev.args.includes("127.0.0.1:43210:43210"),"dev port published on localhost only");
 assert.deepEqual(dev.args.slice(-8),["npm","run","dev","--","--host","0.0.0.0","--port","43210"],"vite dev server listens on all interfaces inside the container");
