@@ -9,6 +9,7 @@ import {projectDir} from "./project-dir.js";
 import {createMergeAdapter,createPublishPrAdapter} from "./integrate.js";
 import {detectProject} from "./project-runner.js";
 import {findLessons,matchPlaybooks,recordLesson,listPlaybooks} from "./learning.js";
+import {buildRepoMap,findReferences} from "./repo-map.js";
 
 /** Phase 1 tools: build/check projects, look at web pages, delegate to coding agents. */
 export function registerAutonomyTools(core:LayanXCore,options:{coding:boolean}):void{
@@ -34,6 +35,21 @@ export function registerAutonomyTools(core:LayanXCore,options:{coding:boolean}):
     const dir=projectDir(request.projectId);
     const index=input.refresh===true?refreshKnowledge(dir):undefined;
     return{summary:knowledgeSummary(request.projectId??"default",6000)||"No project memory yet.",openIssues:openIssues(dir),...(index?{index}:{})};
+  }});
+  core.tools.register({name:"project.code_map",description:"the project's important functions, classes and types with their signatures, ranked by how much the rest of the code uses them (repo map). payload.focus = words from the task to rank related code first, payload.tokens = size (default 1500). Read it before writing code so you reuse what exists.",
+    permission:"L1_READ",dangerous:false,actions:["code map","repo map","map project symbols","خريطة الكود","خريطة الدوال"],tags:["project","code","symbols","repo-map","functions","classes","كود","دوال"]});
+  core.toolAdapters.register("project.code_map",{async execute(request){
+    const input=(request.payload&&typeof request.payload==="object"?request.payload:{}) as Record<string,unknown>;
+    const tokens=typeof input.tokens==="number"?input.tokens:1500;
+    const map=buildRepoMap(projectDir(request.projectId),{tokenBudget:tokens,...(typeof input.focus==="string"?{focus:input.focus.slice(0,500)}:{})});
+    return{map:map.text||"No source files found.",files:map.files,definitions:map.definitions,truncated:map.truncated,topFiles:map.ranked.slice(0,10).map(r=>r.file)};
+  }});
+  core.tools.register({name:"project.references",description:"find where a function, class or variable is defined and every line that uses it (payload.symbol). Run it before changing or renaming something so every caller is updated and tested.",
+    permission:"L1_READ",dangerous:false,actions:["find references","who uses symbol","find usages","البحث عن الاستخدامات","من يستخدم الدالة"],tags:["project","code","references","usages","impact","refactor","استخدامات","تأثير"]});
+  core.toolAdapters.register("project.references",{async execute(request){
+    const input=(request.payload&&typeof request.payload==="object"?request.payload:{}) as Record<string,unknown>;
+    const symbol=typeof input.symbol==="string"?input.symbol.trim():"";
+    return{symbol,...findReferences(projectDir(request.projectId),symbol,{maxResults:typeof input.limit==="number"?input.limit:200})};
   }});
   core.tools.register({name:"project.knowledge.record",description:"write to the project's memory: payload.type = decision (title + why) | issue (title + detail) | resolve (title). Record why you chose an approach and any problem you could not fix.",
     permission:"L3_MODIFY",dangerous:false,actions:["record project decision","record known issue","resolve known issue","تسجيل قرار","تسجيل مشكلة","حل مشكلة"],tags:["project","knowledge","decision","issue","memory","ذاكرة"]});
@@ -90,8 +106,8 @@ export function specialisedAgents(base:AgentContract):AgentContract[]{
   const pick=(names:string[])=>base.allowedTools.filter(t=>names.some(n=>n.endsWith(".")?t.startsWith(n):t===n));
   const make=(agentId:string,purpose:string,tools:string[]):AgentContract=>({...base,agentId,purpose,allowedTools:pick(tools)});
   return[
-    make("coder","Write and fix code inside the project, then verify it. Read project.knowledge first; record decisions.",["files.","project.","development.prepare","terminal.exec","git.status","git.diff","git.log","git.checkpoint","git.branch","git.add","git.commit","git.rollback","browser.test","agent.external","memory.recall","mission.inspect","github.","http.read","browser.read","learning.","git.merge"]),
-    make("tester","Run tests, builds, browser and security checks and report precisely what fails.",["project.run","project.verify","project.security","project.knowledge","project.knowledge.record","browser.test","files.read","files.list","files.stat","git.status","git.diff","terminal.exec","memory.recall","mission.inspect"]),
+    make("coder","Write and fix code inside the project, then verify it. Read project.knowledge and project.code_map first, run project.references before changing shared code, record decisions.",["files.","project.","development.prepare","terminal.exec","git.status","git.diff","git.log","git.checkpoint","git.branch","git.add","git.commit","git.rollback","browser.test","agent.external","memory.recall","mission.inspect","github.","http.read","browser.read","learning.","git.merge"]),
+    make("tester","Run tests, builds, browser and security checks and report precisely what fails.",["project.run","project.verify","project.security","project.knowledge","project.references","project.knowledge.record","browser.test","files.read","files.list","files.stat","git.status","git.diff","terminal.exec","memory.recall","mission.inspect"]),
     make("researcher","Research on the internet (official documentation first) and write playbooks to .layanx/playbooks.",["research.internet","agent-reach.","browser.read","http.read","github.","files.write","files.read","memory.recall","learning.","project.knowledge"]),
     make("operator","Operate desktop applications with screenshots, mouse and keyboard.",["desktop.","files.read","files.list","browser.test","memory.recall"]),
     make("business","Run commerce, content, social, ads, email and growth work.",["commerce.","content.","campaign.create","media.","ads.","growth.","google.","yahoo.","email.invoices.scan","creator.","quran.","memory.recall","mission.inspect"])

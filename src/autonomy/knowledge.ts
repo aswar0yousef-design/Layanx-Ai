@@ -128,16 +128,33 @@ export function updateHealth(dir:string,check:string,value:{ok:boolean;summary?:
 }
 
 /** Compact text the planner reads before every task (keeps prompts small for local models). */
+/**
+ * Rules the project's owner already wrote for coding agents (AGENTS.md, CLAUDE.md, .clinerules,
+ * .cursorrules, GitHub Copilot instructions). LayanX follows them like PROJECT.md.
+ */
+const RULE_FILES=["AGENTS.md","CLAUDE.md",".clinerules",".cursorrules",".github/copilot-instructions.md",".windsurfrules"];
+export function projectRules(dir:string,maxChars=1500):string{
+  const parts:string[]=[];
+  for(const name of RULE_FILES){
+    const file=path.join(dir,name);
+    let text="";try{if(fs.statSync(file).isFile())text=read(file).trim();}catch{}
+    if(text)parts.push(`(${name}) ${text}`);
+  }
+  const joined=parts.join("\n");
+  return joined.length>maxChars?joined.slice(0,maxChars)+"…":joined;
+}
+
 export function knowledgeSummary(projectId:string,maxChars=3500):string{
   let dir:string;try{dir=projectDir(projectId);}catch{return"";}
-  const d=dotDir(dir);if(!fs.existsSync(d))return"";
+  const rules=projectRules(dir);
+  const d=dotDir(dir);if(!fs.existsSync(d))return rules?`PROJECT RULES (follow them):\n${rules}`:"";
   const purpose=read(path.join(d,"PROJECT.md")).slice(0,1200);
   let ix:ProjectIndex|null=null;try{ix=JSON.parse(read(path.join(d,"index.json"))) as ProjectIndex;}catch{}
   const decisions=("\n"+read(path.join(d,"DECISIONS.md"))).split("\n## ").slice(1).slice(-6).map(s=>"- "+s.split("\n")[0]).join("\n");
   const issues=openIssues(dir).slice(0,8).map(i=>"- "+i).join("\n");
   const changes=("\n"+read(path.join(d,"CHANGELOG.md"))).split("\n## ").slice(1).slice(-3).map(s=>"- "+s.split("\n")[0]).join("\n");
   const health=Object.entries(readHealth(dir)).map(([k,v])=>`${k}:${v.ok?"ok":"FAIL"}`).join(", ");
-  const parts=[purpose&&`PROJECT:\n${purpose}`,
+  const parts=[purpose&&`PROJECT:\n${purpose}`,rules&&`PROJECT RULES (follow them):\n${rules}`,
     ix&&`MAP: ${ix.stack}, ${ix.files.count} files; folders ${ix.dirs.slice(0,8).map(x=>x.path).join(", ")}; entry ${ix.entryPoints.slice(0,4).join(", ")||"?"}; tests ${ix.tests.files}`+(ix.duplicates.length?`; duplicate names: ${ix.duplicates.slice(0,4).map(x=>x.name).join(", ")}`:""),
     decisions&&`DECISIONS (respect them):\n${decisions}`,issues&&`OPEN ISSUES:\n${issues}`,changes&&`RECENT CHANGES:\n${changes}`,health&&`HEALTH: ${health}`].filter(Boolean) as string[];
   const text=parts.join("\n\n");

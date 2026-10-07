@@ -81,7 +81,7 @@ export function createRuntime(options:RuntimeOptions={}){
    "trading.account","trading.quote","trading.order.place","trading.position.close",
    "trading.mt5.account","trading.mt5.autoscalper.status","trading.mt5.autoscalper.start","trading.mt5.autoscalper.stop",
    "google.sheets.read","google.drive.file.organize",
-   "project.run","browser.test","agent.external","project.knowledge","project.knowledge.record","project.security","git.merge","git.publish_pr","learning.search","learning.record"],
+   "project.run","browser.test","agent.external","project.knowledge","project.knowledge.record","project.code_map","project.references","project.security","git.merge","git.publish_pr","learning.search","learning.record"],
   forbiddenResources:["secrets","security-controls"],
   requiredPermission:"L4_EXECUTE",
   maxToolCalls:100,

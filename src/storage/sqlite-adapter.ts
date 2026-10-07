@@ -25,7 +25,13 @@ export class SqliteAdapter implements StorageAdapter{
   }
 
   async transaction<T>(work:(tx:Transaction)=>Promise<T>):Promise<T>{
+    // The database is opened per transaction and closed afterwards: no file handle stays open,
+    // so Windows can back up, move or delete the data folder while LayanX is idle.
     const db=this.open();
+    try{return await this.run(db,work);}finally{this.close();}
+  }
+
+  private async run<T>(db:SqliteDatabase,work:(tx:Transaction)=>Promise<T>):Promise<T>{
     const staged=new Map<string,unknown>();
     let closed=false;
     const read=(key:string)=>{const row=db.prepare("SELECT value FROM kv WHERE key=?").get(key) as {value?:string}|undefined;return row?.value===undefined?undefined:JSON.parse(row.value) as unknown;};
@@ -58,6 +64,9 @@ export class SqliteAdapter implements StorageAdapter{
   /** One-time import of a JSON state file (the previous store) when the database is still empty. */
   importJsonIfEmpty(jsonPath:string):number{
     const db=this.open();
+    try{return this.importInto(db,jsonPath);}finally{this.close();}
+  }
+  private importInto(db:SqliteDatabase,jsonPath:string):number{
     const count=(db.prepare("SELECT COUNT(*) AS n FROM kv").get() as {n:number}).n;
     if(count>0||!fs.existsSync(jsonPath))return 0;
     let state:Record<string,unknown>;

@@ -5,6 +5,7 @@ import {detectProject,type ProjectInfo} from "./project-runner.js";
 import {projectDir} from "./project-dir.js";
 import {trustLevel} from "./trust.js";
 import {knowledgeSummary,recordIssue,refreshKnowledge,updateHealth} from "./knowledge.js";
+import {buildRepoMap} from "./repo-map.js";
 import {errorSignature,findLessons,guidanceText,listLessons,listPlaybooks,markLessons,matchPlaybooks,recordLesson,recordPlaybookOutcome,savePlaybookCandidate} from "./learning.js";
 
 /**
@@ -258,6 +259,7 @@ export class Supervisor{
       `Current milestone (${job.current+1}/${job.milestones.length}): ${m.goal}`,
       m.notes?`The previous attempt failed. Fix exactly this, change as little as possible:\n${clip(m.notes,3000)}`:"",
       (()=>{const k=knowledgeSummary(job.projectId,1500);return k?`Project memory:\n${k}`:"";})(),
+      (()=>{try{const map=buildRepoMap(projectDir(job.projectId),{focus:job.goal+" "+m.goal,tokenBudget:700});return map.text?`Code map (existing functions to reuse; check callers before changing them):\n${map.text}`:"";}catch{return"";}})(),
       (()=>{const pbs=listPlaybooks(job.projectId).filter(p=>(job.playbooks??[]).includes(p.id)||(p.source==="project"&&p.status==="active"));
         const forError=m.notes?findLessons({error:m.notes,goal:m.goal,projectId:job.projectId},3):[];
         if(forError.length)this.log(job,`Known fix(es) for this error: ${forError.length}`);

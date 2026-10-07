@@ -96,6 +96,11 @@ if (failed.length) {
     console.error(`- ${failure.rel}`);
     if (failure.stderr.trim()) console.error(failure.stderr.trim());
     else if (failure.stdout.trim()) console.error(failure.stdout.trim());
+    // On GitHub Actions the failure is also an annotation, readable from the API without the raw log.
+    if (process.env.GITHUB_ACTIONS === "true") {
+      const detail = (failure.stderr.trim() || failure.stdout.trim() || (failure.timedOut ? "timed out" : "failed")).replace(/\r?\n/g, " | ").slice(-900);
+      console.log(`::error title=${failure.rel.replace(/[\\:,]/g, "/")}::${detail.replace(/%/g, "%25")}`);
+    }
   }
   process.exit(1);
 }
