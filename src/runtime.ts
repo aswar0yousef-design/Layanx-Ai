@@ -8,6 +8,7 @@ import {RuntimePersistence} from "./core/runtime-persistence.js";
 import {RuntimeStorage} from "./storage/runtime-storage.js";
 import {createOllamaEmbedder,embeddingModelFromEnv} from "./memory/embedder.js";
 import {VectorStore} from "./memory/vector-store.js";
+import {CloudBudget} from "./models/cloud-budget.js";
 import {McpManager,setMcpManager} from "./mcp/manager.js";
 import {registerMcpTools} from "./mcp/tools.js";
 import {PostgresStorageAdapter} from "./storage/postgres-adapter.js";
@@ -39,6 +40,7 @@ export function createRuntime(options:RuntimeOptions={}){
  const storage=databaseUrl?new RuntimeStorage(new PostgresStorageAdapter(databaseUrl)):storagePath?RuntimeStorage.local(storagePath):undefined;
  const persistence=storage?new RuntimePersistence(storage):undefined;
  const core=new LayanXCore(undefined,persistence,storage);
+ core.modelExecution.budget=CloudBudget.forStore();
  const embeddingModel=embeddingModelFromEnv();
  if(embeddingModel)core.memory.setEmbedder(createOllamaEmbedder(embeddingModel,{baseUrl:process.env.OLLAMA_BASE_URL}),VectorStore.forStore());
  const business=new BusinessManager(undefined,async input=>(await core.modelExecution.execute({capability:"chat",input,maxOutputTokens:600,routing:{preferLocal:true}})).output);

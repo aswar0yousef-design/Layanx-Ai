@@ -33,6 +33,10 @@ export interface CloudSettings{
   order:CloudProviderId[];
   models:Partial<Record<CloudProviderId,string>>;
   disabled:Partial<Record<CloudProviderId,boolean>>;
+  /** Monthly cap for paid cloud use; null = no cap. Dollars need prices (per 1M tokens). */
+  monthlyBudgetUsd?:number|null;
+  monthlyTokens?:number|null;
+  prices?:Partial<Record<CloudProviderId,{input:number;output:number}>>;
 }
 
 export const DEFAULT_SETTINGS:LocalSettings={mobileAccess:false,publicPort:3000,flowPublicPort:3100,capabilities:{},pinnedModels:{},openAssistantOnStart:false,briefingTime:"",
@@ -91,5 +95,14 @@ function sanitizeCloud(raw:unknown,base:CloudSettings):CloudSettings{
   const disabled={...base.disabled};
   if(input.disabled&&typeof input.disabled==="object")for(const [k,v] of Object.entries(input.disabled as Record<string,unknown>))
     if(PROVIDER_IDS.includes(k as CloudProviderId)&&typeof v==="boolean")disabled[k as CloudProviderId]=v;
-  return{policy,order:order.length?order:base.order,models,disabled};
+  const limit=(v:unknown,fallback:number|null|undefined,max:number)=>v===null||v===""?null:typeof v==="number"&&Number.isFinite(v)&&v>=0&&v<=max?v:fallback??null;
+  const prices={...(base.prices??{})};
+  if(input.prices&&typeof input.prices==="object")for(const [k,v] of Object.entries(input.prices as Record<string,unknown>)){
+    if(!PROVIDER_IDS.includes(k as CloudProviderId))continue;
+    const p=v as {input?:unknown;output?:unknown}|null;
+    if(p===null){delete prices[k as CloudProviderId];continue;}
+    const i=Number(p?.input),o=Number(p?.output);
+    if(Number.isFinite(i)&&Number.isFinite(o)&&i>=0&&o>=0&&i<1000&&o<1000)prices[k as CloudProviderId]={input:i,output:o};
+  }
+  return{policy,order:order.length?order:base.order,models,disabled,monthlyBudgetUsd:limit(input.monthlyBudgetUsd,base.monthlyBudgetUsd,100000),monthlyTokens:limit(input.monthlyTokens,base.monthlyTokens,1e12),prices};
 }

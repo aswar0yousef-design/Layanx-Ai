@@ -172,6 +172,14 @@ aside h2{margin-bottom:.5rem}
         </div>
         <div class="cloud" id="cloud-list"></div>
         <p class="note" id="cloud-note"></p>
+        <h3 style="margin-top:1rem">حد الإنفاق الشهري للسحابة</h3>
+        <p class="lead">عند بلوغ الحد يتوقف استخدام السحابة ويكمل LayanX بالنماذج المحلية حتى الشهر التالي. اكتب السعر لكل مليون رمز من صفحة أسعار المزود ليُحسب الإنفاق بالدولار، أو حدّد عدد الرموز فقط.</p>
+        <form class="row" id="budget-form">
+          <div><label for="budget-usd">دولار في الشهر</label><input id="budget-usd" type="number" min="0" step="0.5" dir="ltr" placeholder="مثلاً 10"></div>
+          <div><label for="budget-tokens">أو رموز في الشهر</label><input id="budget-tokens" type="number" min="0" step="10000" dir="ltr" placeholder="مثلاً 2000000"></div>
+          <button type="submit">حفظ الحد</button>
+        </form>
+        <p class="note" id="budget-usage"></p>
       </section>
 
       <section>
@@ -351,8 +359,10 @@ async function restart(){try{await api("/v1/setup/restart","POST",{});}catch{}$(
 $("restart").addEventListener("click",restart);$("restart-now").addEventListener("click",restart);
 $("shutdown").addEventListener("click",async()=>{if(!confirm("إيقاف LayanX؟ يمكنك تشغيله لاحقاً من الاختصار."))return;try{await api("/v1/setup/shutdown","POST",{});}catch{}document.body.replaceChildren(el("div",{class:"locked"},el("h1",{text:"توقف LayanX"}),el("p",{class:"lead",text:"شغّله مجدداً من اختصار LayanX على سطح المكتب."})));});
 function renderCloud(c){
-  $("ws-form").addEventListener("submit",async e=>{e.preventDefault();try{await api("/v1/setup/settings","PUT",{workspaceRoot:$("ws-root").value.trim()});await load();toast("حُفظ. يعمل بعد إعادة التشغيل.");}catch(err){toast(err.message);}});
 document.querySelectorAll("#cloud-policy input").forEach(i=>{i.checked=i.value===c.policy;});
+  $("budget-usd").value=c.monthlyBudgetUsd??"";$("budget-tokens").value=c.monthlyTokens??"";
+  fetch("/v1/cloud/usage",{credentials:"same-origin"}).then(r=>r.ok?r.json():null).then(d=>{const u=d&&d.usage;if(!u)return;
+    $("budget-usage").textContent="هذا الشهر ("+u.month+"): "+u.totalTokens.toLocaleString("en")+" رمز"+(u.totalCostUsd?" ≈ $"+u.totalCostUsd.toFixed(2):"")+(u.exhausted?" — بلغ الحد، السحابة متوقفة":"")+(u.blocked?" · طلبات مُنعت: "+u.blocked:"");}).catch(()=>{});
   const list=$("cloud-list");list.replaceChildren();
   for(const p of c.providers){
     const row=el("div",{class:"cloud-row"});
@@ -368,6 +378,13 @@ document.querySelectorAll("#cloud-policy input").forEach(i=>{i.checked=i.value==
     box.addEventListener("change",async()=>{try{await api("/v1/setup/settings","PUT",{cloud:{disabled:{[p.id]:!box.checked}}});await load();}catch(e){box.checked=!box.checked;toast(e.message);}});
     toggle.append(box,el("span",{text:"مفعّل"}));
     actions.append(test,toggle);
+    // Price per 1M tokens (from the provider's pricing page) lets the monthly dollar cap work.
+    const price=(c.prices||{})[p.id]||{};
+    const pin=el("input",{type:"number",min:"0",step:"0.01",dir:"ltr",placeholder:"$ / 1M in","aria-label":"سعر الإدخال لكل مليون رمز "+p.label,style:"width:7rem"});pin.value=price.input??"";
+    const pout=el("input",{type:"number",min:"0",step:"0.01",dir:"ltr",placeholder:"$ / 1M out","aria-label":"سعر الإخراج لكل مليون رمز "+p.label,style:"width:7rem"});pout.value=price.output??"";
+    const savePrice=async()=>{if(pin.value===""||pout.value==="")return;try{await api("/v1/setup/settings","PUT",{cloud:{prices:{[p.id]:{input:Number(pin.value),output:Number(pout.value)}}}});toast("حُفظ السعر");}catch(e){toast(e.message);}};
+    pin.addEventListener("change",savePrice);pout.addEventListener("change",savePrice);
+    actions.append(el("div",{style:"display:flex;gap:.3rem;margin-top:.4rem"},pin,pout));
     row.append(title,sel,actions);list.append(row);
   }
   const anyKey=c.providers.some(p=>p.hasKey);
@@ -386,6 +403,9 @@ function renderRemote(r){
   if(r.enabled&&!r.active)d.append(el("p",{class:"note",text:"أعد التشغيل ليبدأ العمل."}));
   $("remote-urls").replaceChildren(...(r.active?r.addresses:[]).map(u=>el("li",{class:"addr",text:u})));
 }
+$("ws-form").addEventListener("submit",async e=>{e.preventDefault();try{await api("/v1/setup/settings","PUT",{workspaceRoot:$("ws-root").value.trim()});await load();toast("حُفظ. يعمل بعد إعادة التشغيل.");}catch(err){toast(err.message);}});
+$("budget-form").addEventListener("submit",async e=>{e.preventDefault();const n=v=>v.trim()===""?null:Number(v);
+  try{await api("/v1/setup/settings","PUT",{cloud:{monthlyBudgetUsd:n($("budget-usd").value),monthlyTokens:n($("budget-tokens").value)}});await load();toast("حُفظ الحد. يعمل بعد إعادة التشغيل.");}catch(err){toast(err.message);}});
 document.querySelectorAll("#cloud-policy input").forEach(i=>i.addEventListener("change",async()=>{try{await api("/v1/setup/settings","PUT",{cloud:{policy:i.value}});await load();toast("حُفظت سياسة السحابة");}catch(e){toast(e.message);}}));
 $("remote-toggle").addEventListener("change",async e=>{try{await api("/v1/setup/settings","PUT",{remoteAccess:e.target.checked});await load();}catch(err){e.target.checked=!e.target.checked;toast(err.message);}});
 boot();

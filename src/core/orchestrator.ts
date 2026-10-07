@@ -45,6 +45,7 @@ import {AgentTeamRuntime} from "./team-runtime.js";
 import {ProjectIntelligence} from "./project-intelligence.js";
 import {ProjectGraph} from "./project-graph.js";
 import {ChangeImpactAnalyzer} from "./impact-analysis.js";
+import {RoutingMemory} from "../models/routing-memory.js";
 import {AutomaticTestSelector} from "./test-selection.js";
 import {AutonomousRepairLoop} from "./autonomous-repair.js";
 import {createHash} from "node:crypto";
@@ -90,6 +91,7 @@ export class LayanXCore{
   readonly providers=new ModelProviderRegistry();
   readonly modelExecution=new ModelExecutionRouter(this.models,this.providers,{preferFree:process.env.LAYANX_AI_PREFER_FREE==="true"});
   readonly aiPlanner=new AiMissionPlanner(this.modelExecution);
+  readonly routingMemory=RoutingMemory.forStore();
   readonly missionCompiler=new MissionCompiler();
   readonly toolSelector=new ToolSelector(this.tools);
   readonly toolCatalog=new ToolCatalog(this.tools);
@@ -573,15 +575,20 @@ export class LayanXCore{
     // Cloud escalation: a goal that names Claude/GPT/Gemini, or a complex goal under the "complex" policy,
     // is planned by that cloud model; a local planning failure is retried once on the cloud (no tool has run yet).
     let hint=routing?undefined:cloudRoutingForGoal(goal,this.models);
+    const cloudReady=this.models.list().some(m=>!m.local&&m.enabled);
+    // Learned routing: goals like this one keep failing locally -> plan them on the cloud directly.
+    if(!routing&&!hint&&cloudReady&&cloudPolicy()!=="off"&&this.routingMemory.suggestCloud(goal))hint={preferLocal:false,reason:"learned"};
     const toRouting=(h:typeof hint):ModelRoutingOptions|undefined=>h?{preferLocal:h.preferLocal,...(h.tags?{tags:h.tags}:{})}:routing;
     let mission:Awaited<ReturnType<LayanXCore["planAndStartMission"]>>;
-    try{mission=await this.planAndStartMission(goal,projectId,toRouting(hint));}
+    try{mission=await this.planAndStartMission(goal,projectId,toRouting(hint));
+      if(!routing)this.routingMemory.record(goal,hint&&!hint.preferLocal?"cloud_ok":"local_ok");}
     catch(error){
-      const cloudReady=this.models.list().some(m=>!m.local&&m.enabled);
+      if(!routing&&!hint)this.routingMemory.record(goal,"local_failed");
       if(routing||hint||!cloudReady||cloudPolicy()==="off")throw error;
       hint={preferLocal:false,reason:"fallback"};
       this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"model.escalate",resource:"planner",result:"success",metadata:{reason:"local planning failed",error:error instanceof Error?error.message.slice(0,200):"unknown"}});
       mission=await this.planAndStartMission(goal,projectId,toRouting(hint));
+      this.routingMemory.record(goal,"cloud_ok");
     }
     const result=await this.executeAgentLoop(mission.id,projectId,maxSteps,approvalIds,agentId,toRouting(hint));
     return{goal:mission.goal,projectId,agentId,...result,missionId:mission.id,...(hint?{modelRouting:{cloud:!hint.preferLocal,reason:hint.reason,...(hint.tags?{provider:hint.tags[0]}:{})}}:{})};

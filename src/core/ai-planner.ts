@@ -96,6 +96,33 @@ export function nextToolSchema(catalog:ToolCatalogEntry[]):Record<string,unknown
  return{anyOf:[{type:"null"},...(Array.isArray(call.anyOf)?call.anyOf as Record<string,unknown>[]:[call])]};
 }
 
+/**
+ * Context budget. Ollama silently drops the *start* of a prompt that exceeds num_ctx, which is where
+ * the instructions are. The variable parts (latest result, memory, project context) are trimmed to fit
+ * the smallest local context window (LAYANX_OLLAMA_CONTEXT, ~3 characters per token, 30% kept for the answer).
+ */
+export function promptBudgetChars(env:NodeJS.ProcessEnv=process.env):number{
+ const explicit=Number(env.LAYANX_PROMPT_BUDGET_CHARS);
+ if(Number.isFinite(explicit)&&explicit>=2000)return Math.floor(explicit);
+ let ctx=Number(env.LAYANX_OLLAMA_NUM_CTX)||8192;
+ try{const sizes=Object.values(JSON.parse(env.LAYANX_OLLAMA_CONTEXT??"{}") as Record<string,unknown>).filter((v):v is number=>typeof v==="number"&&v>=1024);if(sizes.length)ctx=Math.min(...sizes);}catch{}
+ return Math.max(6000,Math.floor(ctx*3*0.7));
+}
+/** Share what is left after the fixed text between the variable sections (by weight, each with its own cap). */
+export function fitSections(fixedChars:number,sections:Array<{text:string;weight:number;max:number}>,budget=promptBudgetChars()):string[]{
+ let left=Math.max(1500,budget-fixedChars);
+ const out=sections.map(()=>"");
+ const order=sections.map((s,i)=>({...s,i})).sort((a,b)=>a.text.length-b.text.length);
+ let weights=order.reduce((n,s)=>n+s.weight,0);
+ for(const s of order){
+  const share=Math.floor(left*s.weight/Math.max(weights,1e-9));
+  const limit=Math.min(s.max,share);
+  out[s.i]=s.text.length<=limit?s.text:s.text.slice(0,Math.max(0,limit-40))+" …[trimmed to fit the model's context]";
+  left-=out[s.i]!.length;weights-=s.weight;
+ }
+ return out;
+}
+
 export interface PlannedMission{
   risk:"low"|"medium"|"high"|"critical";
   requiredPermission:PermissionLevel;
@@ -131,7 +158,7 @@ export class AiMissionPlanner{
       "For computer-use goals on Windows, first read the window with desktop.ui.tree and act with desktop.ui.click or desktop.ui.set_text using an element index; use desktop.window.focus to switch apps. Use desktop.screenshot and coordinate-based mouse actions only when the element is missing from the tree or the user supplied exact coordinates.",
       "Do not request secrets or bypass security controls.",
       "Available tool catalog: "+JSON.stringify(catalog),
-      "Project intelligence context: "+JSON.stringify(projectContext??null).slice(0,8000),
+      "Project intelligence context: "+fitSections(3500+JSON.stringify(catalog).length+goal.length,[{text:JSON.stringify(projectContext??null),weight:1,max:8000}])[0],
       "Goal: "+goal
     ].join("\n");
     const responseSchema=missionPlanSchema(scopedTools);
@@ -158,8 +185,12 @@ export class AiMissionPlanner{
     if(!input.goal.trim())throw new Error("Mission goal is empty.");
     const scopedTools=filterCatalogForGoal(input.goal,input.tools);
     const catalog=scopedTools.map(tool=>({name:tool.name,description:tool.description,permission:tool.permission,dangerous:tool.dangerous,actions:tool.actions,tags:tool.tags}));
-    const boundedResult=JSON.stringify(input.result).slice(0,12000);
-    const boundedMemory=JSON.stringify(input.memory??[]).slice(0,8000);
+    const fixed=2200+JSON.stringify(catalog).length+input.goal.length+JSON.stringify(input.completedTools).length;
+    const [boundedResult,boundedMemory,boundedProject]=fitSections(fixed,[
+      {text:JSON.stringify(input.result)??"null",weight:0.45,max:12000},
+      {text:JSON.stringify(input.memory??[]),weight:0.25,max:8000},
+      {text:JSON.stringify(input.projectContext??null),weight:0.3,max:6000}
+    ]) as [string,string,string];
     const prompt=[
       "You are the LayanX adaptive mission planner.",
       "Return ONLY valid JSON: either null when the mission is complete, or an object with tool, action, permission, reason, and optional payload.",
@@ -169,7 +200,7 @@ export class AiMissionPlanner{
       "Prefer a tool that advances the goal using the latest result.",
       "Completed tools: "+JSON.stringify(input.completedTools),
       "Available tool catalog: "+JSON.stringify(catalog),
-      "Project intelligence context: "+JSON.stringify(input.projectContext??null).slice(0,6000),
+      "Project intelligence context: "+boundedProject,
       "Mission goal: "+input.goal,
       "Mission memory context: "+boundedMemory,
       "Latest tool result: "+boundedResult

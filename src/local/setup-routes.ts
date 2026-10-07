@@ -263,6 +263,9 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
         cloud:{
           policy:settings.cloud.policy,
           order:settings.cloud.order,
+          monthlyBudgetUsd:settings.cloud.monthlyBudgetUsd??null,
+          monthlyTokens:settings.cloud.monthlyTokens??null,
+          prices:settings.cloud.prices??{},
           providers:(Object.keys(CLOUD_PROVIDERS) as CloudProviderId[]).map(id=>({
             id,label:CLOUD_PROVIDERS[id].label,keyName:CLOUD_PROVIDERS[id].keyName,
             hasKey:Boolean(host.store.get(CLOUD_PROVIDERS[id].keyName)||process.env[CLOUD_PROVIDERS[id].keyName]),

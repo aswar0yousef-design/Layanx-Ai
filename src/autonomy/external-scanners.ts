@@ -81,10 +81,17 @@ export function parseOpengrep(stdout:string,dir:string):SecurityFinding[]{
 }
 export async function runOpengrep(dir:string,exe:string,env:NodeJS.ProcessEnv=process.env):Promise<ScannerResult>{
   const config=env.LAYANX_OPENGREP_CONFIG?.trim()||RULES_FILE;
-  const r=await run(exe,["scan","--config",config,"--json","--quiet","--exclude","node_modules","--exclude",".layanx",dir],dir,300_000);
+  // Scan "." from inside the project: relative targets behave the same on Windows and POSIX.
+  const r=await run(exe,["scan","--config",config,"--json","--quiet","--exclude","node_modules","--exclude",".layanx","."],dir,300_000);
   if(r.timedOut)return{tool:"opengrep",ran:false,note:"timed out",findings:[]};
-  try{return{tool:"opengrep",ran:true,findings:parseOpengrep(r.stdout,dir).slice(0,150)};}
-  catch{return{tool:"opengrep",ran:false,note:"could not read its report: "+r.stderr.slice(0,300),findings:[]};}
+  try{
+    const data=JSON.parse(r.stdout) as {errors?:Array<{message?:string;type?:unknown}>;paths?:{scanned?:unknown[]}};
+    const errors=(data.errors??[]).map(e=>String(e.message??e.type??"error")).filter(Boolean);
+    const scanned=Array.isArray(data.paths?.scanned)?data.paths!.scanned!.length:undefined;
+    const note=[scanned!==undefined?`${scanned} files scanned`:"",errors.length?`${errors.length} error(s): ${errors[0]!.slice(0,300)}`:""].filter(Boolean).join("; ");
+    return{tool:"opengrep",ran:true,...(note?{note}:{}),findings:parseOpengrep(r.stdout,dir).slice(0,150)};
+  }
+  catch{return{tool:"opengrep",ran:false,note:"could not read its report (exit "+r.code+"): "+(r.stderr||r.stdout).slice(0,300),findings:[]};}
 }
 
 export async function runExternalScanners(dir:string,env:NodeJS.ProcessEnv=process.env):Promise<ScannerResult[]>{

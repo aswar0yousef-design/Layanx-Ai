@@ -1,5 +1,6 @@
 import type {ModelRegistry} from "../models/registry.js";
 import {ModelRouter} from "./model-router.js";
+import {CloudBudget} from "../models/cloud-budget.js";
 import type {ModelExecutionAttempt,ModelExecutionResult,ModelProviderAdapter,ModelRequest,ModelRoutingOptions} from "../models/inference.js";
 export class ModelProviderRegistry{
  private readonly providers=new Map<string,ModelProviderAdapter>();
@@ -9,12 +10,15 @@ export class ModelProviderRegistry{
 }
 export class ModelExecutionRouter{
  private readonly router:ModelRouter;
+ /** Monthly cloud spending cap; replace with CloudBudget.forStore() in the runtime. */
+ budget:CloudBudget=new CloudBudget(null);
  constructor(private readonly models:ModelRegistry,private readonly providers:ModelProviderRegistry,private readonly defaultRouting:ModelRoutingOptions={}){this.router=new ModelRouter(models);}
  async execute(request:ModelRequest):Promise<ModelExecutionResult>{
   const routing={...this.defaultRouting,...(request.routing??{})};
   const candidates=this.router.selectAll(request.capability,routing);
   const attempts:ModelExecutionAttempt[]=[];
   for(const model of candidates){
+   if(!this.budget.allow(model)){attempts.push({modelId:model.id,provider:model.provider,ok:false,error:"Monthly cloud budget reached; staying on local models."});continue;}
    let provider:ModelProviderAdapter;
    try{provider=this.providers.get(model.provider);}catch(error){attempts.push({modelId:model.id,provider:model.provider,ok:false,error:error instanceof Error?error.message:"Provider unavailable"});continue;}
    const health=await provider.health();
@@ -23,6 +27,7 @@ export class ModelExecutionRouter{
    try{
     const response=await provider.generate(model,request);
     if(response.modelId!==model.id||response.provider!==provider.name){attempts.push({modelId:model.id,provider:model.provider,ok:false,error:"Provider response identity mismatch."});continue;}
+    this.budget.record(model,response,typeof request.input==="string"?request.input.length:request.input.reduce((n,p)=>n+(p.type==="text"?p.text.length:1000),0));
     return{...response,attempts:[...attempts,{modelId:model.id,provider:model.provider,ok:true}]};
    }catch(error){attempts.push({modelId:model.id,provider:model.provider,ok:false,error:error instanceof Error?error.message:"Model execution failed"});}
   }

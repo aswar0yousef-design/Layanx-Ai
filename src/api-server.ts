@@ -274,6 +274,10 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    json(response,200,{ok:true,enabled:Boolean(briefing),time:process.env.LAYANX_BRIEFING_TIME?.trim()||null,briefing:briefing?.latest()??null});return;
   }
+  if(request.method==="GET"&&request.url==="/v1/cloud/usage"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   json(response,200,{ok:true,usage:options.core.modelExecution.budget.status()});return;
+  }
   if(request.method==="GET"&&request.url==="/v1/voice/status"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    json(response,200,{ok:true,voice:voice.status()});return;

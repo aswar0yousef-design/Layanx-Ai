@@ -146,4 +146,4 @@ export function cloudRoutingForGoal(goal:string,models:{list():ModelDefinition[]
  if(cloudPolicy(env)==="complex"&&isComplexGoal(goal))return{preferLocal:false,reason:"complex"};
  return undefined;
 }
-export interface ModelRoutingHint{preferLocal:boolean;tags?:string[];reason:"named"|"complex"|"fallback"}
+export interface ModelRoutingHint{preferLocal:boolean;tags?:string[];reason:"named"|"complex"|"fallback"|"learned"}

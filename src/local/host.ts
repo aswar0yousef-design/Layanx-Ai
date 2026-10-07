@@ -56,6 +56,9 @@ export function applyCloudSettings(env:NodeJS.ProcessEnv,settings:LocalSettings,
   if(env.LAYANX_AI_MODE!=="cloud")env.LAYANX_AI_MODE=enabled.length?"hybrid":"local";
   env.LAYANX_CLOUD_POLICY=settings.cloud.policy;
   env.LAYANX_CLOUD_ORDER=settings.cloud.order.join(",");
+  if(settings.cloud.monthlyBudgetUsd!=null)env.LAYANX_CLOUD_MONTHLY_BUDGET_USD=String(settings.cloud.monthlyBudgetUsd);else delete env.LAYANX_CLOUD_MONTHLY_BUDGET_USD;
+  if(settings.cloud.monthlyTokens!=null)env.LAYANX_CLOUD_MONTHLY_TOKENS=String(settings.cloud.monthlyTokens);else delete env.LAYANX_CLOUD_MONTHLY_TOKENS;
+  for(const [id,price] of Object.entries(settings.cloud.prices??{})){if(!price)continue;const key=id.toUpperCase();env[`LAYANX_PRICE_${key}_IN`]=String(price.input);env[`LAYANX_PRICE_${key}_OUT`]=String(price.output);}
   log("info",enabled.length?`cloud models available (${settings.cloud.policy}): ${enabled.join(", ")}`:"cloud models: none (local only)");
   return enabled;
 }
