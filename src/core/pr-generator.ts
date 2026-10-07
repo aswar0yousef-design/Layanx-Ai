@@ -1,4 +1,5 @@
 import {resolve} from "node:path";
+import {gitSafetyArgs} from "../platform/windows-sandbox.js";
 import {spawn} from "node:child_process";
 import type {CodeReviewResult} from "./code-review-agent.js";
 import type {SecurityReviewResult} from "./security-review-agent.js";
@@ -25,5 +26,5 @@ const body=["## Summary",options.goal.trim(),"","## Mission","- Mission: "+optio
 return{ready:blockers.length===0,branch:currentBranch,baseBranch:options.baseBranch,title:this.normalizeTitle(options.title),body,commit:commitSha,files,blockers};
 }
 private normalizeTitle(title:string){const value=title.trim().replace(/[\r\n]+/g," ");if(!value||value.length>150)throw new Error("Pull request title is required and must be at most 150 characters.");return value;}
-private async git(args:string[]):Promise<string>{return await new Promise((resolveResult,reject)=>{const child=spawn("git",args,{cwd:resolve(this.root),shell:false,windowsHide:true});let stdout="",stderr="";child.stdout?.on("data",chunk=>stdout+=String(chunk).slice(0,262144));child.stderr?.on("data",chunk=>stderr+=String(chunk).slice(0,65536));child.on("error",reject);child.on("close",code=>code===0?resolveResult(stdout):reject(new Error(stderr.trim()||"Git command failed.")));});}
+private async git(args:string[]):Promise<string>{return await new Promise((resolveResult,reject)=>{const child=spawn("git",[...gitSafetyArgs(resolve(this.root)),...args],{cwd:resolve(this.root),shell:false,windowsHide:true});let stdout="",stderr="";child.stdout?.on("data",chunk=>stdout+=String(chunk).slice(0,262144));child.stderr?.on("data",chunk=>stderr+=String(chunk).slice(0,65536));child.on("error",reject);child.on("close",code=>code===0?resolveResult(stdout):reject(new Error(stderr.trim()||"Git command failed.")));});}
 }

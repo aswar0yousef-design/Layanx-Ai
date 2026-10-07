@@ -7,7 +7,8 @@ import type {ToolRequest} from "../core/types.js";
 import {safeChildEnv} from "../platform/safe-env.js";
 import {projectDir} from "./project-dir.js";
 import {runOnce} from "./project-runner.js";
-import {isolationLevel} from "./sandbox.js";
+import {isolationLevel,restrictedAvailable} from "./sandbox.js";
+import {gitSnapshot,prepareRestricted,restrictedCommand,restrictedEnv,verifyGitAfterRun} from "../platform/windows-sandbox.js";
 
 /**
  * agent.external: hand a coding task to a specialised coding agent running inside the project folder.
@@ -94,15 +95,19 @@ export function pinnedImage(image:string):boolean{
  * entry point is the agent's CLI. Network stays on so the agent can reach Ollama on this PC
  * (host.docker.internal) or its cloud API; capabilities are dropped and memory/CPU/processes are limited.
  */
-export function externalDockerCommand(agent:ExternalAgent,task:string,dir:string,env:NodeJS.ProcessEnv=process.env):{command:string;args:string[];label:string}{
+export function externalDockerCommand(agent:ExternalAgent,task:string,dir:string,env:NodeJS.ProcessEnv=process.env):{command:string;args:string[];label:string;passEnv:Record<string,string>}{
   const key="LAYANX_AGENT_IMAGE_"+agent.name.toUpperCase().replace(/-/g,"_");
   const image=env[key]?.trim()??"";
   if(!image)throw new Error(`This project is isolated in Docker. Set ${key} to a pinned image of ${agent.label} (for example name:1.2.3), or lower the isolation level; LayanX will not run the agent outside the container.`);
   if(!pinnedImage(image))throw new Error(`${key} must name an exact version or digest, not "latest".`);
   // The image's entry point is the agent CLI, so the args carry no host path (path "agent" = no script prefix).
   const inner=externalCommand({...agent,path:"agent"},task,{...env,OLLAMA_BASE_URL:"http://host.docker.internal:11434"});
-  const envArgs=Object.entries(inner.extraEnv).flatMap(([k,v])=>["-e",`${k}=${v}`]);
-  return{command:"docker",label:"docker: "+inner.label,args:["run","--rm","--init",
+  // API keys go by name only: docker reads the value from its own environment, so it never appears on a
+  // command line or in `docker inspect`.
+  const secret=(k:string)=>/KEY|TOKEN|SECRET|PASSWORD/i.test(k);
+  const envArgs=Object.entries(inner.extraEnv).flatMap(([k,v])=>["-e",secret(k)?k:`${k}=${v}`]);
+  const passEnv=Object.fromEntries(Object.entries(inner.extraEnv).filter(([k])=>secret(k)));
+  return{command:"docker",label:"docker: "+inner.label,passEnv,args:["run","--rm","--init",
     "--mount",`type=bind,source=${dir},target=/work`,"-w","/work",
     "--cap-drop","ALL","--security-opt","no-new-privileges","--pids-limit","512",
     "--memory",env.LAYANX_DOCKER_MEMORY&&/^\d+[mg]$/i.test(env.LAYANX_DOCKER_MEMORY)?env.LAYANX_DOCKER_MEMORY:"4g",
@@ -124,11 +129,21 @@ export function createExternalAgentAdapter():ToolAdapter{
     if(isolationLevel(request.projectId)==="docker"){
       // Never bypass the project's isolation: inside the container or not at all.
       const docker=externalDockerCommand(agent,task,dir);
-      const result=await runOnce(docker,dir,timeout,safeChildEnv());
+      const result=await runOnce(docker,dir,timeout,{...safeChildEnv(),...docker.passEnv});
       return{agent:agent.name,kind:agent.kind,isolation:"docker",...result,ok:result.exitCode===0&&!result.timedOut};
     }
     const cmd=externalCommand(agent,task);
     const env=safeChildEnv({allow:["PYTHONPATH","VIRTUAL_ENV"],extra:{...cmd.extraEnv,NO_COLOR:"1",CI:"1"}});
+    if(isolationLevel(request.projectId)==="restricted"){
+      // Same rule as Docker: inside the restriction or not at all. The agent gets its own home folder
+      // (its caches and settings), and can write nowhere else but the project.
+      if(!restrictedAvailable())throw new Error("This project uses restricted isolation, which runs on Windows only. LayanX will not run the agent without it.");
+      const setup=await prepareRestricted(dir);
+      const before=gitSnapshot(dir);
+      const result=await runOnce(restrictedCommand({command:cmd.command,args:cmd.args,label:cmd.label},dir,setup),dir,timeout,restrictedEnv(env,setup,{home:true}));
+      const gitWarning=[setup.gitWarning,await verifyGitAfterRun(dir,before)].filter(Boolean).join(" ")||undefined;
+      return{agent:agent.name,kind:agent.kind,isolation:"restricted",...result,ok:result.exitCode===0&&!result.timedOut&&!gitWarning,...(gitWarning?{gitWarning}:{})};
+    }
     const result=await runOnce({command:cmd.command,args:cmd.args,label:cmd.label},dir,timeout,env);
     return{agent:agent.name,kind:agent.kind,...result,ok:result.exitCode===0&&!result.timedOut};
   }};

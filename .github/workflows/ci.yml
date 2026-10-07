@@ -72,6 +72,39 @@ jobs:
       - uses: actions/checkout@v5
       - name: Build image (catches files missing from the Dockerfile)
         run: docker build -t layanx:ci .
+  zap:
+    # Real OWASP ZAP baseline (pinned image) against a deliberately careless local app.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm install
+      - run: docker pull ghcr.io/zaproxy/zaproxy:2.17.0
+      - run: node node_modules/tsx/dist/cli.mjs scripts/zap-smoke.ts
+        env:
+          LAYANX_ZAP: "on"
+  evals:
+    # The planner against a real (small) Ollama model: structured outputs, Arabic and prompt-injection cases.
+    # The score of a 0.5B model is informative only; the job fails on harness or Ollama errors.
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Install Ollama and a small model
+        run: |
+          # The download from ollama.com fails now and then: three attempts before giving up.
+          for attempt in 1 2 3; do curl -fsSL https://ollama.com/install.sh | sh && break; echo "Ollama install attempt $attempt failed"; sleep 20; done
+          for i in {1..30}; do curl -sf http://127.0.0.1:11434/api/version && break; sleep 1; done
+          for attempt in 1 2 3; do ollama pull qwen2.5:0.5b && break; sleep 15; done
+          ollama list | grep -q qwen2.5:0.5b
+      - run: npm run eval -- --model qwen2.5:0.5b --json eval-report.json
   windows:
     # Real Windows: typecheck, the full test suite, then the Windows-only smoke test
     # (compiled desktop helper with UI Automation, DPAPI secrets, npm without .cmd).
@@ -91,12 +124,28 @@ jobs:
         env:
           LAYANX_TEST_TIMEOUT_MS: "240000"
       - name: Install pinned security scanners (SHA-256 verified)
+        if: always()
         run: node node_modules/tsx/dist/cli.mjs scripts/install-security-tools.ts
-      - name: Install local voice (Piper, pinned) and speech recognition (Whisper, pinned build)
+      - name: Install local voice (Piper, pinned), voice sense (Silero VAD + Smart Turn, pinned) and speech recognition (Whisper, pinned build)
+        if: always()
         shell: powershell
         run: |
           .\scripts\windows\install-piper.ps1 -Yes -NoEnglish
+          .\scripts\windows\install-voice-sense.ps1 -Yes
           .\scripts\windows\install-whisper.ps1 -Cpu -Model base
-      - name: Windows smoke test
+      # One step per group: GitHub shows at most 10 notices per step, and each check reports one.
+      - name: Windows smoke test (desktop, host, ACP, secrets, npm)
         shell: powershell
-        run: .\scripts\windows\smoke-test.ps1 -WithTools -WithVoice
+        run: .\scripts\windows\smoke-test.ps1 -Only core
+      - name: Windows smoke test (restricted isolation)
+        if: always()
+        shell: powershell
+        run: .\scripts\windows\smoke-test.ps1 -Only sandbox
+      - name: Windows smoke test (security scanners)
+        if: always()
+        shell: powershell
+        run: .\scripts\windows\smoke-test.ps1 -Only tools -WithTools
+      - name: Windows smoke test (voice)
+        if: always()
+        shell: powershell
+        run: .\scripts\windows\smoke-test.ps1 -Only voice -WithVoice

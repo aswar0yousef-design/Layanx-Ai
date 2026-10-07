@@ -7,9 +7,12 @@
     powershell -ExecutionPolicy Bypass -File scripts\windows\smoke-test.ps1
   Add -NoUi to skip the Notepad check (for example over Remote Desktop with a locked screen).
   Add -WithTools to also test the security scanners installed by install-security-tools.ps1.
-  Add -WithVoice to test Piper (speak Arabic) and Whisper (hear it back) after install-piper.ps1 / install-whisper.ps1.
+  Add -WithVoice to test Piper (speak Arabic), Whisper (hear it back) and voice sense (Silero VAD + Smart Turn)
+  after install-piper.ps1 / install-whisper.ps1 / install-voice-sense.ps1.
+  Always included: restricted isolation (low-integrity sandbox without Docker) and the ACP editor bridge.
+  -Only core,sandbox,tools,voice runs a subset.
 #>
-param([switch]$NoUi,[switch]$WithTools,[switch]$WithVoice)
+param([switch]$NoUi,[switch]$WithTools,[switch]$WithVoice,[string]$Only)
 $ErrorActionPreference = 'Stop'
 $Root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 Set-Location $Root
@@ -21,6 +24,7 @@ $smokeArgs = @($tsx, 'scripts/windows-smoke.ts')
 if ($NoUi) { $smokeArgs += '--no-ui' }
 if ($WithTools) { $smokeArgs += '--with-tools' }
 if ($WithVoice) { $smokeArgs += '--with-voice' }
+if ($Only) { $smokeArgs += @('--only', $Only) }
 & $node @smokeArgs
 $code = $LASTEXITCODE
 if ($code -eq 0) { Write-Host 'Windows smoke test passed.' -ForegroundColor Green }

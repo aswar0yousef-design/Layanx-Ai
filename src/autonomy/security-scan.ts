@@ -6,19 +6,22 @@ import {detectProject,commandFor,runOnce} from "./project-runner.js";
 import {projectDir} from "./project-dir.js";
 import {runExternalScanners} from "./external-scanners.js";
 import {updateHealth} from "./knowledge.js";
+import {isLoopbackUrl,webBaseline,type WebScanResult} from "./web-scan.js";
 
 /**
  * project.security: security check for websites and apps LayanX builds (offline rules, no extra tools).
  *  - code: hard-coded secrets, eval, command / SQL injection, XSS sinks, disabled TLS checks,
  *          wildcard CORS, insecure cookies, literal JWT secrets, weak hashing, debug mode, .env committed
  *  - dependencies: npm audit (needs package-lock.json and internet)
- *  - running app: security headers of the dev server (CSP, nosniff, frame protection, referrer, HSTS)
+ *  - running app (payload.url on this computer): a passive baseline like OWASP ZAP's - crawl a few pages,
+ *    headers, CSP quality, cookies, CORS, error leaks, SRI, exposed .env/.git; plus real ZAP in Docker
+ *    when available (web-scan.ts)
  * Score 0-100. Any critical/high finding outside tests BLOCKS "done" in the supervisor.
  * Silence a reviewed line with a trailing comment: layanx-ignore-security
  */
 export type Severity="critical"|"high"|"medium"|"low"|"info";
 export interface SecurityFinding{severity:Severity;rule:string;message:string;file?:string;line?:number;fix:string;test?:boolean}
-export interface SecurityReport{score:number;blocked:boolean;counts:Record<Severity,number>;findings:SecurityFinding[];scannedFiles:number;audit?:{ran:boolean;note?:string};headers?:{url:string;missing:string[]};scanners?:Array<{tool:string;ran:boolean;findings:number;note?:string}>;at:string}
+export interface SecurityReport{score:number;blocked:boolean;counts:Record<Severity,number>;findings:SecurityFinding[];scannedFiles:number;audit?:{ran:boolean;note?:string};headers?:{url:string;missing:string[]};web?:{pages:number;zap?:WebScanResult["zap"];note?:string};scanners?:Array<{tool:string;ran:boolean;findings:number;note?:string}>;at:string}
 
 const SKIP_DIRS=new Set(["node_modules",".git","dist","build",".next","out","coverage",".layanx","vendor","__pycache__",".venv","venv","target","bin","obj",".dart_tool"]);
 const SCAN_EXT=new Set([".ts",".tsx",".js",".jsx",".mjs",".cjs",".vue",".svelte",".py",".php",".rb",".go",".cs",".java",".dart",".html",".env",".json",".yml",".yaml",".toml",".ini",".cfg"]);
@@ -103,34 +106,23 @@ async function auditDependencies(dir:string):Promise<{findings:SecurityFinding[]
   }catch{return{findings:[],ran:false,note:"npm audit did not return a report (offline?)"};}
 }
 
-async function checkHeaders(url:string):Promise<{missing:string[];findings:SecurityFinding[]}>{
-  try{
-    const r=await fetch(url,{signal:AbortSignal.timeout(8000),redirect:"manual"});
-    const h=(n:string)=>r.headers.get(n);
-    const missing:string[]=[];const findings:SecurityFinding[]=[];
-    const need=(name:string,ok:boolean,sev:Severity,fix:string)=>{if(!ok){missing.push(name);findings.push({severity:sev,rule:"headers."+name.toLowerCase(),message:`Missing ${name} header`,fix});}};
-    need("Content-Security-Policy",Boolean(h("content-security-policy")),"medium","Send a Content-Security-Policy (start with default-src 'self').");
-    need("X-Content-Type-Options",h("x-content-type-options")==="nosniff","low","Send X-Content-Type-Options: nosniff.");
-    need("Frame-Protection",Boolean(h("x-frame-options"))||/frame-ancestors/.test(h("content-security-policy")??""),"low","Send X-Frame-Options: DENY or CSP frame-ancestors 'none'.");
-    need("Referrer-Policy",Boolean(h("referrer-policy")),"low","Send Referrer-Policy: strict-origin-when-cross-origin.");
-    if(url.startsWith("https:"))need("Strict-Transport-Security",Boolean(h("strict-transport-security")),"medium","Send Strict-Transport-Security on HTTPS.");
-    return{missing,findings};
-  }catch{return{missing:[],findings:[]};}
-}
-
-export async function securityReport(dir:string,opts:{audit?:boolean;url?:string;external?:boolean}={}):Promise<SecurityReport>{
+export async function securityReport(dir:string,opts:{audit?:boolean;url?:string;external?:boolean;zap?:boolean}={}):Promise<SecurityReport>{
   const code=scanCode(dir);
   const audit=opts.audit===false?{findings:[],ran:false,note:"skipped"}:await auditDependencies(dir);
-  const headers=opts.url?await checkHeaders(opts.url):null;
+  let web:WebScanResult|null=null,webNote:string|undefined;
+  if(opts.url){
+    if(isLoopbackUrl(opts.url))web=await webBaseline(opts.url,{...(opts.zap===false?{zap:false}:{})}).catch(e=>{webNote=String(e instanceof Error?e.message:e);return null;});
+    else webNote="Only apps running on this computer are scanned.";
+  }
   const external=opts.external===false?[]:await runExternalScanners(dir);
   // npm audit and osv-scanner both report vulnerable npm packages: keep one finding per package.
   const seen=new Set(audit.findings.map(f=>f.message.replace(/^Vulnerable dependency: /,"").split(" ")[0]));
   const extra=external.flatMap(r=>r.findings).filter(f=>f.rule!=="deps.vulnerable"||!seen.has(f.message.replace(/^Vulnerable dependency: /,"").split(" ")[0]));
-  const findings=[...code.findings,...audit.findings,...extra,...(headers?.findings??[])];
+  const findings=[...code.findings,...audit.findings,...extra,...(web?.findings??[])];
   const counts:Record<Severity,number>={critical:0,high:0,medium:0,low:0,info:0};
   for(const f of findings)counts[f.severity]++;
   const score=Math.max(0,100-counts.critical*30-counts.high*15-counts.medium*5-counts.low);
-  const report:SecurityReport={score,blocked:counts.critical+counts.high>0,counts,findings,scannedFiles:code.scanned,audit:{ran:audit.ran,...(audit.note?{note:audit.note}:{})},...(headers&&opts.url?{headers:{url:opts.url,missing:headers.missing}}:{}),scanners:external.map(r=>({tool:r.tool,ran:r.ran,findings:r.findings.length,...(r.note?{note:r.note}:{})})),at:new Date().toISOString()};
+  const report:SecurityReport={score,blocked:counts.critical+counts.high>0,counts,findings,scannedFiles:code.scanned,audit:{ran:audit.ran,...(audit.note?{note:audit.note}:{})},...(web?{headers:{url:web.url,missing:web.missing}}:{}),...(opts.url?{web:{pages:web?.pages.length??0,...(web?.zap?{zap:web.zap}:{}),...(webNote?{note:webNote}:{})}}:{}),scanners:external.map(r=>({tool:r.tool,ran:r.ran,findings:r.findings.length,...(r.note?{note:r.note}:{})})),at:new Date().toISOString()};
   try{fs.mkdirSync(path.join(dir,".layanx"),{recursive:true});fs.writeFileSync(path.join(dir,".layanx","security.json"),JSON.stringify(report,null,1));}catch{}
   updateHealth(dir,"security",{ok:!report.blocked,score,summary:`${counts.critical} critical, ${counts.high} high, ${counts.medium} medium, ${counts.low} low`});
   return report;

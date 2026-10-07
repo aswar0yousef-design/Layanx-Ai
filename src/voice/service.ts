@@ -1,13 +1,17 @@
+import {isWav,VoiceSense} from "./sense.js";
+
 export interface VoiceStatus {
   enabled:boolean;
   /** Local speech-to-text (whisper.cpp or any OpenAI-compatible server) when configured. */
-  localStt?:{baseUrl:string;model:string}|null;
+  localStt?:{baseUrl:string;model:string;backupUrl?:string}|null;
   /** Which engine /v1/voice/transcribe uses: "local", "openai" or "none". */
   stt?:"local"|"openai"|"none";
   /** Local text-to-speech (Piper on this computer) when running. */
   localTts?:{baseUrl:string;voices:{ar:string;en:string}}|null;
   /** Which engine /v1/voice/speak uses: "local" (Piper), "openai", or "browser" (the page speaks itself). */
   tts?:"local"|"openai"|"browser";
+  /** Speech detection and end-of-turn detection on this computer (Silero VAD + Smart Turn). */
+  sense?:{baseUrl:string}|null;
   provider:string;
   transcriptionModel:string;
   speechModel:string;
@@ -126,8 +130,8 @@ export class LocalTranscriber{
   constructor(baseUrl:string,model=process.env.LAYANX_STT_MODEL?.trim()||"whisper-1",private readonly timeoutMs=Number(process.env.LAYANX_STT_TIMEOUT_MS)||60_000){
     this.baseUrl=baseUrl.replace(/\/+$/,"");this.model=model;
   }
-  static fromEnv(env:NodeJS.ProcessEnv=process.env):LocalTranscriber|null{
-    const url=env.LAYANX_STT_BASE_URL?.trim();
+  static fromEnv(env:NodeJS.ProcessEnv=process.env,key:"LAYANX_STT_BASE_URL"|"LAYANX_STT_FALLBACK_URL"="LAYANX_STT_BASE_URL"):LocalTranscriber|null{
+    const url=env[key]?.trim();
     return url?new LocalTranscriber(url):null;
   }
   async transcribe(audio:Buffer,mimeType:string,filename:string,language?:string):Promise<string>{
@@ -138,7 +142,8 @@ export class LocalTranscriber{
     form.append("temperature","0");
     const lang=language?.trim().toLowerCase();
     if(lang&&lang!=="auto")form.append("language",lang);
-    const response=await fetch(`${this.baseUrl}/audio/transcriptions`,{method:"POST",body:form,signal:AbortSignal.timeout(this.timeoutMs)});
+    // x-layanx-client: local speech servers accept only requests a web page cannot forge without a preflight.
+    const response=await fetch(`${this.baseUrl}/audio/transcriptions`,{method:"POST",body:form,headers:{"x-layanx-client":"layanx"},signal:AbortSignal.timeout(this.timeoutMs)});
     if(!response.ok)throw new Error(`Local transcription failed (${response.status}): ${(await response.text()).slice(0,300)}`);
     const payload=await response.json() as {text?:unknown};
     return typeof payload.text==="string"?payload.text.trim():"";
@@ -187,14 +192,41 @@ export class LocalSpeaker{
 export class VoiceService{
   private readonly local:LocalTranscriber|null;
   private readonly speaker:LocalSpeaker|null;
-  constructor(private readonly provider:VoiceProvider=new OpenAIVoiceProvider(),local:LocalTranscriber|null=LocalTranscriber.fromEnv(),speaker:LocalSpeaker|null=LocalSpeaker.fromEnv()){this.local=local;this.speaker=speaker;}
+  readonly sense:VoiceSense|null;
+  /** A second local engine (Whisper next to Cohere) used when the first one fails. */
+  private readonly backup:LocalTranscriber|null;
+  constructor(private readonly provider:VoiceProvider=new OpenAIVoiceProvider(),local:LocalTranscriber|null=LocalTranscriber.fromEnv(),speaker:LocalSpeaker|null=LocalSpeaker.fromEnv(),sense:VoiceSense|null=VoiceSense.fromEnv(),backup:LocalTranscriber|null=LocalTranscriber.fromEnv(process.env,"LAYANX_STT_FALLBACK_URL")){this.local=local;this.speaker=speaker;this.sense=sense;this.backup=local&&backup&&backup.baseUrl!==local.baseUrl?backup:null;}
   status():VoiceStatus{
     const base=this.provider.status();
-    return{...base,localStt:this.local?{baseUrl:this.local.baseUrl,model:this.local.model}:null,stt:this.local?"local":base.enabled?"openai":"none",
-      localTts:this.speaker?{baseUrl:this.speaker.baseUrl,voices:this.speaker.voices}:null,tts:this.speaker?"local":base.enabled?"openai":"browser"};
+    return{...base,localStt:this.local?{baseUrl:this.local.baseUrl,model:this.local.model,...(this.backup?{backupUrl:this.backup.baseUrl}:{})}:null,stt:this.local?"local":base.enabled?"openai":"none",
+      localTts:this.speaker?{baseUrl:this.speaker.baseUrl,voices:this.speaker.voices}:null,tts:this.speaker?"local":base.enabled?"openai":"browser",
+      sense:this.sense?{baseUrl:this.sense.baseUrl}:null};
   }
-  /** Local whisper first (private, free); the cloud provider only when no local engine is configured. */
-  transcribe(...args:Parameters<VoiceProvider["transcribe"]>){return this.local?this.local.transcribe(...args):this.provider.transcribe(...args);}
+  /**
+   * Local whisper first (private, free); the cloud provider only when no local engine is configured.
+   * With voice sense running, a WAV clip without real speech returns "" without being transcribed.
+   */
+  async transcribe(...args:Parameters<VoiceProvider["transcribe"]>):Promise<string>{
+    if(this.sense&&isWav(args[0])){
+      const vad=await this.sense.vad(args[0]).catch(()=>null);
+      if(vad&&!vad.speech)return"";
+    }
+    if(!this.local)return this.provider.transcribe(...args);
+    try{return await this.local.transcribe(...args);}
+    catch(error){
+      // Local engine down or still loading (Cohere): the local backup (Whisper), then the cloud engine
+      // if the owner configured one.
+      if(this.backup){try{return await this.backup.transcribe(...args);}catch{}}
+      if(this.provider.status().enabled)return this.provider.transcribe(...args);
+      throw error;
+    }
+  }
+  /** Has the speaker finished the sentence? null when voice sense is not running. */
+  async turn(wav:Buffer):Promise<{complete:boolean;probability:number}|null>{
+    if(!this.sense||!isWav(wav))return null;
+    const r=await this.sense.turn(wav);
+    return{complete:Boolean(r.complete),probability:Number(r.probability)};
+  }
   /** Piper on this computer first (private, free, Arabic voice); the cloud voice only when Piper is absent or fails. */
   async speak(text:string,format?:"mp3"|"wav"|"opus",lang?:string):Promise<{audio:Buffer;contentType:string}>{
     if(this.speaker){

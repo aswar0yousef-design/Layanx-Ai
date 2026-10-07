@@ -1,4 +1,5 @@
 import {safeChildEnv} from "../platform/safe-env.js";
+import {gitSafetyArgs} from "../platform/windows-sandbox.js";
 import {mkdir} from "node:fs/promises";
 import {existsSync} from "node:fs";
 import {resolve,relative,sep,dirname} from "node:path";
@@ -33,7 +34,7 @@ function run(cwd:string,args:string[],timeout=30000):Promise<unknown>{
  return new Promise((resolvePromise,reject)=>{
   const isWindows=process.platform==="win32";
   const binary=isWindows?"git.exe":"git";
-  const commandArgs=args;
+  const commandArgs=[...gitSafetyArgs(cwd),...args];
   const child=spawn(binary,commandArgs,{cwd,shell:false,env:safeChildEnv({allow:["HOME","GIT_SSH","GIT_SSH_COMMAND","SSH_AUTH_SOCK","GCM_INTERACTIVE"],extra:{GIT_TERMINAL_PROMPT:"0"}}),timeout});
   let stdout="",stderr="";
   child.stdout.on("data",c=>{stdout+=String(c);if(stdout.length>128*1024)child.kill("SIGKILL");});

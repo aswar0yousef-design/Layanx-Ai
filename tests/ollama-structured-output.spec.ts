@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {AiMissionPlanner,missionPlanSchema,nextToolSchema} from "../src/core/ai-planner.js";
-import {createOllamaProvider,ollamaFormat} from "../src/providers/ollama-provider.js";
+import {createOllamaProvider,ollamaFormat,ollamaNumPredict} from "../src/providers/ollama-provider.js";
 
 const catalog=[
  {name:"files.write",description:"write",permission:"L3_MODIFY",dangerous:false,actions:["write file"],tags:[]},
@@ -42,4 +42,15 @@ assert.equal(result.output,"{\"ok\":true}");
 assert.equal(typeof bodies[0].format,"object");
 assert.equal(bodies[1].format,"json");
 assert.equal(bodies.length,2);
+// Output cap: JSON answers stop at 1024 tokens (small models can loop on whitespace); free text is not capped.
+assert.equal(ollamaNumPredict({capability:"reasoning",input:"x",responseSchema:{type:"object"}} as any,{}),1024);
+assert.equal(ollamaNumPredict({capability:"reasoning",input:"x"} as any,{}),1024,"plain JSON mode is capped too");
+assert.equal(ollamaNumPredict({capability:"chat",input:"x"} as any,{}),undefined);
+assert.equal(ollamaNumPredict({capability:"chat",input:"x",maxOutputTokens:300} as any,{}),300);
+assert.equal(ollamaNumPredict({capability:"reasoning",input:"x"} as any,{LAYANX_OLLAMA_NUM_PREDICT:"2048"}),2048);
+// Thinking models get room for their reasoning; with thinking switched off they keep the short cap.
+assert.equal(ollamaNumPredict({capability:"reasoning",input:"x"} as any,{},"gpt-oss:20b"),4096);
+assert.equal(ollamaNumPredict({capability:"reasoning",input:"x"} as any,{LAYANX_OLLAMA_THINK:"on",LAYANX_OLLAMA_THINKING_MODELS:"qwen3.5:9b"},"qwen3.5:9b"),4096);
+assert.equal(ollamaNumPredict({capability:"reasoning",input:"x"} as any,{LAYANX_OLLAMA_THINKING_MODELS:"qwen3.5:9b"},"qwen3.5:9b"),1024,"thinking off -> short cap");
+assert.equal(ollamaNumPredict({capability:"reasoning",input:"x"} as any,{},"qwen2.5:7b"),1024);
 console.log("ollama-structured-output: planner schemas, format wiring and plain-JSON retry");

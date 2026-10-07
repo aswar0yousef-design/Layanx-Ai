@@ -129,16 +129,37 @@ function Ensure-Ollama {
 function Ensure-Whisper {
   $dir = Join-Path $DataDir 'whisper'
   if (-not (Test-Path $dir)) { return }
+  # With Cohere Transcribe Arabic installed, Whisper still starts as the backup LayanX switches to when
+  # Cohere is loading or fails (LAYANX_STT_ENGINE=whisper uses Whisper only).
   $port = 8178
   if ($env:LAYANX_STT_PORT) { $port = [int]$env:LAYANX_STT_PORT }
   if (Test-PortInUse $port) { return }
   $server = Get-ChildItem -Path $dir -Recurse -Filter 'whisper-server.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
   $model = Get-ChildItem -Path (Join-Path $dir 'models') -Filter 'ggml-*.bin' -ErrorAction SilentlyContinue | Sort-Object Length -Descending | Select-Object -First 1
   if (-not $server -or -not $model) { Warn 'Whisper folder found but whisper-server.exe or a ggml model is missing. Run scripts\windows\install-whisper.ps1'; return }
-  Say "Starting local speech recognition (Whisper: $($model.Name))..."
+  $role = if (Test-CohereAsr) { 'backup speech recognition' } else { 'local speech recognition' }
+  Say "Starting $role (Whisper: $($model.Name))..."
   $threads = [Math]::Max(2, [Environment]::ProcessorCount / 2)
   Start-Process -FilePath $server.FullName -WorkingDirectory $server.DirectoryName -WindowStyle Hidden -ArgumentList @('-m', "`"$($model.FullName)`"", '--host', '127.0.0.1', '--port', "$port", '--inference-path', '/v1/audio/transcriptions', '-t', "$threads")
   for ($i = 0; $i -lt 30 -and -not (Test-PortInUse $port); $i++) { Start-Sleep -Milliseconds 500 }
+}
+
+# ---------------------------------------------------------------- Cohere Transcribe Arabic (optional, replaces Whisper)
+function Test-CohereAsr { return (Test-Path (Join-Path $DataDir 'cohere-asr\install.json')) -and ($env:LAYANX_STT_ENGINE -ne 'whisper') }
+function Ensure-CohereAsr {
+  if (-not (Test-CohereAsr)) { return }
+  $dir = Join-Path $DataDir 'cohere-asr'
+  $info = Get-Content (Join-Path $dir 'install.json') -Raw | ConvertFrom-Json
+  if (-not (Test-Path $info.python)) { Warn 'Cohere speech recognition needs reinstalling: run scripts\windows\install-cohere-asr.ps1'; return }
+  $port = 8181
+  if ($env:LAYANX_COHERE_PORT) { $port = [int]$env:LAYANX_COHERE_PORT }
+  if (Test-PortInUse $port) { return }
+  $device = if ($env:LAYANX_COHERE_DEVICE) { $env:LAYANX_COHERE_DEVICE } else { $info.device }
+  Say "Starting Arabic speech recognition (Cohere Transcribe Arabic, $device)..."
+  $server = Join-Path $Root 'scripts\voice-sense\cohere_asr_server.py'
+  Start-Process -FilePath $info.python -WorkingDirectory $dir -WindowStyle Hidden -ArgumentList @("`"$server`"", '--model', "`"$(Join-Path $dir 'model')`"", '--port', "$port", '--device', $device)
+  # The port opens at once; the 2B model keeps loading in the background (about a minute on the CPU).
+  for ($i = 0; $i -lt 40 -and -not (Test-PortInUse $port); $i++) { Start-Sleep -Milliseconds 500 }
 }
 
 # ---------------------------------------------------------------- Piper (local Arabic voice, optional)
@@ -154,6 +175,21 @@ function Ensure-Piper {
   if (-not $model) { Warn 'Piper is installed but no voice was found. Run scripts\windows\install-piper.ps1'; return }
   Say "Starting the local voice (Piper: $model)..."
   Start-Process -FilePath $vpy -WorkingDirectory $voices -WindowStyle Hidden -ArgumentList @('-m', 'piper.http_server', '-m', $model, '--data-dir', "`"$voices`"", '--host', '127.0.0.1', '--port', "$port")
+  for ($i = 0; $i -lt 40 -and -not (Test-PortInUse $port); $i++) { Start-Sleep -Milliseconds 500 }
+}
+
+function Ensure-VoiceSense {
+  $dir = Join-Path $DataDir 'voice-sense'
+  $pyFile = Join-Path $dir 'python.txt'
+  if (-not (Test-Path $pyFile)) { return }
+  $py = (Get-Content $pyFile -Raw).Trim()
+  if (-not (Test-Path $py)) { Warn 'Voice sense needs reinstalling: run scripts\windows\install-voice-sense.ps1'; return }
+  $port = 8180
+  if ($env:LAYANX_VOICE_SENSE_PORT) { $port = [int]$env:LAYANX_VOICE_SENSE_PORT }
+  if (Test-PortInUse $port) { return }
+  Say 'Starting speech and end-of-turn detection (Silero VAD + Smart Turn)...'
+  $server = Join-Path $Root 'scripts\voice-sense\server.py'
+  Start-Process -FilePath $py -WorkingDirectory $dir -WindowStyle Hidden -ArgumentList @("`"$server`"", '--models', "`"$(Join-Path $dir 'models')`"", '--port', "$port")
   for ($i = 0; $i -lt 40 -and -not (Test-PortInUse $port); $i++) { Start-Sleep -Milliseconds 500 }
 }
 
@@ -181,8 +217,10 @@ if (Test-Gateway) {
   }
 
   Ensure-Ollama
+  Ensure-CohereAsr
   Ensure-Whisper
   Ensure-Piper
+  Ensure-VoiceSense
 
   Say 'Starting LayanX in the background...'
   Start-Process -FilePath $Node -ArgumentList @("`"$tsx`"", 'src/start-local.ts') -WorkingDirectory $Root -WindowStyle Hidden

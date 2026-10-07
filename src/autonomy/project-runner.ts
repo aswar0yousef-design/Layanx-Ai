@@ -6,7 +6,8 @@ import type {ToolRequest} from "../core/types.js";
 import {safeChildEnv} from "../platform/safe-env.js";
 import {projectDir} from "./project-dir.js";
 import {updateHealth} from "./knowledge.js";
-import {dockerRun,dockerVersion,isolationLevel,withoutInstallScripts} from "./sandbox.js";
+import {dockerRun,dockerVersion,isolationLevel,restrictedAvailable,withoutInstallScripts,type Isolation} from "./sandbox.js";
+import {gitSnapshot,prepareRestricted,restrictedCommand,restrictedEnv,verifyGitAfterRun} from "../platform/windows-sandbox.js";
 import net from "node:net";
 
 /**
@@ -45,6 +46,8 @@ function npmCli():{command:string;prefix:string[]}{
     if(fs.existsSync(c))return{command:process.execPath,prefix:[c]};
   return{command:"npm",prefix:[]};
 }
+/** npm with these arguments, started without cmd.exe (for other tools that need npm). */
+export function npmCommand(args:string[]):Cmd{const npm=npmCli();return{command:npm.command,args:[...npm.prefix,...args],label:"npm "+args.join(" ")};}
 const winShim=(name:string,args:string[]):Cmd=>({command:process.env.ComSpec??"cmd.exe",args:["/d","/s","/c",[name,...args].join(" ")],label:[name,...args].join(" ")});
 const SAFE_SCRIPT=/^[\w:.-]{1,60}$/;
 
@@ -105,7 +108,8 @@ const servers=new Map<string,DevServer>();
 const URL_RX=/\bhttps?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0):(\d{2,5})[^\s"'<>]*/i;
 
 function freePort():Promise<number>{return new Promise((res,rej)=>{const srv=net.createServer();srv.unref();srv.on("error",rej);srv.listen(0,"127.0.0.1",()=>{const p=(srv.address() as net.AddressInfo).port;srv.close(()=>res(p));});});}
-async function devStart(dir:string,key:string,info:ProjectInfo,script?:string,docker=false){
+async function devStart(dir:string,key:string,info:ProjectInfo,script:string|undefined,isolation:Isolation){
+  const docker=isolation==="docker";
   const existing=servers.get(key);
   if(existing&&existing.exitCode===undefined)return devStatus(key);
   const name=script??(["dev","start","serve"].find(s=>info.scripts.includes(s)));
@@ -117,12 +121,16 @@ async function devStart(dir:string,key:string,info:ProjectInfo,script?:string,do
     cmd={command:d.command,args:d.args,label:d.label};container=d.name;fixedUrl=`http://localhost:${port}`;
     if(container)await new Promise(r=>execFile("docker",["rm","-f",container!],{windowsHide:true},()=>r(null)));
   }else cmd=commandFor(info,"script",name);
-  const child=spawn(cmd.command,cmd.args,{cwd:dir,shell:false,windowsHide:true,env:{...childEnv(),BROWSER:"none"},detached:process.platform!=="win32"});
-  const server:DevServer={child,command:cmd.label,log:"",startedAt:new Date().toISOString(),...(container?{container}:{})};
+  let env:NodeJS.ProcessEnv={...childEnv(),BROWSER:"none"};
+  let gitBefore:{id:string|null}|undefined,prepWarning:string|undefined;
+  if(isolation==="restricted"){const setup=await prepareRestricted(dir);cmd=restrictedCommand(cmd,dir,setup);env=restrictedEnv(env,setup);gitBefore=gitSnapshot(dir);prepWarning=setup.gitWarning;}
+  const child=spawn(cmd.command,cmd.args,{cwd:dir,shell:false,windowsHide:true,env,detached:process.platform!=="win32"});
+  const server:DevServer={child,command:cmd.label,log:prepWarning?prepWarning+"\n":"",startedAt:new Date().toISOString(),...(container?{container}:{})};
+  child.on("error",e=>{server.log+=`\n${e.message}`;if(server.exitCode===undefined)server.exitCode=-1;});
   servers.set(key,server);
   const onData=(c:Buffer|string)=>{server.log=(server.log+String(c)).slice(-16*1024);const m=URL_RX.exec(server.log);if(m&&!server.url&&!fixedUrl)server.url=m[0].replace("0.0.0.0","localhost").replace(/[).,]+$/,"");};
   child.stdout?.on("data",onData);child.stderr?.on("data",onData);
-  child.on("close",code=>{server.exitCode=code;});
+  child.on("close",code=>{server.exitCode=code;if(gitBefore)void verifyGitAfterRun(dir,gitBefore).then(w=>{if(w)server.log+="\n"+w;}).catch(()=>undefined);});
   if(fixedUrl){
     // container: the server prints its in-container address; wait until the published port answers
     for(let i=0;i<240&&server.exitCode===undefined;i++){try{const r=await fetch(fixedUrl,{signal:AbortSignal.timeout(1500)});if(r.status<500){server.url=fixedUrl;break;}}catch{}await new Promise(r=>setTimeout(r,500));}
@@ -150,17 +158,33 @@ export function createProjectRunnerAdapter():ToolAdapter{
     const docker=isolation==="docker";
     if(docker&&task!=="detect"&&task!=="dev:status"&&task!=="dev:stop"&&!dockerVersion())
       throw new Error("This project runs in Docker isolation, but Docker is not running. Start Docker Desktop, or choose another isolation level on the Project Board.");
+    if(isolation==="restricted"&&task!=="detect"&&task!=="dev:status"&&task!=="dev:stop"){
+      if(!restrictedAvailable())throw new Error("Restricted isolation runs on Windows only. Choose no-scripts or Docker for this project.");
+      if(info.stack==="flutter")throw new Error("Flutter writes to its own SDK folder, which restricted isolation does not allow. Choose local, no-scripts or Docker for this project.");
+    }
     if(task==="detect")return{...info,isolation};
-    if(task==="dev:start")return{...(await devStart(dir,key,info,typeof input.script==="string"?input.script:undefined,docker)),isolation};
+    if(task==="dev:start")return{...(await devStart(dir,key,info,typeof input.script==="string"?input.script:undefined,isolation)),isolation};
     if(task==="dev:status")return devStatus(key);
     if(task==="dev:stop")return devStop(key);
     if(!["install","test","build","lint","typecheck","script"].includes(task))throw new Error("Unknown task. Use detect, install, test, build, lint, typecheck, script, dev:start, dev:status or dev:stop.");
     let cmd=commandFor(info,task,typeof input.script==="string"?input.script:undefined);
     if(docker){const d=dockerRun(info,task,{script:typeof input.script==="string"?input.script:undefined,uid:typeof process.getuid==="function"?`${process.getuid()}:${process.getgid?.()}`:undefined});cmd={command:d.command,args:d.args,label:d.label};}
-    else if(isolation==="no-scripts"&&task==="install"&&info.stack==="node")cmd={...cmd,args:withoutInstallScripts(cmd.args),label:cmd.label+" --ignore-scripts"};
-    const result=await runOnce(cmd,dir,TIMEOUTS[task]??10*60_000);
+    else if((isolation==="no-scripts"||isolation==="restricted")&&task==="install"&&info.stack==="node")cmd={...cmd,args:withoutInstallScripts(cmd.args),label:cmd.label+" --ignore-scripts"};
+    let env:NodeJS.ProcessEnv|undefined;
+    let gitBefore:{id:string|null}|undefined,prepWarning:string|undefined;
+    if(isolation==="restricted"){
+      // Python packages cannot go to the (read-only) user site: keep them in the project, like Docker does.
+      if(info.stack==="python"&&task==="install")cmd={...cmd,args:cmd.args.flatMap(a=>a==="install"?["install","--target",".layanx/pydeps"]:[a]).filter(a=>a!=="-e"),label:cmd.label+" --target .layanx/pydeps"};
+      const setup=await prepareRestricted(dir);
+      env=restrictedEnv(childEnv(),setup);
+      if(info.stack==="python")env.PYTHONPATH=path.join(dir,".layanx","pydeps");
+      cmd=restrictedCommand(cmd,dir,setup);
+      gitBefore=gitSnapshot(dir);prepWarning=setup.gitWarning;
+    }
+    const result=await runOnce(cmd,dir,TIMEOUTS[task]??10*60_000,env);
+    const gitWarning=[prepWarning,gitBefore?await verifyGitAfterRun(dir,gitBefore):undefined].filter(Boolean).join(" ")||undefined;
     const ok=result.exitCode===0&&!result.timedOut;
     if(["test","build","lint","typecheck"].includes(task))updateHealth(dir,task,{ok,summary:ok?`${cmd.label} passed`:(result.stderr||result.stdout).slice(-500)});
-    return{task,stack:info.stack,isolation,...result,ok};
+    return{task,stack:info.stack,isolation,...result,ok:ok&&!gitWarning,...(gitWarning?{gitWarning}:{})};
   }};
 }

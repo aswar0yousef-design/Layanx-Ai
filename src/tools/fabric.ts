@@ -7,6 +7,19 @@ import type {ToolRequest} from "../core/types.js";
 import type {ToolAdapter} from "./executor.js";
 import {ensureGitOnPath} from "./git.js";
 import {ProjectIsolation} from "../security/project-isolation.js";
+import {isolationLevel,restrictedAvailable} from "../autonomy/sandbox.js";
+import {createProjectRunnerAdapter,npmCommand,runOnce} from "../autonomy/project-runner.js";
+import {gitSnapshot,prepareRestricted,restrictedCommand,restrictedEnv,verifyGitAfterRun} from "../platform/windows-sandbox.js";
+
+/**
+ * npm scripts of a project that is not "local" (no-scripts, restricted, docker) run through project.run,
+ * which applies the project's isolation. Without this, terminal.exec / project.verify would run the same
+ * scripts directly on the computer and quietly bypass the isolation the owner chose.
+ */
+async function isolatedScript(request:ToolRequest,task:"test"|"typecheck"|"build"){
+  const r=await createProjectRunnerAdapter().execute({...request,payload:{task}}) as {cwd:string;exitCode:number|null;stdout:string;stderr:string;command:string;isolation:string;timedOut:boolean};
+  return r;
+}
 
 ensureGitOnPath();
 function payload(request:ToolRequest):Record<string,unknown>{return request.payload&&typeof request.payload==="object"&&!Array.isArray(request.payload)?request.payload as Record<string,unknown>:{};}
@@ -79,6 +92,10 @@ export function createTerminalToolAdapter(options:{root:string}):ToolAdapter{
   const args=parts.map(value=>value.toLowerCase());
   const permitted=(binary==="git"&&((args.length===1&&args[0]==="status")||(args.length===2&&args[0]==="status"&&args[1]==="--short")||(args.length===1&&args[0]==="diff")||(args.length===1&&args[0]==="log")))||(binary==="npm"&&((args.length===1&&args[0]==="test")||(args.length===2&&args[0]==="run"&&args[1]==="typecheck")||(args.length===2&&args[0]==="run"&&args[1]==="build")));
   if(!permitted)throw new Error("Terminal command is not allowed.");
+  if(binary==="npm"&&isolationLevel(request.projectId)!=="local"){
+   const r=await isolatedScript(request,args[0]==="test"?"test":args[1]==="typecheck"?"typecheck":"build");
+   return{command,cwd:r.cwd,exitCode:r.exitCode,signal:null,stdout:r.stdout,stderr:r.stderr,isolation:r.isolation,ran:r.command};
+  }
   return await new Promise((resolvePromise,reject)=>{
    const executable=binary==="git"&&process.platform==="win32"?"git.exe":binary==="npm"&&process.platform==="win32"?(process.env.ComSpec??"cmd.exe"):binary;
    const executableArgs=binary==="npm"&&process.platform==="win32"?["/d","/s","/c",["npm.cmd",...parts].join(" ")]:parts;
@@ -105,6 +122,10 @@ export function createProjectVerifyToolAdapter(options:{root:string}):ToolAdapte
   const packageScripts=packageData.scripts&&typeof packageData.scripts==="object"&&!Array.isArray(packageData.scripts)
     ?packageData.scripts as Record<string,unknown>:{};
   if(typeof packageScripts[requested]!=="string")throw new Error("Project does not define the requested verification script.");
+  if(isolationLevel(request.projectId)!=="local"){
+   const r=await isolatedScript(request,requested as "test"|"typecheck"|"build");
+   return{script:requested,cwd:r.cwd,exitCode:r.exitCode,signal:null,passed:r.exitCode===0&&!r.timedOut,stdout:r.stdout,stderr:r.stderr,isolation:r.isolation};
+  }
   return await new Promise((resolvePromise,reject)=>{
    const isWindows=process.platform==="win32";
    const binary=isWindows?(process.env.ComSpec??"cmd.exe"):"npm";
@@ -151,14 +172,27 @@ export function createProjectBootstrapToolAdapter(options:{root:string}):ToolAda
     const devDependencies=Array.isArray(input.devDependencies)?input.devDependencies.filter((v):v is string=>typeof v==="string").map(v=>v.trim()).filter(Boolean):[];
     if(dependencies.length>20||devDependencies.length>20)throw new Error("A maximum of 20 runtime and 20 development dependencies is allowed per bootstrap.");
     if([...dependencies,...devDependencies].some(value=>!validatePackageName(value)))throw new Error("Invalid npm package name.");
+    // Same isolation as project.run: no install scripts outside "local", restricted runs in the sandbox,
+    // Docker projects get their packages through package.json + project.run install.
+    const isolation=isolationLevel(request.projectId);
+    if(isolation==="docker")throw new Error("This project is isolated in Docker: add the packages to package.json (files.write), then run project.run with task install.");
+    if(isolation==="restricted"&&!restrictedAvailable())throw new Error("Restricted isolation runs on Windows only.");
+    const npm=async(args:string[],timeout:number)=>{
+      const finalArgs=isolation!=="local"&&args[0]==="install"?[...args,"--ignore-scripts"]:args;
+      if(isolation!=="restricted")return runNpm(workspace,finalArgs,timeout);
+      const setup=await prepareRestricted(workspace);const before=gitSnapshot(workspace);
+      const r=await runOnce(restrictedCommand(npmCommand(finalArgs),workspace,setup),workspace,timeout,restrictedEnv(safeChildEnv({extra:{CI:"1"}}),setup));
+      const gitWarning=[setup.gitWarning,await verifyGitAfterRun(workspace,before)].filter(Boolean).join(" ")||undefined;
+      return{args:finalArgs,cwd:workspace,exitCode:gitWarning?1:r.exitCode,signal:null,stdout:r.stdout,stderr:r.stderr+(gitWarning?"\n"+gitWarning:"")};
+    };
     const results:unknown[]=[];
     try{
       await stat(resolve(workspace,"package.json"));
     }catch{
-      results.push(await runNpm(workspace,["init","-y"],30000));
+      results.push(await npm(["init","-y"],30000));
     }
-    if(dependencies.length)results.push(await runNpm(workspace,["install",...dependencies],120000));
-    if(devDependencies.length)results.push(await runNpm(workspace,["install","--save-dev",...devDependencies],120000));
+    if(dependencies.length)results.push(await npm(["install",...dependencies],120000));
+    if(devDependencies.length)results.push(await npm(["install","--save-dev",...devDependencies],120000));
     const failed=results.find(result=>typeof result==="object"&&result!==null&&"exitCode" in result&&(result as {exitCode:number|null}).exitCode!==0) as {exitCode:number|null}|undefined;
     return{projectId:request.projectId,workspace,initialized:results.length>0,dependencies,devDependencies,passed:!failed,results};
   }};

@@ -1,3 +1,4 @@
+import {detectLocalStt} from "../voice/detect.js";
 import {spawn} from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -109,19 +110,22 @@ export async function bootstrapLocalRuntime(env:NodeJS.ProcessEnv=process.env,lo
   env.LAYANX_ISOLATION_FILE=path.join(paths.dataDir,"isolation.json");
   if(settings.briefingTime&&!env.LAYANX_BRIEFING_TIME)env.LAYANX_BRIEFING_TIME=settings.briefingTime;
 
-  // Local speech-to-text: use whisper-server automatically when it is running on its default port.
+  // Local speech-to-text: Cohere Transcribe Arabic or whisper-server when running on their default ports.
   if(!env.LAYANX_STT_BASE_URL?.trim()){
-    const sttPort=Number(env.LAYANX_STT_PORT)||8178;
-    try{
-      const r=await fetch(`http://127.0.0.1:${sttPort}/`,{signal:AbortSignal.timeout(800)});
-      if(r.status<500){
-        env.LAYANX_STT_BASE_URL=`http://127.0.0.1:${sttPort}/v1`;
-        log("info",`local speech-to-text found on port ${sttPort} (Whisper)`);
-        // Whisper shares the GPU: plan the language models around ~1.2 GB less VRAM.
-        const vram=detectGpuVramBytes(env);
-        if(vram>0&&!env.LAYANX_GPU_VRAM_MB?.trim())env.LAYANX_GPU_VRAM_MB=String(Math.max(0,Math.round(vram/2**20)-1200));
+    const stt=await detectLocalStt(env);
+    if(stt){
+      env.LAYANX_STT_BASE_URL=stt.baseUrl;
+      log("info",stt.engine==="cohere"?`local Arabic speech recognition found (Cohere Transcribe Arabic${stt.ready?"":", still loading"})`:"local speech-to-text found (Whisper)");
+      // Whisper running next to Cohere is the local backup (Cohere still loading, or failing).
+      if(stt.engine==="cohere"&&!env.LAYANX_STT_FALLBACK_URL?.trim()){
+        const backup=await detectLocalStt({...env,LAYANX_STT_ENGINE:"whisper"});
+        if(backup){env.LAYANX_STT_FALLBACK_URL=backup.baseUrl;log("info","Whisper runs as the backup speech recognition");}
       }
-    }catch{log("info","no local speech-to-text server; the assistant uses the browser engine (run scripts\\windows\\install-whisper.ps1 to add Whisper)");}
+      // A speech model on the GPU leaves less memory for the language models.
+      const vram=detectGpuVramBytes(env);
+      const used=stt.engine==="whisper"||env.LAYANX_STT_FALLBACK_URL?1200:0; // Cohere runs on the CPU unless installed with -Device cuda
+      if(used&&vram>0&&!env.LAYANX_GPU_VRAM_MB?.trim())env.LAYANX_GPU_VRAM_MB=String(Math.max(0,Math.round(vram/2**20)-used));
+    }else log("info","no local speech-to-text server; the assistant uses the browser engine (run scripts\\windows\\install-whisper.ps1 or install-cohere-asr.ps1)");
   }
   // Local text-to-speech: Piper's HTTP server (scripts\windows\install-piper.ps1) on its default LayanX port.
   if(!env.LAYANX_TTS_BASE_URL?.trim()){
@@ -130,6 +134,14 @@ export async function bootstrapLocalRuntime(env:NodeJS.ProcessEnv=process.env,lo
       const r=await fetch(`http://127.0.0.1:${ttsPort}/voices`,{signal:AbortSignal.timeout(800)});
       if(r.ok){env.LAYANX_TTS_BASE_URL=`http://127.0.0.1:${ttsPort}`;log("info",`local Arabic voice found on port ${ttsPort} (Piper)`);}
     }catch{log("info","no local voice server; replies are spoken by the browser (run scripts\\windows\\install-piper.ps1 for the Piper Arabic voice)");}
+  }
+  // Speech / end-of-turn detection (scripts\windows\install-voice-sense.ps1) on its default LayanX port.
+  if(!env.LAYANX_VOICE_SENSE_URL?.trim()){
+    const sensePort=Number(env.LAYANX_VOICE_SENSE_PORT)||8180;
+    try{
+      const r=await fetch(`http://127.0.0.1:${sensePort}/health`,{signal:AbortSignal.timeout(800)});
+      if(r.ok){env.LAYANX_VOICE_SENSE_URL=`http://127.0.0.1:${sensePort}`;log("info",`speech and end-of-turn detection found on port ${sensePort} (Silero VAD + Smart Turn)`);}
+    }catch{}
   }
   // Models: honour explicit user choices only if they are really installed.
   const pinned:Partial<Record<ModelTask,string>>={...settings.pinnedModels};

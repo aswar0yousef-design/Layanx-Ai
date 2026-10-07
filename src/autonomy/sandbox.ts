@@ -10,13 +10,19 @@ import type {ProjectInfo} from "./project-runner.js";
  *   local       on this PC with a clean environment (no LayanX secrets)          — default
  *   no-scripts  local, but `npm install` never runs package install scripts      — blocks the
  *               most common supply-chain attack (malicious postinstall)
+ *   restricted  Windows, no Docker needed: no install scripts, plus the command can write only inside
+ *               the project (never .git) and LayanX's sandbox temp/cache folders, has no privileges,
+ *               and runs in a Job Object (memory limit, process limit, whole tree stops together).
+ *               Reading files and the network are not restricted (see platform/windows-sandbox.ts).
  *   docker      inside a throw-away container: no LayanX secrets, no access outside the project
  *               folder, all capabilities dropped, memory/CPU/process limits, and NO network for
  *               tests/build (network only while installing). node_modules lives in a Docker
  *               volume so Linux binaries never mix with Windows ones.
  */
-export type Isolation="local"|"no-scripts"|"docker";
-export const ISOLATION_LEVELS:Isolation[]=["local","no-scripts","docker"];
+export type Isolation="local"|"no-scripts"|"restricted"|"docker";
+export const ISOLATION_LEVELS:Isolation[]=["local","no-scripts","restricted","docker"];
+/** Restricted isolation uses Windows tokens and Job Objects. */
+export function restrictedAvailable(platform:NodeJS.Platform=process.platform):boolean{return platform==="win32";}
 
 let cache:{file:string;mtime:number;map:Record<string,Isolation>}|null=null;
 function load(file:string):Record<string,Isolation>{
@@ -114,5 +120,5 @@ export function dockerRun(info:ProjectInfo,task:string,opts:{script?:string;devP
   return{command:"docker",args,label:"docker: "+inner.args.join(" "),...(name?{name}:{}),...(opts.devPort?{port:opts.devPort}:{})};
 }
 
-/** npm install without install scripts (no-scripts isolation). */
+/** npm install without install scripts (no-scripts and restricted isolation). */
 export function withoutInstallScripts(args:string[]):string[]{return args.includes("--ignore-scripts")?args:[...args,"--ignore-scripts"];}

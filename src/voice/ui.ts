@@ -159,7 +159,7 @@ var L={
   engineLocal:"Speech recognition runs on this computer with Whisper; your voice never leaves it. Brain: the local LayanX model.",
   engineL:"Speech recognition",engAuto:"Automatic",engLocal:"On this computer (Whisper)",engBrowser:"Browser",noLocal:"Local Whisper is not running; using the browser.",transcribing:"Transcribing…"}
 };
-var DEFAULT_WAKE="جارفيس, جارفس, ليان, ليانكس, لايان اكس, jarvis, layan, layanx, lion x";
+var DEFAULT_WAKE="جارفيس, جارفس, ليان, ليين, ليانكس, لايان اكس, jarvis, layan, layanx, lion x";
 var S={engine:localStorage.getItem("lx.engine")||"auto",lang:localStorage.getItem("lx.lang")||"ar",always:localStorage.getItem("lx.always")==="1",speak:localStorage.getItem("lx.speak")!=="0",
  tasks:localStorage.getItem("lx.tasks")!=="0",wake:localStorage.getItem("lx.wake")||DEFAULT_WAKE,project:localStorage.getItem("lx.project")||"default",
  voice:localStorage.getItem("lx.voice")||""};
@@ -270,7 +270,8 @@ function resumeListening(){if(busy||speaking||realtime)return;if(interrupted&&mi
 
 // ---------------------------------------------------------------- local speech-to-text (Whisper on this PC)
 var localStt=false;
-var mic={ctx:null,stream:null,active:false,mode:null,buf:[],pre:null,voiced:0,silence:0,noise:0.008,pendingUntil:0,rate:16000};
+var mic={ctx:null,stream:null,active:false,mode:null,buf:[],pre:null,voiced:0,silence:0,noise:0.008,pendingUntil:0,rate:16000,epoch:0,checking:false,nextCheck:0};
+var senseOn=false;
 function useLocal(){return localStt&&S.engine!=="browser"}
 function canListen(){return useLocal()||(!!SR&&S.engine!=="local")}
 function startLocal(mode){
@@ -285,7 +286,11 @@ function startLocal(mode){
   src.connect(node);node.connect(ctx.destination);
   mic.ctx=ctx;mic.stream=stream;mic.node=node;mic.rate=ctx.sampleRate;mic.active=true;setState(mode==="wake"?"wake":"listen");
  }).catch(function(){blocked=true;setState("off",t("denied"))})}
-/** Energy-based voice detection: one utterance = speech followed by ~0.7 s of silence (max 15 s). */
+/**
+ * Energy-based voice detection: one utterance = speech followed by ~0.7 s of silence (max 15 s).
+ * With voice sense on this PC (Smart Turn), a command ends as soon as the sentence is complete
+ * (checked after a 0.25 s pause), and a mid-sentence pause may last up to 2 s.
+ */
 function onFrame(data){
  var sum=0;for(var i=0;i<data.length;i++)sum+=data[i]*data[i];
  var rms=Math.sqrt(sum/data.length),ms=data.length/mic.rate*1000,threshold=Math.max(0.012,mic.noise*3);
@@ -294,12 +299,24 @@ function onFrame(data){
   if(rms>Math.max(0.03,mic.noise*6))mic.voiced+=ms;else mic.voiced=Math.max(0,mic.voiced-ms/2);
   if(mic.voiced>=250){interrupted=true;if(sayDone)sayDone();mic.mode="command";mic.buf=[new Float32Array(data)];mic.voiced=ms;mic.silence=0;mic.active=true;setState("listen")}
   return}
- if(rms>threshold){if(!mic.buf.length&&mic.pre)mic.buf.push(mic.pre);mic.voiced+=ms;mic.silence=0;mic.buf.push(new Float32Array(data));if(mode()==="wake"||state!=="listen")setState("listen")}
+ if(rms>threshold){if(!mic.buf.length&&mic.pre)mic.buf.push(mic.pre);if(mic.silence>0)mic.epoch++;mic.voiced+=ms;mic.silence=0;mic.nextCheck=0;mic.buf.push(new Float32Array(data));if(mode()==="wake"||state!=="listen")setState("listen")}
  else if(mic.buf.length){mic.silence+=ms;mic.buf.push(new Float32Array(data))}
  else{mic.noise=mic.noise*0.95+rms*0.05;mic.pre=new Float32Array(data)}
- if(mic.buf.length&&(mic.silence>=700||mic.buf.length*ms>=15000)){
-  var chunks=mic.buf,voiced=mic.voiced;mic.buf=[];mic.voiced=0;mic.silence=0;
-  if(voiced>=350)sendSegment(chunks);else if(mic.mode==="wake")setState("wake")}}
+ if(!mic.buf.length)return;
+ if(mic.buf.length*ms>=15000){flushSegment();return}
+ if(senseOn&&mic.mode==="command"){
+  if(mic.silence>=2000){flushSegment();return}
+  if(mic.silence>=250&&mic.voiced>=350&&!mic.checking&&mic.silence>=mic.nextCheck){
+   var snap=mic.buf.slice(),epoch=mic.epoch;mic.checking=true;mic.nextCheck=mic.silence+500;
+   fetch("/v1/voice/turn",{method:"POST",credentials:"same-origin",headers:{"content-type":"audio/wav"},body:encodeWav(snap,mic.rate)})
+    .then(function(r){return r.ok?r.json():null}).then(function(d){mic.checking=false;
+     // Same pause as the snapshot (no new speech since) and the sentence is complete: answer now.
+     if(d&&d.complete&&mic.mode==="command"&&mic.active&&mic.epoch===epoch&&mic.silence>0&&mic.buf.length)flushSegment()})
+    .catch(function(){mic.checking=false;senseOn=false})}
+  return}
+ if(mic.silence>=700)flushSegment()}
+function flushSegment(){var chunks=mic.buf,voiced=mic.voiced;mic.buf=[];mic.voiced=0;mic.silence=0;mic.nextCheck=0;
+ if(voiced>=350)sendSegment(chunks);else if(mic.mode==="wake")setState("wake")}
 function mode(){return mic.mode}
 function sendSegment(chunks){
  var m=mic.mode;mic.active=false;interrupted=false;setState("think",t("transcribing"));
@@ -370,6 +387,7 @@ document.addEventListener("visibilitychange",function(){if(!document.hidden&&S.a
 
 api("/v1/voice/status").then(function(d){var v=d.voice||{};if(v.enabled)$("realtimeBtn").hidden=false;
  if(v.tts==="local")localTts=true;
+ if(v.sense)senseOn=true;
  if(v.localStt){localStt=true;setLang(S.lang);if(S.always){pauseListening();resumeListening()}}}).catch(function(){});
 api("/v1/assistant/briefing").then(function(d){var b=d.briefing;if(!b||!b.report)return;if(b.date!==new Date().toISOString().slice(0,10))return;
  $("briefText").textContent=b.report.text[S.lang]||b.report.text.ar;$("briefing").hidden=false}).catch(function(){});

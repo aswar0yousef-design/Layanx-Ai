@@ -1,4 +1,5 @@
 import {execFile} from "node:child_process";
+import {gitSafetyArgs} from "../platform/windows-sandbox.js";
 import type {ToolAdapter} from "../tools/executor.js";
 import type {ToolRequest} from "../core/types.js";
 import {safeChildEnv} from "../platform/safe-env.js";
@@ -12,7 +13,7 @@ import {projectDir} from "./project-dir.js";
  * Both are dangerous: merge runs alone only at "full" trust, publishing ALWAYS waits for the owner.
  */
 function git(cwd:string,args:string[],timeout=60_000):Promise<{code:number;stdout:string;stderr:string}>{
-  return new Promise(resolve=>execFile("git",args,{cwd,windowsHide:true,timeout,maxBuffer:4*1024*1024,
+  return new Promise(resolve=>execFile("git",[...gitSafetyArgs(cwd),...args],{cwd,windowsHide:true,timeout,maxBuffer:4*1024*1024,
     env:safeChildEnv({allow:["HOME","GIT_SSH","GIT_SSH_COMMAND","SSH_AUTH_SOCK","GCM_INTERACTIVE"],extra:{GIT_TERMINAL_PROMPT:"0"}})},
     (e,stdout,stderr)=>resolve({code:e?(typeof (e as {code?:unknown}).code==="number"?(e as {code:number}).code:1):0,stdout:String(stdout),stderr:String(stderr)})));
 }
