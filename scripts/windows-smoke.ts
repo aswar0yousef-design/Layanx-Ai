@@ -19,8 +19,10 @@ if(process.platform!=="win32"){console.log("windows-smoke: skipped (not Windows)
 const noUi=process.argv.includes("--no-ui");
 const results:Array<{check:string;ok:boolean;detail?:string}>=[];
 async function check(name:string,fn:()=>Promise<string|void>){
-  try{const detail=await fn();results.push({check:name,ok:true,...(detail?{detail}:{})});console.log("PASS",name,detail??"");}
-  catch(e){const detail=e instanceof Error?e.message:String(e);results.push({check:name,ok:false,detail});console.log("FAIL",name,detail);}
+  // On GitHub Actions each result also becomes an annotation, readable without downloading logs.
+  const annotate=(level:"notice"|"error",text:string)=>{if(process.env.GITHUB_ACTIONS==="true")console.log(`::${level} title=Windows smoke::${text.replace(/\r?\n/g," ").slice(0,900)}`);};
+  try{const detail=await fn();results.push({check:name,ok:true,...(detail?{detail}:{})});console.log("PASS",name,detail??"");annotate("notice","PASS "+name+(detail?" - "+detail:""));}
+  catch(e){const detail=e instanceof Error?e.message:String(e);results.push({check:name,ok:false,detail});console.log("FAIL",name,detail);annotate("error","FAIL "+name+" - "+detail);}
 }
 const req=(action:string,payload:Record<string,unknown>={})=>({missionId:"smoke",agentId:"core",projectId:"smoke",tool:"desktop",action,permission:"L4_EXECUTE",idempotencyKey:"smoke-"+action,payload} as any);
 const desktop=createDesktopControlToolAdapter();

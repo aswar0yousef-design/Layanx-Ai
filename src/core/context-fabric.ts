@@ -22,12 +22,23 @@ export class ContextFabric{
  constructor(private readonly memory:MemoryEngine){}
 
  build(request:ContextFabricRequest):ContextFabricResult{
+  return this.compose(request,this.memory.recall(request.query,this.limitOf(request),request.projectId.trim()));
+ }
+
+ /** Same as build(), with hybrid (embedding) recall when an embedding model is configured. */
+ async buildAsync(request:ContextFabricRequest):Promise<ContextFabricResult>{
+  if(!request.projectId.trim())throw new Error("Project id is required.");
+  return this.compose(request,await this.memory.recallAsync(request.query,this.limitOf(request),request.projectId.trim()));
+ }
+
+ private limitOf(request:ContextFabricRequest){return Math.min(Math.max(request.limit??8,1),50);}
+
+ private compose(request:ContextFabricRequest,recalled:MemoryEntry[]):ContextFabricResult{
   const projectId=request.projectId.trim();
   if(!projectId)throw new Error("Project id is required.");
   if(!request.mission.projectId||request.mission.projectId!==projectId)throw new Error("Project isolation violation.");
-  const limit=Math.min(Math.max(request.limit??8,1),50);
+  const limit=this.limitOf(request);
   const maxChars=Math.min(Math.max(request.maxChars??12000,500),50000);
-  const recalled=this.memory.recall(request.query,limit,projectId);
   const missionScoped=this.memory.list().filter(entry=>entry.projectId===projectId&&entry.missionId===request.mission.id);
   const memories=[...new Map([...missionScoped,...recalled].map(entry=>[entry.id,entry])).values()].slice(0,Math.max(limit,missionScoped.length));
   const prioritized=[...memories].sort((a,b)=>{

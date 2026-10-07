@@ -671,7 +671,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    if(!mission){json(response,404,{ok:false,error:"mission_not_found"});return;}
    try{
     const limit=Math.min(Math.max(Number(parsed.searchParams.get("limit")??8)||8,1),50);
-    const context=options.core.contextFabric.build({projectId,mission,query,limit,maxChars:12000});
+    const context=await options.core.contextFabric.buildAsync({projectId,mission,query,limit,maxChars:12000});
     json(response,200,{ok:true,context});
    }catch(error){
     json(response,403,{ok:false,error:error instanceof Error?error.message:"context resolution failed"});

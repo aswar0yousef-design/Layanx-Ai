@@ -369,7 +369,7 @@ export class LayanXCore{
     }
 
     for(;processed<maxSteps;processed++){
-      const missionContext=this.contextFabric.build({projectId,mission,query:mission.goal,limit:12,maxChars:8000});
+      const missionContext=await this.contextFabric.buildAsync({projectId,mission,query:mission.goal,limit:12,maxChars:8000});
       const missionMemory=missionContext.memories.filter(entry=>entry.missionId===mission.id).map(entry=>({
         kind:entry.kind,summary:entry.summary,content:entry.content,tags:entry.tags
       }));
@@ -523,7 +523,7 @@ export class LayanXCore{
           tools:catalog,
           requiredPermission:current.requiredPermission,
           completedTools:results.filter(item=>item.ok&&item.tool).map(item=>item.tool as string),
-          memory:this.contextFabric.build({projectId,mission:current,query:current.goal,limit:12,maxChars:8000}).memories.map(entry=>({kind:entry.kind,summary:entry.summary,content:entry.content,tags:entry.tags})),
+          memory:(await this.contextFabric.buildAsync({projectId,mission:current,query:current.goal,limit:12,maxChars:8000})).memories.map(entry=>({kind:entry.kind,summary:entry.summary,content:entry.content,tags:entry.tags})),
           projectContext:context
         });
       }catch(error){
@@ -621,7 +621,7 @@ export class LayanXCore{
           goal:current.goal,result:latest,tools:catalog,requiredPermission:current.requiredPermission,
           routing,
           completedTools:plans.slice(0,index<0?plans.length:index).map(item=>item.tool),
-          memory:this.contextFabric.build({projectId,mission:current,query:current.goal,limit:8,maxChars:6000}).memories.map(e=>({kind:e.kind,summary:e.summary,content:e.content,tags:e.tags})),
+          memory:(await this.contextFabric.buildAsync({projectId,mission:current,query:current.goal,limit:8,maxChars:6000})).memories.map(e=>({kind:e.kind,summary:e.summary,content:e.content,tags:e.tags})),
           projectContext:context
         })??undefined;
         if(!plan){
