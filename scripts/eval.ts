@@ -49,6 +49,9 @@ for(const model of models){
     catalogFor:c=>c.kind==="next"?core.toolCatalog.list(contract,c.permission):catalog,
     onCase:r=>console.log(`  ${r.pass?"PASS":"FAIL"} ${r.id} (${(r.ms/1000).toFixed(1)} s) ${r.pass?r.tools.join(","):r.reasons.join("; ")}`)});
   reports.push(report);
+  const errorKinds=new Map<string,number>();
+  for(const c of report.cases)if(c.error){const k=c.error.replace(/\s+/g," ").slice(0,90);errorKinds.set(k,(errorKinds.get(k)??0)+1);}
+  if(errorKinds.size)annotate("notice",`${model} planner errors: `+[...errorKinds].map(([k,n])=>`${n}x ${k}`).join(" | "));
   annotate(report.passRate>=Number(arg("--min-pass")??0)?"notice":"error",`${model}: ${report.passed}/${report.cases.length} passed (${Object.entries(report.suites).map(([s,v])=>`${s} ${v.passed}/${v.total}`).join(", ")}), ${report.errors} planner errors, avg ${(report.avgMs/1000).toFixed(1)} s`);
 }
 console.log("\n"+formatReports(reports));

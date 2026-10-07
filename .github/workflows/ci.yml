@@ -122,8 +122,10 @@ jobs:
         env:
           LAYANX_TEST_TIMEOUT_MS: "240000"
       - name: Install pinned security scanners (SHA-256 verified)
+        if: always()
         run: node node_modules/tsx/dist/cli.mjs scripts/install-security-tools.ts
       - name: Install local voice (Piper, pinned), voice sense (Silero VAD + Smart Turn, pinned) and speech recognition (Whisper, pinned build)
+        if: always()
         shell: powershell
         run: |
           .\scripts\windows\install-piper.ps1 -Yes -NoEnglish

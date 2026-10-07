@@ -21,6 +21,16 @@ function wav(seconds:Array<[number,boolean]>,rate=16000):Buffer{
   return out;
 }
 const durationOf=(w:Buffer)=>(w.length-44)/2/w.readUInt32LE(24);
+/** Number of voiced stretches (>=150 ms above the noise) in a clip: the "parts" of what was said. */
+function voicedRuns(w:Buffer):number{
+  const rate=w.readUInt32LE(24),win=Math.round(rate*0.05);let runs=0,loud=0;
+  for(let o=44;o+win*2<=w.length;o+=win*2){
+    let sum=0;for(let i=0;i<win;i++){const v=w.readInt16LE(o+i*2)/32768;sum+=v*v;}
+    if(Math.sqrt(sum/win)>0.05)loud+=0.05;
+    else{if(loud>=0.15)runs++;loud=0;}
+  }
+  return runs+(loud>=0.15?1:0);
+}
 
 // 1. Service: clips without speech never reach Whisper; non-WAV audio is not gated; turn() needs the sense server.
 const vadCalls:number[]=[];
@@ -76,14 +86,16 @@ if(pyOk){
 //    "not finished"), and the whole sentence goes to transcription once the turn is complete.
 let pw:any;try{pw=await import("playwright-core");}catch{pw=null;}
 const audioFile=path.join(os.tmpdir(),`lx-mic-${process.pid}.wav`);
-fs.writeFileSync(audioFile,wav([[0.6,false],[1.2,true],[1.0,false],[1.0,true],[4,false]],48000));
-const seen:{turn:number[];transcribe:number[];assistant:string[]}={turn:[],transcribe:[],assistant:[]};
+// Leading silence leaves time for the page to open the microphone (slow on CI machines).
+fs.writeFileSync(audioFile,wav([[2.5,false],[1.2,true],[1.0,false],[1.0,true],[5,false]],48000));
+const seen:{turn:Array<{runs:number;complete:boolean}>;transcribe:Array<{seconds:number;runs:number}>;assistant:string[]}={turn:[],transcribe:[],assistant:[]};
 const page=http.createServer((req,res)=>{const chunks:Buffer[]=[];req.on("data",c=>chunks.push(c));req.on("end",()=>{
   const body=Buffer.concat(chunks);const send=(d:unknown)=>{res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify(d));};
   if(req.url==="/voice"){res.writeHead(200,{"content-type":"text/html; charset=utf-8"});res.end(voiceUiHtml());return;}
   if(req.url==="/v1/voice/status")return send({ok:true,voice:{enabled:false,localStt:{baseUrl:"x",model:"whisper"},stt:"local",tts:"browser",sense:{baseUrl:"y"}}});
-  if(req.url==="/v1/voice/turn"){const d=durationOf(body);seen.turn.push(d);return send({ok:true,complete:d>2.4,probability:d>2.4?0.9:0.1});}
-  if(req.url==="/v1/voice/transcribe"){seen.transcribe.push(durationOf(body));return send({ok:true,text:"أعطني تقرير اليوم"});}
+  // Stand-in for Smart Turn: the sentence is complete once both parts were said.
+  if(req.url==="/v1/voice/turn"){const runs=voicedRuns(body),complete=runs>=2;seen.turn.push({runs,complete});return send({ok:true,complete,probability:complete?0.9:0.1});}
+  if(req.url==="/v1/voice/transcribe"){seen.transcribe.push({seconds:durationOf(body),runs:voicedRuns(body)});return send({ok:true,text:"أعطني تقرير اليوم"});}
   if(req.url==="/v1/assistant/turn"){seen.assistant.push(JSON.parse(body.toString()).text);return send({ok:true,reply:"حسناً",lang:"ar"});}
   if(req.url==="/v1/assistant/briefing")return send({ok:true,briefing:null});
   res.writeHead(404);res.end("{}");});});
@@ -103,12 +115,12 @@ else{
     await tab.waitForFunction(()=>(window as any).__layanx?.useLocal?.()===true,null,{timeout:10000});
     await tab.click("#orb");
     const end=Date.now()+20000;
-    while(!seen.assistant.length&&Date.now()<end)await new Promise(r=>setTimeout(r,100));
+    while(!seen.assistant.length&&Date.now()<end+10000)await new Promise(r=>setTimeout(r,100));
     assert.equal(seen.transcribe.length,1,"one utterance, not split at the mid-sentence pause: "+JSON.stringify(seen));
-    assert.ok(seen.transcribe[0]!>=2.8,"the whole sentence (both parts) was transcribed: "+JSON.stringify(seen));
-    assert.ok(seen.turn.some(d=>d<2.4),"asked during the mid-sentence pause and was told to wait: "+JSON.stringify(seen.turn));
+    assert.equal(seen.transcribe[0]!.runs,2,"the whole sentence (both parts) was transcribed: "+JSON.stringify(seen));
+    assert.ok(seen.turn.some(t=>!t.complete),"asked during the mid-sentence pause and was told to wait: "+JSON.stringify(seen.turn));
     assert.deepEqual(seen.assistant,["أعطني تقرير اليوم"]);
-    console.log(`voice-sense: page kept listening through a 1 s pause (turn checks ${seen.turn.map(d=>d.toFixed(1)).join(", ")} s), sent ${seen.transcribe[0]!.toFixed(1)} s once complete`);
+    console.log(`voice-sense: page kept listening through a 1 s pause (${seen.turn.length} turn checks), sent ${seen.transcribe[0]!.seconds.toFixed(1)} s with both parts once complete`);
   }finally{await browser.close();}
 }
 page.close();sense.close();fs.rmSync(audioFile,{force:true});
