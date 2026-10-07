@@ -348,7 +348,7 @@ async function runAutonomous(context) {
   const created = await request(context, "/v1/supervisor/jobs", "POST", { goal: goal.trim(), projectId });
   if (!created.ok || !created.job) { vscode.window.showErrorMessage("LayanX: " + created.error); return; }
   const id = created.job.id;
-  const active = ["planning", "running", "waiting_approval", "verifying"];
+  const active = ["queued", "planning", "running", "waiting_approval", "verifying"];
   await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "LayanX", cancellable: true }, async (progress, token) => {
     token.onCancellationRequested(() => { void request(context, "/v1/supervisor/jobs/" + encodeURIComponent(id) + "/cancel", "POST", {}); });
     let last = "";

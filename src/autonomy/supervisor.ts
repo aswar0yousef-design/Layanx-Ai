@@ -25,7 +25,7 @@ import {errorSignature,findLessons,guidanceText,listLessons,listPlaybooks,markLe
  * Every action still goes through the normal runtime: permissions, approvals (or the project's trust
  * level), audit. The supervisor waits for an approval instead of skipping it, and stops on budget.
  */
-export type JobStatus="planning"|"running"|"waiting_approval"|"verifying"|"completed"|"failed"|"cancelled"|"budget_exhausted";
+export type JobStatus="queued"|"planning"|"running"|"waiting_approval"|"verifying"|"completed"|"failed"|"cancelled"|"budget_exhausted";
 export type MilestoneKind="code"|"test"|"research"|"desktop"|"business"|"general";
 export interface Milestone{title:string;goal:string;kind:MilestoneKind;agent:string;status:"pending"|"running"|"done"|"failed";attempts:number;missions:string[];notes?:string}
 export interface Checks{install:boolean;test:boolean;build:boolean;typecheck:boolean;lint:boolean;browser:{path:string}|null;security?:boolean}
@@ -37,7 +37,7 @@ export interface SupervisorJob{
   baseline?:CheckResult[];lastChecks?:CheckResult[];visual?:{url:string;problems:string[];judgement?:string;screens:string[]};
   waiting?:{approvalId:string;missionId:string;index:number;kind:"agent"|"tool";agentId?:string;tool?:string;payload?:Record<string,unknown>;milestone:number};
   cloudUsed:boolean;externalUsed:string[];checkpoints:string[];log:JobLog[];result?:string;finalRepairs:number;
-  branch?:string;security?:{score:number;blocked:boolean;counts:Record<string,number>};
+  branch?:string;queuedFrom?:JobStatus;security?:{score:number;blocked:boolean;counts:Record<string,number>};
   playbooks?:string[];lessons?:string[];learned?:string[];discovered?:string[];
 }
 export interface AgentRun{completed?:boolean;paused?:boolean;missionId?:string;nextToolIndex?:number;approvalId?:string;reason?:string;status?:string;results?:unknown[]}
@@ -54,7 +54,7 @@ export interface SupervisorDeps{
   notify?(job:SupervisorJob,event:string):void;
 }
 
-const ACTIVE:JobStatus[]=["planning","running","waiting_approval","verifying"];
+const ACTIVE:JobStatus[]=["queued","planning","running","waiting_approval","verifying"];
 const AGENT_FOR:Record<MilestoneKind,string>={code:"coder",test:"tester",research:"researcher",desktop:"operator",business:"business",general:"core"};
 const UI_WORDS=/\b(page|ui|ux|website|site|screen|design|layout|frontend|landing|dashboard|css|style)\b|صفحة|واجهة|موقع|تصميم|شاشة|لوحة|متجر إلكتروني|تطبيق ويب/i;
 const MAX_ATTEMPTS=4;
@@ -118,12 +118,25 @@ export class Supervisor{
       while(!this.stopped){
         const job=this.jobs.get(id);
         if(!job||!ACTIVE.includes(job.status))break;
+        // One job per project at a time: two jobs editing the same folder (and branch) would undo each other.
+        const ahead=this.blockingJob(job);
+        if(ahead){
+          if(job.status!=="queued"){job.queuedFrom=job.status;this.set(job,"queued",`Waiting for the earlier job on this project to finish (${ahead.goal.split("\n")[0]!.slice(0,60)})`);}
+          await this.sleep(this.options.pollMs??2000);continue;
+        }
+        if(job.status==="queued"){this.set(job,job.queuedFrom??"planning","Starting: the earlier job on this project finished");job.queuedFrom=undefined;}
         if(Date.now()>Date.parse(job.deadline)){job.result="Time budget used up.";this.set(job,"budget_exhausted","Stopped: time budget used up");break;}
         if(job.rounds>=job.maxRounds){job.result="Round budget used up.";this.set(job,"budget_exhausted","Stopped: round budget used up");break;}
         try{await this.step(job);}
         catch(error){this.log(job,"Error: "+(error as Error).message,"error");job.rounds++;this.save();await this.sleep(this.options.pollMs??2000);}
       }
     }finally{this.running.delete(id);}
+  }
+
+  /** The oldest other active job on the same project, if any (it goes first). */
+  private blockingJob(job:SupervisorJob):SupervisorJob|undefined{
+    return[...this.jobs.values()].filter(j=>j.id!==job.id&&j.projectId===job.projectId&&ACTIVE.includes(j.status)&&j.status!=="queued"&&j.createdAt<=job.createdAt).sort((a,b)=>a.createdAt.localeCompare(b.createdAt))[0]
+      ??[...this.jobs.values()].filter(j=>j.id!==job.id&&j.projectId===job.projectId&&j.status==="queued"&&j.createdAt<job.createdAt)[0];
   }
 
   private async step(job:SupervisorJob){

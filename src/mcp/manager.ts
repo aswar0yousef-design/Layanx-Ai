@@ -201,7 +201,7 @@ export class McpManager{
 
 // ---------------------------------------------------------------------------- registry search
 export interface RegistryEntry{name:string;description:string;version:string;suggested:Partial<McpServerConfig>|null;secrets:string[];remote?:string}
-const REGISTRY=process.env.LAYANX_MCP_REGISTRY_URL??"https://registry.modelcontextprotocol.io";
+const REGISTRY=(process.env.LAYANX_MCP_REGISTRY_URL?.trim()||"https://registry.modelcontextprotocol.io").replace(/\/+$/,"");
 
 /** Search the official MCP Registry and propose a pinned, Windows-safe config for each result. */
 export async function searchRegistry(query:string,options:{fetcher?:typeof fetch;limit?:number}={}):Promise<RegistryEntry[]>{

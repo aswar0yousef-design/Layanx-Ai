@@ -48,7 +48,7 @@ export function registerAgentReachTools(core:LayanXCore):void{
     description:"collect bounded read-only research data through Agent Reach's supported channel router",
     permission:"L2_ANALYZE",
     dangerous:false,
-    actions:["research internet","search internet","read internet source","collect web research","بحث الإنترنت","البحث في الإنترنت","قراءة مصدر"],
+    actions:["search internet","read internet source","collect web research","بحث الإنترنت","البحث في الإنترنت","قراءة مصدر"],
     tags:["agent-reach","internet","research","search","read","social","youtube","github"]
   });
   core.toolAdapters.register("agent-reach.collect",adapter);
