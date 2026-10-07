@@ -11,9 +11,13 @@ export interface ToolDefinition {
 
 export class ToolRegistry {
   private readonly tools=new Map<string,ToolDefinition>();
-  register(tool:ToolDefinition):void {
+  register(tool:ToolDefinition&{action?:string}):void {
     if(this.tools.has(tool.name)) throw new Error("Tool already registered.");
-    this.tools.set(tool.name,{...tool,actions:tool.actions?.map(normalize),tags:tool.tags?.map(normalize)});
+    // Several built-in tools declare a single `action`. Fold it into `actions`: the planner, the
+    // catalog and the request builder only look at `actions`, so those tools (all Git and desktop
+    // control tools) could never be chosen by the agent.
+    const actions=[...(tool.actions??[]),...(tool.action&&!(tool.actions??[]).includes(tool.action)?[tool.action]:[])];
+    this.tools.set(tool.name,{...tool,actions:actions.length?actions.map(normalize):undefined,tags:tool.tags?.map(normalize)});
   }
   get(name:string):ToolDefinition {
     const tool=this.tools.get(name);

@@ -14,7 +14,7 @@ export class CreatorEngine{
  readonly root:string;
  constructor(private readonly options:CreatorEngineOptions={}){this.root=resolve(options.root??process.env.LAYANX_CREATOR_OUTPUT_DIR??".layanx/creator");mkdirSync(this.root,{recursive:true});}
  async plan(input:CreatorPlanInput):Promise<CreatorProject>{
-  const topic=input.topic.trim();if(!topic)throw new Error("creator_topic_required");
+  const topic=typeof input.topic==="string"?input.topic.trim():"";if(!topic)throw new Error("creator_topic_required");
   const duration=clamp(Math.round(input.durationSec??45),15,600);const platform=input.platform??"both";const language=input.language??"ar";const style=input.style??"documentary_short";
   const fallback={title:input.title??topic,hook:"هل تعرف الحقيقة وراء "+topic+"؟",script:"مقدمة: "+topic+".\nسنشرح الفكرة باختصار ونذكر أهم الحقائق الموثوقة.\nالخاتمة: تابعنا للمزيد."};let generated=fallback;
   if(this.options.generateText){const raw=await this.options.generateText("Create a factual short-video package about: "+topic+". Language: "+language+". Style: "+style+". Duration: "+duration+"s. Return JSON with keys title,hook,script. Do not invent facts.");try{const parsed=JSON.parse(raw) as Partial<typeof fallback>;generated={title:String(parsed.title||fallback.title),hook:String(parsed.hook||fallback.hook),script:String(parsed.script||fallback.script)};}catch{}}

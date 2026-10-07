@@ -1,7 +1,19 @@
+import {EXECUTION_STEP} from "./verification.js";
 import type {Mission,ToolRequest} from "./types.js";
 import {LayanXCore} from "./orchestrator.js";
 import type {ToolAdapter} from "../tools/executor.js";
 import {BudgetGovernor} from "./budget-governor.js";
+import {trustAllows} from "../autonomy/trust.js";
+
+/** Tools the owner pre-approved for unattended runs (scheduled publishing, for example). */
+export function autoApproved(tool:string,env:NodeJS.ProcessEnv=process.env,projectId?:string,payload?:unknown):boolean{
+ const list=(env.LAYANX_AUTO_APPROVE_TOOLS??"").split(",").map(v=>v.trim()).filter(Boolean);
+ if(env.LAYANX_QURAN_AUTOSCHEDULE==="true")list.push("quran.publish_next");
+ if(list.includes(tool))return true;
+ // Project trust level (supervised / trusted / full). Coding agents: local (Aider) vs cloud.
+ const agent=tool==="agent.external"&&payload&&typeof payload==="object"?String((payload as Record<string,unknown>).agent??"auto"):"";
+ return trustAllows(tool,projectId,env,tool==="agent.external"?(agent==="aider"?"local":undefined):undefined);
+}
 import {createHash} from "node:crypto";
 import {ApprovalEngine} from "../security/approval.js";
 import type {RuntimePersistence} from "./runtime-persistence.js";
@@ -20,7 +32,7 @@ export class ExecutionRuntime{
   if(["completed","cancelled"].includes(mission.status)){
    const replay=await this.core.idempotency.get(request.idempotencyKey);
    if(mission.status==="completed"&&replay?.status==="completed"&&replay.missionId===mission.id&&replay.agentId===request.agentId&&replay.tool===request.tool&&replay.action===request.action){
-    const executionStep=mission.steps.find(step=>/execute|run|perform|action/i.test(step.description));
+    const executionStep=mission.steps.find(step=>EXECUTION_STEP.test(step.description));
     if(executionStep)executionStep.status="completed";
     setLifecycle(mission,this.core.executionStates,"completed",false);
     await this.persist(mission);
@@ -57,7 +69,7 @@ export class ExecutionRuntime{
     return this.block(mission,request,error instanceof Error?"Change impact analysis failed: "+error.message:"Change impact analysis failed.");
    }
   }
-  this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:risk.requiresApproval?"pending_approval":"allowed",metadata:{risk:risk.level,missionId:mission.id}});
+  this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:risk.requiresApproval||(toolDefinition.dangerous===true&&!autoApproved(request.tool,process.env,projectId,request.payload))?"pending_approval":"allowed",metadata:{risk:risk.level,missionId:mission.id,...(toolDefinition.dangerous===true&&autoApproved(request.tool,process.env,projectId,request.payload)?{policy:"owner pre-approved"}:{})}});
   if(rank[request.permission]>rank[mission.requiredPermission])return this.block(mission,request,"Requested permission exceeds mission scope.");
   if(rank[request.permission]>rank[contract.requiredPermission])return this.block(mission,request,"Requested permission exceeds agent scope.");
   if(rank[toolDefinition.permission]>rank[request.permission])return this.block(mission,request,"Requested permission is below the tool requirement.");
@@ -65,7 +77,10 @@ export class ExecutionRuntime{
   if(!permission.allowed)return this.block(mission,request,permission.reason);
   const capability=this.core.capabilities.authorize(security.capabilityId,{missionId:mission.id,agentId:request.agentId,projectId:projectId,resource:request.tool,permission:request.permission});
   if(!capability.allowed)return this.block(mission,request,capability.reason);
-  if(risk.requiresApproval){
+  // Tools marked dangerous (send email, push, click, publish, trade...) always need the owner's approval,
+  // unless the owner pre-approved that tool for unattended runs (LAYANX_AUTO_APPROVE_TOOLS).
+  const needsApproval=risk.requiresApproval||(toolDefinition.dangerous===true&&!autoApproved(request.tool,process.env,projectId,request.payload));
+  if(needsApproval){
    if(!approvalId){
     const approval=this.ensureApproval(mission,request,"Explicit approval is required for this risk level.");
     return this.block(mission,request,"Explicit approval is required for this risk level.",approval.id);
@@ -77,7 +92,7 @@ export class ExecutionRuntime{
   if(!sentinel.allowed)return this.block(mission,request,sentinel.reason);
   const budget=this.budget.evaluate({toolCalls:state.toolCalls,runtimeMs:Date.now()-started,costUsd:state.costUsd});
   if(!budget.allowed)return this.block(mission,request,budget.reason);
-  const executionStep=mission.steps.find(step=>/execute|run|perform|action/i.test(step.description))??mission.steps.find(step=>step.status==="pending");
+  const executionStep=mission.steps.find(step=>EXECUTION_STEP.test(step.description))??mission.steps.find(step=>step.status==="pending");
   if(executionStep) executionStep.status="running";
   this.core.recovery.checkpoint({missionId:mission.id,stepId:executionStep?.id??"mission",createdAt:new Date().toISOString(),state:{request}});
   await this.persist(mission);

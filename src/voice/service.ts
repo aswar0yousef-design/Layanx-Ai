@@ -1,5 +1,9 @@
 export interface VoiceStatus {
   enabled:boolean;
+  /** Local speech-to-text (whisper.cpp or any OpenAI-compatible server) when configured. */
+  localStt?:{baseUrl:string;model:string}|null;
+  /** Which engine /v1/voice/transcribe uses: "local", "openai" or "none". */
+  stt?:"local"|"openai"|"none";
   provider:string;
   transcriptionModel:string;
   speechModel:string;
@@ -107,10 +111,45 @@ export class OpenAIVoiceProvider implements VoiceProvider{
   }
 }
 
+/**
+ * Speech-to-text on this computer. Works with whisper.cpp's whisper-server started with
+ * --inference-path /v1/audio/transcriptions, or any OpenAI-compatible transcription server.
+ * No API key and no audio leaves the machine.
+ */
+export class LocalTranscriber{
+  readonly baseUrl:string;
+  readonly model:string;
+  constructor(baseUrl:string,model=process.env.LAYANX_STT_MODEL?.trim()||"whisper-1",private readonly timeoutMs=Number(process.env.LAYANX_STT_TIMEOUT_MS)||60_000){
+    this.baseUrl=baseUrl.replace(/\/+$/,"");this.model=model;
+  }
+  static fromEnv(env:NodeJS.ProcessEnv=process.env):LocalTranscriber|null{
+    const url=env.LAYANX_STT_BASE_URL?.trim();
+    return url?new LocalTranscriber(url):null;
+  }
+  async transcribe(audio:Buffer,mimeType:string,filename:string,language?:string):Promise<string>{
+    const form=new FormData();
+    form.append("file",new Blob([new Uint8Array(audio)],{type:mimeType||"audio/wav"}),filename||"voice.wav");
+    form.append("model",this.model);
+    form.append("response_format","json");
+    form.append("temperature","0");
+    const lang=language?.trim().toLowerCase();
+    if(lang&&lang!=="auto")form.append("language",lang);
+    const response=await fetch(`${this.baseUrl}/audio/transcriptions`,{method:"POST",body:form,signal:AbortSignal.timeout(this.timeoutMs)});
+    if(!response.ok)throw new Error(`Local transcription failed (${response.status}): ${(await response.text()).slice(0,300)}`);
+    const payload=await response.json() as {text?:unknown};
+    return typeof payload.text==="string"?payload.text.trim():"";
+  }
+}
+
 export class VoiceService{
-  constructor(private readonly provider:VoiceProvider=new OpenAIVoiceProvider()){}
-  status(){return this.provider.status();}
-  transcribe(...args:Parameters<VoiceProvider["transcribe"]>){return this.provider.transcribe(...args);}
+  private readonly local:LocalTranscriber|null;
+  constructor(private readonly provider:VoiceProvider=new OpenAIVoiceProvider(),local:LocalTranscriber|null=LocalTranscriber.fromEnv()){this.local=local;}
+  status():VoiceStatus{
+    const base=this.provider.status();
+    return{...base,localStt:this.local?{baseUrl:this.local.baseUrl,model:this.local.model}:null,stt:this.local?"local":base.enabled?"openai":"none"};
+  }
+  /** Local whisper first (private, free); the cloud provider only when no local engine is configured. */
+  transcribe(...args:Parameters<VoiceProvider["transcribe"]>){return this.local?this.local.transcribe(...args):this.provider.transcribe(...args);}
   speak(...args:Parameters<VoiceProvider["speak"]>){return this.provider.speak(...args);}
   createRealtimeClientSecret(options:{model?:string;voice?:string;instructions?:string;safetyIdentifier?:string}={}){
     if(!this.provider.createRealtimeClientSecret)throw new Error("Realtime voice is not supported by the configured voice provider.");

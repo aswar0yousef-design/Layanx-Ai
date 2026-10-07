@@ -13,7 +13,11 @@ function activate(context) {
     vscode.commands.registerCommand("layanx.fixSelection", () => runSelectionGoal(context, "Inspect the selected code, identify the root cause of the problem, and fix it in the workspace. Verify the change with appropriate tests or checks.")),
     vscode.commands.registerCommand("layanx.health", () => healthCheck(context)),
     vscode.commands.registerCommand("layanx.startRuntime", () => startRuntime(context)),
-    vscode.commands.registerCommand("layanx.setApiToken", () => setApiToken(context))
+    vscode.commands.registerCommand("layanx.setApiToken", () => setApiToken(context)),
+    vscode.commands.registerCommand("layanx.connect", () => connectWithPairingCode(context)),
+    vscode.commands.registerCommand("layanx.approvals", () => showApprovals(context)),
+    vscode.commands.registerCommand("layanx.linkWorkspace", () => linkWorkspace(context, true)),
+    vscode.commands.registerCommand("layanx.autonomous", () => runAutonomous(context))
   );
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   status.text = "$(hubot) LayanX";
@@ -130,6 +134,8 @@ async function executeInteractiveGoal(context, goal, onUpdate) {
   const enrichedGoal = [goal.trim(), "", "VS Code context:", "- Project ID: " + projectId, "- Workspace: " + workspacePath,
     "- The request originated inside VS Code.", "- Use existing LayanX tools, permissions and approvals; do not bypass them.",
     "- Change only the current project workspace and verify before reporting completion."].join("\n");
+  const linked = await linkWorkspace(context, false);
+  if (!linked.ok) return linked;
   const created = await request(context, "/v1/missions", "POST", {goal: enrichedGoal, projectId});
   if (!created.ok || !created.mission?.id) return created;
   const missionId = created.mission.id;
@@ -160,6 +166,9 @@ async function executeMissionLoop(context, missionId, projectId, approvalIds, on
 
 async function resumeApprovedGoal(context, missionId, toolIndex, approvalId, projectId, onUpdate) {
   if (!missionId || !projectId || !approvalId || !Number.isInteger(toolIndex)) return {ok:false,error:"Approval resume data is incomplete."};
+  // The approval must be granted on the server before the loop may use it.
+  const granted = await request(context, "/v1/approvals/" + encodeURIComponent(approvalId) + "/approve?projectId=" + encodeURIComponent(projectId), "POST", {});
+  if (!granted.ok) { onUpdate?.({command:"result",...granted}); return granted; }
   return executeMissionLoop(context, missionId, projectId, {[toolIndex]:approvalId}, onUpdate);
 }
 
@@ -190,6 +199,8 @@ async function executeGoal(context, goal) {
     "- Use the existing LayanX tools and permissions; do not bypass approval or safety controls.",
     "- If code/files must be changed, make the changes in this workspace and verify them before reporting completion."
   ].join("\n");
+  const linked = await linkWorkspace(context, false);
+  if (!linked.ok) return linked;
   return request(context, API_PATH, "POST", {
     goal: enrichedGoal,
     projectId,
@@ -212,7 +223,7 @@ async function startRuntime(context) {
     vscode.window.showErrorMessage("Open a workspace or configure layanx.runtimePath first.");
     return;
   }
-  const command = String(config.get("runtimeCommand", "npm run api"));
+  const command = String(config.get("runtimeCommand", "npm run local"));
   const terminal = vscode.window.createTerminal({ name: "LayanX Runtime", cwd });
   terminal.show(true);
   terminal.sendText(command, true);
@@ -258,7 +269,8 @@ async function request(context, path, method, payload) {
     const text = await response.text();
     let data;
     try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
-    if (!response.ok) return { ok: false, status: response.status, error: data?.error || "HTTP " + response.status, data };
+    if (response.status === 401) return { ok: false, status: 401, error: "Not connected to LayanX. Run \"LayanX: Connect (Pairing Code)\" and enter the code from the LayanX setup page.", data };
+    if (!response.ok) return { ok: false, status: response.status, ...(data && typeof data === "object" ? data : {}), error: data?.message || data?.error || data?.reason || "HTTP " + response.status, data };
     return { ok: true, status: response.status, ...data };
   } catch (error) {
     return {
@@ -267,6 +279,93 @@ async function request(context, path, method, payload) {
       detail: error instanceof Error ? error.message : String(error)
     };
   }
+}
+
+const linkedThisSession = new Set();
+/**
+ * LayanX tools work inside a project folder. Link the folder open in VS Code to its project ID
+ * so the agent edits exactly these files (otherwise it would work in its own projects folder).
+ */
+async function linkWorkspace(context, announce) {
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  if (!folder) return { ok: false, error: "Open a folder in VS Code first." };
+  const projectId = getProjectId(vscode.workspace.getConfiguration("layanx"));
+  const key = projectId + "|" + folder.uri.fsPath;
+  if (!announce && linkedThisSession.has(key)) return { ok: true };
+  const result = await request(context, "/v1/projects/link", "POST", { projectId, path: folder.uri.fsPath });
+  if (!result.ok) return { ok: false, error: "Could not link this folder to LayanX: " + (result.data?.message || result.error) };
+  linkedThisSession.add(key);
+  if (announce) vscode.window.showInformationMessage("LayanX will work on " + folder.uri.fsPath + " as project \"" + projectId + "\".");
+  return { ok: true };
+}
+
+async function connectWithPairingCode(context) {
+  const code = await vscode.window.showInputBox({
+    title: "Connect VS Code to LayanX",
+    prompt: "On the LayanX setup page: 'Phone & VS Code' > 'Create pairing code'. Enter the 8-character code.",
+    placeHolder: "ABCD-EFGH",
+    ignoreFocusOut: true
+  });
+  if (!code?.trim()) return;
+  const config = vscode.workspace.getConfiguration("layanx");
+  const base = String(config.get("apiBaseUrl", "http://127.0.0.1:3000")).replace(/\/$/, "");
+  try {
+    const response = await fetch(base + "/v1/pair/complete", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ code: code.trim(), deviceName: "VS Code (" + (vscode.env.machineId || "").slice(0, 6) + ")" }) });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.deviceToken) { vscode.window.showErrorMessage("LayanX pairing failed: " + (data.message || data.error || ("HTTP " + response.status))); return; }
+    await context.secrets.store("layanx.apiToken", data.deviceToken);
+    vscode.window.showInformationMessage("VS Code is connected to LayanX. You can revoke it any time from the setup page.");
+    await linkWorkspace(context, true);
+  } catch (error) {
+    vscode.window.showErrorMessage("Cannot reach LayanX at " + base + ". Start it with LayanX.cmd first.");
+  }
+}
+
+async function showApprovals(context) {
+  const projectId = getProjectId(vscode.workspace.getConfiguration("layanx"));
+  const result = await request(context, "/v1/approvals?projectId=" + encodeURIComponent(projectId), "GET");
+  if (!result.ok) { vscode.window.showErrorMessage("LayanX: " + result.error); return; }
+  const pending = (result.approvals || []).filter(a => a.pending ?? !a.approved);
+  if (!pending.length) { vscode.window.showInformationMessage("No LayanX approvals are waiting for project " + projectId + "."); return; }
+  const pick = await vscode.window.showQuickPick(pending.map(a => ({ label: a.tool || a.action, description: a.permission, detail: a.reason || a.action, approval: a })), { title: "LayanX approvals waiting" });
+  if (!pick) return;
+  const choice = await vscode.window.showWarningMessage("Approve " + pick.label + "?", { modal: true, detail: pick.detail }, "Approve and Continue", "Reject");
+  if (choice === "Reject") { await request(context, "/v1/approvals/" + encodeURIComponent(pick.approval.id) + "/revoke?projectId=" + encodeURIComponent(projectId), "POST", {}); return; }
+  if (choice !== "Approve and Continue") return;
+  const mission = await request(context, "/v1/missions/" + encodeURIComponent(pick.approval.missionId) + "?projectId=" + encodeURIComponent(projectId), "GET");
+  const index = (mission.mission?.tools || []).findIndex(t => t.tool === pick.approval.tool && t.action === pick.approval.action);
+  const run = await resumeApprovedGoal(context, pick.approval.missionId, index, pick.approval.id, projectId);
+  vscode.window.showInformationMessage(run.completed ? "LayanX completed the mission." : run.paused ? "LayanX needs another approval." : "LayanX: " + (run.reason || run.error || run.status || "stopped"));
+}
+
+/** Give the open folder a goal and let the LayanX supervisor finish it: plan, code, test, repair, verify. */
+async function runAutonomous(context) {
+  const goal = await vscode.window.showInputBox({ title: "LayanX: Finish a goal autonomously", prompt: "LayanX plans, edits this folder, runs tests/build and a browser check, repairs, and commits after each milestone. It only stops for approvals.", ignoreFocusOut: true });
+  if (!goal?.trim()) return;
+  const linked = await linkWorkspace(context, false);
+  if (!linked.ok) { vscode.window.showErrorMessage(linked.error); return; }
+  const projectId = getProjectId(vscode.workspace.getConfiguration("layanx"));
+  const created = await request(context, "/v1/supervisor/jobs", "POST", { goal: goal.trim(), projectId });
+  if (!created.ok || !created.job) { vscode.window.showErrorMessage("LayanX: " + created.error); return; }
+  const id = created.job.id;
+  const active = ["planning", "running", "waiting_approval", "verifying"];
+  await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "LayanX", cancellable: true }, async (progress, token) => {
+    token.onCancellationRequested(() => { void request(context, "/v1/supervisor/jobs/" + encodeURIComponent(id) + "/cancel", "POST", {}); });
+    let last = "";
+    for (;;) {
+      await new Promise(r => setTimeout(r, 4000));
+      const d = await request(context, "/v1/supervisor/jobs/" + encodeURIComponent(id), "GET");
+      if (!d.ok) continue;
+      const j = d.job; const done = j.milestones.filter(m => m.status === "done").length;
+      const msg = (j.status === "waiting_approval" ? "Waiting for your approval (LayanX: Show Approvals) — " : "") + done + "/" + j.milestones.length + " · " + (j.log.at(-1)?.msg || j.status);
+      if (msg !== last) { progress.report({ message: msg }); last = msg; }
+      if (!active.includes(j.status)) {
+        if (j.status === "completed") vscode.window.showInformationMessage("LayanX finished: " + (j.result || "completed and verified"));
+        else vscode.window.showWarningMessage("LayanX stopped (" + j.status + "): " + (j.result || ""));
+        return;
+      }
+    }
+  });
 }
 
 function clamp(value, min, max) {

@@ -3,7 +3,15 @@ import type {ToolRequest} from "./core/types.js";
 import {createAgentReachAdapter,agentReachSupportedChannels} from "./connectors/agent-reach.js";
 
 export function registerAgentReachTools(core:LayanXCore):void{
-  const adapter=createAgentReachAdapter();
+  const raw=createAgentReachAdapter();
+  // The planner may pick any of a tool's declared actions (English or Arabic); the connector only
+  // understands one canonical action per tool. Map by tool name so every declared action works.
+  const CANONICAL:Record<string,string>={
+    "agent-reach.status":"agent reach status","agent-reach.channels":"agent reach channels",
+    "agent-reach.update.check":"agent reach update check","agent-reach.collect":"agent reach collect",
+    "research.internet":"agent reach research","agent-reach.setup":"agent reach setup"
+  };
+  const adapter={execute:(request:ToolRequest)=>raw.execute(CANONICAL[request.tool]?{...request,action:CANONICAL[request.tool]!}:request)};
 
   core.tools.register({
     name:"agent-reach.status",

@@ -1,3 +1,5 @@
+import {EXECUTION_STEP} from "./verification.js";
+import {cloudPolicy,cloudRoutingForGoal} from "../config/providers.js";
 import {setLifecycle} from "./lifecycle.js";
 import {MissionPlanner} from "./mission.js";
 import {AgentManager} from "./agent-manager.js";
@@ -568,9 +570,21 @@ export class LayanXCore{
   }
 
   async runAgentGateway(goal:string,projectId="default",maxSteps=10,approvalIds:Record<number,string>={},agentId="core",routing?:ModelRoutingOptions){
-    const mission=await this.planAndStartMission(goal,projectId,routing);
-    const result=await this.executeAgentLoop(mission.id,projectId,maxSteps,approvalIds,agentId,routing);
-    return{goal:mission.goal,projectId,agentId,...result,missionId:mission.id};
+    // Cloud escalation: a goal that names Claude/GPT/Gemini, or a complex goal under the "complex" policy,
+    // is planned by that cloud model; a local planning failure is retried once on the cloud (no tool has run yet).
+    let hint=routing?undefined:cloudRoutingForGoal(goal,this.models);
+    const toRouting=(h:typeof hint):ModelRoutingOptions|undefined=>h?{preferLocal:h.preferLocal,...(h.tags?{tags:h.tags}:{})}:routing;
+    let mission:Awaited<ReturnType<LayanXCore["planAndStartMission"]>>;
+    try{mission=await this.planAndStartMission(goal,projectId,toRouting(hint));}
+    catch(error){
+      const cloudReady=this.models.list().some(m=>!m.local&&m.enabled);
+      if(routing||hint||!cloudReady||cloudPolicy()==="off")throw error;
+      hint={preferLocal:false,reason:"fallback"};
+      this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"model.escalate",resource:"planner",result:"success",metadata:{reason:"local planning failed",error:error instanceof Error?error.message.slice(0,200):"unknown"}});
+      mission=await this.planAndStartMission(goal,projectId,toRouting(hint));
+    }
+    const result=await this.executeAgentLoop(mission.id,projectId,maxSteps,approvalIds,agentId,toRouting(hint));
+    return{goal:mission.goal,projectId,agentId,...result,missionId:mission.id,...(hint?{modelRouting:{cloud:!hint.preferLocal,reason:hint.reason,...(hint.tags?{provider:hint.tags[0]}:{})}}:{})};
   }
 
   async executeAgentLoop(missionId:string,projectId:string,maxSteps=10,approvalIds:Record<number,string>={},agentId="core",routing?:ModelRoutingOptions){
@@ -582,6 +596,7 @@ export class LayanXCore{
     let latest:unknown={status:"not_started"};
     let steps=0;
     let visualContext:{mimeType:string;base64:string}|undefined;
+    let uiTreeFresh=false;
     let lastDesktopMutation=false;
     const liveScreenWasRunning=this.liveScreen?.isRunning()??false;
     let liveScreenAutoStarted=false;
@@ -593,6 +608,8 @@ export class LayanXCore{
       const plans=current.tools??[];
       const index=steps<plans.length?steps:-1;
       let plan=index>=0?plans[index]:undefined;
+      // Track the position explicitly: the mission store may return copies, so identity lookups fail.
+      let planIndex=index;
       if(this.liveScreen?.isRunning()){
         const frame=this.liveScreen.latest();
         if(frame)visualContext={mimeType:frame.mimeType,base64:frame.base64};
@@ -611,7 +628,7 @@ export class LayanXCore{
           const contract=this.agents.get(agentId);
           const verification=this.verifier.verify(current,latest,current.successCriteria?.length?current.successCriteria:contract.successCriteria);
           if(verification.verified){
-            const executionStep=current.steps.find(step=>/execute|run|perform|action/i.test(step.description));
+            const executionStep=current.steps.find(step=>EXECUTION_STEP.test(step.description));
             if(executionStep)executionStep.status="completed";
             setLifecycle(current,this.executionStates,"completed",false);
             this.missions.save(current);
@@ -626,10 +643,23 @@ export class LayanXCore{
         current.tools.push(plan);
         this.missions.save(current);
         plan=current.tools[current.tools.length-1]!;
+        planIndex=current.tools.length-1;
       }
       if(plan&&/^desktop\.(mouse|keyboard)/.test(plan.tool)&&this.liveScreen&&!this.liveScreen.isRunning()){
         this.liveScreen.start();
         liveScreenAutoStarted=true;
+      }
+      if(plan&&/^desktop\.ui\.(click|set_text)$/.test(plan.tool)&&!uiTreeFresh){
+        // Element indexes come from the latest UI Automation tree; read the window first.
+        const tree={tool:"desktop.ui.tree",action:"desktop ui tree",permission:"L2_ANALYZE" as const,reason:"Read the window's elements before acting on one by index."};
+        const missionTools=current.tools??[];
+        const replaceAt=index>=0?index:missionTools.length;
+        if(replaceAt>=missionTools.length)missionTools.push(tree);
+        else missionTools[replaceAt]=tree;
+        current.tools=missionTools;
+        this.missions.save(current);
+        plan=tree;
+        planIndex=replaceAt;
       }
       if(plan&&/^desktop\.(mouse|keyboard)/.test(plan.tool)&&!visualContext){
         const screenshot={tool:"desktop.screenshot",action:"desktop screenshot",permission:"L2_ANALYZE" as const,reason:"Observe the current desktop before choosing a coordinate or keyboard action."};
@@ -640,9 +670,9 @@ export class LayanXCore{
         current.tools=missionTools;
         this.missions.save(current);
         plan=screenshot;
+        planIndex=replaceAt;
       }
-      const toolIndex=(this.missions.get(missionId)?.tools??[]).findIndex(item=>item===plan);
-      const actualIndex=toolIndex>=0?toolIndex:(this.missions.get(missionId)?.tools?.length??1)-1;
+      const actualIndex=planIndex>=0?planIndex:(this.missions.get(missionId)?.tools?.length??1)-1;
       const result=await this.executeMissionTool(missionId,projectId,actualIndex,plan.payload??{},approvalIds[actualIndex],agentId,{deferVerification:true});
       results.push(result);
       steps++;
@@ -652,6 +682,8 @@ export class LayanXCore{
         if(typeof data.base64==="string"&&typeof data.mimeType==="string")
           visualContext={mimeType:data.mimeType,base64:data.base64};
       }
+      if(result.ok&&plan.tool==="desktop.ui.tree")uiTreeFresh=true;
+      else if(result.ok&&/^desktop\.(mouse|keyboard|ui\.click|ui\.set_text|window)/.test(plan.tool))uiTreeFresh=false;
       if(result.ok&&/^desktop\.(mouse|keyboard)/.test(plan.tool)){
         visualContext=undefined;
         if(this.liveScreen?.isRunning()){

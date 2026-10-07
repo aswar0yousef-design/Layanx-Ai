@@ -3,13 +3,20 @@ import type {VerificationResult} from "./contracts.js";
 
 type Comparable=string|number|boolean|null;
 
+/**
+ * A plan step that does the work. Plans written by local models are often in Arabic or use
+ * verbs like "write" or "fix"; only matching execute/run/perform/action marked real, completed
+ * work as failed. Planning-only steps ("Understand goal") still do not count.
+ */
+export const EXECUTION_STEP=/\b(execute|run|perform|action|write|create|build|fix|implement|update|modify|edit|install|apply|generate|send|publish|deploy|delete|commit|push|open|click|type|search|collect|research|analy[sz]e|inspect|test|check|schedule|post|upload|download|take|capture)|تنفيذ|نفذ|نفّذ|شغل|شغّل|تشغيل|إجراء|اجراء|اكتب|كتابة|أنشئ|انشئ|إنشاء|انشاء|عدّل|عدل|تعديل|أصلح|اصلح|إصلاح|اصلاح|ابن|بناء|ثبّت|ثبت|تثبيت|أرسل|ارسل|إرسال|ارسال|انشر|نشر|افتح|فتح|ابحث|بحث|حلل|حلّل|تحليل|افحص|فحص|اختبر|اختبار|التقط|جدول|ارفع|رفع/i;
+
 export class VerificationEngine {
   verify(mission:Mission,result?:unknown,successCriteria:string[]=[]):VerificationResult {
     const failures:string[]=[];
     const checks:string[]=["mission exists","mission has goal","mission has execution plan","execution result satisfies success criteria"];
     if(!mission.goal.trim()) failures.push("Mission goal is empty.");
     if(mission.steps.length===0) failures.push("Mission has no steps.");
-    const executionStep=mission.steps.find(step=>/execute|run|perform|action/i.test(step.description));
+    const executionStep=mission.steps.find(step=>EXECUTION_STEP.test(step.description));
     if(!executionStep) failures.push("Mission has no execution step.");
     else if(executionStep.status!=="completed") failures.push("Execution step is not completed.");
     if(successCriteria.some(criteria=>!criteria.trim())) failures.push("Success criteria contains an empty item.");
@@ -65,7 +72,30 @@ export class VerificationEngine {
       const matched=op==="=="||op==="==="?size===expected:op==="!="||op==="!=="?size!==expected:op===">"?size>expected:op===">="?size>=expected:op==="<"?size<expected:size<=expected;
       return{supported:true,matched,reason:matched?"":`Success criterion failed: ${text} (actual=${size})`};
     }
-    return{supported:false,matched:false,reason:`Unsupported success criterion: ${text}`};
+    const exists=/^result(?:\.([A-Za-z_$][\w$]*))?\s+(exists|is present|is not empty)$/i.exec(text);
+    if(exists){
+      const actual=this.readPath(result,exists[1]??"");
+      const present=actual!==null&&actual!==undefined&&!(exists[2]!.toLowerCase()==="is not empty"&&(actual===""||(Array.isArray(actual)&&!actual.length)));
+      return{supported:true,matched:present,reason:present?"":`Success criterion failed: ${text}`};
+    }
+    // Formula-looking text with an unknown operator is a mistake, not a sentence: keep it strict.
+    if(/^result\b/i.test(text))return{supported:false,matched:false,reason:`Unsupported success criterion: ${text}`};
+    return this.descriptive(text,result);
+  }
+
+  /**
+   * Plain-language criteria ("the file is created", "تم إنشاء الملف") cannot be evaluated literally.
+   * They pass only when the final result shows no failure: present, ok !== false, exit code 0, no error.
+   */
+  private descriptive(text:string,result:unknown):{supported:boolean;matched:boolean;reason:string}{
+    if(result===null||result===undefined)return{supported:true,matched:false,reason:`Success criterion failed: ${text} (no result)`};
+    if(typeof result==="object"&&!Array.isArray(result)){
+      const r=result as Record<string,unknown>;
+      if(r.ok===false)return{supported:true,matched:false,reason:`Success criterion failed: ${text} (result reports ok=false)`};
+      if(typeof r.exitCode==="number"&&r.exitCode!==0)return{supported:true,matched:false,reason:`Success criterion failed: ${text} (exit code ${r.exitCode})`};
+      if(typeof r.error==="string"&&r.error.trim())return{supported:true,matched:false,reason:`Success criterion failed: ${text} (${r.error.slice(0,160)})`};
+    }
+    return{supported:true,matched:true,reason:""};
   }
 
   private readPath(value:unknown,path?:string):unknown{

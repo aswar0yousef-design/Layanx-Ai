@@ -8,7 +8,7 @@ export function createGeminiProvider(options:{apiKey:string;baseUrl?:string;heal
   headers:{"x-goog-api-key":options.apiKey},
   buildUrl:(model)=>root+"/models/"+encodeURIComponent(model.id)+":generateContent",
   buildHealthUrl:()=>health,
-  buildBody:(_model,request)=>({contents:[{role:"user",parts:typeof request.input==="string"?[{text:request.input}]:request.input.map(part=>part.type==="text"?{text:part.text}:{inlineData:{mimeType:part.image.mimeType,data:part.image.base64}})}],generationConfig:{maxOutputTokens:request.maxOutputTokens}}),
+  buildBody:(_model,request)=>({contents:[{role:"user",parts:typeof request.input==="string"?[{text:request.input}]:request.input.map(part=>part.type==="text"?{text:part.text}:{inlineData:{mimeType:part.image.mimeType,data:part.image.base64}})}],generationConfig:{maxOutputTokens:request.maxOutputTokens,...(request.capability==="reasoning"?{responseMimeType:"application/json"}:{})}}),
   parseResponse:(body,model):ModelResponse=>{const data=body as {candidates?:Array<{content?:{parts?:Array<{text?:string}>}}>;usageMetadata?:{promptTokenCount?:number;candidatesTokenCount?:number}};const output=(data.candidates??[]).flatMap(candidate=>candidate.content?.parts??[]).map(part=>part.text??"").join("");return{provider:"gemini",modelId:model.id,output,usage:{inputTokens:data.usageMetadata?.promptTokenCount,outputTokens:data.usageMetadata?.candidatesTokenCount}};}
  });
 }

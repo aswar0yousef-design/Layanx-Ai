@@ -1,0 +1,24 @@
+<#
+  LayanX - Windows smoke test.
+  Proves the Windows-only parts on this PC: desktop helper (mouse/keyboard + UI Automation),
+  DPAPI secrets, and npm scripts without .cmd spawning. Opens and closes Notepad.
+
+  Run from the LayanX folder:
+    powershell -ExecutionPolicy Bypass -File scripts\windows\smoke-test.ps1
+  Add -NoUi to skip the Notepad check (for example over Remote Desktop with a locked screen).
+#>
+param([switch]$NoUi)
+$ErrorActionPreference = 'Stop'
+$Root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
+Set-Location $Root
+$node = (Get-Command node -ErrorAction SilentlyContinue).Source
+if (-not $node) { Write-Host 'Node.js 22+ is required.' -ForegroundColor Red; exit 1 }
+$tsx = Join-Path $Root 'node_modules\tsx\dist\cli.mjs'
+if (-not (Test-Path $tsx)) { Write-Host 'Run LayanX.cmd once (or npm install) first.' -ForegroundColor Red; exit 1 }
+$smokeArgs = @($tsx, 'scripts/windows-smoke.ts')
+if ($NoUi) { $smokeArgs += '--no-ui' }
+& $node @smokeArgs
+$code = $LASTEXITCODE
+if ($code -eq 0) { Write-Host 'Windows smoke test passed.' -ForegroundColor Green }
+else { Write-Host 'Windows smoke test failed. Send the output above.' -ForegroundColor Red }
+exit $code

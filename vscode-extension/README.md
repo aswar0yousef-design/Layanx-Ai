@@ -13,16 +13,27 @@ This extension makes the existing LayanX Agent Gateway available directly inside
 - Ask LayanX to fix selected code and verify the change.
 - Health check.
 - Start the local LayanX runtime in a visible VS Code terminal.
-- API token stored with VS Code Secret Storage, not in workspace settings.
+- Pairing-code connection; the device token is stored with VS Code Secret Storage, not in workspace settings.
 
-## Install locally
+## Install (Windows)
 
-1. Open the `Layanx-Ai` repository in VS Code.
-2. Press **F5** and choose **Run Extension** to launch an Extension Development Host.
-3. In the development host, open the **LayanX** activity-bar view.
-4. Start the runtime with **LayanX: Start Local Runtime**, or run `npm run api` in a terminal.
-5. If `LAYANX_API_REQUIRE_TOKEN=true`, run **LayanX: Set API Token** once.
-6. Set `layanx.projectId` only if you want a project ID different from the workspace folder name.
+1. Start LayanX with `LayanX.cmd`.
+2. Run `powershell -ExecutionPolicy Bypass -File scripts\windows\install-vscode-extension.ps1`
+   (or in VS Code: Extensions › … › **Install from VSIX…** › `vscode-extension/layanx-agent.vsix`).
+3. On the LayanX setup page: **Phone & VS Code › Create pairing code**.
+4. In VS Code: `Ctrl+Shift+P` › **LayanX: Connect (Pairing Code)** and type the code.
+
+VS Code gets its own device token (revocable from the setup page). The folder open in VS Code is
+linked to its project ID automatically, so LayanX reads, edits, tests and commits exactly these files.
+
+## Commands
+
+- **LayanX: Run Goal**, **Build / Repair Project**, **Explain Selection**, **Fix Selection**
+- **LayanX: Show Approvals**: approve or reject waiting actions without leaving VS Code
+- **LayanX: Use This Folder as the Project**: re-link after renaming or moving the folder
+- **LayanX: Health Check**, **LayanX: Start Local Runtime** (`npm run local`)
+
+Rebuild the package after changing the extension: `npm run vsix`.
 
 ## Runtime model
 

@@ -1,3 +1,4 @@
+import {linkedProjectPath} from "../platform/linked-projects.js";
 import {resolve,relative,sep} from "node:path";
 
 export interface ProjectResource{projectId:string;resourceId:string;}
@@ -31,6 +32,8 @@ export class ProjectIsolation{
   if(this.canonical(requestProjectId)!==expected)throw new Error("Project isolation scope violation.");
  }
  workspacePath(root:string,projectId:string):string{
+  const linked=linkedProjectPath(this.canonical(projectId));
+  if(linked)return linked;
   const base=resolve(root),workspace=resolve(base,this.canonical(projectId)),rel=relative(base,workspace);
   if(!rel||rel===".."||rel.startsWith(".."+sep)||rel.includes("\0"))throw new Error("Project workspace escapes the configured root.");
   return workspace;

@@ -9,7 +9,7 @@ if(process.env.NODE_ENV!=="production")fail("NODE_ENV must be production.");
 for(const name of required){
  if(!process.env[name]?.trim())fail(`${name} is required.`);
 }
-if(!/^postgres(?:ql)?:\\/\\//i.test(process.env.LAYANX_DATABASE_URL??""))fail("LAYANX_DATABASE_URL must be a PostgreSQL connection URL.");
+if(!/^postgres(?:ql)?:\/\//i.test(process.env.LAYANX_DATABASE_URL??""))fail("LAYANX_DATABASE_URL must be a PostgreSQL connection URL.");
 if(process.env.LAYANX_API_HOST!=="0.0.0.0")console.warn("WARNING: LAYANX_API_HOST is not 0.0.0.0; use a reverse proxy or container binding appropriate to the platform.");
 
 const cloudEnabled=process.env.LAYANX_AI_MODE==="cloud"||process.env.LAYANX_AI_MODE==="hybrid";

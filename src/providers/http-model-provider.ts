@@ -38,7 +38,11 @@ export class HttpModelProvider implements ModelProviderAdapter{
   const timer=setTimeout(()=>controller.abort(),Math.max(1,this.options.timeoutMs??30000));
   try{
    const response=await this.fetcher(this.options.buildUrl?.(model,request)??this.options.baseUrl,{method:"POST",redirect:"error",signal:controller.signal,headers:{"content-type":"application/json",...this.headers()},body:JSON.stringify(this.options.buildBody(model,request))});
-   if(!response.ok)throw new Error(this.name+" returned HTTP "+response.status+".");
+   if(!response.ok){
+    // Include the provider's own error text (never contains our key) so "model not found" or "quota" is visible.
+    let detail="";try{detail=(await response.text()).replace(/\s+/g," ").slice(0,300);}catch{}
+    throw new Error(this.name+" returned HTTP "+response.status+"."+(detail?" "+detail:""));
+   }
    return this.options.parseResponse(await response.json(),model);
   }finally{clearTimeout(timer);}
  }

@@ -1,0 +1,99 @@
+import {execFileSync} from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import type {ToolAdapter} from "../tools/executor.js";
+import type {ToolRequest} from "../core/types.js";
+import {safeChildEnv} from "../platform/safe-env.js";
+import {projectDir} from "./project-dir.js";
+import {runOnce} from "./project-runner.js";
+
+/**
+ * agent.external: hand a coding task to a specialised coding agent running inside the project folder.
+ *
+ *   aider        local  - uses your Ollama coder model (pip install aider-chat)
+ *   claude-code  cloud  - Anthropic's Claude Code CLI (npm i -g @anthropic-ai/claude-code); edits only, no shell
+ *   codex        cloud  - OpenAI Codex CLI (npm i -g @openai/codex); extra flags via LAYANX_CODEX_ARGS
+ *
+ * The task text travels as one argv entry (never through a shell). LayanX re-runs tests and
+ * build afterwards; the external agent's own "done" is never trusted on its own.
+ * Cloud agents are only offered when the cloud policy allows it.
+ */
+export type ExternalAgentName="aider"|"claude-code"|"codex";
+export interface ExternalAgent{name:ExternalAgentName;kind:"local"|"cloud";path:string;label:string}
+
+function npmGlobalRoots():string[]{
+  const roots=[
+    process.env.APPDATA?path.join(process.env.APPDATA,"npm","node_modules"):"",
+    path.join(path.dirname(process.execPath),"node_modules"),
+    path.join(path.dirname(process.execPath),"..","lib","node_modules"),
+    path.join(os.homedir(),".npm-global","lib","node_modules"),
+    process.env.NPM_CONFIG_PREFIX?path.join(process.env.NPM_CONFIG_PREFIX,"lib","node_modules"):""
+  ];
+  return [...new Set(roots.filter(Boolean))];
+}
+function findNpmEntry(pkg:string,entry:string):string|null{
+  for(const r of npmGlobalRoots()){const p=path.join(r,...pkg.split("/"),entry);if(fs.existsSync(p))return p;}
+  return null;
+}
+function which(cmd:string):string|null{
+  try{const out=execFileSync(process.platform==="win32"?"where":"which",[cmd],{encoding:"utf8",windowsHide:true,stdio:["ignore","pipe","ignore"],timeout:3000});
+    const lines=out.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    return lines.find(l=>!/\.(cmd|bat)$/i.test(l))??null;}catch{return null;}
+}
+
+let cache:{at:number;list:ExternalAgent[]}|null=null;
+export function detectExternalAgents(force=false):ExternalAgent[]{
+  if(!force&&cache&&Date.now()-cache.at<60_000)return cache.list;
+  const list:ExternalAgent[]=[];
+  const aider=process.env.LAYANX_AIDER_PATH||which("aider");
+  if(aider)list.push({name:"aider",kind:"local",path:aider,label:"Aider (local, Ollama)"});
+  const claude=process.env.LAYANX_CLAUDE_CODE_PATH||findNpmEntry("@anthropic-ai/claude-code","cli.js");
+  if(claude)list.push({name:"claude-code",kind:"cloud",path:claude,label:"Claude Code (cloud)"});
+  const codex=process.env.LAYANX_CODEX_PATH||findNpmEntry("@openai/codex","bin/codex.js");
+  if(codex)list.push({name:"codex",kind:"cloud",path:codex,label:"OpenAI Codex (cloud)"});
+  cache={at:Date.now(),list};
+  return list;
+}
+
+export function cloudAgentsAllowed(env:NodeJS.ProcessEnv=process.env):boolean{return (env.LAYANX_CLOUD_POLICY??"fallback")!=="off";}
+
+/** argv for one delegated task. Exported for tests. */
+export function externalCommand(agent:ExternalAgent,task:string,env:NodeJS.ProcessEnv=process.env):{command:string;args:string[];label:string;extraEnv:Record<string,string>}{
+  const text="Task: "+task.replace(/\0/g,"").slice(0,8000);
+  const scriptRunner=(p:string)=>/\.(c|m)?js$/i.test(p)?{command:process.execPath,prefix:[p]}:{command:p,prefix:[]};
+  if(agent.name==="aider"){
+    const model=env.LAYANX_AIDER_MODEL||("ollama_chat/"+(env.LAYANX_CODER_MODEL||"qwen2.5-coder:7b"));
+    return{command:agent.path,args:["--yes-always","--no-auto-commits","--no-check-update","--no-show-model-warnings","--no-stream","--no-pretty","--model",model,"--message",text],label:"aider",
+      extraEnv:{OLLAMA_API_BASE:(env.OLLAMA_BASE_URL||"http://127.0.0.1:11434").replace(/\/+$/,"")}};
+  }
+  if(agent.name==="claude-code"){
+    const r=scriptRunner(agent.path);
+    return{command:r.command,args:[...r.prefix,"-p",text,"--permission-mode","acceptEdits","--output-format","text"],label:"claude-code",
+      extraEnv:env.ANTHROPIC_API_KEY?{ANTHROPIC_API_KEY:env.ANTHROPIC_API_KEY}:{}};
+  }
+  const r=scriptRunner(agent.path);
+  const extra=(env.LAYANX_CODEX_ARGS??"").split(/\s+/).filter(a=>/^--?[\w-]+(=[\w.:/-]+)?$/.test(a));
+  return{command:r.command,args:[...r.prefix,"exec",...extra,text],label:"codex",extraEnv:env.OPENAI_API_KEY?{OPENAI_API_KEY:env.OPENAI_API_KEY}:{}};
+}
+
+export function pickExternalAgent(requested:string|undefined,env:NodeJS.ProcessEnv=process.env):ExternalAgent|null{
+  const all=detectExternalAgents().filter(a=>a.kind==="local"||cloudAgentsAllowed(env));
+  if(requested&&requested!=="auto")return all.find(a=>a.name===requested)??null;
+  return all.find(a=>a.kind==="local")??all[0]??null;
+}
+
+export function createExternalAgentAdapter():ToolAdapter{
+  return{async execute(request:ToolRequest){
+    const input=(request.payload&&typeof request.payload==="object"?request.payload:{}) as Record<string,unknown>;
+    const task=typeof input.task==="string"?input.task.trim():"";
+    if(task.length<5)throw new Error("task is required.");
+    const agent=pickExternalAgent(typeof input.agent==="string"?input.agent:undefined);
+    if(!agent)throw new Error("No coding agent is installed (Aider, Claude Code or Codex), or cloud agents are switched off.");
+    const dir=projectDir(request.projectId);
+    const cmd=externalCommand(agent,task);
+    const env=safeChildEnv({allow:["PYTHONPATH","VIRTUAL_ENV"],extra:{...cmd.extraEnv,NO_COLOR:"1",CI:"1"}});
+    const result=await runOnce({command:cmd.command,args:cmd.args,label:cmd.label},dir,Number(process.env.LAYANX_EXTERNAL_AGENT_TIMEOUT_MS)||20*60_000,env);
+    return{agent:agent.name,kind:agent.kind,...result,ok:result.exitCode===0&&!result.timedOut};
+  }};
+}

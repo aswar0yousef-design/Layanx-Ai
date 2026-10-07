@@ -4,6 +4,9 @@ import {join} from "node:path";
 import {LayanXCore} from "../src/core/orchestrator.js";
 import {RuntimePersistence} from "../src/core/runtime-persistence.js";
 import {RuntimeStorage} from "../src/storage/runtime-storage.js";
+// This test exercises execution itself; approval of dangerous tools is covered by dangerous-tool-approval.spec.ts.
+process.env.LAYANX_AUTO_APPROVE_TOOLS="terminal.run";
+
 
 const dir=await mkdtemp(join(tmpdir(),"layanx-e2e-"));
 const persistence=new RuntimePersistence(RuntimeStorage.json(join(dir,"runtime.json")));
