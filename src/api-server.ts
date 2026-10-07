@@ -302,7 +302,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     const textValue=typeof input.text==="string"?input.text.trim():"";
     const format=input.format==="wav"||input.format==="opus"?input.format:"mp3";
     if(!textValue){json(response,400,{ok:false,error:"text is required"});return;}
-    const result=await voice.speak(textValue,format);
+    const result=await voice.speak(textValue,format,typeof input.lang==="string"?input.lang:undefined);
     response.statusCode=200;response.setHeader("content-type",result.contentType);response.setHeader("cache-control","no-store");response.end(result.audio);
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"voice synthesis failed"});}
    return;

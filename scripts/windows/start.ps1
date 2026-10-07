@@ -141,6 +141,22 @@ function Ensure-Whisper {
   for ($i = 0; $i -lt 30 -and -not (Test-PortInUse $port); $i++) { Start-Sleep -Milliseconds 500 }
 }
 
+# ---------------------------------------------------------------- Piper (local Arabic voice, optional)
+function Ensure-Piper {
+  $dir = Join-Path $DataDir 'piper'
+  $vpy = Join-Path $dir 'venv\Scripts\python.exe'
+  if (-not (Test-Path $vpy)) { return }
+  $port = 8179
+  if ($env:LAYANX_TTS_PORT) { $port = [int]$env:LAYANX_TTS_PORT }
+  if (Test-PortInUse $port) { return }
+  $voices = Join-Path $dir 'voices'
+  $model = if (Test-Path (Join-Path $voices 'ar_JO-kareem-medium.onnx')) { 'ar_JO-kareem-medium' } else { (Get-ChildItem -Path $voices -Filter '*.onnx' -ErrorAction SilentlyContinue | Select-Object -First 1).BaseName }
+  if (-not $model) { Warn 'Piper is installed but no voice was found. Run scripts\windows\install-piper.ps1'; return }
+  Say "Starting the local voice (Piper: $model)..."
+  Start-Process -FilePath $vpy -WorkingDirectory $voices -WindowStyle Hidden -ArgumentList @('-m', 'piper.http_server', '-m', $model, '--data-dir', "`"$voices`"", '--host', '127.0.0.1', '--port', "$port")
+  for ($i = 0; $i -lt 40 -and -not (Test-PortInUse $port); $i++) { Start-Sleep -Milliseconds 500 }
+}
+
 # ---------------------------------------------------------------- start
 if (Test-Gateway) {
   Say 'LayanX is already running.'
@@ -166,6 +182,7 @@ if (Test-Gateway) {
 
   Ensure-Ollama
   Ensure-Whisper
+  Ensure-Piper
 
   Say 'Starting LayanX in the background...'
   Start-Process -FilePath $Node -ArgumentList @("`"$tsx`"", 'src/start-local.ts') -WorkingDirectory $Root -WindowStyle Hidden

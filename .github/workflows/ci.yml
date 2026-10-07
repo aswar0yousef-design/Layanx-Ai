@@ -92,6 +92,11 @@ jobs:
           LAYANX_TEST_TIMEOUT_MS: "240000"
       - name: Install pinned security scanners (SHA-256 verified)
         run: node node_modules/tsx/dist/cli.mjs scripts/install-security-tools.ts
+      - name: Install local voice (Piper, pinned) and speech recognition (Whisper, pinned build)
+        shell: powershell
+        run: |
+          .\scripts\windows\install-piper.ps1 -Yes -NoEnglish
+          .\scripts\windows\install-whisper.ps1 -Cpu -Model base
       - name: Windows smoke test
         shell: powershell
-        run: .\scripts\windows\smoke-test.ps1 -WithTools
+        run: .\scripts\windows\smoke-test.ps1 -WithTools -WithVoice

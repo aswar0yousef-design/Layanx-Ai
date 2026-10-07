@@ -13,4 +13,9 @@ try {
   Write-Host "[LayanX] Nothing to stop ($($_.Exception.Message))."
 }
 Remove-Item $pidFile -ErrorAction SilentlyContinue
+# Helper servers LayanX started from its own folder (Whisper, Piper) hold GPU/RAM: stop them too.
+try {
+  Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object { ($_.ExecutablePath -and $_.ExecutablePath.StartsWith($DataDir, [StringComparison]::OrdinalIgnoreCase)) -or ($_.CommandLine -and $_.CommandLine -like '*piper.http_server*' -and $_.CommandLine.IndexOf($DataDir, [StringComparison]::OrdinalIgnoreCase) -ge 0) } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -ErrorAction SilentlyContinue; Write-Host "[LayanX] stopped $($_.Name)" }
+} catch {}
 Start-Sleep -Seconds 2

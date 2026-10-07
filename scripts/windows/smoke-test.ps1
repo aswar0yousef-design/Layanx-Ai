@@ -7,8 +7,9 @@
     powershell -ExecutionPolicy Bypass -File scripts\windows\smoke-test.ps1
   Add -NoUi to skip the Notepad check (for example over Remote Desktop with a locked screen).
   Add -WithTools to also test the security scanners installed by install-security-tools.ps1.
+  Add -WithVoice to test Piper (speak Arabic) and Whisper (hear it back) after install-piper.ps1 / install-whisper.ps1.
 #>
-param([switch]$NoUi,[switch]$WithTools)
+param([switch]$NoUi,[switch]$WithTools,[switch]$WithVoice)
 $ErrorActionPreference = 'Stop'
 $Root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 Set-Location $Root
@@ -19,6 +20,7 @@ if (-not (Test-Path $tsx)) { Write-Host 'Run LayanX.cmd once (or npm install) fi
 $smokeArgs = @($tsx, 'scripts/windows-smoke.ts')
 if ($NoUi) { $smokeArgs += '--no-ui' }
 if ($WithTools) { $smokeArgs += '--with-tools' }
+if ($WithVoice) { $smokeArgs += '--with-voice' }
 & $node @smokeArgs
 $code = $LASTEXITCODE
 if ($code -eq 0) { Write-Host 'Windows smoke test passed.' -ForegroundColor Green }

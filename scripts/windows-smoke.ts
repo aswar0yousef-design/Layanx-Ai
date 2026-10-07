@@ -18,6 +18,7 @@ import {commandFor,detectProject,runOnce} from "../src/autonomy/project-runner.j
 if(process.platform!=="win32"){console.log("windows-smoke: skipped (not Windows)");process.exit(0);}
 const noUi=process.argv.includes("--no-ui");
 const withTools=process.argv.includes("--with-tools");
+const withVoice=process.argv.includes("--with-voice");
 const results:Array<{check:string;ok:boolean;detail?:string}>=[];
 async function check(name:string,fn:()=>Promise<string|void>){
   // On GitHub Actions each result also becomes an annotation, readable without downloading logs.
@@ -117,6 +118,47 @@ if(withTools){
       return results.map(r=>r.tool+"="+r.findings.length).join(" ");
     }finally{rmSync(dir,{recursive:true,force:true});}
   });
+}
+if(withVoice){
+  await check("Piper speaks Arabic and Whisper hears it back (local voice round trip)",async()=>{
+    const {LocalSpeaker,LocalTranscriber}=await import("../src/voice/service.js");
+    const {existsSync,readdirSync,statSync}=await import("node:fs");
+    const dataDir=process.env.LAYANX_DATA_DIR??join(process.env.LOCALAPPDATA??"",`LayanX`);
+    const vpy=join(dataDir,"piper","venv","Scripts","python.exe"),voices=join(dataDir,"piper","voices");
+    assert.ok(existsSync(vpy),"Piper installed by install-piper.ps1");
+    const find=(dir:string,name:RegExp):string|undefined=>{for(const e of readdirSync(dir,{withFileTypes:true})){const f=join(dir,e.name);if(e.isDirectory()){const r=find(f,name);if(r)return r;}else if(name.test(e.name))return f;}return undefined;};
+    const whisperDir=join(dataDir,"whisper");
+    const server=existsSync(whisperDir)?find(whisperDir,/^whisper-server\.exe$/i):undefined;
+    const model=existsSync(join(whisperDir,"models"))?readdirSync(join(whisperDir,"models")).filter(f=>/^ggml-.*\.bin$/.test(f)).map(f=>join(whisperDir,"models",f)).sort((a,b)=>statSync(b).size-statSync(a).size)[0]:undefined;
+    assert.ok(server&&model,"Whisper installed by install-whisper.ps1");
+    const piper=spawn(vpy,["-m","piper.http_server","-m","ar_JO-kareem-medium","--data-dir",voices,"--host","127.0.0.1","--port","18179"],{cwd:voices,windowsHide:true,stdio:"ignore"});
+    const whisper=spawn(server!,["-m",model!,"--host","127.0.0.1","--port","18178","--inference-path","/v1/audio/transcriptions","-t","2"],{windowsHide:true,stdio:"ignore"});
+    const up=async(url:string)=>{for(let i=0;i<120;i++){try{const r=await fetch(url,{signal:AbortSignal.timeout(1000)});if(r.status<500)return;}catch{}await new Promise(r=>setTimeout(r,1000));}throw new Error("not reachable: "+url);};
+    try{
+      await up("http://127.0.0.1:18179/voices");await up("http://127.0.0.1:18178/");
+      const spoken=await new LocalSpeaker("http://127.0.0.1:18179").speak("مرحبا، أنا ليان، مساعدك على هذا الحاسوب.","ar");
+      assert.equal(spoken.audio.subarray(0,4).toString("ascii"),"RIFF");assert.ok(spoken.audio.length>20000,"real audio");
+      const text=await new LocalTranscriber("http://127.0.0.1:18178/v1").transcribe(to16kMono(spoken.audio),"audio/wav","voice.wav","ar");
+      assert.ok(text.trim().length>0,"Whisper returned text");
+      return `wav ${spoken.audio.length} bytes; heard: ${text.slice(0,80)}`;
+    }finally{piper.kill();whisper.kill();}
+  });
+}
+/** PCM16 WAV (any rate, mono/stereo) -> 16 kHz mono, which whisper-server expects. */
+function to16kMono(wav:Buffer):Buffer{
+  let off=12,rate=16000,channels=1,bits=16,data:Buffer|null=null;
+  while(off+8<=wav.length){const id=wav.toString("ascii",off,off+4),size=wav.readUInt32LE(off+4);
+    if(id==="fmt "){channels=wav.readUInt16LE(off+10);rate=wav.readUInt32LE(off+12);bits=wav.readUInt16LE(off+22);}
+    if(id==="data"){data=wav.subarray(off+8,off+8+size);break;}
+    off+=8+size+(size%2);}
+  if(!data||bits!==16)throw new Error("unexpected WAV format");
+  const frames=Math.floor(data.length/2/channels);const src=new Float32Array(frames);
+  for(let i=0;i<frames;i++){let v=0;for(let c=0;c<channels;c++)v+=data.readInt16LE((i*channels+c)*2);src[i]=v/channels;}
+  const n=Math.floor(frames*16000/rate);const out=Buffer.alloc(44+n*2);
+  out.write("RIFF",0,"ascii");out.writeUInt32LE(36+n*2,4);out.write("WAVE",8,"ascii");out.write("fmt ",12,"ascii");out.writeUInt32LE(16,16);out.writeUInt16LE(1,20);out.writeUInt16LE(1,22);
+  out.writeUInt32LE(16000,24);out.writeUInt32LE(32000,28);out.writeUInt16LE(2,32);out.writeUInt16LE(16,34);out.write("data",36,"ascii");out.writeUInt32LE(n*2,40);
+  for(let i=0;i<n;i++){const p=i*rate/16000,j=Math.floor(p),f=p-j;const v=(src[j]??0)*(1-f)+(src[j+1]??src[j]??0)*f;out.writeInt16LE(Math.max(-32768,Math.min(32767,Math.round(v))),44+i*2);}
+  return out;
 }
 const failed=results.filter(r=>!r.ok);
 console.log(JSON.stringify({windowsSmoke:{passed:results.length-failed.length,failed:failed.length,results}},null,1));

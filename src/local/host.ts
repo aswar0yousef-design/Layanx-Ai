@@ -123,6 +123,14 @@ export async function bootstrapLocalRuntime(env:NodeJS.ProcessEnv=process.env,lo
       }
     }catch{log("info","no local speech-to-text server; the assistant uses the browser engine (run scripts\\windows\\install-whisper.ps1 to add Whisper)");}
   }
+  // Local text-to-speech: Piper's HTTP server (scripts\windows\install-piper.ps1) on its default LayanX port.
+  if(!env.LAYANX_TTS_BASE_URL?.trim()){
+    const ttsPort=Number(env.LAYANX_TTS_PORT)||8179;
+    try{
+      const r=await fetch(`http://127.0.0.1:${ttsPort}/voices`,{signal:AbortSignal.timeout(800)});
+      if(r.ok){env.LAYANX_TTS_BASE_URL=`http://127.0.0.1:${ttsPort}`;log("info",`local Arabic voice found on port ${ttsPort} (Piper)`);}
+    }catch{log("info","no local voice server; replies are spoken by the browser (run scripts\\windows\\install-piper.ps1 for the Piper Arabic voice)");}
+  }
   // Models: honour explicit user choices only if they are really installed.
   const pinned:Partial<Record<ModelTask,string>>={...settings.pinnedModels};
   if(env.OLLAMA_MODEL&&!pinned.planning)pinned.planning=env.OLLAMA_MODEL;

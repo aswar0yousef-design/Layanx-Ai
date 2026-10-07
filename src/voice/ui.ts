@@ -195,7 +195,26 @@ function loadVoices(){voices=("speechSynthesis" in window)?speechSynthesis.getVo
 function pickVoice(lang){if(S.voice){var chosen=voices.find(function(v){return v.name===S.voice});if(chosen&&chosen.lang.toLowerCase().indexOf(lang)===0)return chosen}
  var list=voices.filter(function(v){return v.lang.toLowerCase().indexOf(lang)===0});
  return list.find(function(v){return /natural|online/i.test(v.name)})||list.find(function(v){return /microsoft/i.test(v.name)})||list[0]||null}
-function say(text,lang){return new Promise(function(done){
+var localTts=false,player=null,sayDone=null,interrupted=false;
+/** Piper on this computer when it runs (natural Arabic voice); otherwise the browser's own voices. */
+function say(text,lang){
+ if(!S.speak||!text)return Promise.resolve();
+ if(!localTts)return sayBrowser(text,lang);
+ return new Promise(function(done){
+  speaking=true;setState("speak");startBargeIn();
+  var finished=false;var finish=function(){if(finished)return;finished=true;speaking=false;stopBargeIn();if(player){try{player.pause()}catch(e){}player=null}sayDone=null;done()};
+  sayDone=finish;
+  fetch("/v1/voice/speak",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify({text:text,format:"wav",lang:lang||S.lang})})
+   .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.blob()})
+   .then(function(blob){if(finished)return;var url=URL.createObjectURL(blob);player=new Audio(url);
+    player.onended=function(){URL.revokeObjectURL(url);finish()};player.onerror=function(){URL.revokeObjectURL(url);finish()};
+    return player.play()})
+   .catch(function(){if(finished)return;finished=true;speaking=false;stopBargeIn();sayDone=null;localTts=false;sayBrowser(text,lang).then(done)});
+ })}
+/** Interrupt (barge-in): the user started talking while LayanX was speaking. */
+function startBargeIn(){if(!useLocal()||!mic.ctx||blocked)return;mic.mode="barge";mic.buf=[];mic.voiced=0;mic.silence=0;mic.active=true}
+function stopBargeIn(){if(mic.mode==="barge"){mic.mode=null;mic.active=false}}
+function sayBrowser(text,lang){return new Promise(function(done){
  if(!S.speak||!("speechSynthesis" in window)||!text){done();return}
  pauseListening();speechSynthesis.cancel();
  var u=new SpeechSynthesisUtterance(text);u.lang=lang==="en"?"en-US":"ar-SA";var v=pickVoice(lang==="en"?"en":"ar");if(v)u.voice=v;u.rate=1.02;
@@ -205,7 +224,7 @@ function say(text,lang){return new Promise(function(done){
  speechSynthesis.speak(u);
  setTimeout(function(){if(!speechSynthesis.speaking)finish()},Math.max(5000,text.length*130));
 })}
-function stopSpeaking(){if("speechSynthesis" in window)speechSynthesis.cancel();speaking=false;if(!busy)resumeListening()}
+function stopSpeaking(){if("speechSynthesis" in window)speechSynthesis.cancel();if(sayDone)sayDone();speaking=false;if(!busy)resumeListening()}
 function chime(){try{var c=new (window.AudioContext||window.webkitAudioContext)();var o=c.createOscillator(),g=c.createGain();o.frequency.value=880;g.gain.value=0.06;o.connect(g);g.connect(c.destination);o.start();o.frequency.linearRampToValueAtTime(1320,c.currentTime+0.12);o.stop(c.currentTime+0.15)}catch(e){}}
 
 // ---------------------------------------------------------------- brain
@@ -247,7 +266,7 @@ function startRec(mode){
 function stopRec(){mic.active=false;mic.buf=[];mic.voiced=0;mic.silence=0;if(rec){var r=rec;rec=null;recMode=null;try{r.abort()}catch(e){}}}
 function scheduleResume(ms){clearTimeout(restartTimer);restartTimer=setTimeout(resumeListening,ms)}
 function pauseListening(){clearTimeout(restartTimer);stopRec()}
-function resumeListening(){if(busy||speaking||realtime)return;if(S.always&&canListen()&&!blocked)startRec("wake");else setState(canListen()?"idle":"off",canListen()?t("ready"):t("noSR"))}
+function resumeListening(){if(busy||speaking||realtime)return;if(interrupted&&mic.mode==="command"&&mic.active)return;if(S.always&&canListen()&&!blocked)startRec("wake");else setState(canListen()?"idle":"off",canListen()?t("ready"):t("noSR"))}
 
 // ---------------------------------------------------------------- local speech-to-text (Whisper on this PC)
 var localStt=false;
@@ -270,6 +289,11 @@ function startLocal(mode){
 function onFrame(data){
  var sum=0;for(var i=0;i<data.length;i++)sum+=data[i]*data[i];
  var rms=Math.sqrt(sum/data.length),ms=data.length/mic.rate*1000,threshold=Math.max(0.012,mic.noise*3);
+ if(mic.mode==="barge"){
+  // Echo cancellation removes most of our own voice; a clearly louder, sustained voice is the user.
+  if(rms>Math.max(0.03,mic.noise*6))mic.voiced+=ms;else mic.voiced=Math.max(0,mic.voiced-ms/2);
+  if(mic.voiced>=250){interrupted=true;if(sayDone)sayDone();mic.mode="command";mic.buf=[new Float32Array(data)];mic.voiced=ms;mic.silence=0;mic.active=true;setState("listen")}
+  return}
  if(rms>threshold){if(!mic.buf.length&&mic.pre)mic.buf.push(mic.pre);mic.voiced+=ms;mic.silence=0;mic.buf.push(new Float32Array(data));if(mode()==="wake"||state!=="listen")setState("listen")}
  else if(mic.buf.length){mic.silence+=ms;mic.buf.push(new Float32Array(data))}
  else{mic.noise=mic.noise*0.95+rms*0.05;mic.pre=new Float32Array(data)}
@@ -278,7 +302,7 @@ function onFrame(data){
   if(voiced>=350)sendSegment(chunks);else if(mic.mode==="wake")setState("wake")}}
 function mode(){return mic.mode}
 function sendSegment(chunks){
- var m=mic.mode;mic.active=false;setState("think",t("transcribing"));
+ var m=mic.mode;mic.active=false;interrupted=false;setState("think",t("transcribing"));
  fetch("/v1/voice/transcribe",{method:"POST",credentials:"same-origin",headers:{"content-type":"audio/wav","x-layanx-filename":"voice.wav","x-layanx-language":S.lang},body:encodeWav(chunks,mic.rate)})
   .then(function(r){return r.json().catch(function(){return{}}).then(function(d){if(!r.ok)throw new Error(d.error||("HTTP "+r.status));return String(d.text||"").trim()})})
   .then(function(text){
@@ -345,6 +369,7 @@ if("speechSynthesis" in window)speechSynthesis.onvoiceschanged=loadVoices;
 document.addEventListener("visibilitychange",function(){if(!document.hidden&&S.always&&!rec)resumeListening()});
 
 api("/v1/voice/status").then(function(d){var v=d.voice||{};if(v.enabled)$("realtimeBtn").hidden=false;
+ if(v.tts==="local")localTts=true;
  if(v.localStt){localStt=true;setLang(S.lang);if(S.always){pauseListening();resumeListening()}}}).catch(function(){});
 api("/v1/assistant/briefing").then(function(d){var b=d.briefing;if(!b||!b.report)return;if(b.date!==new Date().toISOString().slice(0,10))return;
  $("briefText").textContent=b.report.text[S.lang]||b.report.text.ar;$("briefing").hidden=false}).catch(function(){});
