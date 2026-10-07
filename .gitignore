@@ -16,3 +16,5 @@ recovery/
 
 # Built locally by scripts/build-vsix.mjs
 vscode-extension/*.vsix
+__pycache__/
+*.pyc
