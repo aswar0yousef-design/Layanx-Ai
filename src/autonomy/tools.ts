@@ -64,7 +64,7 @@ export function registerAutonomyTools(core:LayanXCore,options:{coding:boolean}):
     if(input.type==="resolve")return{resolved:resolveIssue(dir,title),title};
     throw new Error("type must be decision, issue or resolve.");
   }});
-  core.tools.register({name:"project.security",description:"security check of the project being built: hard-coded secrets, injection, XSS, disabled TLS, CORS, cookies, JWT, weak crypto, debug mode, vulnerable dependencies (npm audit) and, with payload.url, the HTTP security headers of the running app. Returns a 0-100 score; critical/high findings block delivery.",
+  core.tools.register({name:"project.security",description:"security check of the project being built: hard-coded secrets, injection, XSS, disabled TLS, CORS, cookies, JWT, weak crypto, debug mode, vulnerable dependencies (npm audit, osv-scanner), and with payload.url (an app running on this computer) a passive web baseline like OWASP ZAP: CSP, frame protection, cookies, CORS, error leaks, SRI, exposed .env/.git, plus real ZAP in Docker when available. Returns a 0-100 score; critical/high findings block delivery.",
     permission:"L2_ANALYZE",dangerous:false,actions:["security scan","scan project security","فحص أمني","فحص أمان المشروع"],tags:["security","scan","audit","vulnerability","owasp","أمان","فحص"]});
   core.toolAdapters.register("project.security",createSecurityScanAdapter());
 

@@ -72,6 +72,37 @@ jobs:
       - uses: actions/checkout@v5
       - name: Build image (catches files missing from the Dockerfile)
         run: docker build -t layanx:ci .
+  zap:
+    # Real OWASP ZAP baseline (pinned image) against a deliberately careless local app.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm install
+      - run: docker pull ghcr.io/zaproxy/zaproxy:2.17.0
+      - run: node node_modules/tsx/dist/cli.mjs scripts/zap-smoke.ts
+        env:
+          LAYANX_ZAP: "on"
+  evals:
+    # The planner against a real (small) Ollama model: structured outputs, Arabic and prompt-injection cases.
+    # The score of a 0.5B model is informative only; the job fails on harness or Ollama errors.
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Install Ollama and a small model
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          for i in {1..30}; do curl -sf http://127.0.0.1:11434/api/version && break; sleep 1; done
+          ollama pull qwen2.5:0.5b
+      - run: npm run eval -- --model qwen2.5:0.5b --json eval-report.json
   windows:
     # Real Windows: typecheck, the full test suite, then the Windows-only smoke test
     # (compiled desktop helper with UI Automation, DPAPI secrets, npm without .cmd).

@@ -170,9 +170,28 @@ console.log(JSON.stringify(out));`);
     assert.ok(existsSync(join(proj,".git","hooks")),".git still there");
     assert.equal(out.tmp,"ok","sandbox temp folder is writable: "+JSON.stringify(out));
     assert.equal(out.read,"readable","reading is not restricted (documented)");
-    assert.equal(out.child,"child-ok","child processes with pipes work: "+JSON.stringify(out));
     assert.equal(out.aclTamper,"refused","the command cannot rewrite the .git permissions: "+JSON.stringify(out));
+    assert.equal(out.child,"child-ok","child processes with pipes work: "+JSON.stringify(out));
     return `outside=${out.outside} profile=${out.profile} gitHook=${out.gitHook} tmp=${out.tmpdir}`;
+  });
+  await check("restricted isolation: pipes and child processes (diagnostic)",async()=>{
+    writeFileSync(join(proj,"pipes.cjs"),`
+const cp=require("child_process"),net=require("net");
+const e=x=>x&&(x.code+" "+(x.syscall||"")+" "+String(x.message).slice(0,120));
+const out={};
+const t=(k,f)=>{try{out[k]=f();}catch(x){out[k]="ERR "+e(x);}};
+t("inherit",()=>cp.spawnSync(process.execPath,["-e","1"],{stdio:"inherit"}).error?"ERR "+e(cp.spawnSync(process.execPath,["-e","1"],{stdio:"inherit"}).error):"ok");
+t("stdoutPipe",()=>{const r=cp.spawnSync(process.execPath,["-e","console.log(7)"],{stdio:["ignore","pipe","ignore"],encoding:"utf8"});return r.error?"ERR "+e(r.error):"ok "+String(r.stdout).trim();});
+t("stdinPipe",()=>{const r=cp.spawnSync(process.execPath,["-e","1"],{stdio:["pipe","ignore","ignore"]});return r.error?"ERR "+e(r.error):"ok";});
+t("cmd",()=>{const r=cp.spawnSync(process.env.ComSpec||"cmd.exe",["/d","/c","echo hi"],{encoding:"utf8"});return r.error?"ERR "+e(r.error):"ok "+String(r.stdout).trim();});
+const bs=String.fromCharCode(92),name=bs+bs+"."+bs+"pipe"+bs+"lx-diag-"+process.pid;
+const srv=net.createServer(s=>{s.end("pong");});
+srv.on("error",x=>{out.listen="ERR "+e(x);done();});
+let finished=false;const done=()=>{if(finished)return;finished=true;try{srv.close();}catch{}console.log(JSON.stringify(out));};
+srv.listen(name,()=>{out.listen="ok";const c=net.connect(name);c.on("data",d=>{out.connect="ok "+d;c.destroy();done();});c.on("error",x=>{out.connect="ERR "+e(x);done();});});
+setTimeout(()=>{out.timeout=true;done();},8000);`);
+    const r=await runIn(["pipes.cjs"]);
+    return (r.stdout.trim().split(/\r?\n/).pop()??"")+" "+r.stderr.slice(-200);
   });
   await check("restricted isolation: npm install skips package scripts, npm test runs (project runner)",async()=>{
     const {setIsolation}=await import("../src/autonomy/sandbox.js");

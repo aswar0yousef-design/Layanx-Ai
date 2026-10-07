@@ -14,6 +14,7 @@
     "build": "tsc",
     "start": "node dist/health.js",
     "layanx": "tsx src/cli.ts",
+    "eval": "tsx scripts/eval.ts",
     "smoke:ollama": "tsx scripts/ollama-smoke.ts",
     "doctor": "tsx src/cli.ts doctor",
     "api": "tsx src/api.ts",
