@@ -27,13 +27,13 @@ const samePath=(a:string,b:string)=>path.resolve(a).replace(/[\\/]+$/,"").toLowe
  * point at a different folder than before: an existing link to this folder (also made by VS Code) is
  * reused; a name that is taken, reserved or not Latin (Arabic folder names) gets a suffix from the path.
  */
-export function chooseProjectId(cwd:string,linked:Array<{projectId:string;path:string}>):string{
+export function chooseProjectId(cwd:string,linked:Array<{projectId:string;path:string}>,forceSuffix=false):string{
   const existing=linked.find(l=>samePath(l.path,cwd));
   if(existing)return existing.projectId;
   const base=projectIdFor(cwd);
   const suffix=createHash("sha256").update(path.resolve(cwd).toLowerCase()).digest("hex").slice(0,6);
   const taken=linked.some(l=>l.projectId.toLowerCase()===base);
-  return base==="project"||base==="default"||taken||!/[a-z0-9]/.test(base)?`${base}-${suffix}`:base;
+  return forceSuffix||base==="project"||base==="default"||taken||!/[a-z0-9]/.test(base)?`${base}-${suffix}`:base;
 }
 export function toolKind(tool:string):string{
   if(/^(files\.(read|list|stat)|project\.(knowledge|code_map|inspect)|git\.(status|diff|log)|runtime\.status|mission\.inspect|desktop\.(ui\.tree|screenshot|status))$/.test(tool))return"read";
@@ -106,8 +106,14 @@ export class AcpAgent{
     const cwd=typeof p.cwd==="string"?p.cwd:"";
     if(!cwd||!(path.isAbsolute(cwd)||path.win32.isAbsolute(cwd)))throw Object.assign(new Error("cwd must be an absolute path"),{code:-32602});
     const known=await this.api.request("GET","/v1/projects/link").catch(()=>null);
-    const projectId=chooseProjectId(cwd,Array.isArray(known?.data?.projects)?known!.data.projects:[]);
-    const linked=await this.api.request("POST","/v1/projects/link",{projectId,path:cwd});
+    const list=Array.isArray(known?.data?.projects)?known!.data.projects:[];
+    let projectId=chooseProjectId(cwd,list);
+    let linked=await this.api.request("POST","/v1/projects/link",{projectId,path:cwd});
+    // The plain folder name belongs to another project (its folder, trust or isolation): use the unique one.
+    if(linked.status===409&&linked.data?.error==="project_id_taken"){
+      const unique=chooseProjectId(cwd,list,true);
+      if(unique!==projectId){projectId=unique;linked=await this.api.request("POST","/v1/projects/link",{projectId,path:cwd});}
+    }
     if(linked.status>=400)throw new Error(`LayanX could not open ${cwd}: ${linked.data?.message??linked.data?.error??"HTTP "+linked.status}`);
     const id="lx_"+randomBytes(9).toString("base64url");
     this.sessions.set(id,{id,cwd,projectId,cancelled:false,busy:false});

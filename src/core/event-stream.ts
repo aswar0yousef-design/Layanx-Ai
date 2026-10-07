@@ -29,14 +29,18 @@ function typeFor(event:AuditEvent):MissionEventType{
  return event.result==="success"?"tool.completed":"runtime.event";
 }
 
-function toEvent(event:AuditEvent,projectIds:Record<string,string>):MissionEvent|null{
+function toEvent(event:AuditEvent,projectIds:Record<string,string>,repeat:Map<string,number>):MissionEvent|null{
  const metadata=event.metadata??{};
  const missionId=typeof metadata.missionId==="string"?metadata.missionId:"";
  const projectId=typeof metadata.projectId==="string"?metadata.projectId:projectIds[missionId]??"";
  if(!missionId||!projectId)return null;
  // The id depends on the event itself, not on its position in whichever audit list was synced
  // (the full log and a per-mission list must give the same event the same id).
- const id=createHash("sha256").update(JSON.stringify([missionId,event.timestamp,event.actor,event.action,event.result,event.resource??null,metadata.planIndex??null,metadata.reason??metadata.error??null])).digest("hex").slice(0,24);
+ const content=JSON.stringify([missionId,event.timestamp,event.actor,event.action,event.result,event.resource??null,metadata.planIndex??null,metadata.reason??metadata.error??null]);
+ // Two genuinely separate events with the same content: the second, third... get their own id. Every list
+ // (the full log or one mission's) holds a mission's events in the same order, so the count agrees.
+ const nth=repeat.get(content)??0;repeat.set(content,nth+1);
+ const id=createHash("sha256").update(nth?content+"#"+nth:content).digest("hex").slice(0,24);
  const tool=typeof event.resource==="string"&&!event.resource.startsWith("mission")?event.resource:undefined;
  const message=typeof metadata.reason==="string"?metadata.reason:typeof metadata.error==="string"?metadata.error:undefined;
  const stepIndex=typeof metadata.planIndex==="number"?metadata.planIndex:undefined;
@@ -51,8 +55,9 @@ export class MissionEventStream{
  private seq=0;
 
  sync(audit:AuditEvent[],projectIds:Record<string,string>={}):void{
+  const repeat=new Map<string,number>();
   audit.forEach(event=>{
-   const mapped=toEvent(event,projectIds);
+   const mapped=toEvent(event,projectIds,repeat);
    if(!mapped)return;
    const list=this.events.get(mapped.missionId)??[];
    if(list.some(item=>item.id===mapped.id))return;

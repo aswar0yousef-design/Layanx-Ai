@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import nodePath from "node:path";
 import {getMcpManager,searchRegistry} from "../mcp/manager.js";
 import {acpEditorConfig} from "../acp/config.js";
 import {unprepareRestricted} from "../platform/windows-sandbox.js";
@@ -181,6 +182,19 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
       if(method==="DELETE"){releaseOld();ctx.sendJson(200,{removed:unlinkProject(file,body.projectId)});return true;}
       if(typeof body.path!=="string"){ctx.sendJson(400,{error:"path_required"});return true;}
       const previous=listLinkedProjects().find(l=>l.projectId.toLowerCase()===String(body.projectId).trim().toLowerCase());
+      // An id that is not linked can still belong to a project: its folder in the projects folder, or its
+      // trust/isolation settings. Linking another folder under that id would hand it those settings.
+      if(!previous&&body.replace!==true){
+        const id=String(body.projectId).trim().toLowerCase();
+        let implicit="";try{implicit=projectDir(id);}catch{}
+        const samePath=(a:string,b:string)=>nodePath.resolve(a).toLowerCase()===nodePath.resolve(b).toLowerCase();
+        const ownFolder=Boolean(implicit)&&fs.existsSync(implicit)&&!samePath(implicit,String(body.path));
+        const settings=Boolean(listTrust(process.env.LAYANX_TRUST_FILE)[id]||isolationOf(id));
+        if(ownFolder||(settings&&!(implicit&&samePath(implicit,String(body.path))))){
+          ctx.sendJson(409,{ok:false,error:"project_id_taken",message:`The project name "${id}" is already used${ownFolder?" by "+implicit:" (it has its own trust or isolation settings)"}. Choose another name.`,path:ownFolder?implicit:""});
+          return true;
+        }
+      }
       try{
         const linked=linkProject(file,body.projectId,body.path,{replace:body.replace===true});
         // The old folder leaves restricted isolation: its normal label comes back.

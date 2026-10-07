@@ -60,11 +60,13 @@ assert.deepEqual(gitSafetyArgs(shop+"-copy"),[],"prefix of another folder name i
 // ...and refuse to run at all when the .git is not the one LayanX checked.
 const shopGit=path.join(shop,".git");fs.mkdirSync(shopGit);fs.writeFileSync(path.join(shopGit,"config"),"[core]\n\tbare = false\n[remote \"origin\"]\n\turl = https://example.com/x.git\n");
 assert.equal(gitRunsPrograms(shopGit),false,"plain config");
+fs.appendFileSync(path.join(shopGit,"config"),"[core]\n\thooksPath = .husky\n\tfsmonitor = true\n");
+assert.equal(gitRunsPrograms(shopGit),false,"husky's hooksPath and fsmonitor are overridden by LayanX, not refused");
 assert.equal(gitSafetyArgs(path.join(shop,"src")).length,4,"new .git without program settings: hooks off, allowed");
 fs.appendFileSync(path.join(shopGit,"config"),"[filter \"x\"]\n\tclean = evil.exe\n");
 assert.equal(gitRunsPrograms(shopGit),true);
 assert.throws(()=>gitSafetyArgs(path.join(shop,"src")),/not checked by LayanX/,"new .git with a filter: refused");
-for(const cfg of ["[include]\n\tpath = ../evil\n","[core]\n\tsshCommand = evil\n","[diff \"x\"]\n  textconv = evil\n","[credential]\nhelper=evil\n"]){
+for(const cfg of ["[remote \"o\"]\n\turl = ext::sh -c evil\n","[url \"ext::sh -c evil \"]\n\tinsteadOf = https://\n","[protocol \"ext\"]\n\tallow = always\n","[include]\n\tpath = ../evil\n","[core]\n\tsshCommand = evil\n","[diff \"x\"]\n  textconv = evil\n","[credential]\nhelper=evil\n"]){
   fs.writeFileSync(path.join(shopGit,"config"),cfg);assert.equal(gitRunsPrograms(shopGit),true,cfg);
 }
 const marker=path.join(process.env.LAYANX_STORE_DIR,"sandbox","prepared.json");

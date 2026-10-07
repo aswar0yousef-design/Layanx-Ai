@@ -263,10 +263,10 @@ function slugFor(folderPath) {
   return base.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "project";
 }
 const samePath = (a, b) => require("path").resolve(a).replace(/[\\/]+$/, "").toLowerCase() === require("path").resolve(b).replace(/[\\/]+$/, "").toLowerCase();
-async function resolveProjectId(context, folderPath) {
+async function resolveProjectId(context, folderPath, forceSuffix) {
   const configured = String(vscode.workspace.getConfiguration("layanx").get("projectId", "") || "").trim();
   if (configured) return configured;
-  if (resolvedProject && resolvedProject.path === folderPath) return resolvedProject.id;
+  if (!forceSuffix && resolvedProject && resolvedProject.path === folderPath) return resolvedProject.id;
   const known = await request(context, "/v1/projects/link", "GET");
   const linked = Array.isArray(known.projects) ? known.projects : [];
   const existing = linked.find(l => samePath(l.path, folderPath));
@@ -274,7 +274,7 @@ async function resolveProjectId(context, folderPath) {
   if (!existing) {
     const suffix = require("crypto").createHash("sha256").update(require("path").resolve(folderPath).toLowerCase()).digest("hex").slice(0, 6);
     const taken = linked.some(l => l.projectId.toLowerCase() === id);
-    if (id === "project" || id === "default" || taken || !/[a-z0-9]/.test(id)) id = id + "-" + suffix;
+    if (forceSuffix || id === "project" || id === "default" || taken || !/[a-z0-9]/.test(id)) id = id + "-" + suffix;
   }
   resolvedProject = { path: folderPath, id };
   return id;
@@ -315,12 +315,18 @@ const linkedThisSession = new Set();
 async function linkWorkspace(context, announce) {
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder) return { ok: false, error: "Open a folder in VS Code first." };
-  const projectId = await resolveProjectId(context, folder.uri.fsPath);
+  let projectId = await resolveProjectId(context, folder.uri.fsPath);
   const key = projectId + "|" + folder.uri.fsPath;
   if (!announce && linkedThisSession.has(key)) return { ok: true };
-  const result = await request(context, "/v1/projects/link", "POST", { projectId, path: folder.uri.fsPath });
+  let result = await request(context, "/v1/projects/link", "POST", { projectId, path: folder.uri.fsPath });
+  // The plain folder name belongs to another project (its folder, trust or isolation): use the unique id.
+  const configured = String(vscode.workspace.getConfiguration("layanx").get("projectId", "") || "").trim();
+  if (!result.ok && result.status === 409 && !configured) {
+    projectId = await resolveProjectId(context, folder.uri.fsPath, true);
+    result = await request(context, "/v1/projects/link", "POST", { projectId, path: folder.uri.fsPath });
+  }
   if (!result.ok) return { ok: false, error: "Could not link this folder to LayanX: " + (result.data?.message || result.error) };
-  linkedThisSession.add(key);
+  linkedThisSession.add(projectId + "|" + folder.uri.fsPath);
   if (announce) vscode.window.showInformationMessage("LayanX will work on " + folder.uri.fsPath + " as project \"" + projectId + "\".");
   return { ok: true };
 }

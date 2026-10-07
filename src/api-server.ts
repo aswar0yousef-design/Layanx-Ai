@@ -159,8 +159,10 @@ export function startRuntimeApi(options:RuntimeApiOptions){
      const list=(sub:string)=>{try{return fsReaddir(joinPath(dot,sub)).filter(f=>/^[\w.-]+\.jpg$/.test(f)).slice(0,40);}catch{return[];}};
      const git=await new Promise<{branch:string;commits:string[]}>(resolve=>{
       if(!fsExists(joinPath(dir,".git"))){resolve({branch:"",commits:[]});return;}
-      execFileCb("git",[...gitSafetyArgs(dir),"log","-n","8","--pretty=format:%h %ad %s","--date=short"],{cwd:dir,windowsHide:true,timeout:8000,env:safeChildEnv({allow:["HOME"]})},(e,out)=>{
-       execFileCb("git",[...gitSafetyArgs(dir),"rev-parse","--abbrev-ref","HEAD"],{cwd:dir,windowsHide:true,timeout:8000,env:safeChildEnv({allow:["HOME"]})},(e2,b)=>resolve({branch:e2?"":String(b).trim(),commits:e?[]:String(out).split("\n").filter(Boolean)}));
+      // Computed once, before any callback: it throws when LayanX must not run git in this folder.
+      let safe:string[];try{safe=gitSafetyArgs(dir);}catch{resolve({branch:"",commits:[]});return;}
+      execFileCb("git",[...safe,"log","-n","8","--pretty=format:%h %ad %s","--date=short"],{cwd:dir,windowsHide:true,timeout:8000,env:safeChildEnv({allow:["HOME"]})},(e,out)=>{
+       execFileCb("git",[...safe,"rev-parse","--abbrev-ref","HEAD"],{cwd:dir,windowsHide:true,timeout:8000,env:safeChildEnv({allow:["HOME"]})},(e2,b)=>resolve({branch:e2?"":String(b).trim(),commits:e?[]:String(out).split("\n").filter(Boolean)}));
       });
      });
      const issuesText=readText("KNOWN_ISSUES.md",20000);

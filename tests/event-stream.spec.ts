@@ -53,6 +53,15 @@ test("after works across missions: an older mission's later event is not skipped
  assert.equal(many.list("p1","m1",firstId.list("p1","m1")[0]!.id).length,200,"evicted cursor: only the retained newer events");
 });
 
+test("two separate events with identical content both appear, once each",()=>{
+ const same={timestamp:"2026-10-02T10:00:00.000Z",actor:"core",action:"tool.run",resource:"git",result:"success" as const,metadata:{missionId:"m1"}};
+ const stream=new MissionEventStream();
+ stream.sync([same,{...same}],{m1:"p1"});
+ assert.equal(stream.list("p1","m1").length,2);
+ stream.sync([same,{...same}],{m1:"p1"});
+ assert.equal(stream.list("p1","m1").length,2,"syncing again adds nothing");
+});
+
 test("event retention is bounded per mission",()=>{
  const stream=new MissionEventStream();
  const audit=Array.from({length:250},(_,i)=>({

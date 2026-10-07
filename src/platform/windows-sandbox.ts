@@ -436,15 +436,17 @@ export function restrictedCommand(cmd:{command:string;args:string[];label:string
 }
 
 /**
- * Git settings that make git start another program (filters, diff/merge drivers, credential helpers,
- * ssh/askpass/pager/editor, includes of other config files). A sandboxed command could add them to a
- * .git it made; LayanX does not run git in such a repository.
+ * Git settings that make git start another program: filters, diff/merge drivers, credential helpers,
+ * ssh/askpass/pager/editor, includes of other config files, ext:: remotes and URL rewrites. A sandboxed
+ * command could add them to a .git it made; LayanX does not run git in such a repository.
+ * core.hooksPath and core.fsmonitor are not listed: LayanX's own git always overrides both, so husky's
+ * "core.hooksPath = .husky" is fine.
  */
 export function gitRunsPrograms(gitDir:string):boolean{
   let text="";
   try{text=fs.readFileSync(path.join(gitDir,"config"),"utf8");}catch{return false;}
-  return /^\s*\[\s*include(if)?\b/im.test(text)
-    ||/^\s*(fsmonitor|hookspath|sshcommand|pager|editor|askpass|gitproxy|external|textconv|command|program|helper|driver|clean|smudge|process|uploadpack|receivepack|alternaterefscommand)\s*=/im.test(text);
+  return /^\s*\[\s*(include(if)?|protocol)\b/im.test(text)||/ext::/i.test(text)
+    ||/^\s*(sshcommand|pager|editor|askpass|gitproxy|external|textconv|command|program|helper|driver|clean|smudge|process|uploadpack|receivepack|alternaterefscommand|insteadof|pushinsteadof)\s*=/im.test(text);
 }
 
 let markerCache:{at:number;file:string;low:string[];folders:Marker["folders"]}|null=null;

@@ -99,9 +99,11 @@ jobs:
       - run: npm install
       - name: Install Ollama and a small model
         run: |
-          curl -fsSL https://ollama.com/install.sh | sh
+          # The download from ollama.com fails now and then: three attempts before giving up.
+          for attempt in 1 2 3; do curl -fsSL https://ollama.com/install.sh | sh && break; echo "Ollama install attempt $attempt failed"; sleep 20; done
           for i in {1..30}; do curl -sf http://127.0.0.1:11434/api/version && break; sleep 1; done
-          ollama pull qwen2.5:0.5b
+          for attempt in 1 2 3; do ollama pull qwen2.5:0.5b && break; sleep 15; done
+          ollama list | grep -q qwen2.5:0.5b
       - run: npm run eval -- --model qwen2.5:0.5b --json eval-report.json
   windows:
     # Real Windows: typecheck, the full test suite, then the Windows-only smoke test
