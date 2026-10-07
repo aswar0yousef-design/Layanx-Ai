@@ -1,5 +1,6 @@
 import type {LayanXCore} from "./core/orchestrator.js";
 import type {PermissionLevel} from "./core/types.js";
+import {LEGACY_VERSIONS} from "./mcp/client.js";
 
 interface RpcRequest{id?:string|number;method:string;params?:Record<string,unknown>}
 interface RpcResponse{id?:string|number;result?:unknown;error?:{code:number;message:string;data?:unknown}}
@@ -21,8 +22,11 @@ export class McpGateway{
   if(request.method==="notifications/initialized")return undefined;
   if(request.method==="ping")return response(request.id,{});
   if(request.method==="initialize"){
+   // Legacy (initialize-based) MCP: answer with the client's version when we speak it, otherwise our newest.
+   // Modern 2026-07-28 clients probe with server/discover first; the "method not found" below makes them fall back here.
+   const requested=typeof request.params?.protocolVersion==="string"?request.params.protocolVersion:"";
    return response(request.id,{
-    protocolVersion:"2025-06-18",
+    protocolVersion:(LEGACY_VERSIONS as readonly string[]).includes(requested)?requested:LEGACY_VERSIONS[0],
     capabilities:{tools:{}},
     serverInfo:{name:"LayanX AI MCP Gateway",version:"0.1.0"}
    });

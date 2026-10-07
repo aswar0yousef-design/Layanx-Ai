@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import {getMcpManager,searchRegistry} from "../mcp/manager.js";
 import crypto from "node:crypto";
 import os from "node:os";
 import type {AccessManager} from "../security/access.js";
@@ -201,6 +202,29 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
       if(!file||typeof body.projectId!=="string"||!TRUST_LEVELS.includes(body.level as TrustLevel)){ctx.sendJson(400,{error:"invalid"});return true;}
       setTrust(file,body.projectId,body.level as TrustLevel);
       ctx.sendJson(200,{ok:true,projectId:body.projectId,level:body.level});return true;
+    }
+
+    // MCP tool servers: anyone signed in may look; only the owner on this computer may add, approve or remove.
+    if(path==="/v1/mcp/servers"||path.startsWith("/v1/mcp/servers/")||path==="/v1/mcp/registry"){
+      if(!ctx.principal){ctx.sendJson(401,{error:"unauthorized"});return true;}
+      const mcp=getMcpManager();
+      if(!mcp){ctx.sendJson(503,{error:"runtime_starting",message:"LayanX is still starting."});return true;}
+      try{
+        if(path==="/v1/mcp/servers"&&method==="GET"){ctx.sendJson(200,{servers:mcp.list()});return true;}
+        if(path==="/v1/mcp/registry"&&method==="GET"){ctx.sendJson(200,{results:await searchRegistry(ctx.url.searchParams.get("q")??"")});return true;}
+        if(!owner(ctx))return true;
+        if(path==="/v1/mcp/servers"&&method==="POST"){ctx.sendJson(200,{ok:true,server:mcp.add(await ctx.readJson())});return true;}
+        const m=/^\/v1\/mcp\/servers\/([a-z0-9-]{2,40})\/(approve|disable|remove|safe-tools)$/.exec(path);
+        if(m&&method==="POST"){
+          const [,id,op]=m as unknown as [string,string,string];
+          if(op==="approve"){ctx.sendJson(200,{ok:true,server:await mcp.approve(id)});return true;}
+          if(op==="disable"){await mcp.disable(id);ctx.sendJson(200,{ok:true});return true;}
+          if(op==="remove"){await mcp.remove(id);ctx.sendJson(200,{ok:true});return true;}
+          const body=await ctx.readJson() as {tools?:unknown};
+          await mcp.setSafeTools(id,Array.isArray(body.tools)?body.tools.map(String):[]);ctx.sendJson(200,{ok:true});return true;
+        }
+        ctx.sendJson(404,{error:"not_found"});return true;
+      }catch(error){ctx.sendJson(400,{error:"mcp_failed",message:error instanceof Error?error.message:String(error)});return true;}
     }
 
     if(!path.startsWith("/v1/setup/")&&!path.startsWith("/v1/pair/")&&path!=="/v1/session/logout")return false;

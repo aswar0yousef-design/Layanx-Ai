@@ -8,6 +8,8 @@ export class ToolAdapterRegistry {
     this.adapters.set(tool,adapter);
   }
 
+  unregister(tool:string):boolean{return this.adapters.delete(tool);}
+
   get(tool:string):ToolAdapter {
     const adapter=this.adapters.get(tool);
     if(!adapter) throw new Error(`No adapter registered for tool: ${tool}`);

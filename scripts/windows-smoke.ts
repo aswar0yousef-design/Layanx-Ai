@@ -63,6 +63,18 @@ if(!noUi){
     }finally{spawnSync("taskkill",["/IM","notepad.exe","/F"],{stdio:"ignore"});}
   });
 }
+await check("PowerShell reads redirected stdin (diagnostic)",async()=>{
+  const ps=(extra:string[])=>new Promise<string>(resolve=>{
+    const script="$l=[Console]::In.ReadLine();[Console]::Out.Write('got:'+$l)";
+    const child=spawn("powershell.exe",["-NoLogo","-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass",...extra,"-EncodedCommand",Buffer.from(script,"utf16le").toString("base64")],{windowsHide:true,stdio:["pipe","pipe","pipe"]});
+    let out="";const t=setTimeout(()=>{child.kill();resolve("timeout");},20000);
+    child.stdout.on("data",d=>out+=d);child.on("close",()=>{clearTimeout(t);resolve(out.trim()||"empty");});
+    child.stdin.end("hello\n");
+  });
+  const plain=await ps([]);const none=await ps(["-InputFormat","None"]);
+  assert.equal(none,"got:hello","-InputFormat None must let the script read stdin");
+  return "default="+plain+" inputformat-none="+none;
+});
 await check("DPAPI secret store round trip",async()=>{
   const dir=mkdtempSync(join(tmpdir(),"lx-smoke-"));
   try{

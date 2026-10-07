@@ -60,7 +60,7 @@ export const runWindowsPowerShell:PowerShellRunner=(script,stdin)=>new Promise((
   const exe=path.win32.join(systemRoot,"System32","WindowsPowerShell","v1.0","powershell.exe");
   const encoded=Buffer.from(script,"utf16le").toString("base64");
   const child=spawn(fs.existsSync(exe)?exe:"powershell.exe",
-    ["-NoLogo","-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-EncodedCommand",encoded],
+    ["-NoLogo","-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-InputFormat","None","-EncodedCommand",encoded],
     {shell:false,windowsHide:true,stdio:["pipe","pipe","pipe"],env:safeChildEnv()});
   let out="",err="";
   const timer=setTimeout(()=>{child.kill();reject(new Error("PowerShell DPAPI call timed out."));},30_000);

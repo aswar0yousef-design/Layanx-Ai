@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
-import {createDesktopControlToolAdapter} from "../src/tools/desktop-control.js";
+import {createDesktopControlToolAdapter,windowsHelperCommandChars} from "../src/tools/desktop-control.js";
 import {LayanXCore} from "../src/core/orchestrator.js";
 import type {ModelProviderAdapter} from "../src/models/inference.js";
+
+assert.ok(windowsHelperCommandChars()<16000,"PowerShell bootstrap stays far below the 32,767-char command-line limit: "+windowsHelperCommandChars());
 
 // 1. Adapter: UI Automation operations travel as JSON, text base64-encoded, indexes bounded.
 const real=Object.getOwnPropertyDescriptor(process,"platform")!;

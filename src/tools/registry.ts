@@ -25,5 +25,8 @@ export class ToolRegistry {
     return structuredClone(tool);
   }
   list():ToolDefinition[]{return [...this.tools.values()].map(tool=>structuredClone(tool));}
+  has(name:string):boolean{return this.tools.has(name);}
+  /** Dynamic tools (MCP servers) leave when their server is disabled. */
+  unregister(name:string):boolean{return this.tools.delete(name);}
 }
 function normalize(value:string):string{return value.trim().toLowerCase();}

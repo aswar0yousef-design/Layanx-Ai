@@ -158,11 +158,15 @@ public static class LxUia{
 const WIN_HELPER_PS=[
  "$ErrorActionPreference='Stop'",
  "[Console]::OutputEncoding=[Text.Encoding]::UTF8",
+ // The C# sources arrive as the first two stdin lines: embedding them in -EncodedCommand
+ // exceeded Windows' 32,767-character command-line limit (spawn ENAMETOOLONG).
+ "$deskSrc=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([Console]::In.ReadLine()))",
+ "$uiaSrc=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([Console]::In.ReadLine()))",
  "Add-Type -AssemblyName System.Windows.Forms,System.Drawing",
- "Add-Type -TypeDefinition ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+Buffer.from(WIN_HELPER_CS,"utf8").toString("base64")+"'))) -ReferencedAssemblies System.Windows.Forms,System.Drawing",
+ "Add-Type -TypeDefinition $deskSrc -ReferencedAssemblies System.Windows.Forms,System.Drawing",
  "[LxDesk]::SetProcessDPIAware()|Out-Null",
  "$uiaError=''",
- "try{Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,WindowsBase;$uiaRefs=@([System.Windows.Automation.AutomationElement].Assembly.Location,[System.Windows.Automation.ControlType].Assembly.Location,[System.Windows.Rect].Assembly.Location);Add-Type -TypeDefinition ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+Buffer.from(WIN_UIA_CS,"utf8").toString("base64")+"'))) -ReferencedAssemblies $uiaRefs}catch{$uiaError=$_.Exception.Message}",
+ "try{Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,WindowsBase;$uiaRefs=@([System.Windows.Automation.AutomationElement].Assembly.Location,[System.Windows.Automation.ControlType].Assembly.Location,[System.Windows.Rect].Assembly.Location);Add-Type -TypeDefinition $uiaSrc -ReferencedAssemblies $uiaRefs}catch{$uiaError=$_.Exception.Message}",
  "function Need-Uia{if($uiaError){throw ('UI Automation is unavailable: '+$uiaError)}}",
  "[Console]::Out.WriteLine('{\"ready\":true}')",
  "while(($line=[Console]::In.ReadLine()) -ne $null){",
@@ -179,7 +183,7 @@ const WIN_HELPER_PS=[
  "   'uitree'{Need-Uia;if([string]$r.scope -eq 'windows'){[LxUia]::Windows()}else{[LxUia]::Tree([int]$r.max)}}",
  "   'uiclick'{Need-Uia;$res=[LxUia]::Click([int]$r.index,[bool]$r.pattern);if($res.StartsWith('mouse|')){$p=$res.Split('|');[LxDesk]::Move([int]$p[1],[int]$p[2]);[LxDesk]::Click([bool]$r.right,[bool]$r.double)};$res}",
  "   'uiset'{Need-Uia;$t=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([string]$r.text));$res=[LxUia]::SetText([int]$r.index,$t);if($res -eq 'focus'){[LxDesk]::Keys('CTRL+A');[LxDesk]::Type($t)};$res}",
- "   'focuswin'{Need-Uia;$res=[LxUia]::Focus([string]$r.title);if($res.StartsWith('retry|')){$p=$res.Split('|');[LxDesk]::Keys('ALT');Start-Sleep -Milliseconds 50;if(-not [LxUia]::Retry([int]$p[1])){throw 'Windows refused to bring that window to the front.'};$res='ok|'+$p[1]+'|'+$p[2]};$res}",
+ "   'focuswin'{Need-Uia;$res=[LxUia]::Focus([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([string]$r.title)));if($res.StartsWith('retry|')){$p=$res.Split('|');[LxDesk]::Keys('ALT');Start-Sleep -Milliseconds 50;if(-not [LxUia]::Retry([int]$p[1])){throw 'Windows refused to bring that window to the front.'};$res='ok|'+$p[1]+'|'+$p[2]};$res}",
  "   'ping'{'ok'}",
  "   default{throw 'unknown operation'}",
  "  }",
@@ -187,6 +191,9 @@ const WIN_HELPER_PS=[
  " }catch{[Console]::Out.WriteLine((@{id=$id;ok=$false;error=$_.Exception.Message}|ConvertTo-Json -Compress))}",
  "}"
 ].join("\n");
+
+/** Length of the -EncodedCommand argument; Windows rejects command lines over 32,767 characters. */
+export function windowsHelperCommandChars():number{return Buffer.from(WIN_HELPER_PS,"utf16le").toString("base64").length;}
 
 export interface WindowsDesktopBackend{send(op:Record<string,unknown>,timeoutMs?:number):Promise<string>}
 
@@ -200,10 +207,13 @@ class PowerShellDesktopHelper implements WindowsDesktopBackend{
   this.ready=new Promise((resolve,reject)=>{
    const root=process.env.SystemRoot??process.env.SYSTEMROOT??"C:\\Windows";
    const exe=win32.join(root,"System32","WindowsPowerShell","v1.0","powershell.exe");
-   const child=spawn(existsSync(exe)?exe:"powershell.exe",["-NoLogo","-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-EncodedCommand",Buffer.from(WIN_HELPER_PS,"utf16le").toString("base64")],
+   // -InputFormat None: PowerShell must not treat redirected stdin as pipeline input, or it competes
+   // with the helper's own [Console]::In reads (the classic "PowerShell hangs with redirected stdin").
+   const child=spawn(existsSync(exe)?exe:"powershell.exe",["-NoLogo","-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-InputFormat","None","-EncodedCommand",Buffer.from(WIN_HELPER_PS,"utf16le").toString("base64")],
     {shell:false,windowsHide:true,stdio:["pipe","pipe","pipe"],env:safeChildEnv()});
    this.child=child;
    child.stdin.on("error",()=>undefined);
+   child.stdin.write(Buffer.from(WIN_HELPER_CS,"utf8").toString("base64")+"\n"+Buffer.from(WIN_UIA_CS,"utf8").toString("base64")+"\n");
    const startup=setTimeout(()=>{reject(new Error("Desktop helper did not start: "+this.stderr.slice(0,300)));this.reset();},30_000);
    child.stderr.setEncoding("utf8").on("data",(c:string)=>{this.stderr=(this.stderr+c).slice(-4000);});
    createInterface({input:child.stdout}).on("line",line=>{
@@ -299,7 +309,7 @@ export function createDesktopControlToolAdapter(options:{runner?:Runner;windows?
    if(process.platform!=="win32")throw new Error("Focusing windows by title is available on Windows only.");
    const title=typeof x.title==="string"?x.title.trim():"";
    if(!title||title.length>200)throw new Error("title must be 1-200 characters.");
-   const out=await win().send({op:"focuswin",title});
+   const out=await win().send({op:"focuswin",title:Buffer.from(title,"utf8").toString("base64")});
    const parts=out.split("|");
    return {focused:true,title:parts[2]??title};
   }

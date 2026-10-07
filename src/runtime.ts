@@ -7,6 +7,8 @@ import {RuntimePersistence} from "./core/runtime-persistence.js";
 import {RuntimeStorage} from "./storage/runtime-storage.js";
 import {createOllamaEmbedder,embeddingModelFromEnv} from "./memory/embedder.js";
 import {VectorStore} from "./memory/vector-store.js";
+import {McpManager,setMcpManager} from "./mcp/manager.js";
+import {registerMcpTools} from "./mcp/tools.js";
 import {PostgresStorageAdapter} from "./storage/postgres-adapter.js";
 import {BusinessManager} from "./business/manager.js";
 import {registerBusinessTools} from "./business/tools.js";
@@ -66,6 +68,12 @@ export function createRuntime(options:RuntimeOptions={}){
   registerYahooMailTools(core);
  }
  registerSkillLearningTools(core);
+ // MCP tool servers the owner approved (and the agent's way to request new ones).
+ const mcp=new McpManager(core,McpManager.defaultFile(),{agents:["core"]});
+ setMcpManager(mcp);
+ registerMcpTools(core,mcp);
+ process.once("exit",()=>mcp.killAll());
+ void mcp.start().catch(()=>undefined);
  if(capabilityEnabled("research"))registerAgentReachTools(core);
  let channels!: MessagingChannels;
  const flows=new FlowRuntime(core,async(channel,chatId,text)=>{if(channel==="whatsapp")await channels.whatsapp.sendText(chatId,text);else if(channel==="telegram")await channels.telegram.sendText(chatId,text);});
@@ -81,7 +89,7 @@ export function createRuntime(options:RuntimeOptions={}){
    "trading.account","trading.quote","trading.order.place","trading.position.close",
    "trading.mt5.account","trading.mt5.autoscalper.status","trading.mt5.autoscalper.start","trading.mt5.autoscalper.stop",
    "google.sheets.read","google.drive.file.organize",
-   "project.run","browser.test","agent.external","project.knowledge","project.knowledge.record","project.code_map","project.references","project.security","git.merge","git.publish_pr","learning.search","learning.record"],
+   "project.run","browser.test","agent.external","project.knowledge","project.knowledge.record","project.code_map","project.references","mcp.registry.search","mcp.servers.list","mcp.server.request","project.security","git.merge","git.publish_pr","learning.search","learning.record"],
   forbiddenResources:["secrets","security-controls"],
   requiredPermission:"L4_EXECUTE",
   maxToolCalls:100,
