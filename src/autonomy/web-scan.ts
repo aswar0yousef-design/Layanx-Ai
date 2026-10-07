@@ -156,9 +156,17 @@ export function zapDockerArgs(target:string,workDir:string,image:string,platform
   // Linux: share the host network so 127.0.0.1 is the app. Docker Desktop: host.docker.internal is this PC.
   const u=new URL(target);
   let network:string[];
+  // Docker Desktop: dev servers (Vite, webpack) refuse unknown Host headers, so ZAP sends the original
+  // localhost Host while connecting to host.docker.internal.
+  let replacer:string[]=[];
   if(platform==="linux")network=["--network","host"];
-  else{network=["--add-host","host.docker.internal:host-gateway"];u.hostname="host.docker.internal";}
-  return["run","--rm",...network,"--mount",`type=bind,source=${workDir},target=/zap/wrk`,image,"zap-baseline.py","-t",u.toString(),"-J","zap.json","-m","1","-T","5","-I"];
+  else{
+    network=["--add-host","host.docker.internal:host-gateway"];
+    const original=u.host;u.hostname="host.docker.internal";
+    const r="replacer.full_list(0)";
+    replacer=["-z",[`-config ${r}.description=localhost-host`,`-config ${r}.enabled=true`,`-config ${r}.matchtype=REQ_HEADER`,`-config ${r}.matchstr=Host`,`-config ${r}.regex=false`,`-config ${r}.replacement=${original}`].join(" ")];
+  }
+  return["run","--rm",...network,"--mount",`type=bind,source=${workDir},target=/zap/wrk`,image,"zap-baseline.py","-t",u.toString(),"-J","zap.json","-m","1","-T","5","-I",...replacer];
 }
 export async function zapBaseline(url:string,env:NodeJS.ProcessEnv=process.env):Promise<{ran:boolean;findings?:SecurityFinding[];note?:string;image?:string}>{
   const mode=(env.LAYANX_ZAP??"auto").toLowerCase();

@@ -1,4 +1,5 @@
 import {spawn} from "node:child_process";
+import {gitSafetyArgs} from "../platform/windows-sandbox.js";
 import {resolve} from "node:path";
 
 export interface GitCommitOptions{
@@ -60,7 +61,7 @@ export class GitCommitGenerator{
 
   private async run(cwd:string,args:string[]):Promise<{stdout:string;stderr:string;exitCode:number}>{
     return await new Promise((resolveResult,reject)=>{
-      const child=spawn("git",args,{cwd,shell:false,windowsHide:true});
+      const child=spawn("git",[...gitSafetyArgs(cwd),...args],{cwd,shell:false,windowsHide:true});
       let stdout="",stderr="";
       child.stdout?.on("data",chunk=>stdout+=String(chunk).slice(0,65536));
       child.stderr?.on("data",chunk=>stderr+=String(chunk).slice(0,65536));

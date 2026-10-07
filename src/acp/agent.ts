@@ -1,4 +1,4 @@
-import {randomBytes} from "node:crypto";
+import {createHash,randomBytes} from "node:crypto";
 import path from "node:path";
 
 /**
@@ -20,6 +20,20 @@ const GOAL_LIMIT=4000;
 export function projectIdFor(cwd:string):string{
   const base=cwd.split(/[\\/]+/).filter(Boolean).pop()||"project";
   return base.toLowerCase().replace(/[^a-z0-9_-]+/g,"-").replace(/^-+|-+$/g,"").slice(0,60)||"project";
+}
+const samePath=(a:string,b:string)=>path.resolve(a).replace(/[\\/]+$/,"").toLowerCase()===path.resolve(b).replace(/[\\/]+$/,"").toLowerCase();
+/**
+ * The project id for an editor folder. Trust and isolation are kept per project id, so an id must never
+ * point at a different folder than before: an existing link to this folder (also made by VS Code) is
+ * reused; a name that is taken, reserved or not Latin (Arabic folder names) gets a suffix from the path.
+ */
+export function chooseProjectId(cwd:string,linked:Array<{projectId:string;path:string}>):string{
+  const existing=linked.find(l=>samePath(l.path,cwd));
+  if(existing)return existing.projectId;
+  const base=projectIdFor(cwd);
+  const suffix=createHash("sha256").update(path.resolve(cwd).toLowerCase()).digest("hex").slice(0,6);
+  const taken=linked.some(l=>l.projectId.toLowerCase()===base);
+  return base==="project"||base==="default"||taken||!/[a-z0-9]/.test(base)?`${base}-${suffix}`:base;
 }
 export function toolKind(tool:string):string{
   if(/^(files\.(read|list|stat)|project\.(knowledge|code_map|inspect)|git\.(status|diff|log)|runtime\.status|mission\.inspect|desktop\.(ui\.tree|screenshot|status))$/.test(tool))return"read";
@@ -91,7 +105,8 @@ export class AcpAgent{
   private async newSession(p:Json){
     const cwd=typeof p.cwd==="string"?p.cwd:"";
     if(!cwd||!(path.isAbsolute(cwd)||path.win32.isAbsolute(cwd)))throw Object.assign(new Error("cwd must be an absolute path"),{code:-32602});
-    const projectId=projectIdFor(cwd);
+    const known=await this.api.request("GET","/v1/projects/link").catch(()=>null);
+    const projectId=chooseProjectId(cwd,Array.isArray(known?.data?.projects)?known!.data.projects:[]);
     const linked=await this.api.request("POST","/v1/projects/link",{projectId,path:cwd});
     if(linked.status>=400)throw new Error(`LayanX could not open ${cwd}: ${linked.data?.message??linked.data?.error??"HTTP "+linked.status}`);
     const id="lx_"+randomBytes(9).toString("base64url");

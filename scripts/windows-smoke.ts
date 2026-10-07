@@ -178,12 +178,20 @@ const out={
   tmpdir:os.tmpdir(),
   read:(()=>{try{return fs.readFileSync(${JSON.stringify(join(outside,"secret.txt"))},"utf8");}catch(e){return e.code;}})(),
   child:(()=>{try{return cp.execFileSync(process.execPath,["-e","console.log('child-ok')"],{encoding:"utf8"}).trim();}catch(e){return String(e.message).slice(0,200);}})(),
-  aclTamper:(()=>{try{cp.execFileSync("icacls",[path.join(process.cwd(),".git"),"/reset","/t"],{stdio:"pipe"});return"changed";}catch(e){return"refused";}})()
+  aclTamper:(()=>{try{cp.execFileSync("icacls",[path.join(process.cwd(),".git"),"/reset","/t"],{stdio:"pipe"});return"changed";}catch(e){return"refused";}})(),
+  secretRead:(()=>{try{return fs.readFileSync(${JSON.stringify(join(store,"secret-test.txt"))},"utf8");}catch(e){return e.code||"denied";}})(),
+  gitSwap:(()=>{try{fs.renameSync(path.join(process.cwd(),".git"),path.join(process.cwd(),"old-git"));fs.mkdirSync(path.join(process.cwd(),".git","hooks"),{recursive:true});fs.writeFileSync(path.join(process.cwd(),".git","hooks","pre-commit"),"evil");return"swapped";}catch(e){return e.code||"refused";}})()
 };
 console.log(JSON.stringify(out));`);
+    writeFileSync(join(store,"secret-test.txt"),"owner-only");
+    const gitBefore=ws.gitSnapshot(proj);
     const r=await runIn(["probe.cjs"]);
     assert.equal(r.exitCode,0,r.stderr.slice(-500));
     const out=JSON.parse(r.stdout.trim().split(/\r?\n/).pop()!);
+    // While .git is swapped (as during a long dev server), LayanX's own git refuses to run there.
+    if(out.gitSwap==="swapped")assert.throws(()=>ws.gitSafetyArgs(proj,env),/was replaced/,"git refused on a swapped .git");
+    const gitWarning=await ws.verifyGitAfterRun(proj,gitBefore,env);
+    assert.ok(setup!.tmp.startsWith(ws.projectSandboxDir(proj,env)),"temp folder belongs to this project");
     assert.equal(out.inside,"ok","write inside the project: "+JSON.stringify(out));
     assert.equal(out.insideDir,"ok","new folders inside the project: "+JSON.stringify(out));
     assert.notEqual(out.outside,"ok","outside folder must be read-only: "+JSON.stringify(out));
@@ -196,7 +204,12 @@ console.log(JSON.stringify(out));`);
     assert.equal(out.read,"readable","reading is not restricted (documented)");
     assert.equal(out.aclTamper,"refused","the command cannot rewrite the .git permissions: "+JSON.stringify(out));
     assert.equal(out.child,"child-ok","child processes with pipes work: "+JSON.stringify(out));
-    return `outside=${out.outside} profile=${out.profile} gitHook=${out.gitHook} tmp=${out.tmpdir}`;
+    assert.notEqual(out.secretRead,"owner-only","LayanX's own data (secrets, sessions, tickets) is unreadable: "+JSON.stringify(out));
+    if(out.gitSwap==="swapped"){
+      assert.match(gitWarning??"",/put the original \.git back/,"a swapped .git is undone: "+gitWarning);
+      assert.ok(!existsSync(join(proj,".git","hooks","pre-commit")),"the planted hook is not in the real .git");
+    }else assert.equal(gitWarning,undefined);
+    return `outside=${out.outside} profile=${out.profile} gitHook=${out.gitHook} secret=${out.secretRead} gitSwap=${out.gitSwap}${gitWarning?" (undone)":""} tmp=${out.tmpdir}`;
   });
   await check("restricted isolation: pipes and child processes (diagnostic)",async()=>{
     writeFileSync(join(proj,"pipes.cjs"),`
@@ -233,7 +246,7 @@ setTimeout(()=>{out.timeout=true;done();},8000);`);
       const runner=createProjectRunnerAdapter();
       const req=(task:string)=>({missionId:"m",agentId:"core",projectId:"shop",tool:"project.run",action:"run project task",permission:"L4_EXECUTE",idempotencyKey:"k",payload:{task}} as any);
       const install=await runner.execute(req("install")) as any;
-      const npmLog=()=>{try{const d=join(store,"sandbox","cache","npm","_logs");const f=readdirSync(d).sort().pop();return f?readFileSync(join(d,f),"utf8").split(/\r?\n/).filter(l=>/error|verbose stack|EPERM|EACCES/i.test(l)).slice(-12).join(" | "):"";}catch{return"";}};
+      const npmLog=()=>{try{const d=join(ws.projectSandboxDir(shop,{...process.env,LAYANX_STORE_DIR:store}),"cache","npm","_logs");const f=readdirSync(d).sort().pop();return f?readFileSync(join(d,f),"utf8").split(/\r?\n/).filter(l=>/error|verbose stack|EPERM|EACCES/i.test(l)).slice(-12).join(" | "):"";}catch{return"";}};
       assert.equal(install.ok,true,"install: "+(install.stderr||install.stdout).slice(-300)+" npm log: "+npmLog());
       assert.match(install.command,/^restricted: .*--ignore-scripts/);
       assert.ok(existsSync(join(shop,"node_modules","evil-dep")),"dependency installed");
@@ -247,6 +260,22 @@ setTimeout(()=>{out.timeout=true;done();},8000);`);
       for(const [k,v] of Object.entries({LAYANX_WORKSPACE_ROOT:saved.ws,LAYANX_ISOLATION_FILE:saved.iso,LAYANX_STORE_DIR:saved.store}))if(v===undefined)delete process.env[k];
       rmSync(root,{recursive:true,force:true});
     }
+  });
+  await check("restricted isolation: LayanX's own git commands run no project hooks (husky-style hooksPath)",async()=>{
+    const repo=mkdtempSync(join(tmpdir(),"lx-rs-hooks-"));
+    try{
+      await ws.prepareRestricted(repo,env);
+      const git=(args:string[])=>spawnSync("git",args,{cwd:repo,encoding:"utf8"});
+      git(["init","-q"]);git(["config","core.hooksPath",".husky"]);
+      mkdirSync(join(repo,".husky"),{recursive:true});
+      writeFileSync(join(repo,".husky","pre-commit"),"#!/bin/sh\necho ran > hook-ran.txt\n");
+      const id=["-c","user.name=t","-c","user.email=t@example.com"];
+      const safe=spawnSync("git",[...ws.gitSafetyArgs(repo,env),...id,"commit","--allow-empty","-qm","safe"],{cwd:repo,encoding:"utf8"});
+      assert.equal(safe.status,0,safe.stderr);
+      assert.ok(!existsSync(join(repo,"hook-ran.txt")),"the hook in the project did not run");
+      const control=spawnSync("git",[...id,"commit","--allow-empty","-qm","control"],{cwd:repo,encoding:"utf8"});
+      return `safe commit without hooks; control commit ${control.status===0?"ran":"failed"} the hook: ${existsSync(join(repo,"hook-ran.txt"))}`;
+    }finally{try{rmSync(repo,{recursive:true,force:true});}catch{}}
   });
   await check("restricted isolation: a timeout stops the whole process tree; memory limit holds",async()=>{
     assert.ok(setup,"prepared");

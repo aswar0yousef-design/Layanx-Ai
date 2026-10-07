@@ -36,6 +36,8 @@ for(const model of models){
   Object.assign(process.env,{OLLAMA_MODEL:model,OLLAMA_VISION_MODEL:"",LAYANX_AI_MODE:"local",LAYANX_OLLAMA_ROUTING:"single",LAYANX_STORE_DIR:path.join(store,model.replace(/[^\w.-]/g,"_")),LAYANX_CAPABILITIES:process.env.LAYANX_CAPABILITIES??"all",LAYANX_DESKTOP_PREWARM:"off",LAYANX_SEMANTIC_MEMORY:"off"});
   const {createRuntime}=await import("../src/runtime.js");
   const {AiMissionPlanner}=await import("../src/core/ai-planner.js");
+  const {ollamaSchemaStats}=await import("../src/providers/ollama-provider.js");
+  const schemaBefore=ollamaSchemaStats.fallbacks;
   const runtime=createRuntime({storagePath:path.join(process.env.LAYANX_STORE_DIR!,"runtime.json")}) as any;
   const core=runtime.core??runtime;
   const contract=core.agents.get("core");
@@ -52,6 +54,9 @@ for(const model of models){
   const errorKinds=new Map<string,number>();
   for(const c of report.cases)if(c.error){const k=c.error.replace(/\s+/g," ").slice(0,90);errorKinds.set(k,(errorKinds.get(k)??0)+1);}
   if(errorKinds.size)annotate("notice",`${model} planner errors: `+[...errorKinds].map(([k,n])=>`${n}x ${k}`).join(" | "));
+  const fallbacks=ollamaSchemaStats.fallbacks-schemaBefore;
+  console.log(fallbacks?`  Ollama refused the response schema ${fallbacks} times (plain JSON used instead): ${ollamaSchemaStats.lastError}`:"  Ollama accepted every response schema.");
+  if(fallbacks)annotate("notice",`${model}: Ollama refused the response schema ${fallbacks}x: ${ollamaSchemaStats.lastError}`);
   annotate(report.passRate>=Number(arg("--min-pass")??0)?"notice":"error",`${model}: ${report.passed}/${report.cases.length} passed (${Object.entries(report.suites).map(([s,v])=>`${s} ${v.passed}/${v.total}`).join(", ")}), ${report.errors} planner errors, avg ${(report.avgMs/1000).toFixed(1)} s`);
 }
 console.log("\n"+formatReports(reports));
@@ -60,4 +65,6 @@ fs.mkdirSync(path.dirname(out),{recursive:true});fs.writeFileSync(out,JSON.strin
 console.log("\nReport: "+out);
 fs.rmSync(store,{recursive:true,force:true});
 const min=arg("--min-pass");
+// Every case failing with a planner error means Ollama or the harness is broken, not a weak model.
+if(reports.some(r=>r.cases.length>0&&r.errors===r.cases.length)){annotate("error","every case ended in a planner error");process.exit(3);}
 process.exit(min!==undefined&&reports.some(r=>r.passRate<Number(min))?1:0);

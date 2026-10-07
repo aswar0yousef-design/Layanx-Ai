@@ -4,13 +4,20 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import {goalFromPrompt,projectIdFor,toolKind} from "../src/acp/agent.js";
+import {chooseProjectId,goalFromPrompt,projectIdFor,toolKind} from "../src/acp/agent.js";
 
 const root=path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/,"$1")),"..");
 
 // 1. Pure helpers.
 assert.equal(projectIdFor("C:\\Users\\me\\Projects\\My Shop\\"),"my-shop");
 assert.equal(projectIdFor("/home/me/code/blog_v2"),"blog_v2");
+// Project ids never re-point an existing project (trust and isolation are per id).
+assert.equal(chooseProjectId("/home/me/shop",[{projectId:"Shop-VSCode",path:"/home/me/shop/"}]),"Shop-VSCode","reuses the link VS Code made");
+assert.match(chooseProjectId("/home/me/shop",[{projectId:"shop",path:"/home/other/shop"}]),/^shop-[0-9a-f]{6}$/,"a taken name gets a suffix");
+assert.match(chooseProjectId("/home/me/default",[]),/^default-[0-9a-f]{6}$/,"never takes over the default project");
+assert.match(chooseProjectId("/home/me/مشروعي",[]),/^project-[0-9a-f]{6}$/,"Arabic folder names get a stable unique id");
+assert.notEqual(chooseProjectId("/home/me/مشروعي",[]),chooseProjectId("/home/me/متجري",[]));
+assert.equal(chooseProjectId("/home/me/blog",[]),"blog");
 assert.equal(toolKind("files.read"),"read");assert.equal(toolKind("files.write"),"edit");assert.equal(toolKind("project.run"),"execute");
 assert.equal(toolKind("research.internet"),"search");assert.equal(toolKind("browser.read"),"fetch");assert.equal(toolKind("ads.snapshot"),"other");
 const g=goalFromPrompt([{type:"text",text:"Fix the login bug"},{type:"resource_link",uri:"file:///p/src/login.ts",name:"login.ts"},{type:"resource",resource:{uri:"file:///p/a.ts",text:"export const a=1;"}}],"/p");
@@ -30,7 +37,7 @@ const layanx=http.createServer((req,res)=>{
     calls.push({method:req.method??"",url,body,auth:req.headers.authorization});
     const send=(status:number,data:unknown)=>{res.writeHead(status,{"content-type":"application/json"});res.end(JSON.stringify(data));};
     if(req.headers.authorization!=="Bearer test-token")return send(401,{error:"unauthorized"});
-    if(url==="/v1/projects/link")return send(200,{ok:true});
+    if(url==="/v1/projects/link")return send(200,req.method==="GET"?{projects:[{projectId:"other",path:"/elsewhere"}]}:{ok:true});
     if(url==="/v1/missions"&&req.method==="POST"){loops=0;events.length=0;return send(201,{ok:true,mission});}
     if(url.startsWith("/v1/missions/m1/events"))return send(200,{ok:true,events});
     if(url.startsWith("/v1/missions/m1?"))return send(200,{ok:true,mission});
@@ -71,7 +78,7 @@ const cwd=path.join(os.tmpdir(),"My Shop");
 write({jsonrpc:"2.0",id:2,method:"session/new",params:{cwd,mcpServers:[{name:"x",command:"evil.exe",args:[],env:[]}]}});
 const session=(await waitFor(m=>m.id===2,"session/new")).result.sessionId;
 assert.match(session,/^lx_/);
-assert.deepEqual(calls.find(c=>c.url==="/v1/projects/link")!.body,{projectId:"my-shop",path:cwd});
+assert.deepEqual(calls.find(c=>c.url==="/v1/projects/link"&&c.method==="POST")!.body,{projectId:"my-shop",path:cwd});
 assert.match(stderr,/ignoring 1 MCP server/);
 
 // Approve path: plan -> tool calls -> permission prompt -> approve -> done.

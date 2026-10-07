@@ -12,40 +12,27 @@ same client:
   POST /v1/audio/transcriptions   multipart/form-data: file=<WAV>, language=ar  -> {"text": "..."}
 
   python cohere_asr_server.py --model <downloaded model folder> [--port 8181] [--device cpu|cuda]
+  python cohere_asr_server.py --model <folder> --selftest <file.wav>    (load, transcribe once, exit)
+
+Requests must come from this computer (Host check) and carry the x-layanx-client header, which a web
+page cannot add without a CORS preflight that this server never answers.
 
 Loopback only. LAYANX_COHERE_FAKE=1 answers without loading the model (used by tests).
 """
 import argparse
-import io
 import json
 import os
 import sys
 import threading
 import time
-import wave
 from email.parser import BytesParser
 from email.policy import HTTP
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-import numpy as np
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from wavio import RATE, local_host_ok, read_wav  # noqa: E402
 
-RATE = 16000
 MAX_BODY = 32 * 1024 * 1024
-
-
-def read_wav(data):
-    """WAV bytes (PCM16, any rate, mono/stereo) -> float32 mono at 16 kHz in [-1, 1]."""
-    with wave.open(io.BytesIO(data), "rb") as w:
-        if w.getsampwidth() != 2:
-            raise ValueError("only 16-bit PCM WAV is supported")
-        channels, rate, frames = w.getnchannels(), w.getframerate(), w.readframes(w.getnframes())
-    x = np.frombuffer(frames, dtype="<i2").astype(np.float32) / 32768.0
-    if channels > 1:
-        x = x[: len(x) // channels * channels].reshape(-1, channels).mean(axis=1)
-    if rate != RATE and len(x):
-        n = int(len(x) * RATE / rate)
-        x = np.interp(np.linspace(0, len(x) - 1, n), np.arange(len(x)), x).astype(np.float32)
-    return x
 
 
 def parse_form(content_type, body):
@@ -96,9 +83,17 @@ def main():
     ap.add_argument("--model", required=True)
     ap.add_argument("--port", type=int, default=8181)
     ap.add_argument("--device", default=os.environ.get("LAYANX_COHERE_DEVICE", "cpu"), choices=["cpu", "cuda", "auto"])
+    ap.add_argument("--selftest")
     args = ap.parse_args()
     if os.environ.get("LAYANX_COHERE_FAKE") != "1" and not os.path.exists(os.path.join(args.model, "model.safetensors")):
         sys.exit(f"cohere-asr: no model in {args.model}; run scripts\\windows\\install-cohere-asr.ps1")
+    if args.selftest:
+        started = time.time()
+        engine = Engine(args.model, args.device)
+        with open(args.selftest, "rb") as f:
+            text = engine.transcribe(read_wav(f.read(), max_seconds=120), "ar")
+        print(json.dumps({"ok": bool(text.strip()), "text": text, "device": engine.device, "seconds": round(time.time() - started, 1)}, ensure_ascii=False), flush=True)
+        sys.exit(0 if text.strip() else 1)
     # The port opens at once (LayanX finds the engine while it starts); the model loads in the background.
     state = {"engine": None, "error": None}
 
@@ -126,6 +121,8 @@ def main():
             self.wfile.write(data)
 
         def do_GET(self):
+            if not local_host_ok(self.headers.get("host"), args.port):
+                return self.send(403, {"error": "local_only"})
             if self.path in ("/", "/health"):
                 engine = state["engine"]
                 return self.send(200, {"ok": state["error"] is None, "engine": "cohere-transcribe-arabic", "ready": engine is not None,
@@ -133,6 +130,8 @@ def main():
             self.send(404, {"error": "not_found"})
 
         def do_POST(self):
+            if not local_host_ok(self.headers.get("host"), args.port) or not self.headers.get("x-layanx-client"):
+                return self.send(403, {"error": "local_only"})
             if self.path.rstrip("/") not in ("/v1/audio/transcriptions", "/inference"):
                 return self.send(404, {"error": "not_found"})
             length = int(self.headers.get("content-length") or 0)
@@ -146,7 +145,7 @@ def main():
                 if "file" not in fields:
                     return self.send(400, {"error": "file is required"})
                 lang = (fields.get("language") or b"ar").decode().strip().lower() or "ar"
-                text = engine.transcribe(read_wav(fields["file"]), "ar" if lang == "auto" else lang)
+                text = engine.transcribe(read_wav(fields["file"], max_seconds=120), "ar" if lang == "auto" else lang)
                 self.send(200, {"text": text})
             except Exception as e:
                 self.send(400, {"error": str(e)[:300]})

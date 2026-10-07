@@ -55,11 +55,18 @@ export function assertLinkableFolder(folder:string):string{
   return resolved;
 }
 
-export function linkProject(file:string,projectId:string,folder:string):{projectId:string;path:string}{
+/** Thrown when a project ID already points at another folder (trust and isolation follow the ID). */
+export class ProjectIdTakenError extends Error{constructor(readonly projectId:string,readonly existing:string){super(`The project name "${projectId}" is already linked to ${existing}. Choose another name, or replace that link on purpose.`);}}
+
+export function linkProject(file:string,projectId:string,folder:string,options:{replace?:boolean}={}):{projectId:string;path:string}{
   const id=projectId.trim();
   if(!id||id.length>64||/[\\/]|^\.\.?$/.test(id))throw new Error("Invalid project ID.");
   const resolved=assertLinkableFolder(folder);
   const map={...load(file)};
+  const existing=map[key(id)];
+  const same=(a:string,b:string)=>process.platform==="win32"?a.toLowerCase()===b.toLowerCase():a===b;
+  // Never re-point a project silently: its trust level and isolation would move to the other folder.
+  if(existing&&!same(existing,resolved)&&!options.replace)throw new ProjectIdTakenError(key(id),existing);
   map[key(id)]=resolved;
   fs.mkdirSync(path.dirname(file),{recursive:true});
   const tmp=file+".tmp-"+process.pid;

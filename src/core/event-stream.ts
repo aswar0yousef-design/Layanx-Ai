@@ -29,12 +29,14 @@ function typeFor(event:AuditEvent):MissionEventType{
  return event.result==="success"?"tool.completed":"runtime.event";
 }
 
-function toEvent(event:AuditEvent,index:number,projectIds:Record<string,string>):MissionEvent|null{
+function toEvent(event:AuditEvent,projectIds:Record<string,string>):MissionEvent|null{
  const metadata=event.metadata??{};
  const missionId=typeof metadata.missionId==="string"?metadata.missionId:"";
  const projectId=typeof metadata.projectId==="string"?metadata.projectId:projectIds[missionId]??"";
  if(!missionId||!projectId)return null;
- const id=createHash("sha256").update(JSON.stringify([missionId,index,event.timestamp,event.actor,event.action,event.result])).digest("hex").slice(0,24);
+ // The id depends on the event itself, not on its position in whichever audit list was synced
+ // (the full log and a per-mission list must give the same event the same id).
+ const id=createHash("sha256").update(JSON.stringify([missionId,event.timestamp,event.actor,event.action,event.result,event.resource??null,metadata.planIndex??null,metadata.reason??metadata.error??null])).digest("hex").slice(0,24);
  const tool=typeof event.resource==="string"&&!event.resource.startsWith("mission")?event.resource:undefined;
  const message=typeof metadata.reason==="string"?metadata.reason:typeof metadata.error==="string"?metadata.error:undefined;
  const stepIndex=typeof metadata.planIndex==="number"?metadata.planIndex:undefined;
@@ -44,23 +46,34 @@ function toEvent(event:AuditEvent,index:number,projectIds:Record<string,string>)
 export class MissionEventStream{
  private readonly events=new Map<string,MissionEvent[]>();
  private readonly maxPerMission=200;
+ /** Arrival order across all missions (ids are hashes): lets `after` work on the combined list too. */
+ private readonly order=new Map<string,number>();
+ private seq=0;
 
  sync(audit:AuditEvent[],projectIds:Record<string,string>={}):void{
-  audit.forEach((event,index)=>{
-   const mapped=toEvent(event,index,projectIds);
+  audit.forEach(event=>{
+   const mapped=toEvent(event,projectIds);
    if(!mapped)return;
    const list=this.events.get(mapped.missionId)??[];
    if(list.some(item=>item.id===mapped.id))return;
    list.push(mapped);
+   this.order.set(mapped.id,++this.seq);
    if(list.length>this.maxPerMission)list.splice(0,list.length-this.maxPerMission);
+   // Positions of evicted events are kept for a while, so a client holding one still gets only newer events.
+   if(this.order.size>20_000)for(const key of [...this.order.keys()].slice(0,this.order.size-20_000))this.order.delete(key);
    this.events.set(mapped.missionId,list);
   });
  }
 
- /** Events in arrival order; `after` is the id of the last event the caller has seen (ids are hashes, not ordered). */
+ /**
+  * Events in arrival order; `after` is the id of the last event the caller has seen (ids are hashes, not
+  * ordered). An id this stream never saw returns everything it has (clients drop ids they already have).
+  */
  list(projectId:string,missionId?:string,after?:string):MissionEvent[]{
-  let source=missionId?(this.events.get(missionId)??[]):[...this.events.values()].flat();
-  if(after){const at=source.findIndex(event=>event.id===after);if(at>=0)source=source.slice(at+1);}
+  const pos=(event:MissionEvent)=>this.order.get(event.id)??0;
+  let source=(missionId?(this.events.get(missionId)??[]):[...this.events.values()].flat()).slice().sort((a,b)=>pos(a)-pos(b));
+  const from=after?this.order.get(after):undefined;
+  if(from!==undefined)source=source.filter(event=>pos(event)>from);
   return source.filter(event=>event.projectId===projectId).map(event=>structuredClone(event));
  }
 }

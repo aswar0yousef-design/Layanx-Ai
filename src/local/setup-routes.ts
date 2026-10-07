@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import {getMcpManager,searchRegistry} from "../mcp/manager.js";
 import {acpEditorConfig} from "../acp/config.js";
+import {unprepareRestricted} from "../platform/windows-sandbox.js";
+import {projectDir} from "../autonomy/project-dir.js";
 import crypto from "node:crypto";
 import os from "node:os";
 import type {AccessManager} from "../security/access.js";
@@ -12,10 +14,11 @@ import {recommendedPull} from "../providers/ollama-discovery.js";
 import type {AdaptiveOllama} from "../providers/adaptive-ollama.js";
 import {CLOUD_PROVIDERS,sanitizeSettings,type CloudProviderId,type LocalSettings} from "./settings.js";
 import {tailscaleInfo,tailscaleServe,type TailscaleInfo} from "../platform/tailscale.js";
-import {linkProject,listLinkedProjects,unlinkProject} from "../platform/linked-projects.js";
+import {linkProject,listLinkedProjects,ProjectIdTakenError,unlinkProject} from "../platform/linked-projects.js";
 import {listTrust,setTrust,trustLevel,TRUST_LEVELS,type TrustLevel} from "../autonomy/trust.js";
 import {dockerVersion,ISOLATION_LEVELS,listIsolation,restrictedAvailable,setIsolation,type Isolation} from "../autonomy/sandbox.js";
 
+const isolationOf=(projectId:string)=>listIsolation(process.env.LAYANX_ISOLATION_FILE)[projectId.trim().toLowerCase()];
 let tsCache:{at:number;info:TailscaleInfo}|null=null;
 async function tailscale():Promise<TailscaleInfo>{
   if(tsCache&&Date.now()-tsCache.at<60_000)return tsCache.info;
@@ -171,12 +174,22 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
       const file=process.env.LAYANX_PROJECTS_FILE;
       if(!file){ctx.sendJson(503,{error:"not_configured"});return true;}
       if(method==="GET"){ctx.sendJson(200,{projects:listLinkedProjects()});return true;}
-      const body=await ctx.readJson() as {projectId?:unknown;path?:unknown};
+      const body=await ctx.readJson() as {projectId?:unknown;path?:unknown;replace?:unknown};
       if(typeof body.projectId!=="string"){ctx.sendJson(400,{error:"projectId_required"});return true;}
-      if(method==="DELETE"){ctx.sendJson(200,{removed:unlinkProject(file,body.projectId)});return true;}
+      // A folder that leaves restricted isolation gets its normal (Medium) label back.
+      const releaseOld=()=>{if(isolationOf(body.projectId as string)==="restricted")void unprepareRestricted(projectDir(body.projectId as string)).catch(()=>undefined);};
+      if(method==="DELETE"){releaseOld();ctx.sendJson(200,{removed:unlinkProject(file,body.projectId)});return true;}
       if(typeof body.path!=="string"){ctx.sendJson(400,{error:"path_required"});return true;}
-      try{ctx.sendJson(200,{ok:true,...linkProject(file,body.projectId,body.path)});}
-      catch(error){ctx.sendJson(400,{ok:false,error:"invalid_folder",message:(error as Error).message});}
+      const previous=listLinkedProjects().find(l=>l.projectId.toLowerCase()===String(body.projectId).trim().toLowerCase());
+      try{
+        const linked=linkProject(file,body.projectId,body.path,{replace:body.replace===true});
+        // The old folder leaves restricted isolation: its normal label comes back.
+        if(previous&&previous.path.toLowerCase()!==linked.path.toLowerCase()&&isolationOf(linked.projectId)==="restricted")void unprepareRestricted(previous.path).catch(()=>undefined);
+        ctx.sendJson(200,{ok:true,...linked});
+      }catch(error){
+        if(error instanceof ProjectIdTakenError){ctx.sendJson(409,{ok:false,error:"project_id_taken",message:error.message,path:error.existing});return true;}
+        ctx.sendJson(400,{ok:false,error:"invalid_folder",message:(error as Error).message});
+      }
       return true;
     }
 
@@ -187,6 +200,7 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
       if(method==="GET"){ctx.sendJson(200,{levels:ISOLATION_LEVELS,projects:listIsolation(file),docker:dockerVersion(true),restricted:restrictedAvailable()});return true;}
       const body=await ctx.readJson() as {projectId?:unknown;level?:unknown};
       if(!file||typeof body.projectId!=="string"||!ISOLATION_LEVELS.includes(body.level as Isolation)){ctx.sendJson(400,{error:"invalid"});return true;}
+      if(isolationOf(body.projectId)==="restricted"&&body.level!=="restricted")void unprepareRestricted(projectDir(body.projectId)).catch(()=>undefined);
       if(body.level==="restricted"&&!restrictedAvailable()){ctx.sendJson(409,{error:"restricted_unavailable",message:"Restricted isolation runs on Windows only."});return true;}
       if(body.level==="docker"&&!dockerVersion(true)){ctx.sendJson(409,{error:"docker_unavailable",message:"Docker is not running on this computer. Install/start Docker Desktop first."});return true;}
       setIsolation(file,body.projectId,body.level as Isolation);ctx.sendJson(200,{ok:true});return true;

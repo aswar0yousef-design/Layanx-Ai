@@ -49,3 +49,15 @@ assert.match(source,/function repairMission/);
 assert.match(source,/function cancelMission/);
 assert.match(source,/preserve unrelated work/);
 console.log("VS Code builder, repair, cancellation and resumable execution checks passed.");
+
+// VS Code and the editor bridge (Zed/JetBrains) give a folder the same project id: trust and isolation
+// follow the id, so two editors must not open one folder as two projects.
+{
+  const {projectIdFor}=await import("../src/acp/agent.js");
+  const fnText=/function slugFor\(folderPath\) \{[\s\S]*?\n\}/.exec(source)?.[0];
+  assert.ok(fnText,"slugFor exists");
+  const slugFor=new Function(fnText+"\nreturn slugFor;")() as (p:string)=>string;
+  for(const p of ["C:\\Users\\me\\My Shop","/home/me/app","C:\\code\\مشروعي","D:\\x\\Project_1"])assert.equal(slugFor(p),projectIdFor(p),p);
+  assert.match(source,/linked\.find\(l => samePath\(l\.path, folderPath\)\)/,"an existing link of this folder is reused");
+  console.log("VS Code project ids match the editor bridge.");
+}

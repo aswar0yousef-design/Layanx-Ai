@@ -10,18 +10,23 @@ import path from "node:path";
  * the project command with:
  *   - a LOW-INTEGRITY token: Windows refuses writes from it to anything labelled Medium, which is every
  *     unlabelled file - the user's profile, LayanX's own data, other projects. LayanX labels only the
- *     project folder and its sandbox temp/cache/home folders Low; the project's .git stays Medium, so a
+ *     project folder and its own sandbox temp/cache/home folders Low; the project's .git stays Medium, so a
  *     script cannot plant git hooks that LayanX would later run. Processes are protected the same way:
  *     the command cannot open LayanX's process.
  *   - all privileges removed and the Administrators group (if any) set to deny-only.
  *   - a Job Object: memory limit, at most 256 processes, and the whole process tree dies when the
  *     launcher stops (timeouts and "stop" really stop everything).
+ *   - LayanX's own data folder gets a Medium label with no-read-up: the command cannot read the secret
+ *     store, sessions or launch tickets (reading them would let it act as the owner through the local API).
+ *   - .git is checked before and after each run: a replaced or newly created .git is moved aside, and
+ *     LayanX's own git commands in these folders run without hooks or fsmonitor (husky/lefthook hooks live
+ *     in files the command can change).
  * (A write-restricted token was tried first: Windows gives named pipes a fixed ACL, so child processes
  *  with pipes failed under it. Low integrity keeps pipes, npm and build tools working.)
  *
  * Not covered (documented for the owner): reading files and network access. Docker isolation covers both.
  */
-export const LAUNCHER_VERSION="2";
+export const LAUNCHER_VERSION="3";
 export const LAUNCHER_CS=String.raw`
 using System;
 using System.ComponentModel;
@@ -65,12 +70,17 @@ public static class LxSandbox {
   [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr GetStdHandle(int which);
   [DllImport("kernel32.dll", SetLastError = true)] static extern bool SetHandleInformation(IntPtr handle, uint mask, uint flags);
   [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern bool ConvertStringSidToSidW(string sid, out IntPtr native);
+  [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern bool ConvertStringSecurityDescriptorToSecurityDescriptorW(string sddl, uint revision, out IntPtr sd, out uint size);
+  [DllImport("advapi32.dll", SetLastError = true)] static extern bool GetSecurityDescriptorSacl(IntPtr sd, out bool present, out IntPtr sacl, out bool defaulted);
+  [DllImport("advapi32.dll", CharSet = CharSet.Unicode)] static extern uint SetNamedSecurityInfoW(string name, int type, uint info, IntPtr owner, IntPtr group, IntPtr dacl, IntPtr sacl);
+  [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr p);
 
   public static int Main(string[] args) {
     try {
       if (args.Length == 1 && args[0] == "version") { Console.Out.WriteLine("lx-sandbox ${LAUNCHER_VERSION}"); return 0; }
+      if (args.Length == 2 && args[0] == "protect") { Protect(args[1]); return 0; }
       if (args.Length > 1 && args[0] == "run") return Run(args);
-      Console.Error.WriteLine("usage: lx-sandbox run --mem BYTES --procs N --cwd DIR --exe PATH --cmdline BASE64");
+      Console.Error.WriteLine("usage: lx-sandbox run --mem BYTES --procs N --cwd DIR --exe PATH --cmdline BASE64 | protect DIR");
       return 2;
     } catch (Exception e) { Console.Error.WriteLine("lx-sandbox: " + e.Message); return 125; }
   }
@@ -79,6 +89,18 @@ public static class LxSandbox {
     for (int i = 1; i + 1 < args.Length; i++) if (args[i] == name) return args[i + 1];
     return null;
   }
+  // Medium label with NO_READ_UP and NO_WRITE_UP, inherited: low-integrity commands can neither read nor
+  // change what is inside (LayanX's secrets, sessions, launch tickets, logs).
+  static void Protect(string dir) {
+    IntPtr sd; uint size;
+    if (!ConvertStringSecurityDescriptorToSecurityDescriptorW("S:(ML;OICI;NRNW;;;ME)", 1, out sd, out size)) throw new Win32Exception(Marshal.GetLastWin32Error(), "label");
+    bool present, defaulted; IntPtr sacl;
+    if (!GetSecurityDescriptorSacl(sd, out present, out sacl, out defaulted) || !present) { LocalFree(sd); throw new Win32Exception(Marshal.GetLastWin32Error(), "label SACL"); }
+    uint rc = SetNamedSecurityInfoW(dir, 1 /* SE_FILE_OBJECT */, 0x10 /* LABEL_SECURITY_INFORMATION */, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, sacl);
+    LocalFree(sd);
+    if (rc != 0) throw new Win32Exception((int)rc, "SetNamedSecurityInfo " + dir);
+  }
+
   static IntPtr NativeSid(string sid) {
     IntPtr p;
     if (!ConvertStringSidToSidW(sid, out p)) throw new Win32Exception(Marshal.GetLastWin32Error(), "SID " + sid);
@@ -234,53 +256,164 @@ export function ensureLauncher(env:NodeJS.ProcessEnv=process.env):Promise<string
   return compiling;
 }
 
-export interface RestrictedSetup{launcher:string;tmp:string;cache:string;home:string}
+export interface RestrictedSetup{launcher:string;tmp:string;cache:string;home:string;
+  /** Set when preparing found the project's .git replaced since LayanX last saw it (and undid that). */
+  gitWarning?:string}
 function icacls(env:NodeJS.ProcessEnv){return path.join(env.SystemRoot||env.WINDIR||"C:\\Windows","System32","icacls.exe");}
 /** Set the integrity label of a folder and everything in it; new files inherit it. */
 export async function labelFolder(dir:string,level:"L"|"M",env:NodeJS.ProcessEnv=process.env,recursive=true):Promise<void>{
   const r=await run(icacls(env),[dir,"/setintegritylevel",`(OI)(CI)${level}`,...(recursive?["/T"]:[]),"/C","/Q"],15*60_000);
   if(r.code!==0)throw new Error(`Could not set the ${level==="L"?"low":"medium"} integrity label on ${dir}: ${r.out.slice(-500)}`);
 }
-function readMarker(file:string):Record<string,string>{try{return JSON.parse(fs.readFileSync(file,"utf8")) as Record<string,string>;}catch{return{};}}
+
+/** File identity (NTFS file index + creation time): survives renames, changes when a folder is replaced. */
+export function fileIdentity(p:string):string|null{
+  try{const st=fs.lstatSync(p,{bigint:true});return `${st.ino}:${st.birthtimeNs}`;}catch{return null;}
+}
+type Marker={folders:Record<string,{level:"L"|"M";id:string|null}>;protected:Record<string,string|boolean>};
+const markerFile=(env:NodeJS.ProcessEnv)=>path.join(sandboxRoot(env),"prepared.json");
+function readMarker(env:NodeJS.ProcessEnv):Marker{
+  try{const m=JSON.parse(fs.readFileSync(markerFile(env),"utf8")) as Partial<Marker>;if(m&&typeof m.folders==="object")return{folders:m.folders??{},protected:m.protected??{}};}catch{}
+  return{folders:{},protected:{}};
+}
+function writeMarker(env:NodeJS.ProcessEnv,m:Marker){fs.mkdirSync(sandboxRoot(env),{recursive:true});fs.writeFileSync(markerFile(env),JSON.stringify(m,null,2));markerCache=null;}
+const keyOf=(p:string)=>path.resolve(p).toLowerCase();
+
+/** LayanX's data folders: the data dir and the store (when the store lives elsewhere). */
+export function protectedDataDirs(env:NodeJS.ProcessEnv=process.env):string[]{
+  const data=env.LAYANX_DATA_DIR?.trim()||(env.LOCALAPPDATA?path.join(env.LOCALAPPDATA,"LayanX"):"");
+  const store=storeDir(env);
+  const dirs=[data,store].filter(Boolean).map(d=>path.resolve(d));
+  return dirs.filter((d,i)=>fs.existsSync(d)&&!dirs.some((o,j)=>j!==i&&keyOf(d).startsWith(keyOf(o)+path.sep)));
+}
+
 /**
- * Prepare a project for restricted runs: the project folder and the sandbox temp/cache/home folders are
- * labelled Low (writable by the command), the project's .git is labelled Medium again (not writable).
- * Done once per folder (remembered); labelling a large existing node_modules takes a moment once.
+ * Prepare a project for restricted runs. The project folder and the sandbox temp/cache/home folders are
+ * labelled Low (writable by the command); .git is labelled Medium (not writable); LayanX's data is
+ * labelled Medium no-read-up. Remembered per folder identity, so a folder that was deleted and created
+ * again is labelled again. Labelling a large existing node_modules takes a moment the first time.
  */
 export async function prepareRestricted(dir:string,env:NodeJS.ProcessEnv=process.env):Promise<RestrictedSetup>{
   const launcher=await ensureLauncher(env);
   const root=sandboxRoot(env);
-  const tmp=path.join(root,"tmp"),cache=path.join(root,"cache"),home=path.join(root,"home");
-  const marker=path.join(root,"prepared.json");
-  const done=readMarker(marker);
+  const own=projectSandboxDir(dir,env);
+  const tmp=path.join(own,"tmp"),cache=path.join(own,"cache"),home=path.join(own,"home");
+  const m=readMarker(env);
+  const dirKnown=m.folders[keyOf(dir)];
+  const dirFresh=!(dirKnown?.level==="L"&&dirKnown.id===fileIdentity(dir));
+  if(dirFresh&&fs.existsSync(dir))refuseSharedPnpmStore(dir,cache);
   for(const d of [tmp,cache,home,dir]){
-    const key=path.resolve(d).toLowerCase();
-    if(done[key]==="L"&&fs.existsSync(d))continue;
     fs.mkdirSync(d,{recursive:true});
+    const k=keyOf(d),id=fileIdentity(d),known=m.folders[k];
+    if(known?.level==="L"&&known.id===id)continue;
     await labelFolder(path.resolve(d),"L",env);
-    done[key]="L";
+    m.folders[k]={level:"L",id};
   }
-  fs.writeFileSync(marker,JSON.stringify(done,null,2));
-  await protectGit(dir,env);
-  return{launcher,tmp,cache,home};
+  // A project folder that was deleted and created again: its old .git record no longer applies.
+  if(dirFresh)delete m.folders[keyOf(path.join(dir,".git"))];
+  fs.mkdirSync(path.join(root,"no-hooks"),{recursive:true});
+  for(const d of protectedDataDirs(env)){
+    const id=fileIdentity(d)??"";
+    if(m.protected[keyOf(d)]===id)continue;
+    const r=await run(launcher,["protect",d],15*60_000);
+    if(r.code!==0)throw new Error("Could not protect LayanX's data folder from sandboxed commands: "+r.out.slice(-400));
+    m.protected[keyOf(d)]=id;
+  }
+  writeMarker(env,m);
+  const gitWarning=await reconcileGit(dir,env);
+  return{launcher,tmp,cache,home,...(gitWarning?{gitWarning}:{})};
 }
+
+/** Each project gets its own temp, cache and home folders: one sandboxed project cannot poison another's caches or settings. */
+export function projectSandboxDir(dir:string,env:NodeJS.ProcessEnv=process.env):string{
+  const name=path.basename(path.resolve(dir)).toLowerCase().replace(/[^a-z0-9_-]+/g,"-").replace(/^-+|-+$/g,"").slice(0,32)||"project";
+  return path.join(sandboxRoot(env),"projects",name+"-"+createHash("sha256").update(keyOf(dir)).digest("hex").slice(0,10));
+}
+
+/**
+ * pnpm hard-links package files from one shared store. Labelling such a node_modules would label the
+ * shared store files too, and every sandboxed project could then change packages that other projects use.
+ */
+export function refuseSharedPnpmStore(dir:string,ownCache:string):void{
+  let yaml="";
+  try{yaml=fs.readFileSync(path.join(dir,"node_modules",".modules.yaml"),"utf8");}catch{return;}
+  const store=/^\s*storeDir:\s*['"]?(.+?)['"]?\s*$/m.exec(yaml)?.[1];
+  if(!store)return;
+  const k=keyOf(store);
+  if(k===keyOf(ownCache)||k.startsWith(keyOf(ownCache)+path.sep))return;
+  throw new Error(`This project's node_modules links files from pnpm's shared store (${store}). Delete the project's node_modules folder once; in restricted isolation the packages are then installed with a store of the project's own.`);
+}
+
+/**
+ * Before a run: adopt .git the first time LayanX sees it; if it was replaced since LayanX last saw it
+ * (for example by a dev server that is still running), undo the swap instead of trusting the new one.
+ */
+async function reconcileGit(dir:string,env:NodeJS.ProcessEnv):Promise<string|undefined>{
+  const git=path.join(dir,".git");
+  const known=readMarker(env).folders[keyOf(git)];
+  const now=fileIdentity(git);
+  if(known?.level==="M"&&known.id&&now!==known.id)return verifyGitAfterRun(dir,{id:known.id},env);
+  await protectGit(dir,env);
+  return undefined;
+}
+
 /**
  * .git keeps Medium integrity, so the command cannot change hooks, config or history. The first time the
  * whole tree is relabelled; afterwards only the folder itself (cheap), which re-applies the label to
- * everything that inherits it - also when .git was deleted and created again.
+ * everything that inherits it.
  */
 export async function protectGit(dir:string,env:NodeJS.ProcessEnv=process.env):Promise<void>{
   const git=path.join(dir,".git");
-  if(!fs.existsSync(git))return;
-  const marker=path.join(sandboxRoot(env),"prepared.json");
-  const done=readMarker(marker);const key=path.resolve(git).toLowerCase();
-  await labelFolder(path.resolve(git),"M",env,done[key]!=="M");
-  if(done[key]!=="M"){done[key]="M";fs.writeFileSync(marker,JSON.stringify(done,null,2));}
+  const id=fileIdentity(git);
+  if(!id)return;
+  const m=readMarker(env);const k=keyOf(git);const known=m.folders[k];
+  const same=known?.level==="M"&&known.id===id;
+  await labelFolder(path.resolve(git),"M",env,!same);
+  // Remembered (= trusted by LayanX's own git) unless it is new to LayanX and set up to start programs.
+  if(same||!gitRunsPrograms(git)){m.folders[k]={level:"M",id};writeMarker(env,m);}
+}
+
+/** Undo the Low label when a project leaves restricted isolation (Medium again, like any other folder). */
+export async function unprepareRestricted(dir:string,env:NodeJS.ProcessEnv=process.env):Promise<void>{
+  const m=readMarker(env);const k=keyOf(dir);
+  if(!m.folders[k])return;
+  if(fs.existsSync(dir))await labelFolder(path.resolve(dir),"M",env);
+  delete m.folders[k];delete m.folders[keyOf(path.join(dir,".git"))];
+  // The project's own sandbox temp/cache/home are LayanX's: removed with the label.
+  const own=projectSandboxDir(dir,env);
+  for(const sub of ["tmp","cache","home"])delete m.folders[keyOf(path.join(own,sub))];
+  fs.rmSync(own,{recursive:true,force:true});
+  writeMarker(env,m);
+}
+
+/** What .git looked like before a run. */
+export function gitSnapshot(dir:string):{id:string|null}{return{id:fileIdentity(path.join(dir,".git"))};}
+/**
+ * After a run: if the command replaced .git (renamed the real one away and made its own) or created one,
+ * the new .git is moved aside and the original, found again by its identity, is put back. Returns a
+ * warning for the result, or undefined when .git is unchanged.
+ */
+export async function verifyGitAfterRun(dir:string,before:{id:string|null},env:NodeJS.ProcessEnv=process.env):Promise<string|undefined>{
+  const git=path.join(dir,".git");
+  const now=fileIdentity(git);
+  if(now===before.id){if(now)await protectGit(dir,env).catch(()=>undefined);return undefined;}
+  const notes:string[]=[];
+  if(now){const aside=path.join(dir,`.git-untrusted-${Date.now()}`);fs.renameSync(git,aside);notes.push(`moved the .git folder the command made to ${path.basename(aside)}`);}
+  if(before.id){
+    for(const name of fs.readdirSync(dir)){
+      const p=path.join(dir,name);
+      if(fileIdentity(p)===before.id){fs.renameSync(p,git);notes.push(`put the original .git back (it had been renamed to ${name})`);break;}
+    }
+    if(!fs.existsSync(git))notes.push("the original .git was not found in the project folder");
+  }
+  if(fs.existsSync(git))await protectGit(dir,env).catch(()=>undefined);
+  return "A command changed the project's .git folder: LayanX "+notes.join(", and ")+".";
 }
 
 /** Folders and caches the command may write besides the project (everything else in the profile is read-only). */
 export function restrictedEnv(base:NodeJS.ProcessEnv,setup:RestrictedSetup,opts:{home?:boolean}={}):NodeJS.ProcessEnv{
-  return{...base,TEMP:setup.tmp,TMP:setup.tmp,npm_config_cache:path.join(setup.cache,"npm"),PIP_CACHE_DIR:path.join(setup.cache,"pip"),XDG_CACHE_HOME:setup.cache,
+  return{...base,TEMP:setup.tmp,TMP:setup.tmp,npm_config_cache:path.join(setup.cache,"npm"),npm_config_store_dir:path.join(setup.cache,"pnpm-store"),PIP_CACHE_DIR:path.join(setup.cache,"pip"),XDG_CACHE_HOME:setup.cache,
+    NUGET_PACKAGES:path.join(setup.cache,"nuget"),DOTNET_CLI_HOME:setup.home,DOTNET_SKIP_FIRST_TIME_EXPERIENCE:"1",DOTNET_CLI_TELEMETRY_OPTOUT:"1",DOTNET_NOLOGO:"1",PUB_CACHE:path.join(setup.cache,"pub"),
     ...(opts.home?{HOME:setup.home,USERPROFILE:setup.home,APPDATA:path.join(setup.home,"AppData","Roaming"),LOCALAPPDATA:path.join(setup.home,"AppData","Local")}:{})};
 }
 
@@ -302,7 +435,40 @@ export function restrictedCommand(cmd:{command:string;args:string[];label:string
     "--cwd",dir,"--exe",exe,"--cmdline",Buffer.from(line,"utf8").toString("base64")]};
 }
 
-/** After a run: a .git folder the command created itself is labelled Medium too (LayanX's later git calls stay safe). */
-export async function denyGitAfterRun(dir:string,_setup?:RestrictedSetup,env:NodeJS.ProcessEnv=process.env):Promise<void>{
-  await protectGit(dir,env).catch(()=>undefined);
+/**
+ * Git settings that make git start another program (filters, diff/merge drivers, credential helpers,
+ * ssh/askpass/pager/editor, includes of other config files). A sandboxed command could add them to a
+ * .git it made; LayanX does not run git in such a repository.
+ */
+export function gitRunsPrograms(gitDir:string):boolean{
+  let text="";
+  try{text=fs.readFileSync(path.join(gitDir,"config"),"utf8");}catch{return false;}
+  return /^\s*\[\s*include(if)?\b/im.test(text)
+    ||/^\s*(fsmonitor|hookspath|sshcommand|pager|editor|askpass|gitproxy|external|textconv|command|program|helper|driver|clean|smudge|process|uploadpack|receivepack|alternaterefscommand)\s*=/im.test(text);
+}
+
+let markerCache:{at:number;file:string;low:string[];folders:Marker["folders"]}|null=null;
+/**
+ * Extra arguments for LayanX's OWN git commands. In a folder that sandboxed commands can write, hooks and
+ * fsmonitor are switched off: husky/lefthook hooks are files in the project (or in node_modules), and
+ * running them from LayanX would run code the sandboxed command wrote, outside the sandbox.
+ * Throws (LayanX then does not run git there) when that folder's .git is not the one LayanX checked:
+ * replaced while a sandboxed command was running, or new and set up to start programs.
+ */
+export function gitSafetyArgs(cwd:string,env:NodeJS.ProcessEnv=process.env):string[]{
+  if(!markerCache||markerCache.file!==markerFile(env)||Date.now()-markerCache.at>2000){
+    const m=readMarker(env);
+    markerCache={at:Date.now(),file:markerFile(env),folders:m.folders,low:Object.entries(m.folders).filter(([,v])=>v.level==="L").map(([k])=>k)};
+  }
+  const k=keyOf(cwd);
+  const owner=markerCache.low.find(f=>k===f||k.startsWith(f+path.sep));
+  if(!owner)return[];
+  let base=path.resolve(cwd);
+  while(keyOf(base)!==owner&&path.dirname(base)!==base)base=path.dirname(base);
+  const git=path.join(base,".git"),id=fileIdentity(git),known=markerCache.folders[keyOf(git)];
+  if(id&&known?.level==="M"&&known.id&&known.id!==id)
+    throw new Error(`The .git folder in ${base} was replaced while a sandboxed command was running. LayanX does not run git there; the next run in this project restores the original.`);
+  if(id&&!known&&gitRunsPrograms(git))
+    throw new Error(`The .git folder in ${base} was not checked by LayanX and its config starts programs (filters, drivers, helpers or includes). LayanX does not run git there.`);
+  return["-c",`core.hooksPath=${path.join(sandboxRoot(env),"no-hooks")}`,"-c","core.fsmonitor=false"];
 }

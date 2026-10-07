@@ -116,9 +116,14 @@ export async function bootstrapLocalRuntime(env:NodeJS.ProcessEnv=process.env,lo
     if(stt){
       env.LAYANX_STT_BASE_URL=stt.baseUrl;
       log("info",stt.engine==="cohere"?`local Arabic speech recognition found (Cohere Transcribe Arabic${stt.ready?"":", still loading"})`:"local speech-to-text found (Whisper)");
+      // Whisper running next to Cohere is the local backup (Cohere still loading, or failing).
+      if(stt.engine==="cohere"&&!env.LAYANX_STT_FALLBACK_URL?.trim()){
+        const backup=await detectLocalStt({...env,LAYANX_STT_ENGINE:"whisper"});
+        if(backup){env.LAYANX_STT_FALLBACK_URL=backup.baseUrl;log("info","Whisper runs as the backup speech recognition");}
+      }
       // A speech model on the GPU leaves less memory for the language models.
       const vram=detectGpuVramBytes(env);
-      const used=stt.engine==="whisper"?1200:0; // Cohere runs on the CPU unless installed with -Device cuda
+      const used=stt.engine==="whisper"||env.LAYANX_STT_FALLBACK_URL?1200:0; // Cohere runs on the CPU unless installed with -Device cuda
       if(used&&vram>0&&!env.LAYANX_GPU_VRAM_MB?.trim())env.LAYANX_GPU_VRAM_MB=String(Math.max(0,Math.round(vram/2**20)-used));
     }else log("info","no local speech-to-text server; the assistant uses the browser engine (run scripts\\windows\\install-whisper.ps1 or install-cohere-asr.ps1)");
   }

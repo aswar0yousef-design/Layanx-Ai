@@ -1,13 +1,15 @@
 ﻿#Requires -Version 5.1
 # Shared by the LayanX installers that need Python (Piper voice, voice sense, Cohere speech recognition).
 # Dot-source it after defining Say and Fail:   . (Join-Path $PSScriptRoot 'python.ps1')
+# Python 3.10-3.13: the pinned packages (numpy 2.2, onnxruntime 1.22, transformers 5) have no 3.9 builds.
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 function Test-Python($cmd, $extra) {
   try {
     $v = & $cmd @extra -c "import sys;print('%d.%d' % sys.version_info[:2])" 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $v) { return $null }
     $parts = "$v".Trim().Split('.')
     $major = [int]$parts[0]; $minor = [int]$parts[1]
-    if ($major -eq 3 -and $minor -ge 9 -and $minor -le 13) { return @{ Cmd = $cmd; Args = $extra; Version = "$v".Trim() } }
+    if ($major -eq 3 -and $minor -ge 10 -and $minor -le 13) { return @{ Cmd = $cmd; Args = $extra; Version = "$v".Trim() } }
   } catch {}
   return $null
 }

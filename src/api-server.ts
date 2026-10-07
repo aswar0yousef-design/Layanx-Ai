@@ -1,4 +1,5 @@
 import {createServer,IncomingMessage,ServerResponse} from "node:http";
+import {gitSafetyArgs} from "./platform/windows-sandbox.js";
 import {readFile} from "node:fs/promises";
 import {join} from "node:path";
 
@@ -158,8 +159,8 @@ export function startRuntimeApi(options:RuntimeApiOptions){
      const list=(sub:string)=>{try{return fsReaddir(joinPath(dot,sub)).filter(f=>/^[\w.-]+\.jpg$/.test(f)).slice(0,40);}catch{return[];}};
      const git=await new Promise<{branch:string;commits:string[]}>(resolve=>{
       if(!fsExists(joinPath(dir,".git"))){resolve({branch:"",commits:[]});return;}
-      execFileCb("git",["log","-n","8","--pretty=format:%h %ad %s","--date=short"],{cwd:dir,windowsHide:true,timeout:8000,env:safeChildEnv({allow:["HOME"]})},(e,out)=>{
-       execFileCb("git",["rev-parse","--abbrev-ref","HEAD"],{cwd:dir,windowsHide:true,timeout:8000,env:safeChildEnv({allow:["HOME"]})},(e2,b)=>resolve({branch:e2?"":String(b).trim(),commits:e?[]:String(out).split("\n").filter(Boolean)}));
+      execFileCb("git",[...gitSafetyArgs(dir),"log","-n","8","--pretty=format:%h %ad %s","--date=short"],{cwd:dir,windowsHide:true,timeout:8000,env:safeChildEnv({allow:["HOME"]})},(e,out)=>{
+       execFileCb("git",[...gitSafetyArgs(dir),"rev-parse","--abbrev-ref","HEAD"],{cwd:dir,windowsHide:true,timeout:8000,env:safeChildEnv({allow:["HOME"]})},(e2,b)=>resolve({branch:e2?"":String(b).trim(),commits:e?[]:String(out).split("\n").filter(Boolean)}));
       });
      });
      const issuesText=readText("KNOWN_ISSUES.md",20000);

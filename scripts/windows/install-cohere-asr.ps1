@@ -18,6 +18,7 @@
 param([ValidateSet('cpu','cuda')][string]$Device = 'cpu', [switch]$Yes)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 $Repo = 'CohereLabs/cohere-transcribe-arabic-07-2026'
 $Revision = 'c3e911b42149bf7a1e53d5cef9878aee87515a23'
 $TorchVersion = '2.8.0'
@@ -56,13 +57,25 @@ if (-not (Test-Path (Join-Path $Model 'model.safetensors'))) {
   if (-not $token) { Fail 'A Hugging Face token is needed to download the model.' }
   Say "Downloading $Repo at commit $($Revision.Substring(0,8)) (~4.1 GB)..."
   $env:LX_HF_TOKEN = $token
-  & $py -c "import os,sys;from huggingface_hub import snapshot_download;snapshot_download(sys.argv[1],revision=sys.argv[2],local_dir=sys.argv[3],token=os.environ['LX_HF_TOKEN'],allow_patterns=['*.json','*.safetensors','*.model','*.py','*.txt'])" $Repo $Revision $Model
+  & $py -c "import os,sys;from huggingface_hub import snapshot_download;snapshot_download(sys.argv[1],revision=sys.argv[2],local_dir=sys.argv[3],token=os.environ['LX_HF_TOKEN'],allow_patterns=['*.json','*.safetensors','*.model','*.py','*.txt','examples/*.wav'])" $Repo $Revision $Model
   $code = $LASTEXITCODE
   Remove-Item Env:\LX_HF_TOKEN -ErrorAction SilentlyContinue
   if ($code -ne 0) { Fail 'Download failed. Check that you accepted the model terms with the same Hugging Face account as the token.' }
 }
+# Load the model once and transcribe the sample that ships with it: a broken install stops here,
+# so LayanX never switches from Whisper to a speech engine that cannot answer.
+$sample = Get-ChildItem -Path (Join-Path $Model 'examples') -Filter '*.wav' -ErrorAction SilentlyContinue | Select-Object -First 1
+$server = Join-Path $PSScriptRoot '..\voice-sense\cohere_asr_server.py'
+if ($sample) {
+  Say "Testing the model on $($sample.Name) ($Device)..."
+  $saved = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  $out = & $py $server --model $Model --device $Device --selftest $sample.FullName 2>&1
+  $code = $LASTEXITCODE; $ErrorActionPreference = $saved
+  Write-Host ($out | Select-Object -Last 3 | Out-String)
+  if ($code -ne 0) { Fail 'The model did not transcribe the sample; LayanX keeps using Whisper. See the messages above.' }
+}
 # Record what was installed; the hash lets LayanX notice a replaced model file.
 $hash = (Get-FileHash -Algorithm SHA256 (Join-Path $Model 'model.safetensors')).Hash.ToLower()
-@{ repo = $Repo; revision = $Revision; device = $Device; modelSha256 = $hash; python = $py } | ConvertTo-Json | Set-Content -Path (Join-Path $Dir 'install.json') -Encoding ASCII
+@{ repo = $Repo; revision = $Revision; device = $Device; modelSha256 = $hash; python = $py } | ConvertTo-Json | Set-Content -Path (Join-Path $Dir 'install.json') -Encoding UTF8
 Say "Done. Cohere Transcribe Arabic is installed in $Dir (device: $Device)."
 Say 'Start LayanX again (LayanX.cmd). Speech recognition will use it instead of Whisper.'

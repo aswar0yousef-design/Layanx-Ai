@@ -5,7 +5,7 @@
     powershell -ExecutionPolicy Bypass -File scripts\windows\install-piper.ps1
     powershell -ExecutionPolicy Bypass -File scripts\windows\install-piper.ps1 -NoEnglish
 
-  - Needs Python 3.9-3.13 (offers to install Python 3.12 with winget).
+  - Needs Python 3.10-3.13 (offers to install Python 3.12 with winget).
   - Installs piper-tts 1.8.0 (pinned) into its own virtual environment under %LOCALAPPDATA%\LayanX\piper.
   - Voices: ar_JO-kareem-medium (Arabic) and en_US-lessac-medium (English), ~60 MB each.
   - LayanX.cmd starts the voice server on 127.0.0.1:8179; the assistant uses it automatically.

@@ -63,7 +63,8 @@ assert.match(zf[0]!.message,/^ZAP: Content Security Policy \(CSP\) Header Not Se
 const win=zapDockerArgs("http://localhost:5173/app","C:\\Temp\\lx-zap-1",DEFAULT_ZAP_IMAGE,"win32");
 assert.ok(win.includes("http://host.docker.internal:5173/app"),"Docker Desktop reaches this PC through host.docker.internal");
 assert.ok(win.includes("type=bind,source=C:\\Temp\\lx-zap-1,target=/zap/wrk"));
-assert.deepEqual(win.slice(win.indexOf("zap-baseline.py")),["zap-baseline.py","-t","http://host.docker.internal:5173/app","-J","zap.json","-m","1","-T","5","-I"]);
+assert.deepEqual(win.slice(win.indexOf("zap-baseline.py"),win.indexOf("-z")),["zap-baseline.py","-t","http://host.docker.internal:5173/app","-J","zap.json","-m","1","-T","5","-I"]);
+assert.match(win[win.indexOf("-z")+1]!,/matchstr=Host .*replacement=localhost:5173$/,"ZAP keeps the localhost Host header for dev servers that check it");
 const lin=zapDockerArgs("http://127.0.0.1:5173/","/tmp/w",DEFAULT_ZAP_IMAGE,"linux");
 assert.ok(lin.includes("--network")&&lin.includes("http://127.0.0.1:5173/"));
 assert.equal(pinnedImage(DEFAULT_ZAP_IMAGE),true);

@@ -1,4 +1,5 @@
 import {spawn} from "node:child_process";
+import {gitSafetyArgs} from "../platform/windows-sandbox.js";
 import {resolve} from "node:path";
 
 export interface GitBranchManagerOptions{root:string;}
@@ -47,7 +48,7 @@ export class GitBranchManager{
   }
   private async git(args:string[],allowFailure=false):Promise<GitCommandResult>{
     return await new Promise((resolveResult,reject)=>{
-      const child=spawn("git",args,{cwd:this.root,shell:false,windowsHide:true});
+      const child=spawn("git",[...gitSafetyArgs(this.root),...args],{cwd:this.root,shell:false,windowsHide:true});
       let stdout="",stderr="";
       child.stdout?.on("data",chunk=>stdout+=String(chunk).slice(0,65536));
       child.stderr?.on("data",chunk=>stderr+=String(chunk).slice(0,65536));

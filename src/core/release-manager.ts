@@ -1,4 +1,5 @@
 import {resolve} from "node:path";
+import {gitSafetyArgs} from "../platform/windows-sandbox.js";
 import {spawn} from "node:child_process";
 import type {ReleaseRecord} from "./release-state-machine.js";
 import type {PullRequestDraft} from "./pr-generator.js";
@@ -33,7 +34,7 @@ export class ReleaseManager{
 
  private async git(args:string[]):Promise<string>{
   return await new Promise((resolveResult,reject)=>{
-   const child=spawn("git",args,{cwd:resolve(this.root),shell:false,windowsHide:true});
+   const child=spawn("git",[...gitSafetyArgs(resolve(this.root)),...args],{cwd:resolve(this.root),shell:false,windowsHide:true});
    let stdout="",stderr="";
    child.stdout?.on("data",chunk=>stdout+=String(chunk).slice(0,65536));
    child.stderr?.on("data",chunk=>stderr+=String(chunk).slice(0,65536));

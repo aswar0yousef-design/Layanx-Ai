@@ -16,12 +16,10 @@ Each model file must match its pinned SHA-256, otherwise the server refuses to s
 """
 import argparse
 import hashlib
-import io
 import json
 import os
 import sys
 import time
-import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import numpy as np
@@ -29,12 +27,12 @@ import onnxruntime as ort
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from whisper_features import compute_whisper_log_mel_features  # noqa: E402
+from wavio import RATE, local_host_ok, read_wav  # noqa: E402
 
 MODELS = {
     "silero_vad.onnx": "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3",
     "smart-turn-v3.2-cpu.onnx": "2bb026316b14a660486a75b1733cd3fbab8c2fd0314dc9af7be49f8cca967e4f",
 }
-RATE = 16000
 MAX_BODY = 12 * 1024 * 1024
 
 
@@ -44,21 +42,6 @@ def sha256(path):
         for block in iter(lambda: f.read(1 << 20), b""):
             h.update(block)
     return h.hexdigest()
-
-
-def read_wav(data):
-    """WAV bytes (PCM16, any rate, mono/stereo) -> float32 mono at 16 kHz in [-1, 1]."""
-    with wave.open(io.BytesIO(data), "rb") as w:
-        if w.getsampwidth() != 2:
-            raise ValueError("only 16-bit PCM WAV is supported")
-        channels, rate, frames = w.getnchannels(), w.getframerate(), w.readframes(w.getnframes())
-    x = np.frombuffer(frames, dtype="<i2").astype(np.float32) / 32768.0
-    if channels > 1:
-        x = x[: len(x) // channels * channels].reshape(-1, channels).mean(axis=1)
-    if rate != RATE and len(x):
-        n = int(len(x) * RATE / rate)
-        x = np.interp(np.linspace(0, len(x) - 1, n), np.arange(len(x)), x).astype(np.float32)
-    return x
 
 
 def session(path):
@@ -140,11 +123,19 @@ def main():
             self.wfile.write(data)
 
         def do_GET(self):
+            if not local_host_ok(self.headers.get("host"), args.port):
+                return self.send(403, {"error": "local_only"})
             if self.path == "/health":
                 return self.send(200, {"ok": True, "vad": "silero_vad.onnx", "turn": "smart-turn-v3.2-cpu.onnx", "onnxruntime": ort.__version__})
             self.send(404, {"error": "not_found"})
 
         def do_POST(self):
+            # Only LayanX on this computer: right Host, and a WAV content type (a web page cannot send one
+            # to another origin without a preflight, which this server never answers).
+            if not local_host_ok(self.headers.get("host"), args.port):
+                return self.send(403, {"error": "local_only"})
+            if not (self.headers.get("content-type") or "").lower().startswith(("audio/wav", "audio/x-wav", "audio/wave")):
+                return self.send(415, {"error": "send audio/wav"})
             length = int(self.headers.get("content-length") or 0)
             if length <= 44 or length > MAX_BODY:
                 return self.send(413 if length > MAX_BODY else 400, {"error": "send a WAV body"})

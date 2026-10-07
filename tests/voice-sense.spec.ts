@@ -70,6 +70,11 @@ if(models&&pyOk&&fs.existsSync(path.join(models,"silero_vad.onnx"))){
     assert.equal((await real.vad(wav([[1.5,true]],22050))).speech,true,"resamples 22.05 kHz");
     const t=await real.turn(wav([[2,true],[0.3,false]]));
     assert.ok(t.probability>=0&&t.probability<=1);
+    // Requests a web page could send are refused: text/plain (no preflight) and a foreign Host (DNS rebinding).
+    assert.equal((await fetch(`http://127.0.0.1:${port}/vad`,{method:"POST",headers:{"content-type":"text/plain"},body:wav([[1,false]])})).status,415);
+    const {request}=await import("node:http");
+    const rebinding=await new Promise<number>(r=>{const q=request({host:"127.0.0.1",port,path:"/health",headers:{host:`evil.example:${port}`}},res=>{res.resume();r(res.statusCode??0);});q.end();});
+    assert.equal(rebinding,403);
     console.log("voice-sense: real Silero/Smart Turn server checked");
   }finally{child.kill();}
 }else console.log("voice-sense: real model server skipped (set LAYANX_TEST_VOICE_MODELS to the models folder)");

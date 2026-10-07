@@ -15,6 +15,7 @@
 param([switch]$Yes)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 $DataDir = if ($env:LAYANX_DATA_DIR) { $env:LAYANX_DATA_DIR } else { Join-Path $env:LOCALAPPDATA 'LayanX' }
 $Dir = Join-Path $DataDir 'voice-sense'
 $Models = Join-Path $Dir 'models'
@@ -33,8 +34,11 @@ $Pinned = @(
 $py = $null
 $piperPy = Join-Path $DataDir 'piper\venv\Scripts\python.exe'
 if (Test-Path $piperPy) {
-  & $piperPy -c "import onnxruntime, numpy" 2>$null
-  if ($LASTEXITCODE -eq 0) { $py = $piperPy; Say 'Using the Piper voice environment (onnxruntime already installed).' }
+  # A failing import writes to stderr; with 'Stop' PowerShell 5.1 would end the script instead of falling back.
+  $saved = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  try { & $piperPy -c "import onnxruntime, numpy" 2>$null | Out-Null; $ok = ($LASTEXITCODE -eq 0) } catch { $ok = $false }
+  $ErrorActionPreference = $saved
+  if ($ok) { $py = $piperPy; Say 'Using the Piper voice environment (onnxruntime already installed).' }
 }
 if (-not $py) {
   . (Join-Path $PSScriptRoot 'python.ps1')
@@ -62,6 +66,6 @@ foreach ($m in $Pinned) {
   Move-Item -Force $tmp $target
   Say "$($m.Name): SHA-256 verified"
 }
-Set-Content -Path (Join-Path $Dir 'python.txt') -Value $py -Encoding ASCII
+Set-Content -Path (Join-Path $Dir 'python.txt') -Value $py -Encoding UTF8
 Say "Done. Voice sense is installed in $Dir"
 Say 'Start LayanX again (LayanX.cmd). The assistant uses it automatically.'

@@ -58,13 +58,23 @@ export function ollamaFormat(request:ModelRequest,env:NodeJS.ProcessEnv=process.
  * shorter). Small models in JSON mode sometimes emit endless whitespace until the context is full; without a
  * cap one planning step could run for minutes. LAYANX_OLLAMA_NUM_PREDICT changes the JSON cap.
  */
-export function ollamaNumPredict(request:ModelRequest,env:NodeJS.ProcessEnv=process.env):number|undefined{
+export function ollamaNumPredict(request:ModelRequest,env:NodeJS.ProcessEnv=process.env,modelId?:string):number|undefined{
  if(typeof request.maxOutputTokens==="number"&&request.maxOutputTokens>0)return Math.floor(request.maxOutputTokens);
  if(!ollamaFormat(request,env).format)return undefined;
  const configured=Number(env.LAYANX_OLLAMA_NUM_PREDICT);
- return Number.isFinite(configured)&&configured>=64?Math.floor(configured):1024;
+ const cap=Number.isFinite(configured)&&configured>=64?Math.floor(configured):1024;
+ // Reasoning tokens count against the cap: leave room when the model may think before answering.
+ return modelId&&ollamaMayThink(modelId,env)?Math.max(cap,4096):cap;
+}
+/** gpt-oss always reasons; other thinking models do unless LayanX switched thinking off for them. */
+export function ollamaMayThink(modelId:string,env:NodeJS.ProcessEnv=process.env):boolean{
+ if(/^gpt-oss/i.test(modelId))return true;
+ if(ollamaThinkingOff(modelId,env))return false;
+ return (env.LAYANX_OLLAMA_THINKING_MODELS??"").split(",").map(v=>v.trim()).includes(modelId)||/qwen3|deepseek-r1|gemma4|magistral|reasoning|cogito/i.test(modelId);
 }
 
+/** How often Ollama refused a response schema and the request was retried in plain JSON mode (diagnostics). */
+export const ollamaSchemaStats={fallbacks:0,lastError:""};
 /** Older Ollama builds reject some schema keywords; retry the same request once in plain JSON mode. */
 function withoutSchema(request:ModelRequest):ModelRequest{const{responseSchema:_ignored,...rest}=request;return rest;}
 
@@ -75,7 +85,7 @@ export function createOllamaProvider(options:OllamaProviderOptions={}){
  const autoSelect=options.autoSelectInstalledModel===true;
  const baseProvider=new HttpModelProvider({
   name:"ollama",baseUrl:root+"/api/chat",healthUrl:root+"/api/tags",timeoutMs:options.timeoutMs??(Number(process.env.OLLAMA_TIMEOUT_MS)||180000),fetcher,
-  buildBody:(model,request)=>({model:model.id,messages:[{role:"user",content:typeof request.input==="string"?request.input:request.input.filter(part=>part.type==="text").map(part=>part.text).join("\n"),...(typeof request.input==="string"?{}:{images:request.input.filter(part=>part.type==="image").map(part=>part.image.base64)})}],stream:false,keep_alive:process.env.OLLAMA_KEEP_ALIVE??"10m",options:{num_ctx:ollamaNumCtx(model.id),...(ollamaNumPredict(request)?{num_predict:ollamaNumPredict(request)}:{})},...ollamaThinkOption(model.id),...ollamaFormat(request)}),
+  buildBody:(model,request)=>({model:model.id,messages:[{role:"user",content:typeof request.input==="string"?request.input:request.input.filter(part=>part.type==="text").map(part=>part.text).join("\n"),...(typeof request.input==="string"?{}:{images:request.input.filter(part=>part.type==="image").map(part=>part.image.base64)})}],stream:false,keep_alive:process.env.OLLAMA_KEEP_ALIVE??"10m",options:{num_ctx:ollamaNumCtx(model.id),...(ollamaNumPredict(request,process.env,model.id)?{num_predict:ollamaNumPredict(request,process.env,model.id)}:{})},...ollamaThinkOption(model.id),...ollamaFormat(request)}),
   parseResponse:(body,model):ModelResponse=>{
    const data=body as {response?:string;message?:{content?:string};prompt_eval_count?:number;eval_count?:number};
    return{provider:"ollama",modelId:model.id,output:(data.response??data.message?.content??"").replace(THINK_BLOCK,"").trim(),usage:{inputTokens:data.prompt_eval_count,outputTokens:data.eval_count}};
@@ -89,6 +99,7 @@ export function createOllamaProvider(options:OllamaProviderOptions={}){
    catch(error){
     const message=error instanceof Error?error.message:"";
     if(!request.responseSchema||!/HTTP (400|422|500)/.test(message))throw error;
+    ollamaSchemaStats.fallbacks++;ollamaSchemaStats.lastError=message.slice(0,300);
     return baseProvider.generate(model,withoutSchema(request));
    }
   }

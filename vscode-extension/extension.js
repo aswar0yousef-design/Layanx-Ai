@@ -128,14 +128,14 @@ async function runSelectionGoal(context, instruction) {
 
 async function executeInteractiveGoal(context, goal, onUpdate) {
   if (!goal.trim()) return { ok: false, error: "Goal is required." };
+  const linked = await linkWorkspace(context, false);
+  if (!linked.ok) return linked;
   const config = vscode.workspace.getConfiguration("layanx");
   const projectId = getProjectId(config);
   const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "";
   const enrichedGoal = [goal.trim(), "", "VS Code context:", "- Project ID: " + projectId, "- Workspace: " + workspacePath,
     "- The request originated inside VS Code.", "- Use existing LayanX tools, permissions and approvals; do not bypass them.",
     "- Change only the current project workspace and verify before reporting completion."].join("\n");
-  const linked = await linkWorkspace(context, false);
-  if (!linked.ok) return linked;
   const created = await request(context, "/v1/missions", "POST", {goal: enrichedGoal, projectId});
   if (!created.ok || !created.mission?.id) return created;
   const missionId = created.mission.id;
@@ -186,6 +186,8 @@ async function repairMission(context, missionId, projectId) {
 
 async function executeGoal(context, goal) {
   if (!goal.trim()) return { ok: false, error: "Goal is required." };
+  const linked = await linkWorkspace(context, false);
+  if (!linked.ok) return linked;
   const config = vscode.workspace.getConfiguration("layanx");
   const projectId = getProjectId(config);
   const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "";
@@ -199,8 +201,6 @@ async function executeGoal(context, goal) {
     "- Use the existing LayanX tools and permissions; do not bypass approval or safety controls.",
     "- If code/files must be changed, make the changes in this workspace and verify them before reporting completion."
   ].join("\n");
-  const linked = await linkWorkspace(context, false);
-  if (!linked.ok) return linked;
   return request(context, API_PATH, "POST", {
     goal: enrichedGoal,
     projectId,
@@ -247,11 +247,37 @@ async function setApiToken(context) {
   vscode.window.showInformationMessage("LayanX API token stored securely in VS Code.");
 }
 
+// Project id chosen for the open folder (see resolveProjectId); trust and isolation follow the id.
+let resolvedProject = null;
 function getProjectId(config) {
   const configured = String(config.get("projectId", "") || "").trim();
   if (configured) return configured;
   const folder = vscode.workspace.workspaceFolders?.[0];
-  return folder ? folder.name : "default";
+  if (!folder) return "default";
+  if (resolvedProject && resolvedProject.path === folder.uri.fsPath) return resolvedProject.id;
+  return slugFor(folder.uri.fsPath);
+}
+/** Same rules as the LayanX editor bridge (src/acp/agent.ts), so Zed, JetBrains and VS Code agree on one id per folder. */
+function slugFor(folderPath) {
+  const base = folderPath.split(/[\\/]+/).filter(Boolean).pop() || "project";
+  return base.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "project";
+}
+const samePath = (a, b) => require("path").resolve(a).replace(/[\\/]+$/, "").toLowerCase() === require("path").resolve(b).replace(/[\\/]+$/, "").toLowerCase();
+async function resolveProjectId(context, folderPath) {
+  const configured = String(vscode.workspace.getConfiguration("layanx").get("projectId", "") || "").trim();
+  if (configured) return configured;
+  if (resolvedProject && resolvedProject.path === folderPath) return resolvedProject.id;
+  const known = await request(context, "/v1/projects/link", "GET");
+  const linked = Array.isArray(known.projects) ? known.projects : [];
+  const existing = linked.find(l => samePath(l.path, folderPath));
+  let id = existing ? existing.projectId : slugFor(folderPath);
+  if (!existing) {
+    const suffix = require("crypto").createHash("sha256").update(require("path").resolve(folderPath).toLowerCase()).digest("hex").slice(0, 6);
+    const taken = linked.some(l => l.projectId.toLowerCase() === id);
+    if (id === "project" || id === "default" || taken || !/[a-z0-9]/.test(id)) id = id + "-" + suffix;
+  }
+  resolvedProject = { path: folderPath, id };
+  return id;
 }
 
 async function request(context, path, method, payload) {
@@ -289,7 +315,7 @@ const linkedThisSession = new Set();
 async function linkWorkspace(context, announce) {
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder) return { ok: false, error: "Open a folder in VS Code first." };
-  const projectId = getProjectId(vscode.workspace.getConfiguration("layanx"));
+  const projectId = await resolveProjectId(context, folder.uri.fsPath);
   const key = projectId + "|" + folder.uri.fsPath;
   if (!announce && linkedThisSession.has(key)) return { ok: true };
   const result = await request(context, "/v1/projects/link", "POST", { projectId, path: folder.uri.fsPath });
@@ -322,6 +348,7 @@ async function connectWithPairingCode(context) {
 }
 
 async function showApprovals(context) {
+  if (vscode.workspace.workspaceFolders?.[0]) await linkWorkspace(context, false);
   const projectId = getProjectId(vscode.workspace.getConfiguration("layanx"));
   const result = await request(context, "/v1/approvals?projectId=" + encodeURIComponent(projectId), "GET");
   if (!result.ok) { vscode.window.showErrorMessage("LayanX: " + result.error); return; }

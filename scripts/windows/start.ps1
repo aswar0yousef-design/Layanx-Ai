@@ -129,14 +129,16 @@ function Ensure-Ollama {
 function Ensure-Whisper {
   $dir = Join-Path $DataDir 'whisper'
   if (-not (Test-Path $dir)) { return }
-  if (Test-CohereAsr) { return }  # Cohere Transcribe Arabic replaces Whisper (LAYANX_STT_ENGINE=whisper keeps Whisper)
+  # With Cohere Transcribe Arabic installed, Whisper still starts as the backup LayanX switches to when
+  # Cohere is loading or fails (LAYANX_STT_ENGINE=whisper uses Whisper only).
   $port = 8178
   if ($env:LAYANX_STT_PORT) { $port = [int]$env:LAYANX_STT_PORT }
   if (Test-PortInUse $port) { return }
   $server = Get-ChildItem -Path $dir -Recurse -Filter 'whisper-server.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
   $model = Get-ChildItem -Path (Join-Path $dir 'models') -Filter 'ggml-*.bin' -ErrorAction SilentlyContinue | Sort-Object Length -Descending | Select-Object -First 1
   if (-not $server -or -not $model) { Warn 'Whisper folder found but whisper-server.exe or a ggml model is missing. Run scripts\windows\install-whisper.ps1'; return }
-  Say "Starting local speech recognition (Whisper: $($model.Name))..."
+  $role = if (Test-CohereAsr) { 'backup speech recognition' } else { 'local speech recognition' }
+  Say "Starting $role (Whisper: $($model.Name))..."
   $threads = [Math]::Max(2, [Environment]::ProcessorCount / 2)
   Start-Process -FilePath $server.FullName -WorkingDirectory $server.DirectoryName -WindowStyle Hidden -ArgumentList @('-m', "`"$($model.FullName)`"", '--host', '127.0.0.1', '--port', "$port", '--inference-path', '/v1/audio/transcriptions', '-t', "$threads")
   for ($i = 0; $i -lt 30 -and -not (Test-PortInUse $port); $i++) { Start-Sleep -Milliseconds 500 }
@@ -152,9 +154,10 @@ function Ensure-CohereAsr {
   $port = 8181
   if ($env:LAYANX_COHERE_PORT) { $port = [int]$env:LAYANX_COHERE_PORT }
   if (Test-PortInUse $port) { return }
-  Say "Starting Arabic speech recognition (Cohere Transcribe Arabic, $($info.device))..."
+  $device = if ($env:LAYANX_COHERE_DEVICE) { $env:LAYANX_COHERE_DEVICE } else { $info.device }
+  Say "Starting Arabic speech recognition (Cohere Transcribe Arabic, $device)..."
   $server = Join-Path $Root 'scripts\voice-sense\cohere_asr_server.py'
-  Start-Process -FilePath $info.python -WorkingDirectory $dir -WindowStyle Hidden -ArgumentList @("`"$server`"", '--model', "`"$(Join-Path $dir 'model')`"", '--port', "$port", '--device', $info.device)
+  Start-Process -FilePath $info.python -WorkingDirectory $dir -WindowStyle Hidden -ArgumentList @("`"$server`"", '--model', "`"$(Join-Path $dir 'model')`"", '--port', "$port", '--device', $device)
   # The port opens at once; the 2B model keeps loading in the background (about a minute on the CPU).
   for ($i = 0; $i -lt 40 -and -not (Test-PortInUse $port); $i++) { Start-Sleep -Milliseconds 500 }
 }
