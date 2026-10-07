@@ -23,7 +23,7 @@ const results:Array<{check:string;ok:boolean;detail?:string}>=[];
 async function check(name:string,fn:()=>Promise<string|void>){
   // On GitHub Actions each result also becomes an annotation, readable without downloading logs.
   const annotate=(level:"notice"|"error",text:string)=>{if(process.env.GITHUB_ACTIONS==="true")console.log(`::${level} title=Windows smoke::${text.replace(/\r?\n/g," ").slice(0,900)}`);};
-  try{const detail=await fn();results.push({check:name,ok:true,...(detail?{detail}:{})});console.log("PASS",name,detail??"");annotate("notice","PASS "+name+(detail?" - "+detail:""));}
+  try{const detail=await fn();results.push({check:name,ok:true,...(detail?{detail}:{})});console.log("PASS",name,detail??"");}
   catch(e){const detail=e instanceof Error?e.message:String(e);results.push({check:name,ok:false,detail});console.log("FAIL",name,detail);annotate("error","FAIL "+name+" - "+detail);}
 }
 const req=(action:string,payload:Record<string,unknown>={})=>({missionId:"smoke",agentId:"core",projectId:"smoke",tool:"desktop",action,permission:"L4_EXECUTE",idempotencyKey:"smoke-"+action,payload} as any);
@@ -60,7 +60,25 @@ await check("LayanX local host starts: gateway, setup page, runtime (what LayanX
     let running=false;for(let i=0;i<60&&!running;i++){running=existsSync(log)&&/runtime running/.test(readFileSync(log,"utf8"));if(!running)await new Promise(r=>setTimeout(r,1000));}
     assert.ok(running,"runtime started: "+(existsSync(log)?readFileSync(log,"utf8").slice(-600):"no log"));
     const unauth=await fetch("http://127.0.0.1:3310/v1/missions");assert.equal(unauth.status,401,"API refuses requests without a session");
-    return "gateway ok, setup 200, runtime running, API locked";
+    // ACP (Zed / JetBrains): the agent reads this installation's local token from the DPAPI store and links the editor's folder.
+    const acp=spawn(process.execPath,[tsx,"src/acp/main.ts"],{cwd:process.cwd(),windowsHide:true,stdio:["pipe","pipe","pipe"],env:{...process.env,LAYANX_DATA_DIR:dataDir,LAYANX_URL:"http://127.0.0.1:3310"}});
+    const got:any[]=[];let buf="",errText="";
+    acp.stderr.on("data",d=>errText+=d);
+    acp.stdout.setEncoding("utf8").on("data",(d:string)=>{buf+=d;let i;while((i=buf.indexOf("\n"))>=0){const line=buf.slice(0,i);buf=buf.slice(i+1);if(line.trim())got.push(JSON.parse(line));}});
+    const wait=async(id:number,ms=120000)=>{const end=Date.now()+ms;for(;;){const m=got.find(x=>x.id===id);if(m)return m;if(Date.now()>end)throw new Error("ACP: no answer to "+id+"; "+JSON.stringify(got).slice(-600)+" "+errText.slice(-400));await new Promise(r=>setTimeout(r,50));}};
+    const folder=join(dataDir,"editor-folder");(await import("node:fs")).mkdirSync(folder,{recursive:true});
+    try{
+      acp.stdin.write(JSON.stringify({jsonrpc:"2.0",id:1,method:"initialize",params:{protocolVersion:1,clientCapabilities:{}}})+"\n");
+      assert.equal((await wait(1)).result?.protocolVersion,1,"ACP initialize");
+      acp.stdin.write(JSON.stringify({jsonrpc:"2.0",id:2,method:"session/new",params:{cwd:folder,mcpServers:[]}})+"\n");
+      const created=await wait(2);
+      assert.ok(created.result?.sessionId,"ACP session/new linked the folder with the local token: "+JSON.stringify(created));
+      acp.stdin.write(JSON.stringify({jsonrpc:"2.0",id:3,method:"session/prompt",params:{sessionId:created.result.sessionId,prompt:[{type:"text",text:"Read the LayanX runtime status"}]}})+"\n");
+      const answer=await wait(3,240000);
+      assert.ok(answer.result?.stopReason,"ACP prompt answered: "+JSON.stringify(answer));
+      const said=got.filter(x=>x.method==="session/update"&&x.params?.update?.sessionUpdate==="agent_message_chunk").map(x=>x.params.update.content.text).join(" ");
+      return "gateway ok, setup 200, runtime running, API locked; ACP session linked, prompt -> "+answer.result.stopReason+" ("+said.slice(0,120)+")";
+    }finally{acp.stdin.end();acp.kill();}
   }finally{host.kill();await new Promise(r=>setTimeout(r,1500));try{rmSync(dataDir,{recursive:true,force:true});}catch{}}
 });
 if(!noUi){
@@ -136,7 +154,7 @@ await check("project scripts run through npm-cli.js (no .cmd spawning)",async()=
     assert.ok(existsSync(setup.launcher));
     const v=spawnSync(setup.launcher,["version"],{encoding:"utf8"});
     assert.match(v.stdout,/lx-sandbox/);
-    return `${Date.now()-started} ms, sid ${setup.sid}`;
+    return `${Date.now()-started} ms`;
   });
   await check("restricted isolation: writes only inside the project, never .git; reads and child processes work",async()=>{
     assert.ok(setup,"prepared");
@@ -327,5 +345,12 @@ function to16kMono(wav:Buffer):Buffer{
   return out;
 }
 const failed=results.filter(r=>!r.ok);
+// GitHub shows at most 10 notices per step: one compact line per passed check, packed into a few notices.
+if(process.env.GITHUB_ACTIONS==="true"){
+  const lines=results.filter(r=>r.ok).map(r=>`PASS ${r.check}${r.detail?" - "+r.detail.replace(/\r?\n/g," ").slice(0,300):""}`);
+  let chunk="";
+  for(const l of lines){if(chunk&&(chunk+" || "+l).length>3500){console.log(`::notice title=Windows smoke::${chunk}`);chunk="";}chunk=chunk?chunk+" || "+l:l;}
+  if(chunk)console.log(`::notice title=Windows smoke::${chunk}`);
+}
 console.log(JSON.stringify({windowsSmoke:{passed:results.length-failed.length,failed:failed.length,results}},null,1));
 process.exit(failed.length?1:0);

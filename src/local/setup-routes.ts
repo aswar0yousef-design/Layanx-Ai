@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import {getMcpManager,searchRegistry} from "../mcp/manager.js";
+import {acpEditorConfig} from "../acp/config.js";
 import crypto from "node:crypto";
 import os from "node:os";
 import type {AccessManager} from "../security/access.js";
@@ -245,6 +246,7 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
         installId:host.installId,
         dataDir:host.dataDir,
         platform:process.platform,
+        acp:acpEditorConfig(),
         runtime:host.runtimeState(),
         restartRequired:host.restartRequired(),
         gateway:{publicPort:settings.publicPort,flowPublicPort:settings.flowPublicPort,mobileAccess:settings.mobileAccess,mobileActive:host.mobileActive,lanUrls:host.mobileActive?lanUrls(settings.publicPort):[]},

@@ -143,7 +143,7 @@ export function parseZapReport(json:string):SecurityFinding[]{
   const out:SecurityFinding[]=[];
   for(const site of data.site??[])for(const a of site.alerts??[]){
     const inst=(a.instances as Array<{uri?:string}>|undefined)??[];
-    out.push({severity:RISK[String(a.riskcode)]??"info",rule:"zap."+String(a.pluginid),message:`${stripHtml(a.name??a.alert)}${inst.length>1?` (${inst.length} URLs)`:""}`,
+    out.push({severity:RISK[String(a.riskcode)]??"info",rule:"zap."+String(a.pluginid),message:`ZAP: ${stripHtml(a.name??a.alert)}${inst.length>1?` (${inst.length} URLs)`:""}`,
       fix:stripHtml(a.solution).slice(0,300)||"See the ZAP alert details.",...(inst[0]?.uri?{file:inst[0].uri}:{})});
   }
   return out;

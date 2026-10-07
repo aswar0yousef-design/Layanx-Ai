@@ -13,7 +13,9 @@ try{
   assert.ok(r.zap,"ZAP was attempted");
   assert.equal(r.zap.ran,true,"ZAP ran: "+(r.zap.note??""));
   assert.ok(r.zap.alerts>0,"ZAP reported alerts");
-  const fromZap=r.findings.filter(f=>/^zap\.\d+$/.test(f.rule));
-  note("notice",`PASS ZAP ${r.zap.image} baseline: ${r.zap.alerts} alerts, ${fromZap.length} added beyond the built-in checks (${fromZap.map(f=>f.rule).join(",")}); total ${r.findings.length} findings on ${r.pages.length} pages`);
+  const fromZap=r.findings.filter(f=>f.message.startsWith("ZAP: "));
+  const builtIn=r.findings.length-fromZap.length;
+  assert.ok(!fromZap.some(f=>r.findings.some(n=>!n.message.startsWith("ZAP: ")&&n.rule.split(".").slice(0,2).join(".")===f.rule)),"ZAP duplicates of built-in findings are dropped");
+  note("notice",`PASS ZAP ${r.zap.image} baseline: ${r.zap.alerts} alerts, ${fromZap.length} added beyond the ${builtIn} built-in findings (${[...new Set(fromZap.map(f=>f.rule))].join(",")}); ${r.pages.length} pages crawled`);
 }catch(e){note("error","FAIL "+(e instanceof Error?e.message:String(e)));process.exitCode=1;}
 finally{server.close();}

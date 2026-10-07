@@ -59,7 +59,7 @@ const zapJson=JSON.stringify({"@version":"2.17.0",site:[{"@name":"http://host.do
   {pluginid:"10202",alert:"Absence of Anti-CSRF Tokens",name:"Absence of Anti-CSRF Tokens",riskcode:"1",solution:"<p>Use a vetted library.</p>",instances:[{uri:"http://host.docker.internal:5173/form"}]}]}]});
 const zf=parseZapReport(zapJson);
 assert.deepEqual(zf.map(f=>[f.rule,f.severity]),[["zap.10038","medium"],["zap.10202","low"]]);
-assert.match(zf[0]!.message,/\(2 URLs\)/);assert.equal(zf[0]!.fix,"Ensure that your web server sets the CSP header.");
+assert.match(zf[0]!.message,/^ZAP: Content Security Policy \(CSP\) Header Not Set \(2 URLs\)$/);assert.equal(zf[0]!.fix,"Ensure that your web server sets the CSP header.");
 const win=zapDockerArgs("http://localhost:5173/app","C:\\Temp\\lx-zap-1",DEFAULT_ZAP_IMAGE,"win32");
 assert.ok(win.includes("http://host.docker.internal:5173/app"),"Docker Desktop reaches this PC through host.docker.internal");
 assert.ok(win.includes("type=bind,source=C:\\Temp\\lx-zap-1,target=/zap/wrk"));

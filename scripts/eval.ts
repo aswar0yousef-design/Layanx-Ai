@@ -18,8 +18,10 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..");
 const base=(process.env.OLLAMA_BASE_URL??"http://127.0.0.1:11434").replace(/\/$/,"");
 const annotate=(level:"notice"|"error",text:string)=>{if(process.env.GITHUB_ACTIONS==="true")console.log(`::${level} title=Planner evals::${text.replace(/\r?\n/g," ").slice(0,900)}`);};
 
+process.on("uncaughtException",e=>{annotate("error","eval crashed: "+(e instanceof Error?e.stack??e.message:String(e)));console.error(e);process.exit(1);});
+process.on("unhandledRejection",e=>{annotate("error","eval crashed: "+(e instanceof Error?e.stack??e.message:String(e)));console.error(e);process.exit(1);});
 const installed=await fetch(base+"/api/tags",{signal:AbortSignal.timeout(5000)}).then(r=>r.json() as Promise<{models?:Array<{name:string}>}>).then(j=>(j.models??[]).map(m=>m.name)).catch(()=>null);
-if(!installed){console.error(`Ollama is not reachable at ${base}. Start Ollama first.`);process.exit(2);}
+if(!installed){console.error(`Ollama is not reachable at ${base}. Start Ollama first.`);annotate("error","Ollama not reachable at "+base);process.exit(2);}
 const chat=installed.filter(m=>!/embed|bge|nomic|minilm|moondream|llava/i.test(m));
 const requested=(arg("--models")??arg("--model")??"").split(",").map(s=>s.trim()).filter(Boolean);
 const models=requested.length?requested:[process.env.OLLAMA_MODEL&&installed.includes(process.env.OLLAMA_MODEL)?process.env.OLLAMA_MODEL:chat[0]].filter((m):m is string=>Boolean(m));
@@ -39,7 +41,7 @@ for(const model of models){
   const contract=core.agents.get("core");
   const catalog=core.toolCatalog.list(contract,contract.requiredPermission);
   const missing=unknownTools(cases,catalog);
-  if(missing.length){console.error("Eval cases mention tools that do not exist: "+missing.join(", "));process.exit(2);}
+  if(missing.length){console.error("Eval cases mention tools that do not exist: "+missing.join(", "));annotate("error","unknown tools in cases: "+missing.join(", "));process.exit(2);}
   let calls=0;
   const planner=new AiMissionPlanner({execute:(r:unknown)=>{calls++;return core.modelExecution.execute(r);}} as any);
   console.log(`\n${model}: ${cases.length} cases`);

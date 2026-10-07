@@ -57,8 +57,10 @@ export class MissionEventStream{
   });
  }
 
+ /** Events in arrival order; `after` is the id of the last event the caller has seen (ids are hashes, not ordered). */
  list(projectId:string,missionId?:string,after?:string):MissionEvent[]{
-  const source=missionId?(this.events.get(missionId)??[]):[...this.events.values()].flat();
-  return source.filter(event=>event.projectId===projectId&&(!after||event.id>after)).map(event=>structuredClone(event));
+  let source=missionId?(this.events.get(missionId)??[]):[...this.events.values()].flat();
+  if(after){const at=source.findIndex(event=>event.id===after);if(at>=0)source=source.slice(at+1);}
+  return source.filter(event=>event.projectId===projectId).map(event=>structuredClone(event));
  }
 }

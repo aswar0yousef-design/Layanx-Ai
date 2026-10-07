@@ -217,6 +217,11 @@ aside h2{margin-bottom:.5rem}
         <ul class="urls" id="remote-urls"></ul>
       </div>
 
+      <h2 style="margin-top:2rem">Zed و JetBrains</h2>
+      <p class="note">LayanX يعمل داخل المحرر عبر بروتوكول ACP: الطلب يصبح مهمة على المجلد المفتوح، والخطوات التي تحتاج موافقتك تظهر في المحرر. في Zed الصق هذا في settings.json. في JetBrains ضعه في ~/.jetbrains/acp.json. شغّل LayanX أولاً.</p>
+      <pre id="acp-zed" dir="ltr" style="white-space:pre-wrap;word-break:break-all;font-size:.75rem;background:rgba(127,127,127,.12);padding:.6rem;border-radius:8px;max-height:14rem;overflow:auto"></pre>
+      <button id="acp-copy">نسخ الإعداد</button>
+
       <h2 style="margin-top:2rem">الواجهات</h2>
       <div class="links" id="links"></div>
     </aside>
@@ -321,6 +326,7 @@ function render(){
 
   $("mobile-toggle").checked=s.gateway.mobileAccess;
   $("pair-start").disabled=false;
+  if(s.acp)$("acp-zed").textContent=JSON.stringify(s.acp.zed,null,2);
   
   $("mobile-note").textContent=s.gateway.mobileAccess&&!s.gateway.mobileActive?"فُعّل الاتصال من الهاتف. أعد التشغيل ليبدأ العمل.":s.gateway.mobileAccess?"الاتصال داخل الشبكة المحلية غير مشفّر. استخدمه على شبكة منزلية موثوقة فقط.":"VS Code على هذا الجهاز يُربط مباشرة برمز. الهاتف يحتاج تفعيل الخيار أعلاه أو «التحكم من أي مكان».";
   const devices=$("devices");devices.replaceChildren();
@@ -342,6 +348,7 @@ $("briefing-form").addEventListener("submit",async e=>{e.preventDefault();try{aw
 $("refresh-models").addEventListener("click",async e=>{e.target.disabled=true;try{await api("/v1/setup/ollama/refresh","POST",{});await load();toast("فُحصت النماذج");}catch(err){toast(err.message);}finally{e.target.disabled=false;}});
 $("secret-form").addEventListener("submit",async e=>{e.preventDefault();const name=$("secret-name").value.trim(),value=$("secret-value").value;try{await api("/v1/setup/secrets","PUT",{name,value});$("secret-value").value="";await load();toast("حُفظ "+name);}catch(err){toast(err.message);}});
 $("mobile-toggle").addEventListener("change",async e=>{try{await api("/v1/setup/settings","PUT",{mobileAccess:e.target.checked});await load();}catch(err){e.target.checked=!e.target.checked;toast(err.message);}});
+$("acp-copy").addEventListener("click",async()=>{try{await navigator.clipboard.writeText($("acp-zed").textContent);toast("نُسخ الإعداد");}catch{toast("انسخ النص يدوياً");}});
 $("pair-start").addEventListener("click",async()=>{
   try{
     const p=await api("/v1/pair/start","POST",{});

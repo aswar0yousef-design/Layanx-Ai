@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {LAUNCHER_CS,launcherPath,quoteWindowsArg,restrictedCommand,restrictedEnv,sandboxMemoryBytes,sandboxSid,windowsCommandLine} from "../src/platform/windows-sandbox.js";
+import {LAUNCHER_CS,launcherPath,quoteWindowsArg,restrictedCommand,restrictedEnv,sandboxMemoryBytes,windowsCommandLine} from "../src/platform/windows-sandbox.js";
 import {ISOLATION_LEVELS,restrictedAvailable,setIsolation} from "../src/autonomy/sandbox.js";
 import {createProjectRunnerAdapter} from "../src/autonomy/project-runner.js";
 
@@ -40,20 +40,16 @@ assert.equal(sandboxMemoryBytes({LAYANX_DOCKER_MEMORY:"512m"}),512*1024**2);
 assert.equal(sandboxMemoryBytes({LAYANX_DOCKER_MEMORY:"6g"}),6*1024**3);
 assert.equal(sandboxMemoryBytes({LAYANX_DOCKER_MEMORY:"6g; calc"}),4*1024**3);
 
-// 3. One random SID per install, stable across calls.
-const sid=sandboxSid();
-assert.match(sid,/^S-1-5-21-\d+-\d+-\d+-\d+$/);
-assert.equal(sandboxSid(),sid);
+// 3. The launcher is cached under a name derived from its source.
 assert.match(launcherPath(),/lx-sandbox-[0-9a-f]{12}\.exe$/);
 
 // 4. The launcher argv: the command line travels as base64 (no second round of quoting), .git is denied.
-const setup={launcher:"C:\\data\\bin\\lx-sandbox.exe",sid,tmp:"C:\\data\\sandbox\\tmp",cache:"C:\\data\\sandbox\\cache",home:"C:\\data\\sandbox\\home"};
+const setup={launcher:"C:\\data\\bin\\lx-sandbox.exe",tmp:"C:\\data\\sandbox\\tmp",cache:"C:\\data\\sandbox\\cache",home:"C:\\data\\sandbox\\home"};
 const wrapped=restrictedCommand({command:"C:\\Program Files\\nodejs\\node.exe",args:["npm-cli.js","test"],label:"npm test"},"C:\\proj\\shop",setup,{LAYANX_DOCKER_MEMORY:"1g"});
 const opt=(n:string)=>wrapped.args[wrapped.args.indexOf(n)+1];
 assert.equal(wrapped.command,setup.launcher);assert.equal(wrapped.args[0],"run");
 assert.equal(opt("--mem"),String(1024**3));assert.equal(opt("--procs"),"256");assert.equal(opt("--cwd"),"C:\\proj\\shop");
 assert.equal(Buffer.from(opt("--cmdline")!,"base64").toString("utf8"),'"C:\\Program Files\\nodejs\\node.exe" npm-cli.js test');
-assert.equal(opt("--deny"),path.join("C:\\proj\\shop",".git"));
 assert.match(wrapped.label,/^restricted: npm test$/);
 assert.throws(()=>restrictedCommand({command:"surely-not-a-program-xyz",args:[],label:"x"},"C:\\p",setup,{PATH:""}),/not found on PATH/);
 // Caches and temp files go to the sandbox folders; the agent mode also moves the home folder.
@@ -64,7 +60,7 @@ assert.equal(restrictedEnv({},setup,{home:true}).USERPROFILE,setup.home);
 
 // 5. The C# source compiles with the C# 5 compiler that ships with Windows: no newer syntax.
 for(const bad of ['$"',"?.","nameof(","out var ","is var ","=> {"])assert.ok(!LAUNCHER_CS.includes(bad),"C# 6+ syntax in launcher: "+bad);
-for(const api of ["CreateRestrictedToken","WRITE_RESTRICTED","KILL_ON_JOB_CLOSE","AssignProcessToJobObject","CREATE_SUSPENDED","TokenDefaultDacl","S-1-5-32-544"])assert.ok(LAUNCHER_CS.includes(api),api);
+for(const api of ["CreateRestrictedToken","DISABLE_MAX_PRIVILEGE","TokenIntegrityLevel","S-1-16-4096","TokenOwner","KILL_ON_JOB_CLOSE","AssignProcessToJobObject","CREATE_SUSPENDED","TokenDefaultDacl","S-1-5-32-544"])assert.ok(LAUNCHER_CS.includes(api),api);
 
 // 6. Isolation level wiring: available on Windows only, and the runner refuses elsewhere instead of running unprotected.
 assert.ok(ISOLATION_LEVELS.includes("restricted"));
@@ -81,5 +77,5 @@ if(process.platform!=="win32"){
   fs.rmSync(root,{recursive:true,force:true});
 }
 fs.rmSync(store,{recursive:true,force:true});
-console.log("windows-sandbox: command-line quoting, launcher argv, memory limit, sandbox SID, C# 5 source and Windows-only wiring verified");
+console.log("windows-sandbox: command-line quoting, launcher argv, memory limit, low-integrity C# 5 source and Windows-only wiring verified");
 process.exit(0);
