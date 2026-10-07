@@ -96,7 +96,7 @@ public static class LxUia{
   if(!c.IsEnabled)sb.Append(",\"enabled\":false");
   if(c.HasKeyboardFocus)sb.Append(",\"focused\":true");
   if(c.IsPassword)sb.Append(",\"password\":true");
-  else if(c.ControlType==ControlType.Edit||c.ControlType==ControlType.ComboBox){object p;if(e.TryGetCurrentPattern(ValuePattern.Pattern,out p)){string v=((ValuePattern)p).Current.Value;if(!string.IsNullOrEmpty(v))sb.Append(",\"value\":\"").Append(Esc(Cut(v,200))).Append("\"");}}
+  else if(c.ControlType==ControlType.Edit||c.ControlType==ControlType.ComboBox||c.ControlType==ControlType.Document){object p;if(e.TryGetCurrentPattern(ValuePattern.Pattern,out p)){string v=((ValuePattern)p).Current.Value;if(!string.IsNullOrEmpty(v))sb.Append(",\"value\":\"").Append(Esc(Cut(v,200))).Append("\"");}}
   object tp;if(e.TryGetCurrentPattern(TogglePattern.Pattern,out tp))sb.Append(",\"checked\":").Append(((TogglePattern)tp).Current.ToggleState==ToggleState.On?"true":"false");
   sb.Append('}');return sb.ToString();
  }
@@ -214,7 +214,8 @@ class PowerShellDesktopHelper implements WindowsDesktopBackend{
    this.child=child;
    child.stdin.on("error",()=>undefined);
    child.stdin.write(Buffer.from(WIN_HELPER_CS,"utf8").toString("base64")+"\n"+Buffer.from(WIN_UIA_CS,"utf8").toString("base64")+"\n");
-   const startup=setTimeout(()=>{reject(new Error("Desktop helper did not start: "+this.stderr.slice(0,300)));this.reset();},30_000);
+   // First start compiles two C# helpers and loads UI Automation: a cold Windows (or CI runner) can need a minute.
+   const startup=setTimeout(()=>{reject(new Error("Desktop helper did not start within 120 s: "+this.stderr.slice(0,300)));try{child.kill();}catch{}this.reset();},120_000);
    child.stderr.setEncoding("utf8").on("data",(c:string)=>{this.stderr=(this.stderr+c).slice(-4000);});
    createInterface({input:child.stdout}).on("line",line=>{
     let msg:{ready?:boolean;id?:string;ok?:boolean;data?:string;error?:string};
@@ -248,6 +249,16 @@ function runnerBackend(run:Runner):WindowsDesktopBackend{
 }
 
 let sharedHelper:PowerShellDesktopHelper|null=null;
+
+/**
+ * Start the Windows helper in the background a few seconds after LayanX starts, so the first
+ * computer-use action does not wait for C# compilation. LAYANX_DESKTOP_PREWARM=off disables it.
+ */
+export function prewarmDesktopHelper(env:NodeJS.ProcessEnv=process.env):void{
+ if(process.platform!=="win32"||env.LAYANX_DESKTOP_PREWARM==="off")return;
+ const timer=setTimeout(()=>{(sharedHelper??=new PowerShellDesktopHelper()).send({op:"ping"},120_000).catch(()=>undefined);},5000);
+ timer.unref();
+}
 
 export function createDesktopControlToolAdapter(options:{runner?:Runner;windows?:WindowsDesktopBackend}={}):ToolAdapter{
  const run=options.runner??runner();

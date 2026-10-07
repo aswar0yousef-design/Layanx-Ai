@@ -17,6 +17,7 @@ import {commandFor,detectProject,runOnce} from "../src/autonomy/project-runner.j
 
 if(process.platform!=="win32"){console.log("windows-smoke: skipped (not Windows)");process.exit(0);}
 const noUi=process.argv.includes("--no-ui");
+const withTools=process.argv.includes("--with-tools");
 const results:Array<{check:string;ok:boolean;detail?:string}>=[];
 async function check(name:string,fn:()=>Promise<string|void>){
   // On GitHub Actions each result also becomes an annotation, readable without downloading logs.
@@ -97,6 +98,26 @@ await check("project scripts run through npm-cli.js (no .cmd spawning)",async()=
     return r.command;
   }finally{rmSync(dir,{recursive:true,force:true});}
 });
+if(withTools){
+  await check("pinned security scanners find planted problems",async()=>{
+    const {runExternalScanners,findScanner}=await import("../src/autonomy/external-scanners.js");
+    for(const t of ["gitleaks","osv-scanner","opengrep"])assert.ok(findScanner(t),t+" is installed and hash-verified");
+    const dir=mkdtempSync(join(tmpdir(),"lx-scan-"));
+    try{
+      const token="ghp_"+Array.from({length:36},(_,i)=>"aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bC1dF3hJ5"[i]).join("");
+      writeFileSync(join(dir,"config.js"),"export const githubToken = '"+token+"';\n");
+      writeFileSync(join(dir,"run.js"),"const cp = require('child_process');\nfunction go(userInput){ eval(userInput); cp.exec('ls ' + userInput); }\nmodule.exports = go;\n");
+      writeFileSync(join(dir,"package.json"),JSON.stringify({name:"scan-me",version:"1.0.0",dependencies:{lodash:"4.17.15"}}));
+      writeFileSync(join(dir,"package-lock.json"),JSON.stringify({name:"scan-me",version:"1.0.0",lockfileVersion:3,requires:true,packages:{"":{name:"scan-me",version:"1.0.0",dependencies:{lodash:"4.17.15"}},"node_modules/lodash":{version:"4.17.15",resolved:"https://registry.npmjs.org/lodash/-/lodash-4.17.15.tgz"}}}));
+      const results=await runExternalScanners(dir);
+      const by=Object.fromEntries(results.map(r=>[r.tool,r]));
+      assert.ok(by.gitleaks?.ran&&by.gitleaks.findings.length>0,"gitleaks: "+JSON.stringify(by.gitleaks).slice(0,300));
+      assert.ok(by["osv-scanner"]?.ran&&by["osv-scanner"].findings.some(f=>/lodash/.test(f.message)),"osv-scanner: "+JSON.stringify(by["osv-scanner"]).slice(0,300));
+      assert.ok(by.opengrep?.ran&&by.opengrep.findings.some(f=>f.rule==="layanx.js.eval"),"opengrep: "+JSON.stringify(by.opengrep).slice(0,400));
+      return results.map(r=>r.tool+"="+r.findings.length).join(" ");
+    }finally{rmSync(dir,{recursive:true,force:true});}
+  });
+}
 const failed=results.filter(r=>!r.ok);
 console.log(JSON.stringify({windowsSmoke:{passed:results.length-failed.length,failed:failed.length,results}},null,1));
 process.exit(failed.length?1:0);

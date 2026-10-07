@@ -28,7 +28,7 @@ import {execFile as execFileCb} from "node:child_process";
 import {projectDir} from "./autonomy/project-dir.js";
 import {detectProject} from "./autonomy/project-runner.js";
 import {openIssues,readHealth,recordIssue,refreshKnowledge,resolveIssue} from "./autonomy/knowledge.js";
-import {deleteLesson,listLessons,listPlaybooks,setPlaybookStatus,type PlaybookStatus} from "./autonomy/learning.js";
+import {deleteLesson,listLessons,listPlaybooks,setPlaybookStatus,type PlaybookStatus,exportSkill} from "./autonomy/learning.js";
 import {pendingBranches} from "./autonomy/integrate.js";
 import {isolationLevel} from "./autonomy/sandbox.js";
 import {trustLevel} from "./autonomy/trust.js";
@@ -211,7 +211,11 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     }
     if(request.method==="POST"&&parts[2]==="playbooks"&&parts[3]&&["approve","disable","enable","reject"].includes(parts[4]??"")){
      const status:PlaybookStatus=parts[4]==="disable"?"disabled":parts[4]==="reject"?"rejected":"active";
-     setPlaybookStatus(decodeURIComponent(parts[3]),status);json(response,200,{ok:true,status});return;
+     setPlaybookStatus(decodeURIComponent(parts[3]),status,process.env,projectId);json(response,200,{ok:true,status});return;
+    }
+    if(request.method==="POST"&&parts[2]==="playbooks"&&parts[3]&&parts[4]==="export"){
+     const target=join(process.env.LAYANX_STORE_DIR?.trim()||".layanx","skills-export");
+     json(response,200,{ok:true,dir:exportSkill(decodeURIComponent(parts[3]),target,process.env,projectId)});return;
     }
     if(request.method==="DELETE"&&parts[2]==="lessons"&&parts[3]){json(response,200,{ok:true,deleted:deleteLesson(decodeURIComponent(parts[3]))});return;}
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"learning_failed"});return;}

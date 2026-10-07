@@ -6,7 +6,7 @@ import {projectDir} from "./project-dir.js";
 import {trustLevel} from "./trust.js";
 import {knowledgeSummary,recordIssue,refreshKnowledge,updateHealth} from "./knowledge.js";
 import {buildRepoMap} from "./repo-map.js";
-import {errorSignature,findLessons,guidanceText,listLessons,listPlaybooks,markLessons,matchPlaybooks,recordLesson,recordPlaybookOutcome,savePlaybookCandidate} from "./learning.js";
+import {errorSignature,findLessons,guidanceText,listLessons,listPlaybooks,markLessons,matchPlaybooks,recordLesson,recordPlaybookOutcome,savePlaybookCandidate,trustProjectPlaybook} from "./learning.js";
 
 /**
  * Supervisor: finishes a goal without the owner watching.
@@ -141,6 +141,8 @@ export class Supervisor{
   }
   private async plan(job:SupervisorJob){
     const info=this.info(job);
+    // Playbooks/skills that came with the project files are not "discovered by research": they stay quarantined.
+    if(!job.discovered)job.discovered=listPlaybooks(job.projectId).filter(p=>p.source==="project").map(p=>p.id);
     try{if(info)refreshKnowledge(projectDir(job.projectId));}catch{}
     const notes=knowledgeSummary(job.projectId,3000);
     const playbooks=matchPlaybooks({goal:job.goal,...(info?{stack:info.stack}:{}),projectId:job.projectId},2);
@@ -393,6 +395,8 @@ export class Supervisor{
       if((job.discovered??[]).includes(p.id))continue;
       (job.discovered??=[]).push(p.id);
       if(p.status==="rejected"){this.log(job,`Ignored playbook "${p.title}": it failed the safety scan`,"warn");continue;}
+      // Written by this job's research: trusted in this project for exactly this content.
+      trustProjectPlaybook(job.projectId,p.id);
       const copy=savePlaybookCandidate({title:p.title,tags:p.tags,stacks:p.stacks,body:p.body,note:`Discovered by research in project ${job.projectId}; waiting for the owner's approval.`});
       (job.learned??=[]).push(copy.id);
       this.log(job,`New playbook from research: "${p.title}" (used in this project; global copy waits for approval)`);

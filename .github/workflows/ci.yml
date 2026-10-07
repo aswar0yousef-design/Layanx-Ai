@@ -90,6 +90,8 @@ jobs:
         run: npm test
         env:
           LAYANX_TEST_TIMEOUT_MS: "240000"
+      - name: Install pinned security scanners (SHA-256 verified)
+        run: node node_modules/tsx/dist/cli.mjs scripts/install-security-tools.ts
       - name: Windows smoke test
         shell: powershell
-        run: .\scripts\windows\smoke-test.ps1
+        run: .\scripts\windows\smoke-test.ps1 -WithTools

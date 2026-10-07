@@ -4,6 +4,7 @@ import type {ToolAdapter} from "../tools/executor.js";
 import type {ToolRequest} from "../core/types.js";
 import {detectProject,commandFor,runOnce} from "./project-runner.js";
 import {projectDir} from "./project-dir.js";
+import {runExternalScanners} from "./external-scanners.js";
 import {updateHealth} from "./knowledge.js";
 
 /**
@@ -17,7 +18,7 @@ import {updateHealth} from "./knowledge.js";
  */
 export type Severity="critical"|"high"|"medium"|"low"|"info";
 export interface SecurityFinding{severity:Severity;rule:string;message:string;file?:string;line?:number;fix:string;test?:boolean}
-export interface SecurityReport{score:number;blocked:boolean;counts:Record<Severity,number>;findings:SecurityFinding[];scannedFiles:number;audit?:{ran:boolean;note?:string};headers?:{url:string;missing:string[]};at:string}
+export interface SecurityReport{score:number;blocked:boolean;counts:Record<Severity,number>;findings:SecurityFinding[];scannedFiles:number;audit?:{ran:boolean;note?:string};headers?:{url:string;missing:string[]};scanners?:Array<{tool:string;ran:boolean;findings:number;note?:string}>;at:string}
 
 const SKIP_DIRS=new Set(["node_modules",".git","dist","build",".next","out","coverage",".layanx","vendor","__pycache__",".venv","venv","target","bin","obj",".dart_tool"]);
 const SCAN_EXT=new Set([".ts",".tsx",".js",".jsx",".mjs",".cjs",".vue",".svelte",".py",".php",".rb",".go",".cs",".java",".dart",".html",".env",".json",".yml",".yaml",".toml",".ini",".cfg"]);
@@ -117,15 +118,19 @@ async function checkHeaders(url:string):Promise<{missing:string[];findings:Secur
   }catch{return{missing:[],findings:[]};}
 }
 
-export async function securityReport(dir:string,opts:{audit?:boolean;url?:string}={}):Promise<SecurityReport>{
+export async function securityReport(dir:string,opts:{audit?:boolean;url?:string;external?:boolean}={}):Promise<SecurityReport>{
   const code=scanCode(dir);
   const audit=opts.audit===false?{findings:[],ran:false,note:"skipped"}:await auditDependencies(dir);
   const headers=opts.url?await checkHeaders(opts.url):null;
-  const findings=[...code.findings,...audit.findings,...(headers?.findings??[])];
+  const external=opts.external===false?[]:await runExternalScanners(dir);
+  // npm audit and osv-scanner both report vulnerable npm packages: keep one finding per package.
+  const seen=new Set(audit.findings.map(f=>f.message.replace(/^Vulnerable dependency: /,"").split(" ")[0]));
+  const extra=external.flatMap(r=>r.findings).filter(f=>f.rule!=="deps.vulnerable"||!seen.has(f.message.replace(/^Vulnerable dependency: /,"").split(" ")[0]));
+  const findings=[...code.findings,...audit.findings,...extra,...(headers?.findings??[])];
   const counts:Record<Severity,number>={critical:0,high:0,medium:0,low:0,info:0};
   for(const f of findings)counts[f.severity]++;
   const score=Math.max(0,100-counts.critical*30-counts.high*15-counts.medium*5-counts.low);
-  const report:SecurityReport={score,blocked:counts.critical+counts.high>0,counts,findings,scannedFiles:code.scanned,audit:{ran:audit.ran,...(audit.note?{note:audit.note}:{})},...(headers&&opts.url?{headers:{url:opts.url,missing:headers.missing}}:{}),at:new Date().toISOString()};
+  const report:SecurityReport={score,blocked:counts.critical+counts.high>0,counts,findings,scannedFiles:code.scanned,audit:{ran:audit.ran,...(audit.note?{note:audit.note}:{})},...(headers&&opts.url?{headers:{url:opts.url,missing:headers.missing}}:{}),scanners:external.map(r=>({tool:r.tool,ran:r.ran,findings:r.findings.length,...(r.note?{note:r.note}:{})})),at:new Date().toISOString()};
   try{fs.mkdirSync(path.join(dir,".layanx"),{recursive:true});fs.writeFileSync(path.join(dir,".layanx","security.json"),JSON.stringify(report,null,1));}catch{}
   updateHealth(dir,"security",{ok:!report.blocked,score,summary:`${counts.critical} critical, ${counts.high} high, ${counts.medium} medium, ${counts.low} low`});
   return report;
