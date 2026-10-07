@@ -1,6 +1,9 @@
 import {MemoryEngine} from "../src/core/memory.js";
 import {LayanXCore} from "../src/core/orchestrator.js";
 import {MissionRunner} from "../src/core/mission-runner.js";
+// This test exercises execution itself; approval of dangerous tools is covered by dangerous-tool-approval.spec.ts.
+process.env.LAYANX_AUTO_APPROVE_TOOLS="terminal.run";
+
 
 const memory=new MemoryEngine();
 const secretValue=["super","secret","value"].join("-");

@@ -16,17 +16,23 @@ export interface SecurityReviewResult{
   approved:boolean;
 }
 
+import {assertSafeGitRef} from "../platform/git-ref.js";
+const EMPTY_TREE="4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
 export class SecurityReviewAgent{
   constructor(private readonly root=process.env.LAYANX_WORKSPACE_ROOT??process.cwd()){}
 
   async review(baseRef="HEAD~1"):Promise<SecurityReviewResult>{
+    assertSafeGitRef(baseRef,"baseRef");
+    // A repository with a single commit has no HEAD~1; compare against the empty tree so the first commit is still reviewed.
+    const base=await this.git(["rev-parse","--verify","--quiet",baseRef+"^{commit}"]).then(()=>baseRef,error=>{if(baseRef==="HEAD~1")return EMPTY_TREE;throw error;});
     const [detectedBranch,commit,filesText,diff]=await Promise.all([
       this.git(["branch","--show-current"]),
       this.git(["rev-parse","HEAD"]),
-      this.git(["diff","--name-only",baseRef,"HEAD"]),
-      this.git(["diff","--no-ext-diff","--unified=0",baseRef,"HEAD"])
+      this.git(["diff","--name-only",base,"HEAD"]),
+      this.git(["diff","--no-ext-diff","--unified=0",base,"HEAD"])
     ]);
-    const branch=detectedBranch.trim()||process.env.GITHUB_HEAD_REF?.trim()||process.env.GITHUB_REF_NAME?.trim()||"HEAD";
+    const branch=detectedBranch.trim()||(process.env.GITHUB_ACTIONS==="true"?(process.env.GITHUB_HEAD_REF?.trim()||process.env.GITHUB_REF_NAME?.trim()||""):"");
     const files=filesText.split("\n").filter(Boolean);
     const findings:SecurityFinding[]=[];
     const checks:Array<[RegExp,SecurityFinding["severity"],SecurityFinding["category"],string]>=[

@@ -1,5 +1,9 @@
 # LayanX AI
 
+> **Windows, one click:** double-click `LayanX.cmd`. Arabic guide: [docs/دليل-التشغيل.md](docs/دليل-التشغيل.md) · Windows details: [docs/WINDOWS-AR.md](docs/WINDOWS-AR.md)
+>
+> The personal assistant (Jarvis-style, Arabic + English, wake word, spoken replies, task execution and daily briefing) lives at `/voice`.
+
 LayanX is a security-first autonomous AI runtime foundation designed **currently as a local-first, single-device system**.
 
 The present target is to run the full runtime on the user's own computer with local storage and local AI providers such as Ollama. Multi-tenant SaaS, remote hosting, and cloud deployment are future evolution paths, not current runtime requirements.

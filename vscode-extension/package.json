@@ -2,7 +2,7 @@
   "name": "layanx-agent",
   "displayName": "LayanX AI Agent",
   "description": "Use the LayanX local-first agent directly inside Visual Studio Code.",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "publisher": "layanx",
   "license": "MIT",
   "engines": {
@@ -13,14 +13,19 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:layanx.openAgent",
-    "onCommand:layanx.runGoal",
+    "onCommand:layanx.approvals",
+    "onCommand:layanx.autonomous",
     "onCommand:layanx.buildProject",
+    "onCommand:layanx.connect",
     "onCommand:layanx.explainSelection",
     "onCommand:layanx.fixSelection",
     "onCommand:layanx.health",
-    "onCommand:layanx.startRuntime",
+    "onCommand:layanx.linkWorkspace",
+    "onCommand:layanx.openAgent",
+    "onCommand:layanx.runGoal",
     "onCommand:layanx.setApiToken",
+    "onCommand:layanx.startRuntime",
+    "onStartupFinished",
     "onView:layanx.agent"
   ],
   "main": "./extension.js",
@@ -29,6 +34,10 @@
       {
         "command": "layanx.openAgent",
         "title": "LayanX: Open Agent"
+      },
+      {
+        "command": "layanx.autonomous",
+        "title": "LayanX: Finish a Goal Autonomously"
       },
       {
         "command": "layanx.runGoal",
@@ -57,6 +66,18 @@
       {
         "command": "layanx.setApiToken",
         "title": "LayanX: Set API Token"
+      },
+      {
+        "command": "layanx.connect",
+        "title": "LayanX: Connect (Pairing Code)"
+      },
+      {
+        "command": "layanx.approvals",
+        "title": "LayanX: Show Approvals"
+      },
+      {
+        "command": "layanx.linkWorkspace",
+        "title": "LayanX: Use This Folder as the Project"
       }
     ],
     "menus": {
@@ -91,8 +112,8 @@
         },
         "layanx.runtimeCommand": {
           "type": "string",
-          "default": "npm run api",
-          "description": "Command used by LayanX: Start Local Runtime."
+          "default": "npm run local",
+          "description": "Command used by LayanX: Start Local Runtime (npm run local starts the secure gateway, like LayanX.cmd)."
         },
         "layanx.maxSteps": {
           "type": "number",
@@ -121,5 +142,9 @@
         }
       ]
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aswar0yousef-design/Layanx-Ai"
   }
 }

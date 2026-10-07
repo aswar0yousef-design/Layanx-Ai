@@ -6,7 +6,7 @@ import {join} from "node:path";
 let cached:string|undefined;
 
 function filePath(){
-  const root=process.env.LAYANX_DATA_DIR?.trim()||".layanx";
+  const root=process.env.LAYANX_STORE_DIR?.trim()||process.env.LAYANX_DATA_DIR?.trim()||".layanx";
   return join(root,"device-id");
 }
 

@@ -1,5 +1,13 @@
 export interface VoiceStatus {
   enabled:boolean;
+  /** Local speech-to-text (whisper.cpp or any OpenAI-compatible server) when configured. */
+  localStt?:{baseUrl:string;model:string}|null;
+  /** Which engine /v1/voice/transcribe uses: "local", "openai" or "none". */
+  stt?:"local"|"openai"|"none";
+  /** Local text-to-speech (Piper on this computer) when running. */
+  localTts?:{baseUrl:string;voices:{ar:string;en:string}}|null;
+  /** Which engine /v1/voice/speak uses: "local" (Piper), "openai", or "browser" (the page speaks itself). */
+  tts?:"local"|"openai"|"browser";
   provider:string;
   transcriptionModel:string;
   speechModel:string;
@@ -107,11 +115,94 @@ export class OpenAIVoiceProvider implements VoiceProvider{
   }
 }
 
+/**
+ * Speech-to-text on this computer. Works with whisper.cpp's whisper-server started with
+ * --inference-path /v1/audio/transcriptions, or any OpenAI-compatible transcription server.
+ * No API key and no audio leaves the machine.
+ */
+export class LocalTranscriber{
+  readonly baseUrl:string;
+  readonly model:string;
+  constructor(baseUrl:string,model=process.env.LAYANX_STT_MODEL?.trim()||"whisper-1",private readonly timeoutMs=Number(process.env.LAYANX_STT_TIMEOUT_MS)||60_000){
+    this.baseUrl=baseUrl.replace(/\/+$/,"");this.model=model;
+  }
+  static fromEnv(env:NodeJS.ProcessEnv=process.env):LocalTranscriber|null{
+    const url=env.LAYANX_STT_BASE_URL?.trim();
+    return url?new LocalTranscriber(url):null;
+  }
+  async transcribe(audio:Buffer,mimeType:string,filename:string,language?:string):Promise<string>{
+    const form=new FormData();
+    form.append("file",new Blob([new Uint8Array(audio)],{type:mimeType||"audio/wav"}),filename||"voice.wav");
+    form.append("model",this.model);
+    form.append("response_format","json");
+    form.append("temperature","0");
+    const lang=language?.trim().toLowerCase();
+    if(lang&&lang!=="auto")form.append("language",lang);
+    const response=await fetch(`${this.baseUrl}/audio/transcriptions`,{method:"POST",body:form,signal:AbortSignal.timeout(this.timeoutMs)});
+    if(!response.ok)throw new Error(`Local transcription failed (${response.status}): ${(await response.text()).slice(0,300)}`);
+    const payload=await response.json() as {text?:unknown};
+    return typeof payload.text==="string"?payload.text.trim():"";
+  }
+}
+
+/**
+ * Text-to-speech on this computer with Piper (piper-tts http_server, GPL-3.0, run as a separate program).
+ * Arabic uses ar_JO-kareem-medium, English en_US-lessac-medium (LAYANX_TTS_VOICE_AR / _EN to change).
+ * Returns WAV. No text leaves the machine.
+ */
+export class LocalSpeaker{
+  readonly baseUrl:string;
+  readonly voices:{ar:string;en:string};
+  constructor(baseUrl:string,env:NodeJS.ProcessEnv=process.env,private readonly timeoutMs=Number(env.LAYANX_TTS_TIMEOUT_MS)||30_000){
+    this.baseUrl=baseUrl.replace(/\/+$/,"");
+    this.voices={ar:env.LAYANX_TTS_VOICE_AR?.trim()||"ar_JO-kareem-medium",en:env.LAYANX_TTS_VOICE_EN?.trim()||"en_US-lessac-medium"};
+  }
+  static fromEnv(env:NodeJS.ProcessEnv=process.env):LocalSpeaker|null{
+    const url=env.LAYANX_TTS_BASE_URL?.trim();
+    return url?new LocalSpeaker(url,env):null;
+  }
+  /** Arabic letters decide the voice unless the caller says which language. */
+  voiceFor(text:string,lang?:string):string{
+    const l=(lang??"").toLowerCase();
+    if(l.startsWith("en"))return this.voices.en;
+    if(l.startsWith("ar"))return this.voices.ar;
+    const arabic=(text.match(/[\u0600-\u06FF]/g)??[]).length,latin=(text.match(/[A-Za-z]/g)??[]).length;
+    return arabic>=latin?this.voices.ar:this.voices.en;
+  }
+  async speak(text:string,lang?:string):Promise<{audio:Buffer;contentType:string}>{
+    const value=text.trim().slice(0,4000);
+    if(!value)throw new Error("Speech text is empty.");
+    const voice=this.voiceFor(value,lang);
+    const send=(withVoice:boolean)=>fetch(`${this.baseUrl}/synthesize`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:value,...(withVoice?{voice}:{})}),signal:AbortSignal.timeout(this.timeoutMs)});
+    let response=await send(true);
+    // A server started with a single voice may not know the other one: retry with its default voice.
+    if(!response.ok&&response.status<500)response=await send(false);
+    if(!response.ok)throw new Error(`Local speech synthesis failed (${response.status}): ${(await response.text()).slice(0,200)}`);
+    const audio=Buffer.from(await response.arrayBuffer());
+    if(audio.length<44)throw new Error("Local speech synthesis returned no audio.");
+    return{audio,contentType:"audio/wav"};
+  }
+}
+
 export class VoiceService{
-  constructor(private readonly provider:VoiceProvider=new OpenAIVoiceProvider()){}
-  status(){return this.provider.status();}
-  transcribe(...args:Parameters<VoiceProvider["transcribe"]>){return this.provider.transcribe(...args);}
-  speak(...args:Parameters<VoiceProvider["speak"]>){return this.provider.speak(...args);}
+  private readonly local:LocalTranscriber|null;
+  private readonly speaker:LocalSpeaker|null;
+  constructor(private readonly provider:VoiceProvider=new OpenAIVoiceProvider(),local:LocalTranscriber|null=LocalTranscriber.fromEnv(),speaker:LocalSpeaker|null=LocalSpeaker.fromEnv()){this.local=local;this.speaker=speaker;}
+  status():VoiceStatus{
+    const base=this.provider.status();
+    return{...base,localStt:this.local?{baseUrl:this.local.baseUrl,model:this.local.model}:null,stt:this.local?"local":base.enabled?"openai":"none",
+      localTts:this.speaker?{baseUrl:this.speaker.baseUrl,voices:this.speaker.voices}:null,tts:this.speaker?"local":base.enabled?"openai":"browser"};
+  }
+  /** Local whisper first (private, free); the cloud provider only when no local engine is configured. */
+  transcribe(...args:Parameters<VoiceProvider["transcribe"]>){return this.local?this.local.transcribe(...args):this.provider.transcribe(...args);}
+  /** Piper on this computer first (private, free, Arabic voice); the cloud voice only when Piper is absent or fails. */
+  async speak(text:string,format?:"mp3"|"wav"|"opus",lang?:string):Promise<{audio:Buffer;contentType:string}>{
+    if(this.speaker){
+      try{return await this.speaker.speak(text,lang);}
+      catch(error){if(!this.provider.status().enabled)throw error;}
+    }
+    return this.provider.speak(text,format);
+  }
   createRealtimeClientSecret(options:{model?:string;voice?:string;instructions?:string;safetyIdentifier?:string}={}){
     if(!this.provider.createRealtimeClientSecret)throw new Error("Realtime voice is not supported by the configured voice provider.");
     return this.provider.createRealtimeClientSecret(options);

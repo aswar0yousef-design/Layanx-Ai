@@ -1,5 +1,8 @@
 import {LayanXCore} from "../src/core/orchestrator.js";
 import type {ToolRequest} from "../src/core/types.js";
+// This test exercises execution itself; approval of dangerous tools is covered by dangerous-tool-approval.spec.ts.
+process.env.LAYANX_AUTO_APPROVE_TOOLS="terminal.run";
+
 
 const core=new LayanXCore();
 core.registerAgent({

@@ -8,7 +8,7 @@ import {runtimeHealth,runtimeStatus} from "./runtime.js";
 import {providerSummary} from "./config/providers.js";
 import {McpGateway} from "./mcp-gateway.js";
 import {ControlCenter} from "./control-center.js";
-import {createHash} from "node:crypto";
+import {createHash,randomUUID} from "node:crypto";
 import {VoiceService} from "./voice/service.js";
 import {BusinessManager} from "./business/manager.js";
 import {voiceUiHtml} from "./voice/ui.js";
@@ -18,6 +18,24 @@ import {MediaManager} from "./business/media.js";
 import {GrowthEngine} from "./business/growth-engine.js";
 import {MessagingChannels} from "./channels/service.js";
 import {deviceIdentity} from "./device-identity.js";
+import {VoiceAssistant,DailyBriefing,coreAssistantDeps,type AssistantHistoryItem} from "./voice/assistant.js";
+import {Supervisor} from "./autonomy/supervisor.js";
+import {coreSupervisorDeps,runSingleTool} from "./autonomy/runtime-deps.js";
+import {detectExternalAgents,cloudAgentsAllowed} from "./autonomy/external-agents.js";
+import {join as joinPath} from "node:path";
+import {existsSync as fsExists,readFileSync as fsRead,readdirSync as fsReaddir} from "node:fs";
+import {execFile as execFileCb} from "node:child_process";
+import {projectDir} from "./autonomy/project-dir.js";
+import {detectProject} from "./autonomy/project-runner.js";
+import {openIssues,readHealth,recordIssue,refreshKnowledge,resolveIssue} from "./autonomy/knowledge.js";
+import {deleteLesson,listLessons,listPlaybooks,setPlaybookStatus,type PlaybookStatus,exportSkill} from "./autonomy/learning.js";
+import {pendingBranches} from "./autonomy/integrate.js";
+import {isolationLevel} from "./autonomy/sandbox.js";
+import {trustLevel} from "./autonomy/trust.js";
+import {CodeReviewAgent} from "./core/code-review-agent.js";
+import {SecurityReviewAgent} from "./core/security-review-agent.js";
+import {assertSafeGitRef} from "./platform/git-ref.js";
+import {safeChildEnv} from "./platform/safe-env.js";
 export interface RuntimeApiOptions{core:LayanXCore;business:BusinessManager;ads?:AdsManager;media?:MediaManager;growth?:GrowthEngine;channels?:MessagingChannels;persistence?:RuntimePersistence;host?:string;port?:number;maxBodyBytes?:number;token?:string;requireToken?:boolean;}
 function json(response:ServerResponse,status:number,body:unknown){response.statusCode=status;response.setHeader("content-type","application/json; charset=utf-8");response.end(JSON.stringify(body));}
 async function rawBody(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}return Buffer.concat(chunks);}
@@ -29,6 +47,12 @@ export function startRuntimeApi(options:RuntimeApiOptions){
  const mcp=new McpGateway(options.core);
  const control=new ControlCenter(options.core);
  const voice=new VoiceService();
+ const assistant=new VoiceAssistant(coreAssistantDeps(options.core));
+ const briefing=process.env.LAYANX_BRIEFING_TIME?.trim()?new DailyBriefing(assistant,{time:process.env.LAYANX_BRIEFING_TIME.trim(),projectId:process.env.LAYANX_BRIEFING_PROJECT?.trim()||"default"}):undefined;
+ briefing?.start();
+ // Autonomous supervisor: finishes goals end to end; resumes unfinished jobs after a restart.
+ const supervisor=new Supervisor(coreSupervisorDeps(options.core),{file:joinPath(process.env.LAYANX_STORE_DIR?.trim()||".layanx","supervisor-jobs.json")});
+ supervisor.start();
  const oauth=new OAuthConnectionCenter();
  const business=options.business??new BusinessManager(); const ads=options.ads??new AdsManager(business.store); const media=options.media??new MediaManager(); const growth=options.growth;
  const server=createServer(async(request,response)=>{
@@ -38,14 +62,14 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    try{const content=await readFile(join(process.cwd(),"web",file));response.statusCode=200;response.setHeader("content-type",file.endsWith(".js")?"text/javascript; charset=utf-8":file.endsWith(".css")?"text/css; charset=utf-8":"text/html; charset=utf-8");response.end(content);return;}catch{json(response,404,{ok:false,error:"ui_asset_not_found"});return;}
   }
   const publicWebhook=request.url==="/v1/channels/whatsapp/webhook";
-  if(requireToken&&!authorized(request,options.token)&&!publicWebhook&&request.url!=="/v1/health"&&request.url!=="/voice"){json(response,401,{ok:false,error:"unauthorized"});return;}
+  if(requireToken&&!authorized(request,options.token)&&!publicWebhook&&request.url!=="/v1/health"&&request.url?.split("?")[0]!=="/voice"){json(response,401,{ok:false,error:"unauthorized"});return;}
   if(request.method==="GET"&&request.url==="/v1/device/identity"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{json(response,200,{ok:true,device:await deviceIdentity()});}
    catch(error){json(response,500,{ok:false,error:error instanceof Error?error.message:"device_identity_failed"});}
    return;
   }
-  if(request.method==="GET"&&request.url==="/voice"){
+  if(request.method==="GET"&&request.url?.split("?")[0]==="/voice"){
    response.statusCode=200;response.setHeader("content-type","text/html; charset=utf-8");response.end(voiceUiHtml());return;
   }
   if(request.method==="POST"&&request.url==="/v1/voice/realtime-token"){
@@ -89,6 +113,171 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    json(response,200,{ok:true,frame});
    return;
   }
+  // ---- Owner quick actions (dashboard terminal, Git panel, Run tests / Build): run ONE tool through the
+  // full mission runtime (permissions, approval, audit, allowlists) without asking a model to plan it.
+  if(request.method==="POST"&&request.url==="/v1/tools/run"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const input=await body(request,max);
+    const QUICK:Record<string,{action:string;permission:"L2_ANALYZE"|"L4_EXECUTE"}>={
+     "terminal.exec":{action:"run terminal command",permission:"L4_EXECUTE"},
+     "git.status":{action:"git status",permission:"L2_ANALYZE"},
+     "git.diff":{action:"git diff",permission:"L2_ANALYZE"},
+     "git.log":{action:"git log",permission:"L2_ANALYZE"},
+     "git.branch":{action:"git branch",permission:"L4_EXECUTE"},
+     "desktop.screenshot":{action:"desktop screenshot",permission:"L2_ANALYZE"},
+     "project.run":{action:"run project task",permission:"L4_EXECUTE"},
+     "git.merge":{action:"merge branch",permission:"L4_EXECUTE"},
+     "git.publish_pr":{action:"publish pull request",permission:"L4_EXECUTE"},
+     "browser.test":{action:"test web page",permission:"L2_ANALYZE"}
+    };
+    const tool=typeof input.tool==="string"?input.tool:"";
+    const spec=QUICK[tool];
+    if(!spec){json(response,400,{ok:false,error:"tool_not_allowed_for_quick_actions"});return;}
+    const projectId=typeof input.projectId==="string"&&input.projectId.trim()?input.projectId.trim():"default";
+    const payload=input.payload&&typeof input.payload==="object"&&!Array.isArray(input.payload)?input.payload as Record<string,unknown>:{};
+    const resume=typeof input.missionId==="string"&&typeof input.approvalId==="string"?{missionId:input.missionId,approvalId:input.approvalId}:undefined;
+    const result=await runSingleTool(options.core,projectId,tool,payload,resume);
+    json(response,200,{...result,tool});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"quick_action_failed"});}
+   return;
+  }
+  // ---- Per-project dashboard (phase 2): health, memory, security, review, screenshots ----
+  if(request.url?.split("?")[0]?.match(/^\/v1\/projects\/[^/]+\/(overview|scan|review|knowledge|issues|screens\/[^/]+)$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const parts=(request.url.split("?")[0]??"").split("/").filter(Boolean);
+   const projectId=decodeURIComponent(parts[2]??"");const action=parts[3];
+   let dir:string;try{dir=projectDir(projectId);}catch{json(response,400,{ok:false,error:"invalid_project"});return;}
+   const dot=joinPath(dir,".layanx");const readText=(f:string,n=4000)=>{try{return fsRead(joinPath(dot,f),"utf8").slice(0,n);}catch{return"";}};
+   try{
+    if(action==="overview"&&request.method==="GET"){
+     const exists=fsExists(dir);
+     const sections=(text:string)=>("\n"+text).split("\n## ").slice(1).map(x=>{const [title,...rest]=x.split("\n");return{title:title??"",body:rest.join("\n").trim().slice(0,800)};});
+     let index=null;try{index=JSON.parse(readText("index.json",200000));}catch{}
+     let security=null;try{const r=JSON.parse(readText("security.json",400000));security={score:r.score,blocked:r.blocked,counts:r.counts,at:r.at,findings:(r.findings??[]).filter((f:any)=>!f.test).slice(0,40),headers:r.headers,audit:r.audit};}catch{}
+     const list=(sub:string)=>{try{return fsReaddir(joinPath(dot,sub)).filter(f=>/^[\w.-]+\.jpg$/.test(f)).slice(0,40);}catch{return[];}};
+     const git=await new Promise<{branch:string;commits:string[]}>(resolve=>{
+      if(!fsExists(joinPath(dir,".git"))){resolve({branch:"",commits:[]});return;}
+      execFileCb("git",["log","-n","8","--pretty=format:%h %ad %s","--date=short"],{cwd:dir,windowsHide:true,timeout:8000,env:safeChildEnv({allow:["HOME"]})},(e,out)=>{
+       execFileCb("git",["rev-parse","--abbrev-ref","HEAD"],{cwd:dir,windowsHide:true,timeout:8000,env:safeChildEnv({allow:["HOME"]})},(e2,b)=>resolve({branch:e2?"":String(b).trim(),commits:e?[]:String(out).split("\n").filter(Boolean)}));
+      });
+     });
+     const issuesText=readText("KNOWN_ISSUES.md",20000);
+     json(response,200,{ok:true,projectId,dir,exists,info:exists?detectProject(dir):null,health:readHealth(dir),security,
+      knowledge:{purpose:readText("PROJECT.md",2500),index,decisions:sections(readText("DECISIONS.md",30000)).slice(-12).reverse(),
+       issues:{open:openIssues(dir),resolved:issuesText.split("\n").filter(l=>l.startsWith("- [x] ")).map(l=>l.slice(6)).slice(-10)},
+       changelog:sections(readText("CHANGELOG.md",40000)).slice(-8).reverse()},
+      branches:fsExists(joinPath(dir,".git"))?await pendingBranches(dir).catch(()=>[]):[],trust:trustLevel(projectId),isolation:isolationLevel(projectId),
+      screens:{last:list("screens"),baselines:list("baselines")},jobs:supervisor.list(projectId).slice(0,6).map(j=>({id:j.id,goal:j.goal,status:j.status,result:j.result,createdAt:j.createdAt,branch:j.branch,security:j.security})),git});return;
+    }
+    if(action?.startsWith("screens")||parts[3]==="screens"){
+     const file=decodeURIComponent(parts[4]??"");const set=new URL(request.url,"http://localhost").searchParams.get("set")==="baselines"?"baselines":"screens";
+     if(!/^[\w.-]+\.jpg$/.test(file)){json(response,400,{ok:false,error:"invalid_file"});return;}
+     const p=joinPath(dot,set,file);if(!fsExists(p)){json(response,404,{ok:false,error:"not_found"});return;}
+     response.writeHead(200,{"content-type":"image/jpeg","cache-control":"no-store","x-content-type-options":"nosniff"});response.end(fsRead(p));return;
+    }
+    if(action==="scan"&&request.method==="POST"){
+     const input=await body(request,max);
+     const r=await runSingleTool(options.core,projectId,"project.security",{audit:input.audit!==false,...(typeof input.url==="string"?{url:input.url}:{})});
+     json(response,200,{ok:true,...r});return;
+    }
+    if(action==="review"&&request.method==="POST"){
+     const input=await body(request,max);
+     const baseRef=typeof input.baseRef==="string"&&input.baseRef.trim()?input.baseRef.trim():"HEAD~1";
+     assertSafeGitRef(baseRef);
+     const [code,sec]=await Promise.allSettled([new CodeReviewAgent(dir).review(baseRef),new SecurityReviewAgent(dir).review(baseRef)]);
+     json(response,200,{ok:true,baseRef,code:code.status==="fulfilled"?code.value:{error:(code.reason as Error).message},security:sec.status==="fulfilled"?sec.value:{error:(sec.reason as Error).message}});return;
+    }
+    if(action==="knowledge"&&request.method==="POST"){json(response,200,{ok:true,index:refreshKnowledge(dir)});return;}
+    if(action==="issues"&&request.method==="POST"){
+     const input=await body(request,max);
+     if(typeof input.resolve==="string"){json(response,200,{ok:true,resolved:resolveIssue(dir,input.resolve)});return;}
+     const title=typeof input.title==="string"?input.title.trim():"";
+     if(title.length<3){json(response,400,{ok:false,error:"title_required"});return;}
+     recordIssue(dir,title,typeof input.detail==="string"?input.detail:"");json(response,201,{ok:true,open:openIssues(dir)});return;
+    }
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"project_action_failed"});return;}
+   json(response,404,{ok:false,error:"not_found"});return;
+  }
+
+  // ---- Learning (phase 4): playbooks and lessons ----
+  if(request.url?.split("?")[0]?.startsWith("/v1/learning")){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const parts=(request.url.split("?")[0]??"").split("/").filter(Boolean);
+   const projectId=new URL(request.url,"http://localhost").searchParams.get("projectId")?.trim()||undefined;
+   try{
+    if(request.method==="GET"&&parts.length===2){
+     json(response,200,{ok:true,playbooks:listPlaybooks(projectId).map(p=>({...p,body:p.body.slice(0,4000)})),lessons:listLessons().slice(0,200)});return;
+    }
+    if(request.method==="POST"&&parts[2]==="playbooks"&&parts[3]&&["approve","disable","enable","reject"].includes(parts[4]??"")){
+     const status:PlaybookStatus=parts[4]==="disable"?"disabled":parts[4]==="reject"?"rejected":"active";
+     setPlaybookStatus(decodeURIComponent(parts[3]),status,process.env,projectId);json(response,200,{ok:true,status});return;
+    }
+    if(request.method==="POST"&&parts[2]==="playbooks"&&parts[3]&&parts[4]==="export"){
+     const target=join(process.env.LAYANX_STORE_DIR?.trim()||".layanx","skills-export");
+     json(response,200,{ok:true,dir:exportSkill(decodeURIComponent(parts[3]),target,process.env,projectId)});return;
+    }
+    if(request.method==="DELETE"&&parts[2]==="lessons"&&parts[3]){json(response,200,{ok:true,deleted:deleteLesson(decodeURIComponent(parts[3]))});return;}
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"learning_failed"});return;}
+   json(response,404,{ok:false,error:"not_found"});return;
+  }
+
+  // ---- Autonomous jobs (supervisor) ----
+  if(request.url?.split("?")[0]?.startsWith("/v1/supervisor/jobs")){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const parts=(request.url.split("?")[0]??"").split("/").filter(Boolean);
+   const params=new URL(request.url,"http://localhost").searchParams;
+   try{
+    if(request.method==="POST"&&parts.length===3){
+     const input=await body(request,max);
+     const goal=typeof input.goal==="string"?input.goal:"";
+     const projectId=typeof input.projectId==="string"&&input.projectId.trim()?input.projectId.trim():"default";
+     json(response,201,{ok:true,job:supervisor.create(goal,projectId,{maxMinutes:typeof input.maxMinutes==="number"?input.maxMinutes:undefined})});return;
+    }
+    if(request.method==="GET"&&parts.length===3){
+     const projectId=params.get("projectId")?.trim()||undefined;
+     json(response,200,{ok:true,jobs:supervisor.list(projectId).slice(0,50).map(j=>({...j,log:j.log.slice(-8)}))});return;
+    }
+    const job=parts[3]?supervisor.get(decodeURIComponent(parts[3])):undefined;
+    if(!job){json(response,404,{ok:false,error:"job_not_found"});return;}
+    if(request.method==="GET"&&parts.length===4){json(response,200,{ok:true,job});return;}
+    if(request.method==="POST"&&parts[4]==="cancel"){supervisor.cancel(job.id);json(response,200,{ok:true,job});return;}
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"supervisor_failed"});return;}
+   json(response,404,{ok:false,error:"not_found"});return;
+  }
+  if(request.method==="GET"&&request.url==="/v1/agents/external"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   json(response,200,{ok:true,cloudAllowed:cloudAgentsAllowed(),agents:detectExternalAgents(true).map(a=>({name:a.name,kind:a.kind,label:a.label}))});return;
+  }
+  // ---- Jarvis assistant: one conversational entry point for voice and text ----
+  if(request.method==="POST"&&request.url==="/v1/assistant/turn"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const input=await body(request,max);
+    const text=typeof input.text==="string"?input.text:"";
+    const lang=input.lang==="ar"||input.lang==="en"?input.lang:"auto";
+    const projectId=typeof input.projectId==="string"&&input.projectId.trim()?input.projectId.trim():"default";
+    const history=Array.isArray(input.history)?(input.history as unknown[]).filter((h):h is AssistantHistoryItem=>!!h&&typeof h==="object"&&((h as AssistantHistoryItem).role==="user"||(h as AssistantHistoryItem).role==="assistant")&&typeof (h as AssistantHistoryItem).text==="string").slice(-6):[];
+    const result=await assistant.turn({text,lang,projectId,history,allowTasks:input.allowTasks!==false});
+    json(response,200,result);
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"assistant failed"});}
+   return;
+  }
+  if(request.method==="GET"&&request.url?.split("?")[0]==="/v1/assistant/report"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const params=new URL(request.url,"http://localhost").searchParams;
+   const projectId=params.get("projectId")?.trim()||"default";
+   const hours=Math.min(Math.max(Number(params.get("hours"))||24,1),24*30);
+   json(response,200,{ok:true,report:assistant.report(projectId,hours)});return;
+  }
+  if(request.method==="GET"&&request.url==="/v1/assistant/briefing"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   json(response,200,{ok:true,enabled:Boolean(briefing),time:process.env.LAYANX_BRIEFING_TIME?.trim()||null,briefing:briefing?.latest()??null});return;
+  }
+  if(request.method==="GET"&&request.url==="/v1/cloud/usage"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   json(response,200,{ok:true,usage:options.core.modelExecution.budget.status()});return;
+  }
   if(request.method==="GET"&&request.url==="/v1/voice/status"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    json(response,200,{ok:true,voice:voice.status()});return;
@@ -102,7 +291,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     const audio=await rawBody(request,Math.max(max,16*1024*1024));
     if(!audio.length){json(response,400,{ok:false,error:"audio body is required"});return;}
     const text=await voice.transcribe(audio,contentType.split(";")[0]??"audio/webm",filename,language);
-    json(response,200,{ok:true,text,provider:voice.status().provider});
+    json(response,200,{ok:true,text,provider:voice.status().stt});
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"voice transcription failed"});}
    return;
   }
@@ -113,7 +302,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     const textValue=typeof input.text==="string"?input.text.trim():"";
     const format=input.format==="wav"||input.format==="opus"?input.format:"mp3";
     if(!textValue){json(response,400,{ok:false,error:"text is required"});return;}
-    const result=await voice.speak(textValue,format);
+    const result=await voice.speak(textValue,format,typeof input.lang==="string"?input.lang:undefined);
     response.statusCode=200;response.setHeader("content-type",result.contentType);response.setHeader("cache-control","no-store");response.end(result.audio);
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"voice synthesis failed"});}
    return;
@@ -143,7 +332,10 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     for(const [key,value] of Object.entries(raw)){const index=Number(key);if(Number.isInteger(index)&&index>=0&&typeof value==="string"&&value.trim())approvalIds[index]=value.trim();}
     if(!goal){json(response,400,{ok:false,error:"goal is required"});return;}
     if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
-    const result=await options.core.runAgentGateway(goal,projectId,maxSteps,approvalIds,agentId);
+    // model: "auto" (default) | "local" | "openai" | "anthropic" | "gemini"
+    const choice=typeof input.model==="string"?input.model.trim().toLowerCase():"auto";
+    const routing=choice==="local"?{preferLocal:true}:["openai","anthropic","gemini"].includes(choice)?{preferLocal:false,tags:[choice]}:undefined;
+    const result=await options.core.runAgentGateway(goal,projectId,maxSteps,approvalIds,agentId,routing);
     json(response,result.completed?200:result.paused?202:422,result);
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"agent gateway failed"});}
    return;
@@ -157,10 +349,16 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     if(!mission)return false;
     try{options.core.projectIsolation.assertMissionProject(projectId,mission.projectId);}catch{return false;}
     return Date.parse(approval.expiresAt)>Date.now();
-   }).map(approval=>({...approval,approved:options.core.executionRuntime.approvals.isApproved(approval.id)}));
+   }).map(approval=>{
+    const approved=options.core.executionRuntime.approvals.isApproved(approval.id);
+    const status=options.core.missions.get(approval.missionId)?.status;
+    // A finished mission withdraws its approvals; they are history, not something to decide.
+    const pending=!approved&&!["completed","cancelled","failed"].includes(String(status));
+    return{...approval,approved,pending};
+   });
    json(response,200,{ok:true,approvals});return;
   }
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/approvals\/[^/]+\/(approve|revoke)$/)){
+  if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/approvals\/[^/]+\/(approve|revoke)$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const parsedApprovalUrl=new URL(request.url,"http://localhost");
    const parts=parsedApprovalUrl.pathname.split("/");
@@ -190,19 +388,19 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   if(request.method==="GET"&&request.url?.startsWith("/v1/oauth/callback")){
    try{const u=new URL(request.url,"http://localhost");const state=u.searchParams.get("state")??"";const code=u.searchParams.get("code")??"";if(!state||!code){json(response,400,{ok:false,error:"state_and_code_required"});return;}const connection=await oauth.callback(state,code);json(response,200,{ok:true,connection:oauth.status(connection)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_callback_failed"});}return;
   }
-  if(request.method==="GET"&&request.url?.match(/^\/v1\/oauth\/[^/]+\/discover-ads$/)){
+  if(request.method==="GET"&&request.url?.split("?")[0]?.match(/^\/v1\/oauth\/[^/]+\/discover-ads$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{const id=decodeURIComponent(request.url.split("/")[3]??"");json(response,200,{ok:true,...await oauth.discoverAds(id)});}
    catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_ads_discovery_failed"});}
    return;
   }
-  if(request.method==="GET"&&request.url?.match(/^\/v1\/oauth\/[^/]+\/discover$/)){
+  if(request.method==="GET"&&request.url?.split("?")[0]?.match(/^\/v1\/oauth\/[^/]+\/discover$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{const id=decodeURIComponent(request.url.split("/")[3]??"");json(response,200,{ok:true,...await oauth.discover(id)});}
    catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_discovery_failed"});}
    return;
   }
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/oauth\/[^/]+\/bind$/)){
+  if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/oauth\/[^/]+\/bind$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{
     const id=decodeURIComponent(request.url.split("/")[3]??"");
@@ -222,11 +420,11 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_bind_failed"});}
    return;
   }
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/oauth\/[^/]+\/revoke$/)){
+  if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/oauth\/[^/]+\/revoke$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{const id=request.url.split("/")[3] as string;const connection=oauth.get(id);oauth.revoke(connection);json(response,200,{ok:true,id});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_revoke_failed"});}return;
   }
-  if(request.method==="GET"&&request.url?.match(/^\/v1\/missions\/[^/]+\/events$/)){
+  if(request.method==="GET"&&request.url?.split("?")[0]?.match(/^\/v1\/missions\/[^/]+\/events$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const missionId=request.url.split("/")[3] as string;
    const mission=options.core.missions.get(missionId);
@@ -263,7 +461,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"remote session state failed"});}
    return;
   }
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/control-center\/missions\/[^/]+\/cancel$/)){
+  if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/control-center\/missions\/[^/]+\/cancel$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const id=request.url.split("/")[4] as string;
    try{
@@ -287,7 +485,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   if(request.method==="GET"&&request.url==="/v1/business"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}json(response,200,{ok:true,business:business.snapshot(),persistence:business.store.persistenceStatus()});return;}
   if(request.method==="POST"&&request.url==="/v1/business/store"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,store:business.createStore(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"store creation failed"});}return;}
   if(request.method==="POST"&&request.url==="/v1/business/product"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,product:business.createProduct(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"product creation failed"});}return;}
-  if(request.method==="PATCH"&&request.url?.match(/^\/v1\/business\/product\/[^/]+$/)){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,200,{ok:true,product:business.updateProduct(decodeURIComponent(request.url.split("/").pop()!),await body(request,max))});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"product update failed"});}return;}
+  if(request.method==="PATCH"&&request.url?.split("?")[0]?.match(/^\/v1\/business\/product\/[^/]+$/)){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,200,{ok:true,product:business.updateProduct(decodeURIComponent(request.url.split("/").pop()!),await body(request,max))});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"product update failed"});}return;}
   if(request.method==="POST"&&request.url==="/v1/business/product/publish"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,200,{ok:true,result:await business.publishProduct(String(input.productId))});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"product publish failed"});}return;}
   if(request.method==="POST"&&request.url==="/v1/business/orders/sync"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{const input=await body(request,max);json(response,200,{ok:true,orders:await business.syncOrders(String(input.storeId))});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"order sync failed"});}return;}
   if(request.method==="POST"&&request.url==="/v1/business/social-account"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}try{json(response,201,{ok:true,account:business.upsertSocialAccount(await body(request,max) as any)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"social account failed"});}return;}
@@ -352,7 +550,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }
    return;
   }
-  if(request.method==="GET"&&request.url?.match(/^\/v1\/projects\/[^/]+\/graph$/)){
+  if(request.method==="GET"&&request.url?.split("?")[0]?.match(/^\/v1\/projects\/[^/]+\/graph$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const parts=request.url.split("/");
    const projectId=decodeURIComponent(parts[3]??"").trim();
@@ -365,7 +563,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }
    return;
   }
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/projects\/[^/]+\/impact$/)){
+  if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/projects\/[^/]+\/impact$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const parts=request.url.split("/");
    const projectId=decodeURIComponent(parts[3]??"").trim();
@@ -381,7 +579,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"impact analysis failed"});}
    return;
   }
-  if(request.method==="GET"&&request.url?.match(/^\/v1\/projects\/[^/]+\/intelligence$/)){
+  if(request.method==="GET"&&request.url?.split("?")[0]?.match(/^\/v1\/projects\/[^/]+\/intelligence$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const parts=request.url.split("/");
    const projectId=decodeURIComponent(parts[3]??"").trim();
@@ -394,7 +592,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }
    return;
   }
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/cancel$/)){
+  if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/missions\/[^/]+\/cancel$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const missionId=decodeURIComponent(request.url.split("/")[3]??"");
    const mission=options.core.missions.get(missionId);
@@ -409,7 +607,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"mission cancellation failed"});}
    return;
   }
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/repair$/)){
+  if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/missions\/[^/]+\/repair$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const missionId=request.url.split("/")[3] as string;
    if(!options.core.missions.get(missionId)){json(response,404,{ok:false,error:"mission_not_found"});return;}
@@ -426,8 +624,8 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }
    return;
   }
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/agent-loop$/)){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}const missionId=request.url.split("/")[3] as string;if(!options.core.missions.get(missionId)){json(response,404,{ok:false,error:"mission_not_found"});return;}try{const input=await body(request,max);const projectId=typeof input.projectId==="string"?input.projectId.trim():"";const agentId=typeof input.agentId==="string"&&input.agentId.trim()?input.agentId.trim():"core";const maxSteps=typeof input.maxSteps==="number"&&Number.isInteger(input.maxSteps)?Math.min(Math.max(input.maxSteps,1),25):10;const raw=input.approvalIds&&typeof input.approvalIds==="object"&&!Array.isArray(input.approvalIds)?input.approvalIds as Record<string,unknown>:{};const approvalIds:Record<number,string>={};for(const [key,value] of Object.entries(raw)){const index=Number(key);if(Number.isInteger(index)&&index>=0&&typeof value==="string"&&value.trim())approvalIds[index]=value.trim();}if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}const result=await options.core.executeAgentLoop(missionId,projectId,maxSteps,approvalIds,agentId);json(response,result.completed?200:result.paused?202:422,result);}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"agent loop failed"});}return;}
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/development-session$/)){
+  if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/missions\/[^/]+\/agent-loop$/)){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}const missionId=request.url.split("/")[3] as string;if(!options.core.missions.get(missionId)){json(response,404,{ok:false,error:"mission_not_found"});return;}try{const input=await body(request,max);const projectId=typeof input.projectId==="string"?input.projectId.trim():"";const agentId=typeof input.agentId==="string"&&input.agentId.trim()?input.agentId.trim():"core";const maxSteps=typeof input.maxSteps==="number"&&Number.isInteger(input.maxSteps)?Math.min(Math.max(input.maxSteps,1),25):10;const raw=input.approvalIds&&typeof input.approvalIds==="object"&&!Array.isArray(input.approvalIds)?input.approvalIds as Record<string,unknown>:{};const approvalIds:Record<number,string>={};for(const [key,value] of Object.entries(raw)){const index=Number(key);if(Number.isInteger(index)&&index>=0&&typeof value==="string"&&value.trim())approvalIds[index]=value.trim();}if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}const result=await options.core.executeAgentLoop(missionId,projectId,maxSteps,approvalIds,agentId);json(response,result.completed?200:result.paused?202:422,result);}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"agent loop failed"});}return;}
+  if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/missions\/[^/]+\/development-session$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const missionId=request.url.split("/")[3] as string;
    const mission=options.core.missions.get(missionId);
@@ -445,7 +643,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"development session failed"});}
    return;
   }
-  if(request.method==="GET"&&request.url?.match(/^\/v1\/missions\/[^/]+\/development-session$/)){
+  if(request.method==="GET"&&request.url?.split("?")[0]?.match(/^\/v1\/missions\/[^/]+\/development-session$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const missionId=request.url.split("/")[3] as string;
    const projectId=new URL(request.url,"http://localhost").searchParams.get("projectId")?.trim()??"";
@@ -454,7 +652,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"session state unavailable"});}
    return;
   }
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/development-session\/resume$/)){
+  if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/missions\/[^/]+\/development-session\/resume$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const missionId=request.url.split("/")[3] as string;
    try{
@@ -481,7 +679,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    if(!mission){json(response,404,{ok:false,error:"mission_not_found"});return;}
    try{
     const limit=Math.min(Math.max(Number(parsed.searchParams.get("limit")??8)||8,1),50);
-    const context=options.core.contextFabric.build({projectId,mission,query,limit,maxChars:12000});
+    const context=await options.core.contextFabric.buildAsync({projectId,mission,query,limit,maxChars:12000});
     json(response,200,{ok:true,context});
    }catch(error){
     json(response,403,{ok:false,error:error instanceof Error?error.message:"context resolution failed"});
@@ -493,7 +691,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    json(response,200,{ok:true,skills:options.core.skills.list()});
    return;
   }
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/skills\/[^/]+\/execute$/)){
+  if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/missions\/[^/]+\/skills\/[^/]+\/execute$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const parts=request.url.split("/");
    const missionId=parts[3] as string;
@@ -528,7 +726,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    json(response,200,{ok:true,action,permission,tools});
    return;
   }
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/approvals$/)){
+  if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/missions\/[^/]+\/approvals$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const id=request.url.split("/")[3] as string;
    const mission=options.core.missions.get(id);
@@ -565,7 +763,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"approval creation failed"});}
    return;
   }
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/approvals\/[^/]+\/approve$/)){
+  if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/missions\/[^/]+\/approvals\/[^/]+\/approve$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const parts=request.url.split("/");
    const missionId=parts[3] as string,approvalId=parts[5] as string;
@@ -597,7 +795,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"release creation failed"});}
    return;
   }
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/release\/[^/]+\/transition$/)){
+  if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/release\/[^/]+\/transition$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{
     const id=request.url.split("/")[3] as string;
@@ -699,14 +897,14 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"mission dependency registration failed"});}
    return;
   }
-  if(request.method==="GET"&&request.url?.match(/^\/v1\/mission-dependencies\/[^/]+$/)){
+  if(request.method==="GET"&&request.url?.split("?")[0]?.match(/^\/v1\/mission-dependencies\/[^/]+$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const missionId=decodeURIComponent(request.url.split("/")[3]??"");
    try{json(response,200,{ok:true,status:options.core.missionDependencyStatus(missionId)});}
    catch(error){json(response,404,{ok:false,error:error instanceof Error?error.message:"mission not found"});}
    return;
   }
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/mission-dependencies\/[^/]+\/run$/)){
+  if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/mission-dependencies\/[^/]+\/run$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const missionId=decodeURIComponent(request.url.split("/")[3]??"");
    try{
@@ -735,7 +933,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"schedule creation failed"});}
    return;
   }
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/scheduler\/[^/]+\/enable$/)){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+  if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/scheduler\/[^/]+\/enable$/)){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{
     const id=decodeURIComponent(request.url.split("/")[3]??"");
     const input=await body(request,max);
@@ -744,7 +942,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"schedule update failed"});}
    return;
   }
-  if(request.method==="DELETE"&&request.url?.match(/^\/v1\/scheduler\/[^/]+$/)){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+  if(request.method==="DELETE"&&request.url?.split("?")[0]?.match(/^\/v1\/scheduler\/[^/]+$/)){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{options.core.scheduler.unregister(decodeURIComponent(request.url.split("/")[3]??""));json(response,200,{ok:true});}
    catch(error){json(response,404,{ok:false,error:error instanceof Error?error.message:"schedule not found"});}
    return;
@@ -770,7 +968,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"event trigger creation failed"});}
    return;
   }
-  if(request.method==="DELETE"&&request.url?.match(/^\/v1\/events\/triggers\/[^/]+$/)){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+  if(request.method==="DELETE"&&request.url?.split("?")[0]?.match(/^\/v1\/events\/triggers\/[^/]+$/)){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{options.core.eventEngine.remove(decodeURIComponent(request.url.split("/")[4]??""));json(response,200,{ok:true});}
    catch(error){json(response,404,{ok:false,error:error instanceof Error?error.message:"event trigger not found"});}
    return;
@@ -794,7 +992,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    const missions=projectId?options.core.missions.list().filter(m=>m.projectId===projectId):options.core.missions.list();
    json(response,200,{ok:true,missions});return;
   }
-   if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/tools\/execute-adaptive$/)){
+   if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/missions\/[^/]+\/tools\/execute-adaptive$/)){
     if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
     const id=request.url.split("/")[3] as string;
     if(!options.core.missions.get(id)){json(response,404,{ok:false,error:"mission_not_found"});return;}
@@ -823,7 +1021,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    catch{json(response,403,{ok:false,error:"project isolation scope violation"});return;}
    json(response,200,{ok:true,mission,execution:options.core.executionStates.get(id),audit:options.core.audit.forMission(id),ledger:options.core.ledger.forMission(id)});return;
   }
-   if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/tools\/execute-all$/)){
+   if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/missions\/[^/]+\/tools\/execute-all$/)){
     if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
     const id=request.url.split("/")[3] as string;
     if(!options.core.missions.get(id)){json(response,404,{ok:false,error:"mission_not_found"});return;}
@@ -840,7 +1038,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     }
     return;
    }
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/tools\/execute$/)){
+  if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/missions\/[^/]+\/tools\/execute$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const id=request.url.split("/")[3] as string;
    if(!options.core.missions.get(id)){json(response,404,{ok:false,error:"mission_not_found"});return;}
@@ -857,7 +1055,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }
    return;
   }
-  if(request.method==="POST"&&request.url?.match(/^\/v1\/missions\/[^/]+\/tools$/)){
+  if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/missions\/[^/]+\/tools$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const id=request.url.split("/")[3] as string;
    const mission=options.core.missions.get(id);

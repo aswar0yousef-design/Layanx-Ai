@@ -10,7 +10,8 @@ export class GitBranchManager{
   constructor(options:GitBranchManagerOptions){this.root=resolve(options.root);}
   async status():Promise<BranchStatus>{
     const detected=(await this.git(["branch","--show-current"])).stdout.trim();
-    const branch=detected||process.env.GITHUB_HEAD_REF?.trim()||process.env.GITHUB_REF_NAME?.trim()||"HEAD";
+    // CI checkouts are detached; only there is the runner-provided branch name trusted. Locally a detached HEAD stays "".
+    const branch=detected||(process.env.GITHUB_ACTIONS==="true"?(process.env.GITHUB_HEAD_REF?.trim()||process.env.GITHUB_REF_NAME?.trim()||""):"");
     const porcelain=(await this.git(["status","--porcelain"])).stdout.trim();
     return{branch,clean:!porcelain,changes:porcelain?porcelain.split("\n").filter(Boolean):[]};
   }

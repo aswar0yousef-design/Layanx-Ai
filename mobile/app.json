@@ -9,7 +9,13 @@
       "versionCode": 1
     },
     "ios": {
-      "bundleIdentifier": "com.layanx.remote"
+      "bundleIdentifier": "com.layanx.remote",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        },
+        "NSLocalNetworkUsageDescription": "LayanX connects to your own computer on your home network."
+      }
     }
   }
 }

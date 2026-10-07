@@ -1,3 +1,4 @@
+import {safeChildEnv} from "../platform/safe-env.js";
 import {mkdir} from "node:fs/promises";
 import {existsSync} from "node:fs";
 import {resolve,relative,sep,dirname} from "node:path";
@@ -33,7 +34,7 @@ function run(cwd:string,args:string[],timeout=30000):Promise<unknown>{
   const isWindows=process.platform==="win32";
   const binary=isWindows?"git.exe":"git";
   const commandArgs=args;
-  const child=spawn(binary,commandArgs,{cwd,shell:false,env:{...process.env,GIT_TERMINAL_PROMPT:"0"},timeout});
+  const child=spawn(binary,commandArgs,{cwd,shell:false,env:safeChildEnv({allow:["HOME","GIT_SSH","GIT_SSH_COMMAND","SSH_AUTH_SOCK","GCM_INTERACTIVE"],extra:{GIT_TERMINAL_PROMPT:"0"}}),timeout});
   let stdout="",stderr="";
   child.stdout.on("data",c=>{stdout+=String(c);if(stdout.length>128*1024)child.kill("SIGKILL");});
   child.stderr.on("data",c=>{stderr+=String(c);if(stderr.length>128*1024)child.kill("SIGKILL");});
@@ -54,7 +55,7 @@ export function createGitToolAdapter(options:{root:string}):ToolAdapter{
   const workspace=workspaceFor(root,typeof request.projectId==="string"?request.projectId:"");await mkdir(workspace,{recursive:true});
   const input=payload(request);
   switch(request.action){
-   case "git status": return run(workspace,["status","--short"]);
+   case "git status": return run(workspace,["status","--short","--branch"]);
    case "git checkpoint": { const result=await run(workspace,["rev-parse","HEAD"]) as {stdout:string;exitCode:number|null}; return {...result,stdout:result.stdout.trim()+"\n"}; }
    case "git branch": {
     const branch=typeof input.branch==="string"?input.branch.trim():"";

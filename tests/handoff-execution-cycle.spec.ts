@@ -1,5 +1,8 @@
 import {LayanXCore} from "../src/core/orchestrator.js";
 import {MissionRunner} from "../src/core/mission-runner.js";
+// This test exercises execution itself; approval of dangerous tools is covered by dangerous-tool-approval.spec.ts.
+process.env.LAYANX_AUTO_APPROVE_TOOLS="terminal.run";
+
 
 const core=new LayanXCore();
 const agentA={agentId:"agent-a",purpose:"prepare",allowedTools:["terminal.run"],forbiddenResources:[],requiredPermission:"L4_EXECUTE" as const,maxToolCalls:5,maxRuntimeMs:10000,successCriteria:["done"],stopCondition:"stop"};

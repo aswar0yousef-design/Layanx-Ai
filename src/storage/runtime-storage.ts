@@ -1,5 +1,6 @@
 import type {StorageAdapter,Transaction} from "./repository.js";
 import {JsonStorageAdapter} from "./json-adapter.js";
+import {SqliteAdapter,chooseStorageKind,sqlitePathFor} from "./sqlite-adapter.js";
 export interface RuntimeStorageKeys{snapshot:string;}
 class MemoryStorage implements StorageAdapter{
  private state:Record<string,unknown>={};
@@ -21,4 +22,11 @@ export class RuntimeStorage{
  async get<T>(key=this.keys.snapshot):Promise<T|undefined>{await this.writeQueue;return this.storage.transaction(async tx=>tx.get<T>(key));}
  async set<T>(value:T,key=this.keys.snapshot):Promise<void>{this.writeQueue=this.writeQueue.then(()=>this.storage.transaction(async tx=>{await tx.set(key,value);}));await this.writeQueue;}
  static json(path:string):RuntimeStorage{return new RuntimeStorage(new JsonStorageAdapter(path));}
+ /** SQLite when available (importing the old JSON file once), otherwise JSON. LAYANX_STORAGE=json forces JSON. */
+ static local(jsonPath:string,env:NodeJS.ProcessEnv=process.env):RuntimeStorage{
+  if(chooseStorageKind(env)==="json")return RuntimeStorage.json(jsonPath);
+  const adapter=new SqliteAdapter(sqlitePathFor(jsonPath));
+  adapter.importJsonIfEmpty(jsonPath);
+  return new RuntimeStorage(adapter);
+ }
 }

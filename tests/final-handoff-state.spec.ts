@@ -3,6 +3,9 @@ import {RuntimePersistence} from "../src/core/runtime-persistence.js";
 import {RuntimeStorage} from "../src/storage/runtime-storage.js";
 import {MissionRunner} from "../src/core/mission-runner.js";
 import type {StorageAdapter,Transaction} from "../src/storage/repository.js";
+// This test exercises execution itself; approval of dangerous tools is covered by dangerous-tool-approval.spec.ts.
+process.env.LAYANX_AUTO_APPROVE_TOOLS="terminal.run";
+
 
 class MemoryStorage implements StorageAdapter{
  private state=new Map<string,unknown>();

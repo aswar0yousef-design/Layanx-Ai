@@ -1,3 +1,4 @@
+import {EXECUTION_STEP} from "./verification.js";
 import type {Mission,ToolRequest} from "./types.js";
 import type {ToolAdapter} from "../tools/executor.js";
 import type {RuntimeSecurityContext} from "./runtime.js";
@@ -150,7 +151,7 @@ export class RuntimeRecoveryManager{
     if(!security)throw new Error("Recovery security context is required.");
     const result=await runner.execute(snapshot.mission,request,adapter,approvalId,security);
     if(result.ok){
-      const executionStep=snapshot.mission.steps.find(step=>/execute|run|perform|action/i.test(step.description));
+      const executionStep=snapshot.mission.steps.find(step=>EXECUTION_STEP.test(step.description));
       if(executionStep)executionStep.status="completed";
       this.core.missions.save(snapshot.mission);
     }

@@ -2,6 +2,7 @@ import type {ModelExecutionRouter} from "./model-execution.js";
 import type {PermissionLevel} from "./types.js";
 import type {ToolCatalogEntry} from "./tool-catalog.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
+import {isDevelopmentGoal as isDevelopmentIntent,selectToolsForGoal} from "../providers/tool-selection.js";
 
 export interface PlannedTool{
   tool:string;
@@ -11,18 +12,25 @@ export interface PlannedTool{
   payload?:Record<string,unknown>;
 }
 
-function isDevelopmentGoal(goal:string):boolean{
- const value=goal.toLowerCase();
- return ["test","tests","testing","typecheck","build","compile","lint","debug","error","bug","fix","code","project","repository","repo","npm","git","اختبار","اختبارات","فحص المشروع","المشروع","خطأ","اخطاء","إصلاح","الكود","برمجة","بناء"].some(term=>value.includes(term));
-}
+// Whole-word, Arabic-aware intent check (the old substring check matched "latest" as "test",
+// "prefix" as "fix" and every sentence containing "المشروع").
+const isDevelopmentGoal=isDevelopmentIntent;
+// Small local models choose badly from ~100 tools; send only the best matches for non-development goals.
+const PLANNER_TOOL_BUDGET=Math.max(0,Number(process.env.LAYANX_PLANNER_TOOL_BUDGET??16)||0);
 function filterCatalogForGoal(goal:string,catalog:ToolCatalogEntry[]):ToolCatalogEntry[]{
- if(!isDevelopmentGoal(goal))return catalog;
+ if(!isDevelopmentGoal(goal))return PLANNER_TOOL_BUDGET>0?selectToolsForGoal(goal,catalog,PLANNER_TOOL_BUDGET):catalog;
  const allowedPrefixes=["project.","terminal.","files.","git.","development.","runtime.","mission.","memory.","browser.read","github.repo.read","github.issues.list","github.prs.list"];
  return catalog.filter(tool=>allowedPrefixes.some(prefix=>tool.name===prefix||tool.name.startsWith(prefix)));
 }
 
 function deterministicDevelopmentPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
- const value=goal.toLowerCase();
+ const value=goal.toLowerCase().trim();
+ // Only a PURE verification request ("run the tests", "شغّل البناء") may skip the model. Any request
+ // to create or change something ("build a website", "ابنِ موقعاً", "fix ... and test") must be planned:
+ // matching the bare words test/build turned whole development tasks into a single verification step.
+ if(value.length>120||value.includes("\n"))return undefined;
+ if(/\b(create|add|implement|write|fix|make|develop|design|refactor|update|change|remove|build (a|an|me|the|new)|new)\b|أنشئ|انشئ|أضف|اضف|اكتب|أصلح|اصلح|طوّر|طور|صمم|ابن |ابنِ|إنشاء|انشاء|برمج|عدّل|عدل|غيّر|احذف/.test(value))return undefined;
+ if(!/\b(run|execute|check|verify|start)\b|شغ|نفذ|نفّذ|افحص|تحقق|جرّب|جرب/.test(value))return undefined;
  const verification=value.includes("test")||value.includes("اختبار")||value.includes("اختبارات")
    ? "test"
    : value.includes("typecheck")||value.includes("type check")||value.includes("types")||value.includes("تايب")
@@ -64,6 +72,57 @@ function parseModelJson(raw:string,context:string):unknown{
  throw new Error(context+" returned invalid JSON.");
 }
 
+const PERMISSIONS=["L1_READ","L2_ANALYZE","L3_MODIFY","L4_EXECUTE","L5_CRITICAL"];
+
+/** One schema branch per catalog tool, so constrained decoding can only produce real tool/action/permission triples. */
+function toolCallSchema(catalog:ToolCatalogEntry[]):Record<string,unknown>{
+ if(!catalog.length)return{type:"object",properties:{tool:{type:"string"},action:{type:"string"},permission:{type:"string",enum:PERMISSIONS},reason:{type:"string"},payload:{type:"object"}},required:["tool","action","permission","reason"]};
+ return{anyOf:catalog.map(tool=>({type:"object",properties:{tool:{type:"string",enum:[tool.name]},action:{type:"string",enum:tool.actions.length?tool.actions:[""]},permission:{type:"string",enum:[tool.permission]},reason:{type:"string"},payload:{type:"object"}},required:["tool","action","permission","reason"]}))};
+}
+/** JSON Schema for a whole mission plan (Ollama structured outputs). */
+export function missionPlanSchema(catalog:ToolCatalogEntry[]):Record<string,unknown>{
+ return{type:"object",properties:{
+  risk:{type:"string",enum:["low","medium","high","critical"]},
+  requiredPermission:{type:"string",enum:PERMISSIONS},
+  steps:{type:"array",minItems:1,items:{type:"object",properties:{description:{type:"string"}},required:["description"]}},
+  successCriteria:{type:"array",minItems:1,items:{type:"string"}},
+  stopCondition:{type:"string"},
+  tools:{type:"array",items:toolCallSchema(catalog)}
+ },required:["risk","requiredPermission","steps","successCriteria","stopCondition","tools"]};
+}
+/** JSON Schema for the adaptive planner: one tool call, or null when the mission is complete. */
+export function nextToolSchema(catalog:ToolCatalogEntry[]):Record<string,unknown>{
+ const call=toolCallSchema(catalog);
+ return{anyOf:[{type:"null"},...(Array.isArray(call.anyOf)?call.anyOf as Record<string,unknown>[]:[call])]};
+}
+
+/**
+ * Context budget. Ollama silently drops the *start* of a prompt that exceeds num_ctx, which is where
+ * the instructions are. The variable parts (latest result, memory, project context) are trimmed to fit
+ * the smallest local context window (LAYANX_OLLAMA_CONTEXT, ~3 characters per token, 30% kept for the answer).
+ */
+export function promptBudgetChars(env:NodeJS.ProcessEnv=process.env):number{
+ const explicit=Number(env.LAYANX_PROMPT_BUDGET_CHARS);
+ if(Number.isFinite(explicit)&&explicit>=2000)return Math.floor(explicit);
+ let ctx=Number(env.LAYANX_OLLAMA_NUM_CTX)||8192;
+ try{const sizes=Object.values(JSON.parse(env.LAYANX_OLLAMA_CONTEXT??"{}") as Record<string,unknown>).filter((v):v is number=>typeof v==="number"&&v>=1024);if(sizes.length)ctx=Math.min(...sizes);}catch{}
+ return Math.max(6000,Math.floor(ctx*3*0.7));
+}
+/** Share what is left after the fixed text between the variable sections (by weight, each with its own cap). */
+export function fitSections(fixedChars:number,sections:Array<{text:string;weight:number;max:number}>,budget=promptBudgetChars()):string[]{
+ let left=Math.max(1500,budget-fixedChars);
+ const out=sections.map(()=>"");
+ const order=sections.map((s,i)=>({...s,i})).sort((a,b)=>a.text.length-b.text.length);
+ let weights=order.reduce((n,s)=>n+s.weight,0);
+ for(const s of order){
+  const share=Math.floor(left*s.weight/Math.max(weights,1e-9));
+  const limit=Math.min(s.max,share);
+  out[s.i]=s.text.length<=limit?s.text:s.text.slice(0,Math.max(0,limit-40))+" …[trimmed to fit the model's context]";
+  left-=out[s.i]!.length;weights-=s.weight;
+ }
+ return out;
+}
+
 export interface PlannedMission{
   risk:"low"|"medium"|"high"|"critical";
   requiredPermission:PermissionLevel;
@@ -88,24 +147,27 @@ export class AiMissionPlanner{
       "You are the LayanX mission planner.",
       "Return ONLY valid JSON with keys: risk, requiredPermission, steps, successCriteria, stopCondition, tools.",
       "Every required key must be present. steps and successCriteria must each contain at least one item.",
+      "Prefer checkable successCriteria about the final tool result: \"done\", \"result.exitCode === 0\", \"result.<field> contains \\\"text\\\"\", \"result.<field> === <value>\", \"result.length > 0\". Plain sentences are accepted only when the final result reports no failure.",
+      "Include at least one step that performs the work (for example \"Execute ...\", \"Write ...\", \"تنفيذ ...\").",
       "risk must be low|medium|high|critical.",
       "requiredPermission must be L1_READ|L2_ANALYZE|L3_MODIFY|L4_EXECUTE|L5_CRITICAL.",
       "steps must be an array of concise objects with description strings.",
       "tools must be an array of objects with tool, action, permission, reason, and optional JSON payload.",
       "Only choose tools from the supplied catalog. Do not invent tool names or actions.",
       "For project.verify use payload {script:\"test\"}, {script:\"typecheck\"}, or {script:\"build\"} according to the goal. For terminal.exec include a safe allowlisted command payload.",
-      "For computer-use goals, prefer desktop.screenshot before any coordinate-based mouse or keyboard action unless the user supplied exact coordinates.",
+      "For computer-use goals on Windows, first read the window with desktop.ui.tree and act with desktop.ui.click or desktop.ui.set_text using an element index; use desktop.window.focus to switch apps. Use desktop.screenshot and coordinate-based mouse actions only when the element is missing from the tree or the user supplied exact coordinates.",
       "Do not request secrets or bypass security controls.",
       "Available tool catalog: "+JSON.stringify(catalog),
-      "Project intelligence context: "+JSON.stringify(projectContext??null).slice(0,8000),
+      "Project intelligence context: "+fitSections(3500+JSON.stringify(catalog).length+goal.length,[{text:JSON.stringify(projectContext??null),weight:1,max:8000}])[0],
       "Goal: "+goal
     ].join("\n");
-    const response=await this.models.execute({capability:"reasoning",routing,input:basePrompt});
+    const responseSchema=missionPlanSchema(scopedTools);
+    const response=await this.models.execute({capability:"reasoning",routing,input:basePrompt,responseSchema});
     try{return this.parse(response.output,scopedTools);}
     catch(error){
       if(!(error instanceof Error)||error.message!=="Incomplete mission plan.")throw error;
       const repair=await this.models.execute({
-        capability:"reasoning",routing,
+        capability:"reasoning",routing,responseSchema,
         input:[
           "Repair the following LayanX mission plan.",
           "Return ONLY valid JSON. Preserve valid fields exactly and add missing required fields.",
@@ -123,8 +185,12 @@ export class AiMissionPlanner{
     if(!input.goal.trim())throw new Error("Mission goal is empty.");
     const scopedTools=filterCatalogForGoal(input.goal,input.tools);
     const catalog=scopedTools.map(tool=>({name:tool.name,description:tool.description,permission:tool.permission,dangerous:tool.dangerous,actions:tool.actions,tags:tool.tags}));
-    const boundedResult=JSON.stringify(input.result).slice(0,12000);
-    const boundedMemory=JSON.stringify(input.memory??[]).slice(0,8000);
+    const fixed=2200+JSON.stringify(catalog).length+input.goal.length+JSON.stringify(input.completedTools).length;
+    const [boundedResult,boundedMemory,boundedProject]=fitSections(fixed,[
+      {text:JSON.stringify(input.result)??"null",weight:0.45,max:12000},
+      {text:JSON.stringify(input.memory??[]),weight:0.25,max:8000},
+      {text:JSON.stringify(input.projectContext??null),weight:0.3,max:6000}
+    ]) as [string,string,string];
     const prompt=[
       "You are the LayanX adaptive mission planner.",
       "Return ONLY valid JSON: either null when the mission is complete, or an object with tool, action, permission, reason, and optional payload.",
@@ -134,7 +200,7 @@ export class AiMissionPlanner{
       "Prefer a tool that advances the goal using the latest result.",
       "Completed tools: "+JSON.stringify(input.completedTools),
       "Available tool catalog: "+JSON.stringify(catalog),
-      "Project intelligence context: "+JSON.stringify(input.projectContext??null).slice(0,6000),
+      "Project intelligence context: "+boundedProject,
       "Mission goal: "+input.goal,
       "Mission memory context: "+boundedMemory,
       "Latest tool result: "+boundedResult
@@ -145,7 +211,8 @@ export class AiMissionPlanner{
     const response=await this.models.execute({
       capability:input.visualContext?"vision":"reasoning",
       routing:input.routing,
-      input:modelInput
+      input:modelInput,
+      responseSchema:nextToolSchema(scopedTools)
     });
     let value:unknown;
     value=parseModelJson(response.output,"Adaptive planner");

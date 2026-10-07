@@ -23,19 +23,19 @@ export class GitCommitGenerator{
 
   async commit(options:GitCommitOptions):Promise<GitCommitResult>{
     const root=resolve(this.root);
+    const message=this.normalizeMessage(options.message);
     const branch=await this.run(root,["branch","--show-current"]);
     const currentBranch=branch.stdout.trim();
     if(!currentBranch)throw new Error("Git is not currently on a branch.");
     if(options.expectedBranch&&currentBranch!==options.expectedBranch)throw new Error("Current branch does not match the expected mission branch.");
     const status=await this.run(root,["status","--porcelain"]);
     const lines=status.stdout.split("\n").map(line=>line.trimEnd()).filter(Boolean);
-    if(!lines.length)return{committed:false,branch:currentBranch,files:[],message:options.message};
+    if(!lines.length)return{committed:false,branch:currentBranch,files:[],message};
     const files=lines.map(line=>line.length>3?line.slice(3).trim():line).filter(Boolean);
     const selected=options.paths?.map(path=>path.trim()).filter(Boolean);
     const unexpected=selected?files.filter(file=>!selected.includes(file)):[];
 
     if(selected&&unexpected.length)throw new Error("Working tree contains changes outside the requested commit scope: "+unexpected.join(", "));
-    const message=this.normalizeMessage(options.message);
     const addArgs=["add","--"];
     if(selected?.length)addArgs.push(...selected);
     else addArgs.push(...files);

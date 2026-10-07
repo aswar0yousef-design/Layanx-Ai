@@ -1,5 +1,6 @@
 import {readFile} from "node:fs/promises";
 import {readdir} from "node:fs/promises";
+import {existsSync} from "node:fs";
 const roots=["src","tests","scripts","config"];
 const forbidden=/(api[_ -]?key|secret[_ -]?key|private[_ -]?key|password)\s*[:=]\s*["'`][^"'`]{8,}["'`]/i;
 let failures=[];
@@ -13,6 +14,7 @@ async function walk(dir){
   }
  }
 }
-for(const root of roots)await walk(root);
+// Folders absent from a build context (e.g. tests/ inside the Docker image) are skipped.
+for(const root of roots)if(existsSync(root))await walk(root);
 if(failures.length){console.error("Potential secret material found:",failures.join(", "));process.exit(1);}
 console.log("Static secret check passed.");

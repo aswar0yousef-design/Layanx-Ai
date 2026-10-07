@@ -13,3 +13,6 @@ recovery/
 .layanx/
 
 .layanx/oauth-connections.json
+
+# Built locally by scripts/build-vsix.mjs
+vscode-extension/*.vsix

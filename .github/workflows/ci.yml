@@ -1,27 +1,53 @@
 name: LayanX CI
+
 on:
   push:
-    branches: [main]
+    branches: [main, "wip/**"]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
   quality:
-    runs-on: ubuntu-latest
+    name: quality (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    # Windows starts as informational. Remove this line once the Windows run is green.
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      # Real branch instead of detached HEAD, so git-aware code does not need CI-only fallbacks.
+      - name: Check out the branch by name
+        run: git checkout -B "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - run: npm install
+      # npm ci once package-lock.json is committed (reproducible); npm install until then.
+      - run: if [ -f package-lock.json ]; then npm ci; else npm install; fi
       - run: npm run security:check
+      # Same as main today. PR #155 failed when a real test key was supplied; fix those tests before changing this.
       - run: LAYANX_SECRET_VAULT_KEY= npm run free:check
       - name: Run operational acceptance
         run: npm run operational:acceptance
       - name: Start health runtime
+        if: runner.os == 'Linux'
         run: |
           PORT=18080 npm start > /tmp/layanx-health.log 2>&1 &
           echo $! > /tmp/layanx-health.pid
@@ -35,6 +61,42 @@ jobs:
           cat /tmp/layanx-health.log
           exit 1
       - name: Stop health runtime
-        if: always()
+        if: always() && runner.os == 'Linux'
         run: |
           if [ -f /tmp/layanx-health.pid ]; then kill "$(cat /tmp/layanx-health.pid)" || true; fi
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build image (catches files missing from the Dockerfile)
+        run: docker build -t layanx:ci .
+  windows:
+    # Real Windows: typecheck, the full test suite, then the Windows-only smoke test
+    # (compiled desktop helper with UI Automation, DPAPI secrets, npm without .cmd).
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run typecheck
+      - name: Test suite
+        run: npm test
+        env:
+          LAYANX_TEST_TIMEOUT_MS: "240000"
+      - name: Install pinned security scanners (SHA-256 verified)
+        run: node node_modules/tsx/dist/cli.mjs scripts/install-security-tools.ts
+      - name: Install local voice (Piper, pinned) and speech recognition (Whisper, pinned build)
+        shell: powershell
+        run: |
+          .\scripts\windows\install-piper.ps1 -Yes -NoEnglish
+          .\scripts\windows\install-whisper.ps1 -Cpu -Model base
+      - name: Windows smoke test
+        shell: powershell
+        run: .\scripts\windows\smoke-test.ps1 -WithTools -WithVoice

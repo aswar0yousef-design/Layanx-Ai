@@ -1,0 +1,8 @@
+# Keep TypeScript, JSON and shell files LF on every OS (tests compare text),
+# and Windows launchers CRLF so cmd.exe and PowerShell 5.1 parse them reliably.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.ico binary
+*.png binary

@@ -4,12 +4,15 @@ import type {CodeReviewResult} from "./code-review-agent.js";
 import type {SecurityReviewResult} from "./security-review-agent.js";
 export interface PullRequestOptions{missionId:string;projectId:string;baseBranch:string;title:string;goal:string;codeReview:CodeReviewResult;securityReview:SecurityReviewResult;}
 export interface PullRequestDraft{ready:boolean;branch:string;baseBranch:string;title:string;body:string;commit:string;files:string[];blockers:string[];}
+import {assertSafeGitRef} from "../platform/git-ref.js";
 export class PullRequestGenerator{
 constructor(private readonly root=process.env.LAYANX_WORKSPACE_ROOT??process.cwd()){}
 async generate(options:PullRequestOptions):Promise<PullRequestDraft>{
-const [detectedBranch,commit,filesText]=await Promise.all([this.git(["branch","--show-current"]),this.git(["rev-parse","HEAD"]),this.git(["diff","--name-only",(process.env.GITHUB_ACTIONS==="true"?"origin/":"")+options.baseBranch+"...HEAD"])]);
-const currentBranch=detectedBranch.trim()||process.env.GITHUB_HEAD_REF?.trim()||process.env.GITHUB_REF_NAME?.trim()||"HEAD",commitSha=commit.trim(),files=filesText.split("\n").filter(Boolean),blockers:string[]=[];
+assertSafeGitRef(options.baseBranch,"baseBranch");
+const [detectedBranch,commit,filesText]=await Promise.all([this.git(["branch","--show-current"]),this.git(["rev-parse","HEAD"]),this.git(["diff","--name-only",(process.env.GITHUB_ACTIONS==="true"?"origin/":"")+options.baseBranch+"...HEAD"]).then(text=>({text,ok:true}),()=>({text:"",ok:false}))]);
+const currentBranch=detectedBranch.trim()||(process.env.GITHUB_ACTIONS==="true"?(process.env.GITHUB_HEAD_REF?.trim()||process.env.GITHUB_REF_NAME?.trim()||""):""),commitSha=commit.trim(),files=filesText.text.split("\n").filter(Boolean),blockers:string[]=[];
 if(!currentBranch)blockers.push("No active Git branch.");
+if(!filesText.ok)blockers.push("Base branch "+options.baseBranch+" was not found, so the change set cannot be compared.");
 if(currentBranch===options.baseBranch)blockers.push("Pull requests require a head branch different from the base branch.");
 if(!options.codeReview.approved)blockers.push("Code review gate is not approved.");
 if(!options.securityReview.approved)blockers.push("Security review gate is not approved.");
@@ -17,7 +20,7 @@ if(options.codeReview.commit!==commitSha)blockers.push("Code review does not mat
 if(options.securityReview.commit!==commitSha)blockers.push("Security review does not match the current HEAD commit.");
 if(options.codeReview.branch!==currentBranch)blockers.push("Code review branch does not match the current branch.");
 if(options.securityReview.branch!==currentBranch)blockers.push("Security review branch does not match the current branch.");
-if(!files.length)blockers.push("No changes exist between the base branch and HEAD.");
+if(filesText.ok&&!files.length)blockers.push("No changes exist between the base branch and HEAD.");
 const body=["## Summary",options.goal.trim(),"","## Mission","- Mission: "+options.missionId,"- Project: "+options.projectId,"- Head: "+currentBranch,"- Base: "+options.baseBranch,"- Commit: "+commitSha,"","## Changed files",...files.map(file=>"- `"+file+"`"),"","## Validation","- Code review: "+(options.codeReview.approved?"approved":"blocked"),"- Security review: "+(options.securityReview.approved?"approved":"blocked"),"","## Security","No automatic merge or release is performed by the PR generator."].join("\n");
 return{ready:blockers.length===0,branch:currentBranch,baseBranch:options.baseBranch,title:this.normalizeTitle(options.title),body,commit:commitSha,files,blockers};
 }

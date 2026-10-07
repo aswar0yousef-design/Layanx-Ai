@@ -1,3 +1,4 @@
+import {linkedProjectPath} from "../platform/linked-projects.js";
 import {readFile,writeFile,mkdir,rm} from "node:fs/promises";
 import {createHash} from "node:crypto";
 import {resolve,relative,sep,isAbsolute,dirname} from "node:path";
@@ -100,7 +101,7 @@ export class SafeCodeModifier{
     return{path,content:change.content};
   }
 
-  private workspace(projectId:string){const safe=projectId.trim();if(!safe||safe.includes("/")||safe.includes("\\"))throw new Error("Invalid project workspace identity.");return resolve(this.root,safe);}
+  private workspace(projectId:string){const safe=projectId.trim();if(!safe||safe.includes("/")||safe.includes("\\"))throw new Error("Invalid project workspace identity.");return linkedProjectPath(safe)??resolve(this.root,safe);}
   private async writeBackup(dir:string,path:string,content:Buffer){
     const target=resolve(dir,path);
     await mkdir(dirname(target),{recursive:true});

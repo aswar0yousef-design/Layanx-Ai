@@ -1,3 +1,5 @@
+import {linkedProjectPath} from "../platform/linked-projects.js";
+import {safeChildEnv} from "../platform/safe-env.js";
 import {readFile,readdir,stat,mkdir,writeFile} from "node:fs/promises";
 import {resolve,relative,isAbsolute,sep} from "node:path";
 import {spawn} from "node:child_process";
@@ -12,7 +14,7 @@ function workspaceFor(root:string,projectId?:string):string{
  if(!projectId)throw new Error("Project identity is required for workspace tools.");
  const safe=projectId.trim();
  if(!safe||safe==="."||safe===".."||safe.includes("/")||safe.includes("\\"))throw new Error("Invalid project workspace identity.");
- return resolve(root,safe);
+ return linkedProjectPath(safe)??resolve(root,safe);
 }
 function sandboxPath(root:string,input:string):string{
  if(!input||isAbsolute(input))throw new Error("Workspace paths must be relative.");
@@ -80,7 +82,7 @@ export function createTerminalToolAdapter(options:{root:string}):ToolAdapter{
   return await new Promise((resolvePromise,reject)=>{
    const executable=binary==="git"&&process.platform==="win32"?"git.exe":binary==="npm"&&process.platform==="win32"?(process.env.ComSpec??"cmd.exe"):binary;
    const executableArgs=binary==="npm"&&process.platform==="win32"?["/d","/s","/c",["npm.cmd",...parts].join(" ")]:parts;
-   const child=spawn(executable,executableArgs,{cwd:workspace,shell:false,env:{...process.env,CI:"1"},timeout:30000});
+   const child=spawn(executable,executableArgs,{cwd:workspace,shell:false,env:safeChildEnv({extra:{CI:"1"}}),timeout:30000});
    let stdout="",stderr="";
    child.stdout.on("data",chunk=>{stdout+=String(chunk);if(stdout.length>128*1024)child.kill("SIGKILL");});
    child.stderr.on("data",chunk=>{stderr+=String(chunk);if(stderr.length>128*1024)child.kill("SIGKILL");});
@@ -107,7 +109,7 @@ export function createProjectVerifyToolAdapter(options:{root:string}):ToolAdapte
    const isWindows=process.platform==="win32";
    const binary=isWindows?(process.env.ComSpec??"cmd.exe"):"npm";
    const commandArgs=isWindows?["/d","/s","/c",`npm.cmd run ${requested}`]:["run",requested];
-   const child=spawn(binary,commandArgs,{cwd:workspace,shell:false,env:{...process.env,CI:"1"},timeout:60000});
+   const child=spawn(binary,commandArgs,{cwd:workspace,shell:false,env:safeChildEnv({extra:{CI:"1"}}),timeout:60000});
    let stdout="",stderr="";
    child.stdout.on("data",chunk=>{stdout+=String(chunk);if(stdout.length>128*1024)child.kill("SIGKILL");});
    child.stderr.on("data",chunk=>{stderr+=String(chunk);if(stderr.length>128*1024)child.kill("SIGKILL");});
@@ -130,7 +132,7 @@ function runNpm(cwd:string,args:string[],timeoutMs:number):Promise<{args:string[
     const isWindows=process.platform==="win32";
     const binary=isWindows?(process.env.ComSpec??"cmd.exe"):"npm";
     const commandArgs=isWindows?["/d","/s","/c",`npm.cmd ${args.join(" ")}`]:args;
-    const child=spawn(binary,commandArgs,{cwd,shell:false,env:{...process.env,CI:"1"},timeout:timeoutMs});
+    const child=spawn(binary,commandArgs,{cwd,shell:false,env:safeChildEnv({extra:{CI:"1"}}),timeout:timeoutMs});
     let stdout="",stderr="";
     child.stdout.on("data",chunk=>{stdout+=String(chunk);if(stdout.length>128*1024)child.kill("SIGKILL");});
     child.stderr.on("data",chunk=>{stderr+=String(chunk);if(stderr.length>128*1024)child.kill("SIGKILL");});

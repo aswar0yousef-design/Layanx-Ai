@@ -1,4 +1,5 @@
 import {spawn} from "node:child_process";
+import {safeChildEnv} from "../platform/safe-env.js";
 import type {ToolRequest} from "../core/types.js";
 
 type RunnerResult={stdout:string;stderr:string;code:number|null};
@@ -15,17 +16,18 @@ const OPERATIONS=new Set(["read","search","user_posts","hot","detail","transcrib
 
 function runProcess(command:string,args:string[],timeoutMs=DEFAULT_TIMEOUT):Promise<RunnerResult>{
   return new Promise(resolve=>{
-    const child=spawn(command,args,{shell:false,windowsHide:true,timeout:timeoutMs,env:{
-      ...process.env,
-      PYTHONIOENCODING:"utf-8",
-      PYTHONUTF8:"1"
-    }});
+    // Allowlisted environment: API keys and LAYANX_SECRET_VAULT_KEY must never reach a third-party CLI.
+    const child=spawn(command,args,{shell:false,windowsHide:true,timeout:timeoutMs,env:safeChildEnv({
+      allowPrefixes:["AGENT_REACH_"],allow:["PYTHONPATH","VIRTUAL_ENV","CONDA_PREFIX"],
+      extra:{PYTHONIOENCODING:"utf-8",PYTHONUTF8:"1"}
+    })});
     let stdout="",stderr="";
-    child.stdout.on("data",chunk=>{
-      if(stdout.length<MAX_OUTPUT)stdout+=String(chunk).slice(0,MAX_OUTPUT-stdout.length);
+    // Decode as UTF-8 streams so Arabic characters are never split between chunks.
+    child.stdout.setEncoding("utf8").on("data",(chunk:string)=>{
+      if(stdout.length<MAX_OUTPUT)stdout+=chunk.slice(0,MAX_OUTPUT-stdout.length);
     });
-    child.stderr.on("data",chunk=>{
-      if(stderr.length<MAX_OUTPUT)stderr+=String(chunk).slice(0,MAX_OUTPUT-stderr.length);
+    child.stderr.setEncoding("utf8").on("data",(chunk:string)=>{
+      if(stderr.length<MAX_OUTPUT)stderr+=chunk.slice(0,MAX_OUTPUT-stderr.length);
     });
     child.on("error",error=>resolve({stdout,stderr:String(error),code:null}));
     child.on("close",code=>resolve({stdout,stderr,code}));
@@ -37,6 +39,8 @@ function input(request:ToolRequest):Record<string,unknown>{
     ?request.payload as Record<string,unknown>:{};
 }
 function text(value:unknown,name:string,max=MAX_INPUT):string{
+  if(typeof value==="string"&&value.trim().startsWith("-"))
+    throw new Error(name+" cannot start with \"-\" (it would be read as a command-line option).");
   if(typeof value!=="string"||value.trim().length===0||value.length>max)
     throw new Error(name+" must be a non-empty string of at most "+max+" characters.");
   return value.trim();
@@ -95,7 +99,7 @@ export function createAgentReachAdapter(options:{runner?:Runner;command?:string}
         return jsonOutput(result.stdout);
       }
       if(request.action==="agent reach setup"){
-        const system=Boolean(p.system);
+        const system=p.system===true; // the string "false" must not trigger a system-wide install
         const args=["install","--env","auto",system?"--system":"--safe"];
         if(p.dryRun===true&&!system)args.push("--dry-run");
         if(typeof p.channels==="string"&&p.channels.trim()){
