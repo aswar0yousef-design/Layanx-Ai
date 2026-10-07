@@ -13,7 +13,7 @@ import {CLOUD_PROVIDERS,sanitizeSettings,type CloudProviderId,type LocalSettings
 import {tailscaleInfo,tailscaleServe,type TailscaleInfo} from "../platform/tailscale.js";
 import {linkProject,listLinkedProjects,unlinkProject} from "../platform/linked-projects.js";
 import {listTrust,setTrust,trustLevel,TRUST_LEVELS,type TrustLevel} from "../autonomy/trust.js";
-import {dockerVersion,ISOLATION_LEVELS,listIsolation,setIsolation,type Isolation} from "../autonomy/sandbox.js";
+import {dockerVersion,ISOLATION_LEVELS,listIsolation,restrictedAvailable,setIsolation,type Isolation} from "../autonomy/sandbox.js";
 
 let tsCache:{at:number;info:TailscaleInfo}|null=null;
 async function tailscale():Promise<TailscaleInfo>{
@@ -28,7 +28,7 @@ function workspaceInfo(settings:LocalSettings){
   let projects:string[]=[];
   try{projects=fs.readdirSync(root,{withFileTypes:true}).filter(e=>e.isDirectory()&&!e.name.startsWith(".")).map(e=>e.name).slice(0,200);}catch{}
   const linked=listLinkedProjects();
-  return{root,configured:settings.workspaceRoot,projects:[...new Set([...projects,...linked.map(l=>l.projectId)])],linked,trust:listTrust(process.env.LAYANX_TRUST_FILE),isolation:listIsolation(process.env.LAYANX_ISOLATION_FILE),docker:dockerVersion()};
+  return{root,configured:settings.workspaceRoot,projects:[...new Set([...projects,...linked.map(l=>l.projectId)])],linked,trust:listTrust(process.env.LAYANX_TRUST_FILE),isolation:listIsolation(process.env.LAYANX_ISOLATION_FILE),docker:dockerVersion(),restricted:restrictedAvailable()};
 }
 
 /** Every address a paired phone can use for this PC, best first. */
@@ -183,9 +183,10 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
     if(path==="/v1/projects/isolation"&&(method==="GET"||method==="PUT")){
       if(!ctx.loopback||ctx.principal?.kind!=="owner"){ctx.sendJson(403,{error:"owner_only",message:"Isolation can only be changed by the owner on this computer."});return true;}
       const file=process.env.LAYANX_ISOLATION_FILE;
-      if(method==="GET"){ctx.sendJson(200,{levels:ISOLATION_LEVELS,projects:listIsolation(file),docker:dockerVersion(true)});return true;}
+      if(method==="GET"){ctx.sendJson(200,{levels:ISOLATION_LEVELS,projects:listIsolation(file),docker:dockerVersion(true),restricted:restrictedAvailable()});return true;}
       const body=await ctx.readJson() as {projectId?:unknown;level?:unknown};
       if(!file||typeof body.projectId!=="string"||!ISOLATION_LEVELS.includes(body.level as Isolation)){ctx.sendJson(400,{error:"invalid"});return true;}
+      if(body.level==="restricted"&&!restrictedAvailable()){ctx.sendJson(409,{error:"restricted_unavailable",message:"Restricted isolation runs on Windows only."});return true;}
       if(body.level==="docker"&&!dockerVersion(true)){ctx.sendJson(409,{error:"docker_unavailable",message:"Docker is not running on this computer. Install/start Docker Desktop first."});return true;}
       setIsolation(file,body.projectId,body.level as Isolation);ctx.sendJson(200,{ok:true});return true;
     }

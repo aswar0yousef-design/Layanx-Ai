@@ -7,7 +7,8 @@ import type {ToolRequest} from "../core/types.js";
 import {safeChildEnv} from "../platform/safe-env.js";
 import {projectDir} from "./project-dir.js";
 import {runOnce} from "./project-runner.js";
-import {isolationLevel} from "./sandbox.js";
+import {isolationLevel,restrictedAvailable} from "./sandbox.js";
+import {denyGitAfterRun,prepareRestricted,restrictedCommand,restrictedEnv} from "../platform/windows-sandbox.js";
 
 /**
  * agent.external: hand a coding task to a specialised coding agent running inside the project folder.
@@ -129,6 +130,15 @@ export function createExternalAgentAdapter():ToolAdapter{
     }
     const cmd=externalCommand(agent,task);
     const env=safeChildEnv({allow:["PYTHONPATH","VIRTUAL_ENV"],extra:{...cmd.extraEnv,NO_COLOR:"1",CI:"1"}});
+    if(isolationLevel(request.projectId)==="restricted"){
+      // Same rule as Docker: inside the restriction or not at all. The agent gets its own home folder
+      // (its caches and settings), and can write nowhere else but the project.
+      if(!restrictedAvailable())throw new Error("This project uses restricted isolation, which runs on Windows only. LayanX will not run the agent without it.");
+      const setup=await prepareRestricted(dir);
+      const result=await runOnce(restrictedCommand({command:cmd.command,args:cmd.args,label:cmd.label},dir,setup),dir,timeout,restrictedEnv(env,setup,{home:true}));
+      await denyGitAfterRun(dir,setup);
+      return{agent:agent.name,kind:agent.kind,isolation:"restricted",...result,ok:result.exitCode===0&&!result.timedOut};
+    }
     const result=await runOnce({command:cmd.command,args:cmd.args,label:cmd.label},dir,timeout,env);
     return{agent:agent.name,kind:agent.kind,...result,ok:result.exitCode===0&&!result.timedOut};
   }};

@@ -117,6 +117,135 @@ await check("project scripts run through npm-cli.js (no .cmd spawning)",async()=
     return r.command;
   }finally{rmSync(dir,{recursive:true,force:true});}
 });
+// ---------------------------------------------------------------- restricted isolation (no Docker, no admin)
+{
+  const {existsSync,readFileSync,mkdirSync}=await import("node:fs");
+  const ws=await import("../src/platform/windows-sandbox.js");
+  const store=mkdtempSync(join(tmpdir(),"lx-rs-store-"));
+  const env={...process.env,LAYANX_STORE_DIR:store};
+  const proj=mkdtempSync(join(tmpdir(),"lx-rs-proj-"));
+  const outside=mkdtempSync(join(tmpdir(),"lx-rs-outside-"));
+  writeFileSync(join(outside,"secret.txt"),"readable");
+  mkdirSync(join(proj,".git","hooks"),{recursive:true});
+  const profileTarget=join(process.env.USERPROFILE??tmpdir(),`lx-rs-should-not-exist-${Date.now()}.txt`);
+  let setup:Awaited<ReturnType<typeof ws.prepareRestricted>>|undefined;
+  const runIn=(args:string[],timeout=60_000,extraEnv:NodeJS.ProcessEnv={})=>runOnce(ws.restrictedCommand({command:process.execPath,args,label:"node"},proj,setup!,{...env,...extraEnv}),proj,timeout,ws.restrictedEnv({...env,...extraEnv},setup!));
+  await check("restricted isolation: launcher compiles and prepares the project folder",async()=>{
+    const started=Date.now();
+    setup=await ws.prepareRestricted(proj,env);
+    assert.ok(existsSync(setup.launcher));
+    const v=spawnSync(setup.launcher,["version"],{encoding:"utf8"});
+    assert.match(v.stdout,/lx-sandbox/);
+    return `${Date.now()-started} ms, sid ${setup.sid}`;
+  });
+  await check("restricted isolation: writes only inside the project, never .git; reads and child processes work",async()=>{
+    assert.ok(setup,"prepared");
+    writeFileSync(join(proj,"probe.cjs"),`
+const fs=require("fs"),path=require("path"),cp=require("child_process"),os=require("os");
+const tryWrite=f=>{try{fs.writeFileSync(f,"x");return"ok";}catch(e){return e.code||String(e);}};
+const out={
+  inside:tryWrite(path.join(process.cwd(),"inside.txt")),
+  insideDir:(()=>{try{fs.mkdirSync(path.join(process.cwd(),"sub","deep"),{recursive:true});return tryWrite(path.join(process.cwd(),"sub","deep","f.txt"));}catch(e){return e.code;}})(),
+  outside:tryWrite(${JSON.stringify(join(outside,"evil.txt"))}),
+  profile:tryWrite(${JSON.stringify(profileTarget)}),
+  gitHook:tryWrite(path.join(process.cwd(),".git","hooks","pre-commit")),
+  gitDelete:(()=>{try{fs.rmSync(path.join(process.cwd(),".git"),{recursive:true});return"deleted";}catch(e){return e.code||String(e);}})(),
+  tmp:tryWrite(path.join(os.tmpdir(),"t.txt")),
+  tmpdir:os.tmpdir(),
+  read:(()=>{try{return fs.readFileSync(${JSON.stringify(join(outside,"secret.txt"))},"utf8");}catch(e){return e.code;}})(),
+  child:(()=>{try{return cp.execFileSync(process.execPath,["-e","console.log('child-ok')"],{encoding:"utf8"}).trim();}catch(e){return String(e.message).slice(0,200);}})(),
+  aclTamper:(()=>{try{cp.execFileSync("icacls",[path.join(process.cwd(),".git"),"/reset","/t"],{stdio:"pipe"});return"changed";}catch(e){return"refused";}})()
+};
+console.log(JSON.stringify(out));`);
+    const r=await runIn(["probe.cjs"]);
+    assert.equal(r.exitCode,0,r.stderr.slice(-500));
+    const out=JSON.parse(r.stdout.trim().split(/\r?\n/).pop()!);
+    assert.equal(out.inside,"ok","write inside the project: "+JSON.stringify(out));
+    assert.equal(out.insideDir,"ok","new folders inside the project: "+JSON.stringify(out));
+    assert.notEqual(out.outside,"ok","outside folder must be read-only: "+JSON.stringify(out));
+    assert.notEqual(out.profile,"ok","user profile must be read-only: "+JSON.stringify(out));
+    assert.ok(!existsSync(profileTarget),"nothing written to the profile");
+    assert.notEqual(out.gitHook,"ok","git hooks cannot be planted: "+JSON.stringify(out));
+    assert.notEqual(out.gitDelete,"deleted","the .git folder cannot be deleted: "+JSON.stringify(out));
+    assert.ok(existsSync(join(proj,".git","hooks")),".git still there");
+    assert.equal(out.tmp,"ok","sandbox temp folder is writable: "+JSON.stringify(out));
+    assert.equal(out.read,"readable","reading is not restricted (documented)");
+    assert.equal(out.child,"child-ok","child processes with pipes work: "+JSON.stringify(out));
+    assert.equal(out.aclTamper,"refused","the command cannot rewrite the .git permissions: "+JSON.stringify(out));
+    return `outside=${out.outside} profile=${out.profile} gitHook=${out.gitHook} tmp=${out.tmpdir}`;
+  });
+  await check("restricted isolation: npm install skips package scripts, npm test runs (project runner)",async()=>{
+    const {setIsolation}=await import("../src/autonomy/sandbox.js");
+    const {createProjectRunnerAdapter}=await import("../src/autonomy/project-runner.js");
+    const root=mkdtempSync(join(tmpdir(),"lx-rs-ws-"));
+    const saved={ws:process.env.LAYANX_WORKSPACE_ROOT,iso:process.env.LAYANX_ISOLATION_FILE,store:process.env.LAYANX_STORE_DIR};
+    process.env.LAYANX_WORKSPACE_ROOT=root;process.env.LAYANX_ISOLATION_FILE=join(store,"isolation.json");process.env.LAYANX_STORE_DIR=store;
+    try{
+      const shop=join(root,"shop"),dep=join(root,"evil-dep");mkdirSync(shop);mkdirSync(dep);
+      writeFileSync(join(dep,"package.json"),JSON.stringify({name:"evil-dep",version:"1.0.0",main:"index.js",scripts:{postinstall:"node -e \"require('fs').writeFileSync(require('path').join(process.env.INIT_CWD||'.','PWNED'),'x')\""}}));
+      writeFileSync(join(dep,"index.js"),"module.exports=()=>'dep-ok';\n");
+      writeFileSync(join(shop,"package.json"),JSON.stringify({name:"shop",version:"1.0.0",dependencies:{"evil-dep":"file:../evil-dep"},scripts:{test:"node -e \"console.log(require('evil-dep')())\""}}));
+      setIsolation(process.env.LAYANX_ISOLATION_FILE!,"shop","restricted");
+      const runner=createProjectRunnerAdapter();
+      const req=(task:string)=>({missionId:"m",agentId:"core",projectId:"shop",tool:"project.run",action:"run project task",permission:"L4_EXECUTE",idempotencyKey:"k",payload:{task}} as any);
+      const install=await runner.execute(req("install")) as any;
+      assert.equal(install.ok,true,"install: "+(install.stderr||install.stdout).slice(-600));
+      assert.match(install.command,/^restricted: .*--ignore-scripts/);
+      assert.ok(existsSync(join(shop,"node_modules","evil-dep")),"dependency installed");
+      assert.ok(!existsSync(join(shop,"PWNED")),"install script did not run");
+      const test=await runner.execute(req("test")) as any;
+      assert.equal(test.ok,true,"test: "+(test.stderr||test.stdout).slice(-600));
+      assert.match(test.stdout,/dep-ok/);
+      return install.command+" | "+test.command;
+    }finally{
+      process.env.LAYANX_WORKSPACE_ROOT=saved.ws;process.env.LAYANX_ISOLATION_FILE=saved.iso;process.env.LAYANX_STORE_DIR=saved.store;
+      for(const [k,v] of Object.entries({LAYANX_WORKSPACE_ROOT:saved.ws,LAYANX_ISOLATION_FILE:saved.iso,LAYANX_STORE_DIR:saved.store}))if(v===undefined)delete process.env[k];
+      rmSync(root,{recursive:true,force:true});
+    }
+  });
+  await check("restricted isolation: a timeout stops the whole process tree; memory limit holds",async()=>{
+    assert.ok(setup,"prepared");
+    const pidFile=join(proj,"grandchild.pid");
+    writeFileSync(join(proj,"tree.cjs"),`
+const cp=require("child_process"),fs=require("fs");
+const g=cp.spawn(process.execPath,["-e","setInterval(()=>{},1000)"],{detached:true,stdio:"ignore"});g.unref();
+fs.writeFileSync(${JSON.stringify(pidFile)},String(g.pid));
+setInterval(()=>{},1000);`);
+    const r=await runIn(["tree.cjs"],5000);
+    assert.equal(r.timedOut,true);
+    const pid=Number(readFileSync(pidFile,"utf8"));
+    let alive=true;
+    for(let i=0;i<20&&alive;i++){await new Promise(res=>setTimeout(res,500));try{process.kill(pid,0);}catch{alive=false;}}
+    assert.equal(alive,false,"the detached grandchild was stopped with the job");
+    const mem=await runIn(["-e","const a=[];for(let i=0;i<40;i++)a.push(Buffer.alloc(32*1024*1024,1));console.log('allocated',a.length)"],60_000,{LAYANX_DOCKER_MEMORY:"256m"});
+    assert.notEqual(mem.exitCode,0,"1.25 GB allocation must fail under a 256 MB limit: "+mem.stdout.slice(-200));
+    return `grandchild ${pid} stopped; memory exit ${mem.exitCode} ${(mem.stderr.match(/lx-sandbox:[^\n]*/)??[""])[0]}`;
+  });
+  await check("restricted isolation: a coding agent runs inside it with its own home folder",async()=>{
+    const {setIsolation}=await import("../src/autonomy/sandbox.js");
+    const {createExternalAgentAdapter,detectExternalAgents}=await import("../src/autonomy/external-agents.js");
+    const root=mkdtempSync(join(tmpdir(),"lx-rs-agent-"));
+    const keys=["LAYANX_WORKSPACE_ROOT","LAYANX_ISOLATION_FILE","LAYANX_STORE_DIR","LAYANX_CLAUDE_CODE_PATH","LAYANX_AIDER_PATH"] as const;
+    const saved=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
+    try{
+      process.env.LAYANX_WORKSPACE_ROOT=root;process.env.LAYANX_ISOLATION_FILE=join(store,"isolation.json");process.env.LAYANX_STORE_DIR=store;
+      delete process.env.LAYANX_AIDER_PATH;
+      const fake=join(root,"fake-agent.cjs");
+      writeFileSync(fake,`const fs=require("fs"),path=require("path"),os=require("os");
+const w=f=>{try{fs.writeFileSync(f,"x");return"ok";}catch(e){return e.code||"denied";}};
+console.log(JSON.stringify({task:process.argv[3],home:os.homedir(),project:w(path.join(process.cwd(),"agent-was-here.txt")),homeWrite:w(path.join(os.homedir(),"agent-cache.txt")),outside:w(${JSON.stringify(join(outside,"agent.txt"))})}));`);
+      process.env.LAYANX_CLAUDE_CODE_PATH=fake;detectExternalAgents(true);
+      mkdirSync(join(root,"app"));setIsolation(process.env.LAYANX_ISOLATION_FILE!,"app","restricted");
+      const r=await createExternalAgentAdapter().execute({missionId:"m",agentId:"core",projectId:"app",tool:"agent.external",action:"delegate",permission:"L4_EXECUTE",idempotencyKey:"k",payload:{agent:"claude-code",task:"add a README"}} as any) as any;
+      assert.equal(r.ok,true,JSON.stringify(r).slice(0,600));assert.equal(r.isolation,"restricted");
+      const out=JSON.parse(r.stdout.trim().split(/\r?\n/).pop());
+      assert.equal(out.project,"ok");assert.equal(out.homeWrite,"ok","agent has a writable home");assert.notEqual(out.outside,"ok","agent cannot write outside");
+      assert.ok(out.home.toLowerCase().startsWith(store.toLowerCase()),"home is the sandbox home: "+out.home);
+      return `home=${out.home} outside=${out.outside}`;
+    }finally{for(const k of keys){if(saved[k]===undefined)delete process.env[k];else process.env[k]=saved[k];}rmSync(root,{recursive:true,force:true});}
+  });
+  try{rmSync(proj,{recursive:true,force:true});rmSync(outside,{recursive:true,force:true});rmSync(store,{recursive:true,force:true});}catch{}
+}
 if(withTools){
   await check("pinned security scanners find planted problems",async()=>{
     const {runExternalScanners,findScanner}=await import("../src/autonomy/external-scanners.js");
