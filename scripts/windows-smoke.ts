@@ -19,11 +19,16 @@ if(process.platform!=="win32"){console.log("windows-smoke: skipped (not Windows)
 const noUi=process.argv.includes("--no-ui");
 const withTools=process.argv.includes("--with-tools");
 const withVoice=process.argv.includes("--with-voice");
+// --only core,sandbox,tools,voice runs a subset (the CI runs each group as its own step).
+const onlyArg=process.argv.indexOf("--only");
+const only=onlyArg>0?(process.argv[onlyArg+1]??"").split(","):null;
+let group="core";
 const results:Array<{check:string;ok:boolean;detail?:string}>=[];
 async function check(name:string,fn:()=>Promise<string|void>){
+  if(only&&!only.includes(group))return;
   // On GitHub Actions each result also becomes an annotation, readable without downloading logs.
   const annotate=(level:"notice"|"error",text:string)=>{if(process.env.GITHUB_ACTIONS==="true")console.log(`::${level} title=Windows smoke::${text.replace(/\r?\n/g," ").slice(0,900)}`);};
-  try{const detail=await fn();results.push({check:name,ok:true,...(detail?{detail}:{})});console.log("PASS",name,detail??"");}
+  try{const detail=await fn();results.push({check:name,ok:true,...(detail?{detail}:{})});console.log("PASS",name,detail??"");annotate("notice","PASS "+name+(detail?" - "+detail:""));}
   catch(e){const detail=e instanceof Error?e.message:String(e);results.push({check:name,ok:false,detail});console.log("FAIL",name,detail);annotate("error","FAIL "+name+" - "+detail);}
 }
 const req=(action:string,payload:Record<string,unknown>={})=>({missionId:"smoke",agentId:"core",projectId:"smoke",tool:"desktop",action,permission:"L4_EXECUTE",idempotencyKey:"smoke-"+action,payload} as any);
@@ -136,7 +141,8 @@ await check("project scripts run through npm-cli.js (no .cmd spawning)",async()=
   }finally{rmSync(dir,{recursive:true,force:true});}
 });
 // ---------------------------------------------------------------- restricted isolation (no Docker, no admin)
-{
+group="sandbox";
+if(!only||only.includes("sandbox")){
   const {existsSync,readFileSync,mkdirSync}=await import("node:fs");
   const ws=await import("../src/platform/windows-sandbox.js");
   const store=mkdtempSync(join(tmpdir(),"lx-rs-store-"));
@@ -214,19 +220,21 @@ setTimeout(()=>{out.timeout=true;done();},8000);`);
   await check("restricted isolation: npm install skips package scripts, npm test runs (project runner)",async()=>{
     const {setIsolation}=await import("../src/autonomy/sandbox.js");
     const {createProjectRunnerAdapter}=await import("../src/autonomy/project-runner.js");
+    const {readdirSync}=await import("node:fs");
     const root=mkdtempSync(join(tmpdir(),"lx-rs-ws-"));
     const saved={ws:process.env.LAYANX_WORKSPACE_ROOT,iso:process.env.LAYANX_ISOLATION_FILE,store:process.env.LAYANX_STORE_DIR};
     process.env.LAYANX_WORKSPACE_ROOT=root;process.env.LAYANX_ISOLATION_FILE=join(store,"isolation.json");process.env.LAYANX_STORE_DIR=store;
     try{
-      const shop=join(root,"shop"),dep=join(root,"evil-dep");mkdirSync(shop);mkdirSync(dep);
+      const shop=join(root,"shop"),dep=join(shop,"vendor","evil-dep");mkdirSync(dep,{recursive:true});
       writeFileSync(join(dep,"package.json"),JSON.stringify({name:"evil-dep",version:"1.0.0",main:"index.js",scripts:{postinstall:"node -e \"require('fs').writeFileSync(require('path').join(process.env.INIT_CWD||'.','PWNED'),'x')\""}}));
       writeFileSync(join(dep,"index.js"),"module.exports=()=>'dep-ok';\n");
-      writeFileSync(join(shop,"package.json"),JSON.stringify({name:"shop",version:"1.0.0",dependencies:{"evil-dep":"file:../evil-dep"},scripts:{test:"node -e \"console.log(require('evil-dep')())\""}}));
+      writeFileSync(join(shop,"package.json"),JSON.stringify({name:"shop",version:"1.0.0",dependencies:{"evil-dep":"file:./vendor/evil-dep"},scripts:{test:"node -e \"console.log(require('evil-dep')())\""}}));
       setIsolation(process.env.LAYANX_ISOLATION_FILE!,"shop","restricted");
       const runner=createProjectRunnerAdapter();
       const req=(task:string)=>({missionId:"m",agentId:"core",projectId:"shop",tool:"project.run",action:"run project task",permission:"L4_EXECUTE",idempotencyKey:"k",payload:{task}} as any);
       const install=await runner.execute(req("install")) as any;
-      assert.equal(install.ok,true,"install: "+(install.stderr||install.stdout).slice(-600));
+      const npmLog=()=>{try{const d=join(store,"sandbox","cache","npm","_logs");const f=readdirSync(d).sort().pop();return f?readFileSync(join(d,f),"utf8").split(/\r?\n/).filter(l=>/error|verbose stack|EPERM|EACCES/i.test(l)).slice(-12).join(" | "):"";}catch{return"";}};
+      assert.equal(install.ok,true,"install: "+(install.stderr||install.stdout).slice(-300)+" npm log: "+npmLog());
       assert.match(install.command,/^restricted: .*--ignore-scripts/);
       assert.ok(existsSync(join(shop,"node_modules","evil-dep")),"dependency installed");
       assert.ok(!existsSync(join(shop,"PWNED")),"install script did not run");
@@ -283,6 +291,7 @@ console.log(JSON.stringify({task:process.argv[3],home:os.homedir(),project:w(pat
   });
   try{rmSync(proj,{recursive:true,force:true});rmSync(outside,{recursive:true,force:true});rmSync(store,{recursive:true,force:true});}catch{}
 }
+group="tools";
 if(withTools){
   await check("pinned security scanners find planted problems",async()=>{
     const {runExternalScanners,findScanner}=await import("../src/autonomy/external-scanners.js");
@@ -303,30 +312,63 @@ if(withTools){
     }finally{rmSync(dir,{recursive:true,force:true});}
   });
 }
-if(withVoice){
-  await check("Piper speaks Arabic and Whisper hears it back (local voice round trip)",async()=>{
-    const {LocalSpeaker,LocalTranscriber}=await import("../src/voice/service.js");
-    const {existsSync,readdirSync,statSync}=await import("node:fs");
-    const dataDir=process.env.LAYANX_DATA_DIR??join(process.env.LOCALAPPDATA??"",`LayanX`);
-    const vpy=join(dataDir,"piper","venv","Scripts","python.exe"),voices=join(dataDir,"piper","voices");
-    assert.ok(existsSync(vpy),"Piper installed by install-piper.ps1");
-    const find=(dir:string,name:RegExp):string|undefined=>{for(const e of readdirSync(dir,{withFileTypes:true})){const f=join(dir,e.name);if(e.isDirectory()){const r=find(f,name);if(r)return r;}else if(name.test(e.name))return f;}return undefined;};
-    const whisperDir=join(dataDir,"whisper");
-    const server=existsSync(whisperDir)?find(whisperDir,/^whisper-server\.exe$/i):undefined;
-    const model=existsSync(join(whisperDir,"models"))?readdirSync(join(whisperDir,"models")).filter(f=>/^ggml-.*\.bin$/.test(f)).map(f=>join(whisperDir,"models",f)).sort((a,b)=>statSync(b).size-statSync(a).size)[0]:undefined;
-    assert.ok(server&&model,"Whisper installed by install-whisper.ps1");
-    const piper=spawn(vpy,["-m","piper.http_server","-m","ar_JO-kareem-medium","--data-dir",voices,"--host","127.0.0.1","--port","18179"],{cwd:voices,windowsHide:true,stdio:"ignore"});
-    const whisper=spawn(server!,["-m",model!,"--host","127.0.0.1","--port","18178","--inference-path","/v1/audio/transcriptions","-t","2"],{windowsHide:true,stdio:"ignore"});
-    const up=async(url:string)=>{for(let i=0;i<120;i++){try{const r=await fetch(url,{signal:AbortSignal.timeout(1000)});if(r.status<500)return;}catch{}await new Promise(r=>setTimeout(r,1000));}throw new Error("not reachable: "+url);};
-    try{
+group="voice";
+if(withVoice&&(!only||only.includes("voice"))){
+  const {LocalSpeaker,LocalTranscriber,VoiceService}=await import("../src/voice/service.js");
+  const {VoiceSense}=await import("../src/voice/sense.js");
+  const {existsSync,readdirSync,statSync,readFileSync}=await import("node:fs");
+  const dataDir=process.env.LAYANX_DATA_DIR??join(process.env.LOCALAPPDATA??"",`LayanX`);
+  const vpy=join(dataDir,"piper","venv","Scripts","python.exe"),voices=join(dataDir,"piper","voices");
+  const find=(dir:string,name:RegExp):string|undefined=>{for(const e of readdirSync(dir,{withFileTypes:true})){const f=join(dir,e.name);if(e.isDirectory()){const r=find(f,name);if(r)return r;}else if(name.test(e.name))return f;}return undefined;};
+  const whisperDir=join(dataDir,"whisper");
+  const server=existsSync(whisperDir)?find(whisperDir,/^whisper-server\.exe$/i):undefined;
+  const model=existsSync(join(whisperDir,"models"))?readdirSync(join(whisperDir,"models")).filter(f=>/^ggml-.*\.bin$/.test(f)).map(f=>join(whisperDir,"models",f)).sort((a,b)=>statSync(b).size-statSync(a).size)[0]:undefined;
+  const senseDir=join(dataDir,"voice-sense");
+  const sensePy=existsSync(join(senseDir,"python.txt"))?readFileSync(join(senseDir,"python.txt"),"utf8").trim():undefined;
+  const procs:Array<ReturnType<typeof spawn>>=[];
+  const up=async(url:string)=>{for(let i=0;i<120;i++){try{const r=await fetch(url,{signal:AbortSignal.timeout(1000)});if(r.status<500)return;}catch{}await new Promise(r=>setTimeout(r,1000));}throw new Error("not reachable: "+url);};
+  const speaker=new LocalSpeaker("http://127.0.0.1:18179"),whisper=new LocalTranscriber("http://127.0.0.1:18178/v1");
+  const norm=(t:string)=>t.toLowerCase().replace(/[\u064B-\u065F\u0670\u0640]/g,"").replace(/[أإآٱ]/g,"ا").replace(/ى/g,"ي").replace(/ة/g,"ه");
+  try{
+    await check("Piper speaks Arabic and Whisper hears it back (local voice round trip)",async()=>{
+      assert.ok(existsSync(vpy),"Piper installed by install-piper.ps1");
+      assert.ok(server&&model,"Whisper installed by install-whisper.ps1");
+      procs.push(spawn(vpy,["-m","piper.http_server","-m","ar_JO-kareem-medium","--data-dir",voices,"--host","127.0.0.1","--port","18179"],{cwd:voices,windowsHide:true,stdio:"ignore"}));
+      procs.push(spawn(server!,["-m",model!,"--host","127.0.0.1","--port","18178","--inference-path","/v1/audio/transcriptions","-t","2"],{windowsHide:true,stdio:"ignore"}));
       await up("http://127.0.0.1:18179/voices");await up("http://127.0.0.1:18178/");
-      const spoken=await new LocalSpeaker("http://127.0.0.1:18179").speak("مرحبا، أنا ليان، مساعدك على هذا الحاسوب.","ar");
+      const spoken=await speaker.speak("مرحبا، أنا ليان، مساعدك على هذا الحاسوب.","ar");
       assert.equal(spoken.audio.subarray(0,4).toString("ascii"),"RIFF");assert.ok(spoken.audio.length>20000,"real audio");
-      const text=await new LocalTranscriber("http://127.0.0.1:18178/v1").transcribe(to16kMono(spoken.audio),"audio/wav","voice.wav","ar");
+      const text=await whisper.transcribe(to16kMono(spoken.audio),"audio/wav","voice.wav","ar");
       assert.ok(text.trim().length>0,"Whisper returned text");
       return `wav ${spoken.audio.length} bytes; heard: ${text.slice(0,80)}`;
-    }finally{piper.kill();whisper.kill();}
-  });
+    });
+    await check("voice sense: Silero VAD gates silence, Smart Turn scores sentences, wake word heard through Whisper",async()=>{
+      assert.ok(sensePy&&existsSync(sensePy),"voice sense installed by install-voice-sense.ps1");
+      procs.push(spawn(sensePy!,[join(process.cwd(),"scripts","voice-sense","server.py"),"--models",join(senseDir,"models"),"--port","18180"],{windowsHide:true,stdio:"ignore"}));
+      await up("http://127.0.0.1:18180/health");
+      const sense=new VoiceSense("http://127.0.0.1:18180",20000);
+      const silence=to16kMono(Buffer.concat([Buffer.from(speakerHeader(16000,32000)),Buffer.alloc(32000)]));
+      const vadSilence=await sense.vad(silence);
+      assert.equal(vadSilence.speech,false,"silence is not speech: "+JSON.stringify(vadSilence));
+      const wake=to16kMono((await speaker.speak("ليان، ما هي حالة الطقس اليوم؟","ar")).audio);
+      const vadWake=await sense.vad(wake);
+      assert.equal(vadWake.speech,true,"Piper's voice is speech: "+JSON.stringify(vadWake));
+      const complete=await sense.turn(wake);
+      const partial=await sense.turn(to16kMono((await speaker.speak("أريد أن أعرف","ar")).audio));
+      for(const t of [complete,partial])assert.ok(t.probability>=0&&t.probability<=1);
+      // LayanX's own pipeline: silence never reaches Whisper; speech does, and the wake word is recognised.
+      const service=new VoiceService(undefined,whisper,null,sense);
+      const started=Date.now();assert.equal(await service.transcribe(silence,"audio/wav","s.wav","ar"),"");const gatedMs=Date.now()-started;
+      const heard=await service.transcribe(wake,"audio/wav","w.wav","ar");
+      assert.match(norm(heard),/ليان|ليين|لايان|لين|layan/i,"wake word in: "+heard);
+      return `vad silence=${vadSilence.maxProb} speech=${vadWake.maxProb}; turn complete=${complete.probability} partial=${partial.probability}; silence gated in ${gatedMs} ms; heard: ${heard.slice(0,60)}`;
+    });
+  }finally{for(const p of procs)p.kill();}
+}
+/** 44-byte PCM16 mono WAV header. */
+function speakerHeader(rate:number,dataBytes:number):Buffer{
+  const h=Buffer.alloc(44);h.write("RIFF",0,"ascii");h.writeUInt32LE(36+dataBytes,4);h.write("WAVE",8,"ascii");h.write("fmt ",12,"ascii");h.writeUInt32LE(16,16);h.writeUInt16LE(1,20);h.writeUInt16LE(1,22);
+  h.writeUInt32LE(rate,24);h.writeUInt32LE(rate*2,28);h.writeUInt16LE(2,32);h.writeUInt16LE(16,34);h.write("data",36,"ascii");h.writeUInt32LE(dataBytes,40);return h;
 }
 /** PCM16 WAV (any rate, mono/stereo) -> 16 kHz mono, which whisper-server expects. */
 function to16kMono(wav:Buffer):Buffer{
@@ -345,12 +387,5 @@ function to16kMono(wav:Buffer):Buffer{
   return out;
 }
 const failed=results.filter(r=>!r.ok);
-// GitHub shows at most 10 notices per step: one compact line per passed check, packed into a few notices.
-if(process.env.GITHUB_ACTIONS==="true"){
-  const lines=results.filter(r=>r.ok).map(r=>`PASS ${r.check}${r.detail?" - "+r.detail.replace(/\r?\n/g," ").slice(0,300):""}`);
-  let chunk="";
-  for(const l of lines){if(chunk&&(chunk+" || "+l).length>3500){console.log(`::notice title=Windows smoke::${chunk}`);chunk="";}chunk=chunk?chunk+" || "+l:l;}
-  if(chunk)console.log(`::notice title=Windows smoke::${chunk}`);
-}
 console.log(JSON.stringify({windowsSmoke:{passed:results.length-failed.length,failed:failed.length,results}},null,1));
 process.exit(failed.length?1:0);

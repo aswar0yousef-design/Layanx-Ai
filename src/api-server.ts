@@ -295,6 +295,16 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"voice transcription failed"});}
    return;
   }
+  if(request.method==="POST"&&request.url==="/v1/voice/turn"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const audio=await rawBody(request,4*1024*1024);
+    const result=await voice.turn(audio);
+    if(!result){json(response,404,{ok:false,error:"voice_sense_unavailable"});return;}
+    json(response,200,{ok:true,...result});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"turn detection failed"});}
+   return;
+  }
   if(request.method==="POST"&&request.url==="/v1/voice/speak"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{

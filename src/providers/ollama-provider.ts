@@ -53,6 +53,18 @@ export function ollamaFormat(request:ModelRequest,env:NodeJS.ProcessEnv=process.
  return(request.capability==="reasoning"||request.capability==="vision")?{format:"json"}:{};
 }
 
+/**
+ * Output cap: an explicit maxOutputTokens, else 1024 tokens for JSON answers (plans and tool choices are far
+ * shorter). Small models in JSON mode sometimes emit endless whitespace until the context is full; without a
+ * cap one planning step could run for minutes. LAYANX_OLLAMA_NUM_PREDICT changes the JSON cap.
+ */
+export function ollamaNumPredict(request:ModelRequest,env:NodeJS.ProcessEnv=process.env):number|undefined{
+ if(typeof request.maxOutputTokens==="number"&&request.maxOutputTokens>0)return Math.floor(request.maxOutputTokens);
+ if(!ollamaFormat(request,env).format)return undefined;
+ const configured=Number(env.LAYANX_OLLAMA_NUM_PREDICT);
+ return Number.isFinite(configured)&&configured>=64?Math.floor(configured):1024;
+}
+
 /** Older Ollama builds reject some schema keywords; retry the same request once in plain JSON mode. */
 function withoutSchema(request:ModelRequest):ModelRequest{const{responseSchema:_ignored,...rest}=request;return rest;}
 
@@ -63,7 +75,7 @@ export function createOllamaProvider(options:OllamaProviderOptions={}){
  const autoSelect=options.autoSelectInstalledModel===true;
  const baseProvider=new HttpModelProvider({
   name:"ollama",baseUrl:root+"/api/chat",healthUrl:root+"/api/tags",timeoutMs:options.timeoutMs??(Number(process.env.OLLAMA_TIMEOUT_MS)||180000),fetcher,
-  buildBody:(model,request)=>({model:model.id,messages:[{role:"user",content:typeof request.input==="string"?request.input:request.input.filter(part=>part.type==="text").map(part=>part.text).join("\n"),...(typeof request.input==="string"?{}:{images:request.input.filter(part=>part.type==="image").map(part=>part.image.base64)})}],stream:false,keep_alive:process.env.OLLAMA_KEEP_ALIVE??"10m",options:{num_ctx:ollamaNumCtx(model.id)},...ollamaThinkOption(model.id),...ollamaFormat(request)}),
+  buildBody:(model,request)=>({model:model.id,messages:[{role:"user",content:typeof request.input==="string"?request.input:request.input.filter(part=>part.type==="text").map(part=>part.text).join("\n"),...(typeof request.input==="string"?{}:{images:request.input.filter(part=>part.type==="image").map(part=>part.image.base64)})}],stream:false,keep_alive:process.env.OLLAMA_KEEP_ALIVE??"10m",options:{num_ctx:ollamaNumCtx(model.id),...(ollamaNumPredict(request)?{num_predict:ollamaNumPredict(request)}:{})},...ollamaThinkOption(model.id),...ollamaFormat(request)}),
   parseResponse:(body,model):ModelResponse=>{
    const data=body as {response?:string;message?:{content?:string};prompt_eval_count?:number;eval_count?:number};
    return{provider:"ollama",modelId:model.id,output:(data.response??data.message?.content??"").replace(THINK_BLOCK,"").trim(),usage:{inputTokens:data.prompt_eval_count,outputTokens:data.eval_count}};

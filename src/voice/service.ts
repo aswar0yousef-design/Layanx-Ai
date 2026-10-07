@@ -1,3 +1,5 @@
+import {isWav,VoiceSense} from "./sense.js";
+
 export interface VoiceStatus {
   enabled:boolean;
   /** Local speech-to-text (whisper.cpp or any OpenAI-compatible server) when configured. */
@@ -8,6 +10,8 @@ export interface VoiceStatus {
   localTts?:{baseUrl:string;voices:{ar:string;en:string}}|null;
   /** Which engine /v1/voice/speak uses: "local" (Piper), "openai", or "browser" (the page speaks itself). */
   tts?:"local"|"openai"|"browser";
+  /** Speech detection and end-of-turn detection on this computer (Silero VAD + Smart Turn). */
+  sense?:{baseUrl:string}|null;
   provider:string;
   transcriptionModel:string;
   speechModel:string;
@@ -187,14 +191,31 @@ export class LocalSpeaker{
 export class VoiceService{
   private readonly local:LocalTranscriber|null;
   private readonly speaker:LocalSpeaker|null;
-  constructor(private readonly provider:VoiceProvider=new OpenAIVoiceProvider(),local:LocalTranscriber|null=LocalTranscriber.fromEnv(),speaker:LocalSpeaker|null=LocalSpeaker.fromEnv()){this.local=local;this.speaker=speaker;}
+  readonly sense:VoiceSense|null;
+  constructor(private readonly provider:VoiceProvider=new OpenAIVoiceProvider(),local:LocalTranscriber|null=LocalTranscriber.fromEnv(),speaker:LocalSpeaker|null=LocalSpeaker.fromEnv(),sense:VoiceSense|null=VoiceSense.fromEnv()){this.local=local;this.speaker=speaker;this.sense=sense;}
   status():VoiceStatus{
     const base=this.provider.status();
     return{...base,localStt:this.local?{baseUrl:this.local.baseUrl,model:this.local.model}:null,stt:this.local?"local":base.enabled?"openai":"none",
-      localTts:this.speaker?{baseUrl:this.speaker.baseUrl,voices:this.speaker.voices}:null,tts:this.speaker?"local":base.enabled?"openai":"browser"};
+      localTts:this.speaker?{baseUrl:this.speaker.baseUrl,voices:this.speaker.voices}:null,tts:this.speaker?"local":base.enabled?"openai":"browser",
+      sense:this.sense?{baseUrl:this.sense.baseUrl}:null};
   }
-  /** Local whisper first (private, free); the cloud provider only when no local engine is configured. */
-  transcribe(...args:Parameters<VoiceProvider["transcribe"]>){return this.local?this.local.transcribe(...args):this.provider.transcribe(...args);}
+  /**
+   * Local whisper first (private, free); the cloud provider only when no local engine is configured.
+   * With voice sense running, a WAV clip without real speech returns "" without being transcribed.
+   */
+  async transcribe(...args:Parameters<VoiceProvider["transcribe"]>):Promise<string>{
+    if(this.sense&&isWav(args[0])){
+      const vad=await this.sense.vad(args[0]).catch(()=>null);
+      if(vad&&!vad.speech)return"";
+    }
+    return this.local?this.local.transcribe(...args):this.provider.transcribe(...args);
+  }
+  /** Has the speaker finished the sentence? null when voice sense is not running. */
+  async turn(wav:Buffer):Promise<{complete:boolean;probability:number}|null>{
+    if(!this.sense||!isWav(wav))return null;
+    const r=await this.sense.turn(wav);
+    return{complete:Boolean(r.complete),probability:Number(r.probability)};
+  }
   /** Piper on this computer first (private, free, Arabic voice); the cloud voice only when Piper is absent or fails. */
   async speak(text:string,format?:"mp3"|"wav"|"opus",lang?:string):Promise<{audio:Buffer;contentType:string}>{
     if(this.speaker){
