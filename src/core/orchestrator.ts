@@ -38,6 +38,7 @@ import {MissionStore} from "./mission-store.js";
 import {ToolAdapterRegistry} from "../tools/adapters.js";
 import {AdaptiveDecisionEngine} from "./adaptive-decision.js";
 import {ProjectIsolation} from "../security/project-isolation.js";
+import {emptyProjectReason} from "../autonomy/project-runner.js";
 import {ContextFabric} from "./context-fabric.js";
 import {SkillRegistry} from "../skills/registry.js";
 import {SkillRuntime} from "../skills/runtime.js";
@@ -680,7 +681,12 @@ export class LayanXCore{
         planIndex=replaceAt;
       }
       const actualIndex=planIndex>=0?planIndex:(this.missions.get(missionId)?.tools?.length??1)-1;
-      const result=await this.executeMissionTool(missionId,projectId,actualIndex,plan.payload??{},approvalIds[actualIndex],agentId,{deferVerification:true});
+      // Running a project that does not exist yet can only fail: tell the planner instead of asking the
+      // owner to approve it (a new website goal used to ask twice for npm in an empty folder).
+      const nothingToRun=plan.tool==="project.run"?emptyProjectReason(projectId,plan.payload):undefined;
+      const result=nothingToRun
+        ?{ok:false,tool:plan.tool,error:nothingToRun} as unknown as Awaited<ReturnType<LayanXCore["executeMissionTool"]>>
+        :await this.executeMissionTool(missionId,projectId,actualIndex,plan.payload??{},approvalIds[actualIndex],agentId,{deferVerification:true});
       results.push(result);
       steps++;
       latest=result.ok?result.data:result.error;

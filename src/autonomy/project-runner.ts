@@ -51,6 +51,21 @@ export function npmCommand(args:string[]):Cmd{const npm=npmCli();return{command:
 const winShim=(name:string,args:string[]):Cmd=>({command:process.env.ComSpec??"cmd.exe",args:["/d","/s","/c",[name,...args].join(" ")],label:[name,...args].join(" ")});
 const SAFE_SCRIPT=/^[\w:.-]{1,60}$/;
 
+const NEEDS_PROJECT=["install","test","build","lint","typecheck","script","dev:start"];
+/**
+ * project.run tasks that need a project, on a folder that has none yet (a new goal, before any file is
+ * written): the reason it cannot work. Checked BEFORE the owner is asked to approve, so nobody approves a
+ * command that can only fail.
+ */
+export function emptyProjectReason(projectId:string,payload:unknown):string|undefined{
+  const task=payload&&typeof payload==="object"&&typeof (payload as {task?:unknown}).task==="string"?(payload as {task:string}).task.trim():"detect";
+  if(!NEEDS_PROJECT.includes(task))return undefined;
+  let dir:string;
+  try{dir=projectDir(projectId);}catch{return undefined;}
+  if(fs.existsSync(dir)&&detectProject(dir).stack!=="unknown")return undefined;
+  return `The project folder has no project yet (no package.json, pyproject.toml/requirements.txt, pubspec.yaml or .csproj), so "${task}" has nothing to run. Create the project first: write package.json and the source files with files.write, or use project.bootstrap with the packages it needs. Run project.run after that.`;
+}
+
 export function commandFor(info:ProjectInfo,task:string,script?:string):Cmd{
   const npm=npmCli();
   const node=(args:string[]):Cmd=>({command:npm.command,args:[...npm.prefix,...args],label:"npm "+args.join(" ")});

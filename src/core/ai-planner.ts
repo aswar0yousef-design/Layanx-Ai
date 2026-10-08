@@ -155,6 +155,7 @@ export class AiMissionPlanner{
       "tools must be an array of objects with tool, action, permission, reason, and optional JSON payload.",
       "Only choose tools from the supplied catalog. Do not invent tool names or actions.",
       "For project.verify use payload {script:\"test\"}, {script:\"typecheck\"}, or {script:\"build\"} according to the goal. For terminal.exec include a safe allowlisted command payload.",
+      "A new project starts as an empty folder: create its files (files.write) or its package.json and packages (project.bootstrap) before project.run or project.verify, which only run an existing project.",
       "For computer-use goals on Windows, first read the window with desktop.ui.tree and act with desktop.ui.click or desktop.ui.set_text using an element index; use desktop.window.focus to switch apps. Use desktop.screenshot and coordinate-based mouse actions only when the element is missing from the tree or the user supplied exact coordinates.",
       "Do not request secrets or bypass security controls.",
       "Available tool catalog: "+JSON.stringify(catalog),
