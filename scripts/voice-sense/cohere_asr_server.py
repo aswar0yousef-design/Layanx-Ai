@@ -48,6 +48,31 @@ def parse_form(content_type, body):
     return fields
 
 
+def to_device(inputs, torch, device, dtype):
+    """Move the processor output the way the model card does (BatchFeature.to): floating tensors to the
+    device and dtype, other tensors to the device, everything else (audio_chunk_index is a list) unchanged."""
+    if callable(getattr(inputs, "to", None)) and not isinstance(inputs, dict):
+        return inputs.to(device, dtype=dtype)
+    moved = {}
+    for k, v in dict(inputs).items():
+        if torch.is_tensor(v):
+            moved[k] = v.to(device, dtype) if v.is_floating_point() else v.to(device)
+        else:
+            moved[k] = v
+    return moved
+
+
+def decode_text(processor, out, chunk_index, language):
+    """Decode like the model card: long audio is split into chunks that decode() joins with audio_chunk_index."""
+    if chunk_index is not None:
+        text = processor.decode(out, skip_special_tokens=True, audio_chunk_index=chunk_index, language=language)
+    else:
+        text = processor.decode(out, skip_special_tokens=True)
+    if isinstance(text, (list, tuple)):
+        text = text[0] if text else ""
+    return str(text).strip()
+
+
 class Engine:
     def __init__(self, model_dir, device):
         if os.environ.get("LAYANX_COHERE_FAKE") == "1":
@@ -56,7 +81,11 @@ class Engine:
             return
         self.fake = False
         import torch
-        from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
+        from transformers import AutoProcessor
+        try:  # the class the model card uses (transformers 5.4+)
+            from transformers import CohereAsrForConditionalGeneration as ModelClass
+        except ImportError:
+            from transformers import AutoModelForSpeechSeq2Seq as ModelClass
 
         if device == "auto":
             device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -65,17 +94,19 @@ class Engine:
         self.torch = torch
         self.device = device
         self.processor = AutoProcessor.from_pretrained(model_dir)
-        self.model = AutoModelForSpeechSeq2Seq.from_pretrained(model_dir, torch_dtype=dtype).to(device).eval()
+        self.model = ModelClass.from_pretrained(model_dir, dtype=dtype).to(device).eval()
         self.dtype = dtype
 
     def transcribe(self, audio, language):
         if self.fake:
             return f"[fake:{language}:{len(audio) / RATE:.1f}s]"
-        inputs = self.processor(audio, sampling_rate=RATE, return_tensors="pt", language=language or "ar")
-        inputs = {k: (v.to(self.device, self.dtype) if hasattr(v, "dtype") and v.dtype.is_floating_point else v.to(self.device)) for k, v in inputs.items()}
+        lang = language or "ar"
+        inputs = self.processor(audio, sampling_rate=RATE, return_tensors="pt", language=lang)
+        chunk_index = inputs.get("audio_chunk_index")
+        inputs = to_device(inputs, self.torch, self.device, self.dtype)
         with self.torch.inference_mode():
             out = self.model.generate(**inputs, max_new_tokens=256)
-        return self.processor.batch_decode(out, skip_special_tokens=True)[0].strip()
+        return decode_text(self.processor, out, chunk_index, lang)
 
 
 def main():

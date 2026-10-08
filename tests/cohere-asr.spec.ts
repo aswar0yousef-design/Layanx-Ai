@@ -58,6 +58,12 @@ else{
   // Without a model and without the stub it refuses to start, with a pointer to the installer.
   let out="";try{execFileSync(python,[script,"--model",path.join(root,"no-such-model"),"--port","1"],{encoding:"utf8",stdio:["ignore","pipe","pipe"]});}catch(e){out=String((e as {stderr?:string}).stderr??"");}
   assert.match(out,/install-cohere-asr\.ps1/);
+  // The real transcribe() path with stand-ins shaped like transformers 5.4 (a list in the processor output).
+  const engineCheck=JSON.parse(execFileSync(python,[path.join(root,"tests","fixtures","cohere_engine_check.py"),path.join(root,"scripts","voice-sense")],{encoding:"utf8"}).trim().split("\n").pop()!);
+  for(const kind of ["batch","dict"]){
+    assert.equal(engineCheck[kind].text,"مرحبا بك",kind+": chunked output decoded to one text");
+    assert.deepEqual(engineCheck[kind].moves,["input_features","attention_mask"],kind+": only tensors are moved, the chunk index list stays as it is");
+  }
   const port=19100+Math.floor(Math.random()*500);
   const child=spawn(python,[script,"--model","unused","--port",String(port)],{env:{...process.env,LAYANX_COHERE_FAKE:"1"},stdio:"ignore"});
   try{
