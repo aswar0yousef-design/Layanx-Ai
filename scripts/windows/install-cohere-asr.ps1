@@ -23,6 +23,8 @@ $Repo = 'CohereLabs/cohere-transcribe-arabic-07-2026'
 $Revision = 'c3e911b42149bf7a1e53d5cef9878aee87515a23'
 $TorchVersion = '2.8.0'
 $TransformersVersion = '5.4.0'
+# The model's audio processor imports librosa (0.11.0 works on Python 3.10-3.13; 1.0 needs 3.12+).
+$LibrosaVersion = '0.11.0'
 $DataDir = if ($env:LAYANX_DATA_DIR) { $env:LAYANX_DATA_DIR } else { Join-Path $env:LOCALAPPDATA 'LayanX' }
 $Dir = Join-Path $DataDir 'cohere-asr'
 $Venv = Join-Path $Dir 'venv'
@@ -43,8 +45,8 @@ Say "Installing PyTorch $TorchVersion ($Device)..."
 if ($Device -eq 'cuda') { & $py -m pip install --disable-pip-version-check --no-input "torch==$TorchVersion" --index-url https://download.pytorch.org/whl/cu126 }
 else { & $py -m pip install --disable-pip-version-check --no-input "torch==$TorchVersion" }
 if ($LASTEXITCODE -ne 0) { Fail 'Installing PyTorch failed. Check the internet connection and the messages above.' }
-Say "Installing transformers $TransformersVersion..."
-& $py -m pip install --disable-pip-version-check --no-input "transformers==$TransformersVersion" sentencepiece protobuf numpy
+Say "Installing transformers $TransformersVersion and librosa $LibrosaVersion..."
+& $py -m pip install --disable-pip-version-check --no-input "transformers==$TransformersVersion" "librosa==$LibrosaVersion" sentencepiece protobuf numpy
 if ($LASTEXITCODE -ne 0) { Fail 'Installing transformers failed.' }
 
 if (-not (Test-Path (Join-Path $Model 'model.safetensors'))) {

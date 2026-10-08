@@ -40,6 +40,15 @@ assert.equal((await detectLocalStt({LAYANX_COHERE_PORT:"9001"},fakeFetch({9001:c
   down.close();backup.close();
 }
 
+// 1c. The installer brings every library the model's own code imports (librosa was missing once: the sample
+// test failed on a real PC with "pip install librosa").
+{
+  const fs=await import("node:fs");
+  const installer=fs.readFileSync(path.join(root,"scripts","windows","install-cohere-asr.ps1"),"utf8");
+  assert.match(installer,/\$LibrosaVersion = '\d+\.\d+\.\d+'/,"librosa is pinned");
+  assert.match(installer,/pip install[^\n]*"librosa==\$LibrosaVersion"/,"librosa is installed with transformers");
+}
+
 // 2. The Python server's HTTP side (multipart from LayanX's own client, WAV decoding), with the model stubbed.
 const python=process.platform==="win32"?"python":"python3";
 let numpy=false;try{execFileSync(python,["-c","import numpy"],{stdio:"ignore"});numpy=true;}catch{}
