@@ -101,6 +101,11 @@ def main():
     ap.add_argument("--models", required=True)
     ap.add_argument("--port", type=int, default=8180)
     args = ap.parse_args()
+    for stream in (sys.stdout, sys.stderr):  # legacy Windows console code pages: never crash on a character
+        try:
+            stream.reconfigure(errors="backslashreplace")
+        except (AttributeError, ValueError):
+            pass
     for name, digest in MODELS.items():
         path = os.path.join(args.models, name)
         if not os.path.exists(path):

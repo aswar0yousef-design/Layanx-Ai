@@ -99,7 +99,7 @@ class Engine:
 
     def transcribe(self, audio, language):
         if self.fake:
-            return f"[fake:{language}:{len(audio) / RATE:.1f}s]"
+            return os.environ.get("LAYANX_COHERE_FAKE_TEXT") or f"[fake:{language}:{len(audio) / RATE:.1f}s]"
         lang = language or "ar"
         inputs = self.processor(audio, sampling_rate=RATE, return_tensors="pt", language=lang)
         chunk_index = inputs.get("audio_chunk_index")
@@ -116,6 +116,13 @@ def main():
     ap.add_argument("--device", default=os.environ.get("LAYANX_COHERE_DEVICE", "cpu"), choices=["cpu", "cuda", "auto"])
     ap.add_argument("--selftest")
     args = ap.parse_args()
+    # A Windows console uses a legacy code page (cp1252 / cp437) that has no Arabic letters: printing the
+    # transcript there must never crash the self-test (it did once, right after a successful transcription).
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="backslashreplace")
+        except (AttributeError, ValueError):
+            pass
     if os.environ.get("LAYANX_COHERE_FAKE") != "1" and not os.path.exists(os.path.join(args.model, "model.safetensors")):
         sys.exit(f"cohere-asr: no model in {args.model}; run scripts\\windows\\install-cohere-asr.ps1")
     if args.selftest:

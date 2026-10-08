@@ -64,6 +64,19 @@ else{
     assert.equal(engineCheck[kind].text,"مرحبا بك",kind+": chunked output decoded to one text");
     assert.deepEqual(engineCheck[kind].moves,["input_features","attention_mask"],kind+": only tensors are moved, the chunk index list stays as it is");
   }
+  // The self-test prints an Arabic transcript; on a Windows console (cp1252) that once crashed after a
+  // successful transcription. It must exit 0 whatever the console's code page.
+  {
+    const fs=await import("node:fs"),os=await import("node:os");
+    const tmp=fs.mkdtempSync(path.join(os.tmpdir(),"lx-cohere-"));const sample=path.join(tmp,"s.wav");
+    const n=16000;const w=Buffer.alloc(44+n*2);
+    w.write("RIFF",0,"ascii");w.writeUInt32LE(36+n*2,4);w.write("WAVE",8,"ascii");w.write("fmt ",12,"ascii");w.writeUInt32LE(16,16);w.writeUInt16LE(1,20);w.writeUInt16LE(1,22);
+    w.writeUInt32LE(16000,24);w.writeUInt32LE(32000,28);w.writeUInt16LE(2,32);w.writeUInt16LE(16,34);w.write("data",36,"ascii");w.writeUInt32LE(n*2,40);fs.writeFileSync(sample,w);
+    const out=execFileSync(python,[script,"--model","unused","--selftest",sample],{encoding:"utf8",env:{...process.env,LAYANX_COHERE_FAKE:"1",LAYANX_COHERE_FAKE_TEXT:"مرحبا أنا ليان",PYTHONIOENCODING:"cp1252"}});
+    const line=JSON.parse(out.trim().split("\n").pop()!.replace(/\\u([0-9a-f]{4})/g,(_m:string,h:string)=>String.fromCharCode(parseInt(h,16))));
+    assert.equal(line.ok,true);assert.equal(line.text,"مرحبا أنا ليان","the transcript survives a console without Arabic");
+    fs.rmSync(tmp,{recursive:true,force:true});
+  }
   const port=19100+Math.floor(Math.random()*500);
   const child=spawn(python,[script,"--model","unused","--port",String(port)],{env:{...process.env,LAYANX_COHERE_FAKE:"1"},stdio:"ignore"});
   try{
