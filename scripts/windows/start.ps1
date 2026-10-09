@@ -256,17 +256,23 @@ try {
 # ---------------------------------------------------------------- shortcut
 $desktop = [Environment]::GetFolderPath('Desktop')
 $lnk = Join-Path $desktop 'LayanX.lnk'
-if (-not (Test-Path $lnk)) {
+$target = Join-Path $Root 'LayanX.cmd'
+# A shortcut left from an older copy in another folder would start that old copy: point it here.
+$stale = $false
+if (Test-Path $lnk) {
+  try { $stale = ((New-Object -ComObject WScript.Shell).CreateShortcut($lnk).TargetPath -ne $target) } catch { $stale = $false }
+}
+if ($stale -or -not (Test-Path $lnk)) {
   try {
     $ws = New-Object -ComObject WScript.Shell
     $sc = $ws.CreateShortcut($lnk)
-    $sc.TargetPath = Join-Path $Root 'LayanX.cmd'
+    $sc.TargetPath = $target
     $sc.WorkingDirectory = $Root
     $icon = Join-Path $Root 'scripts\windows\layanx.ico'
     if (Test-Path $icon) { $sc.IconLocation = $icon } else { $sc.IconLocation = "$Node,0" }
     $sc.Description = 'Start LayanX'
     $sc.Save()
-    Say 'Created a LayanX shortcut on your desktop.'
+    if ($stale) { Say 'Updated the LayanX desktop shortcut to this folder.' } else { Say 'Created a LayanX shortcut on your desktop.' }
   } catch {
     Warn "Could not create the desktop shortcut: $($_.Exception.Message)"
   }

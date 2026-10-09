@@ -118,6 +118,16 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      - name: PowerShell scripts parse (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $bad = 0
+          Get-ChildItem scripts\windows\*.ps1 | ForEach-Object {
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errors)
+            foreach ($e in @($errors)) { if ($e) { $bad++; Write-Host "::error file=scripts/windows/$($_.Name),line=$($e.Extent.StartLineNumber)::$($e.Message)" } }
+          }
+          if ($bad) { exit 1 } else { Write-Host 'All PowerShell scripts parse.' }
       - run: npm run typecheck
       - name: Test suite
         run: npm test
