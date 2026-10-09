@@ -27,7 +27,9 @@ import {join as joinPath} from "node:path";
 import {existsSync as fsExists,readFileSync as fsRead,readdirSync as fsReaddir} from "node:fs";
 import {execFile as execFileCb} from "node:child_process";
 import {projectDir} from "./autonomy/project-dir.js";
-import {detectProject} from "./autonomy/project-runner.js";
+import {createProjectRunnerAdapter,detectProject} from "./autonomy/project-runner.js";
+import {isLocalPreview} from "./platform/open-url.js";
+import {systemLoad} from "./platform/system-load.js";
 import {openIssues,readHealth,recordIssue,refreshKnowledge,resolveIssue} from "./autonomy/knowledge.js";
 import {deleteLesson,listLessons,listPlaybooks,setPlaybookStatus,type PlaybookStatus,exportSkill} from "./autonomy/learning.js";
 import {pendingBranches} from "./autonomy/integrate.js";
@@ -235,7 +237,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
      const input=await body(request,max);
      const goal=typeof input.goal==="string"?input.goal:"";
      const projectId=typeof input.projectId==="string"&&input.projectId.trim()?input.projectId.trim():"default";
-     json(response,201,{ok:true,job:supervisor.create(goal,projectId,{maxMinutes:typeof input.maxMinutes==="number"?input.maxMinutes:undefined})});return;
+     json(response,201,{ok:true,job:supervisor.create(goal,projectId,{maxMinutes:typeof input.maxMinutes==="number"?input.maxMinutes:undefined,openWhenDone:input.openWhenDone===true})});return;
     }
     if(request.method==="GET"&&parts.length===3){
      const projectId=params.get("projectId")?.trim()||undefined;
@@ -245,6 +247,23 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     if(!job){json(response,404,{ok:false,error:"job_not_found"});return;}
     if(request.method==="GET"&&parts.length===4){json(response,200,{ok:true,job});return;}
     if(request.method==="POST"&&parts[4]==="cancel"){supervisor.cancel(job.id);json(response,200,{ok:true,job});return;}
+    // Continue a stopped job from where it stopped.
+    if(request.method==="POST"&&parts[4]==="resume"){json(response,200,{ok:true,job:supervisor.resume(job.id)});return;}
+    // An instruction for a job that is running (or done): "when you finish, open it".
+    if(request.method==="POST"&&parts[4]==="notes"){const input=await body(request,max);json(response,200,{ok:true,job:supervisor.addNote(job.id,typeof input.text==="string"?input.text:"")});return;}
+    // Show the finished site: its dev server if it still runs, otherwise start it (the project's trust
+    // level or an approval decides, like any project.run) and open it in the browser on this PC.
+    if(request.method==="POST"&&parts[4]==="open"){
+     const input=await body(request,max);
+     const status=await createProjectRunnerAdapter().execute({projectId:job.projectId,payload:{task:"dev:status"}} as never).catch(()=>null) as {running?:boolean;url?:string|null}|null;
+     if(status?.running&&status.url&&isLocalPreview(status.url)){json(response,200,{ok:true,url:status.url,job:supervisor.setPreview(job.id,status.url)});return;}
+     const resume=typeof input.missionId==="string"&&typeof input.approvalId==="string"?{missionId:input.missionId,approvalId:input.approvalId}:undefined;
+     const started=await runSingleTool(options.core,job.projectId,"project.run",{task:"dev:start"},resume);
+     if(!started.ok&&started.approvalId){json(response,202,{ok:false,needsApproval:true,approvalId:started.approvalId,missionId:started.missionId});return;}
+     const url=(started.data as {url?:string}|undefined)?.url;
+     if(!started.ok||!url||!isLocalPreview(url)){json(response,422,{ok:false,error:started.error??"The dev server did not report a local address."});return;}
+     json(response,200,{ok:true,url,job:supervisor.setPreview(job.id,url)});return;
+    }
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"supervisor_failed"});return;}
    json(response,404,{ok:false,error:"not_found"});return;
   }
@@ -277,6 +296,8 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    json(response,200,{ok:true,enabled:Boolean(briefing),time:process.env.LAYANX_BRIEFING_TIME?.trim()||null,briefing:briefing?.latest()??null});return;
   }
+  // How busy the PC is (CPU, RAM, GPU, loaded Ollama models), for the dashboard.
+  if(request.method==="GET"&&request.url==="/v1/system/load"){json(response,200,{ok:true,...await systemLoad()});return;}
   if(request.method==="GET"&&request.url==="/v1/cloud/usage"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    json(response,200,{ok:true,usage:options.core.modelExecution.budget.status()});return;

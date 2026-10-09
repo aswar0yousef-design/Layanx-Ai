@@ -6,6 +6,7 @@ import {projectDir} from "./project-dir.js";
 import {trustLevel} from "./trust.js";
 import {knowledgeSummary,recordIssue,refreshKnowledge,updateHealth} from "./knowledge.js";
 import {buildRepoMap} from "./repo-map.js";
+import {isLocalPreview} from "../platform/open-url.js";
 import {errorSignature,findLessons,guidanceText,listLessons,listPlaybooks,markLessons,matchPlaybooks,recordLesson,recordPlaybookOutcome,savePlaybookCandidate,trustProjectPlaybook} from "./learning.js";
 
 /**
@@ -39,6 +40,17 @@ export interface SupervisorJob{
   cloudUsed:boolean;externalUsed:string[];checkpoints:string[];log:JobLog[];result?:string;finalRepairs:number;
   branch?:string;queuedFrom?:JobStatus;security?:{score:number;blocked:boolean;counts:Record<string,number>};
   playbooks?:string[];lessons?:string[];learned?:string[];discovered?:string[];
+  /** Instructions the owner added while the job ran ("when you finish, open it"). */
+  notes?:string[];
+  /** Open the finished site in the browser on this PC. */
+  openWhenDone?:boolean;
+  /** Address of the finished site while its dev server is kept running. */
+  preview?:string;
+  /** The planner's own choice of checks, re-applied when the project changes (a new project gets package.json). */
+  specChecks?:Record<string,unknown>;
+  needsInstall?:boolean;
+  budgetMinutes?:number;
+  resumed?:number;
 }
 export interface AgentRun{completed?:boolean;paused?:boolean;missionId?:string;nextToolIndex?:number;approvalId?:string;reason?:string;status?:string;results?:unknown[]}
 export interface ToolRun{ok?:boolean;missionId?:string;approvalId?:string;data?:any;error?:string}
@@ -52,11 +64,19 @@ export interface SupervisorDeps{
   externalAgent():{name:string;kind:"local"|"cloud"}|null;
   detect?(projectId:string):ProjectInfo|null;
   notify?(job:SupervisorJob,event:string):void;
+  /** Open a local address (the finished site) in the browser on this PC. */
+  openUrl?(url:string):void;
 }
 
 const ACTIVE:JobStatus[]=["queued","planning","running","waiting_approval","verifying"];
 const AGENT_FOR:Record<MilestoneKind,string>={code:"coder",test:"tester",research:"researcher",desktop:"operator",business:"business",general:"core"};
-const UI_WORDS=/\b(page|ui|ux|website|site|screen|design|layout|frontend|landing|dashboard|css|style)\b|صفحة|واجهة|موقع|تصميم|شاشة|لوحة|متجر إلكتروني|تطبيق ويب/i;
+const UI_WORDS=/\b(page|ui|ux|website|site|screen|design|layout|frontend|landing|dashboard|css|style|store|shop)\b|صفحة|واجهة|موقع|تصميم|شاشة|لوحة|متجر|تطبيق ويب/i;
+const OPEN_WORD="open|show|افتح|افتحه|افتحها|افتحلي|اعرض|أعرض|اعرضه|ورني|ورّني|شغله|شغّله";
+const DONE_WORD="fini?sh|done|complete|انته|تنته|ينته|تخلص|يخلص|خلصت|الانتهاء|إنتهاء";
+const OPEN_WHEN_DONE=new RegExp(`(${OPEN_WORD})[\\s\\S]{0,60}(${DONE_WORD})|(${DONE_WORD})[\\s\\S]{0,60}(${OPEN_WORD})`,"i");
+/** "When you finish, open it" / "افتحه عند الانتهاء": the owner wants to see the result in the browser. */
+export function wantsOpenWhenDone(text:string):boolean{return OPEN_WHEN_DONE.test(text);}
+
 const MAX_ATTEMPTS=4;
 
 function now(){return new Date().toISOString();}
@@ -79,10 +99,11 @@ export class Supervisor{
   }
 
   // ------------------------------------------------------------ public API
-  create(goal:string,projectId="default",opts:{maxMinutes?:number;maxRounds?:number}={}):SupervisorJob{
+  create(goal:string,projectId="default",opts:{maxMinutes?:number;maxRounds?:number;openWhenDone?:boolean}={}):SupervisorJob{
     const g=goal.trim();if(g.length<3||g.length>4000)throw new Error("goal_required");
+    const minutes=Math.min(Math.max(opts.maxMinutes??120,5),24*60);
     const job:SupervisorJob={id:randomUUID(),projectId,goal:g,status:"planning",createdAt:now(),updatedAt:now(),
-      deadline:new Date(Date.now()+Math.min(Math.max(opts.maxMinutes??120,5),24*60)*60_000).toISOString(),
+      deadline:new Date(Date.now()+minutes*60_000).toISOString(),budgetMinutes:minutes,openWhenDone:Boolean(opts.openWhenDone)||wantsOpenWhenDone(g),
       trust:trustLevel(projectId),acceptance:[],checks:null,milestones:[],current:0,rounds:0,maxRounds:Math.min(Math.max(opts.maxRounds??30,3),200),
       cloudUsed:false,externalUsed:[],checkpoints:[],log:[],finalRepairs:0};
     this.jobs.set(job.id,job);this.log(job,"Job created");this.save();
@@ -92,6 +113,46 @@ export class Supervisor{
   list(projectId?:string){return[...this.jobs.values()].filter(j=>!projectId||j.projectId===projectId).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
   get(id:string){return this.jobs.get(id);}
   cancel(id:string){const j=this.jobs.get(id);if(!j)return false;if(ACTIVE.includes(j.status)){j.status="cancelled";j.result="Cancelled by the owner.";this.log(j,"Cancelled");this.save();}return true;}
+  /**
+   * Continue a job that stopped (failed, cancelled, out of time or rounds) from where it stopped: finished
+   * milestones stay finished, the stopped one gets fresh attempts, and the time and round budgets start again.
+   */
+  resume(id:string):SupervisorJob{
+    const job=this.jobs.get(id);if(!job)throw new Error("job_not_found");
+    if(!["failed","cancelled","budget_exhausted"].includes(job.status))throw new Error("job_not_stopped");
+    job.deadline=new Date(Date.now()+(job.budgetMinutes??120)*60_000).toISOString();
+    job.rounds=0;job.finalRepairs=0;job.result=undefined;job.waiting=undefined;job.resumed=(job.resumed??0)+1;
+    const m=job.milestones[job.current];
+    if(m&&m.status!=="done"){m.status="pending";m.attempts=0;}
+    const next:JobStatus=!job.milestones.length||!job.checks?"planning":job.current>=job.milestones.length?"verifying":"running";
+    this.set(job,next,`Resumed by the owner (${job.milestones.filter(x=>x.status==="done").length}/${job.milestones.length} milestones already done)`);
+    void this.drive(job.id);
+    return job;
+  }
+  /** An instruction from the owner for a job (running or finished): used from the next step on. */
+  addNote(id:string,text:string):SupervisorJob{
+    const job=this.jobs.get(id);if(!job)throw new Error("job_not_found");
+    const note=text.trim().slice(0,1000);if(!note)throw new Error("note_required");
+    job.notes=[...(job.notes??[]),note].slice(-20);
+    this.log(job,"Owner note: "+note);
+    if(wantsOpenWhenDone(note)){
+      job.openWhenDone=true;
+      this.log(job,"The site opens in the browser when the job is done");
+      if(job.status==="completed"&&job.preview)this.openPreview(job);
+    }
+    this.save();
+    return job;
+  }
+  /** The site's address once its dev server runs (started from the job card); opened in the browser. */
+  setPreview(id:string,url:string):SupervisorJob{
+    const job=this.jobs.get(id);if(!job)throw new Error("job_not_found");
+    if(!isLocalPreview(url))throw new Error("not_a_local_address");
+    job.preview=url;this.openPreview(job);this.save();return job;
+  }
+  private openPreview(job:SupervisorJob){
+    if(!job.preview||!isLocalPreview(job.preview)||!this.deps.openUrl)return;
+    try{this.deps.openUrl(job.preview);this.log(job,"Opened "+job.preview+" in the browser");}catch(e){this.log(job,"Could not open the browser: "+(e as Error).message,"warn");}
+  }
   /** Resume jobs that were running when LayanX stopped. */
   start(){for(const j of this.jobs.values())if(ACTIVE.includes(j.status))void this.drive(j.id);}
   stop(){this.stopped=true;}
@@ -183,15 +244,8 @@ export class Supervisor{
       .filter((m:any)=>m&&typeof m.goal==="string"&&m.goal.trim())
       .map((m:any)=>{const kind:MilestoneKind=kinds.includes(m.kind)?m.kind:"code";return{title:String(m.title||m.goal).slice(0,120),goal:String(m.goal).slice(0,1500),kind,agent:AGENT_FOR[kind],status:"pending" as const,attempts:0,missions:[]};});
     if(!milestones.length)milestones.push({title:job.goal.slice(0,120),goal:job.goal,kind:"code",agent:"coder",status:"pending",attempts:0,missions:[]});
-    const canRun=(t:string)=>Boolean(info&&(info.stack!=="node"?["install","test","build"].includes(t):info.scripts.includes(t)||t==="install"));
-    const c=spec?.checks??{};
-    job.checks={
-      install:Boolean(info&&info.stack!=="unknown"&&(c.install??true)),
-      test:canRun("test")&&c.test!==false,build:canRun("build")&&c.build!==false,
-      typecheck:canRun("typecheck")&&c.typecheck!==false,lint:canRun("lint")&&c.lint===true,
-      security:Boolean(info&&info.stack!=="unknown"&&c.security!==false),
-      browser:(c.browser&&typeof c.browser==="object")||(UI_WORDS.test(job.goal)&&info?.scripts.some(s=>["dev","start","serve"].includes(s)))?{path:typeof c.browser?.path==="string"&&c.browser.path.startsWith("/")?c.browser.path:"/"}:null
-    };
+    job.specChecks=spec?.checks&&typeof spec.checks==="object"?spec.checks:{};
+    job.checks=this.computeChecks(job,info);
     job.acceptance=(Array.isArray(spec?.acceptance)?spec.acceptance:[]).filter((a:unknown)=>typeof a==="string").slice(0,10);
     if(!job.acceptance.length)job.acceptance=[job.goal];
     job.milestones=milestones;
@@ -237,19 +291,23 @@ export class Supervisor{
         job.waiting={approvalId:run.approvalId,missionId:run.missionId,index:run.nextToolIndex??0,kind:"agent",agentId:m.agent,milestone:job.current};
         this.set(job,"waiting_approval","Waiting for your approval to continue");return;
       }
-      if(!run.completed)m.notes=`Agent stopped: ${run.reason??run.status??"unknown"}`;
+      if(!run.completed){await this.afterWork(job,m,run.reason??run.status??"unknown");return;}
     }
     await this.afterWork(job,m);
   }
 
-  private async afterWork(job:SupervisorJob,m:Milestone){
+  /**
+   * After an attempt: the gates decide. `agentStopped` is about THIS attempt only (an earlier attempt that
+   * stopped must not fail a later one that finished: that kept jobs failing after one hiccup).
+   */
+  private async afterWork(job:SupervisorJob,m:Milestone,agentStopped?:string){
     const previousFailure=m.attempts>1?m.notes:undefined;
     const checks=await this.runChecks(job);
     if(checks===undefined)return;
     job.lastChecks=checks;
     const failed=checks.filter(c=>!c.ok&&!c.skipped);
     const regressions=(job.baseline??[]).filter(b=>b.ok&&!b.skipped&&checks.some(c=>c.name===b.name&&!c.ok&&!c.skipped)).map(b=>b.name);
-    const agentFailed=Boolean(m.notes&&m.notes.startsWith("Agent stopped"));
+    const agentFailed=agentStopped!==undefined;
     if(!failed.length&&!agentFailed){
       m.status="done";m.notes=undefined;
       if(previousFailure)await this.learnFix(job,m,previousFailure);
@@ -258,7 +316,7 @@ export class Supervisor{
       await this.checkpoint(job,m);
       job.current++;this.save();return;
     }
-    m.notes=[agentFailed?m.notes:"",regressions.length?`REGRESSION (passed before, fails now): ${regressions.join(", ")}`:"",...failed.map(c=>`${c.name} failed:\n${c.summary}`)].filter(Boolean).join("\n\n");
+    m.notes=[agentFailed?`Agent stopped: ${agentStopped}`:"",regressions.length?`REGRESSION (passed before, fails now): ${regressions.join(", ")}`:"",...failed.map(c=>`${c.name} failed:\n${c.summary}`)].filter(Boolean).join("\n\n");
     this.log(job,`Checks failed for "${m.title}": ${failed.map(c=>c.name).join(", ")||"agent did not finish"}`+(regressions.length?` — regression in ${regressions.join(", ")}`:""),"warn");
     if(m.attempts>=MAX_ATTEMPTS){m.status="failed";job.result=`Could not complete "${m.title}" after ${m.attempts} attempts. Last problem:\n${clip(m.notes,800)}`;
       try{recordIssue(projectDir(job.projectId),`Unfinished: ${m.title}`,`Autonomous job "${job.goal.split("\n")[0]!.slice(0,80)}" stopped. ${clip(m.notes,300)}`);}catch{}
@@ -272,6 +330,7 @@ export class Supervisor{
       `Overall goal: ${job.goal}`,
       `Acceptance criteria: ${job.acceptance.join(" | ")}`,
       `Current milestone (${job.current+1}/${job.milestones.length}): ${m.goal}`,
+      job.notes?.length?`Owner's instructions added during the job (follow them):\n- ${job.notes.slice(-8).join("\n- ")}`:"",
       m.notes?`The previous attempt failed. Fix exactly this, change as little as possible:\n${clip(m.notes,3000)}`:"",
       (()=>{const k=knowledgeSummary(job.projectId,1500);return k?`Project memory:\n${k}`:"";})(),
       (()=>{try{const map=buildRepoMap(projectDir(job.projectId),{focus:job.goal+" "+m.goal,tokenBudget:700});return map.text?`Code map (existing functions to reuse; check callers before changing them):\n${map.text}`:"";}catch{return"";}})(),
@@ -305,8 +364,7 @@ export class Supervisor{
     if(w.kind==="agent"&&m){
       const run=await this.deps.resumeAgent(w.missionId,job.projectId,w.agentId??m.agent,{[w.index]:w.approvalId});
       if(run.paused&&run.approvalId){job.waiting={approvalId:run.approvalId,missionId:w.missionId,index:run.nextToolIndex??0,kind:"agent",agentId:w.agentId,milestone:w.milestone};this.set(job,"waiting_approval","Waiting for another approval");return;}
-      if(!run.completed)m.notes=`Agent stopped: ${run.reason??run.status??"unknown"}`;
-      await this.afterWork(job,m);return;
+      await this.afterWork(job,m,run.completed?undefined:run.reason??run.status??"unknown");return;
     }
     if(w.kind==="tool"){
       await this.deps.runTool(job.projectId,w.tool!,w.payload??{},{missionId:w.missionId,approvalId:w.approvalId});
@@ -316,8 +374,43 @@ export class Supervisor{
     }
   }
 
+  /** Which checks prove this project works, from the planner's choice and what the project can run now. */
+  private computeChecks(job:SupervisorJob,info:ProjectInfo|null):Checks{
+    const c=(job.specChecks??{}) as any;
+    const canRun=(t:string)=>Boolean(info&&(info.stack!=="node"?["install","test","build"].includes(t):info.scripts.includes(t)||t==="install"));
+    return{
+      install:Boolean(info&&info.stack!=="unknown"&&(c.install??true)),
+      test:canRun("test")&&c.test!==false,build:canRun("build")&&c.build!==false,
+      typecheck:canRun("typecheck")&&c.typecheck!==false,lint:canRun("lint")&&c.lint===true,
+      security:Boolean(info&&info.stack!=="unknown"&&c.security!==false),
+      browser:(c.browser&&typeof c.browser==="object")||(UI_WORDS.test(job.goal)&&info?.scripts.some(s=>["dev","start","serve"].includes(s)))?{path:typeof c.browser?.path==="string"&&c.browser.path.startsWith("/")?c.browser.path:"/"}:null
+    };
+  }
+  /**
+   * A job that starts in an empty folder has no checks at planning time. Once the agent has created the
+   * project (package.json with test/build/dev scripts), those checks are added, so "done" is proven.
+   */
+  private refreshChecks(job:SupervisorJob){
+    const before=job.checks;if(!before)return;
+    const next=this.computeChecks(job,this.info(job));
+    const merged:Checks={install:before.install||next.install,test:before.test||next.test,build:before.build||next.build,typecheck:before.typecheck||next.typecheck,
+      lint:before.lint||next.lint,security:Boolean(before.security||next.security),browser:before.browser??next.browser};
+    const added=(Object.keys(merged) as Array<keyof Checks>).filter(k=>Boolean(merged[k])&&!before[k]);
+    if(!added.length)return;
+    if(added.includes("install"))job.needsInstall=true;
+    job.checks=merged;
+    this.log(job,"The project now has checks to prove the work: "+added.join(", "));
+    this.save();
+  }
+
   private async runChecks(job:SupervisorJob):Promise<CheckResult[]|undefined>{
+    this.refreshChecks(job);
     const c=job.checks;if(!c)return[];
+    if(job.needsInstall){
+      const r=await this.tool(job,"project.run",{task:"install"});
+      if(r==="waiting")return undefined;
+      job.needsInstall=false;this.save();
+    }
     const out:CheckResult[]=[];
     for(const name of ["typecheck","lint","test","build"] as const){
       if(!c[name])continue;
@@ -366,7 +459,10 @@ export class Supervisor{
         job.visual={url:target,problems,judgement,screens:(data.results??[]).map((r:any)=>r.viewport)};
         try{updateHealth(projectDir(job.projectId),"visual",{ok:!problems.length,summary:problems.slice(0,3).join("; ")||"clean"});}catch{}
         if(!problems.length){const sec=await this.securityGate(job,url);if(sec==="waiting")return;if(sec){await this.deps.runTool(job.projectId,"project.run",{task:"dev:stop"}).catch(()=>undefined);return this.reopen(job,sec);}}
-        await this.deps.runTool(job.projectId,"project.run",{task:"dev:stop"}).catch(()=>undefined);
+        // Kept running when the owner wants to see the result (opened below, once the job is done).
+        const keep=Boolean(job.openWhenDone&&!problems.length&&isLocalPreview(target));
+        if(keep)job.preview=target;
+        else await this.deps.runTool(job.projectId,"project.run",{task:"dev:stop"}).catch(()=>undefined);
         if(problems.length)return this.reopen(job,"Browser check found problems:\n"+problems.join("\n"));
       }
     }
@@ -378,6 +474,10 @@ export class Supervisor{
     this.finished(job,true);
     await this.learnPlaybook(job);
     this.set(job,"completed","Completed and verified");
+    if(job.openWhenDone){
+      if(job.preview)this.openPreview(job);
+      else this.log(job,"Nothing to open: this project has no web page to show (no browser check ran)","warn");
+    }
   }
   // ------------------------------------------------------------ learning
   private stack(job:SupervisorJob){return this.info(job)?.stack??"unknown";}

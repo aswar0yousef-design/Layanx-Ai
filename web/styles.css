@@ -215,3 +215,11 @@ pre.raw{background:#060C17;border:1px solid var(--line);border-radius:.6rem;padd
   .qa{grid-template-columns:1fr}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}.cap:hover{transform:none}}
+/* PC status meters and job summaries */
+.meter-head{display:flex;justify-content:space-between;gap:.5rem;font-size:.85rem}
+.meter .progress{margin:.25rem 0 .6rem}
+.progress.warn>i{background:var(--amber)}
+.progress.bad>i{background:var(--red)}
+.job-sum{margin:.2rem 0 .5rem;font-size:.9rem;font-weight:600}
+.job-sum.ok{color:var(--green)}
+.job-sum.bad{color:#FCA5A5}

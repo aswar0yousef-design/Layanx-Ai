@@ -3,6 +3,7 @@ import type {LayanXCore} from "../core/orchestrator.js";
 import {cloudPolicy} from "../config/providers.js";
 import {pickExternalAgent} from "./external-agents.js";
 import type {SupervisorDeps,ToolRun} from "./supervisor.js";
+import {openInBrowser} from "../platform/open-url.js";
 
 /**
  * Run ONE tool as its own small mission, through the full runtime (permissions, approval or
@@ -45,6 +46,7 @@ export function coreSupervisorDeps(core:LayanXCore):SupervisorDeps{
     runTool:(projectId,tool,payload,resume)=>runSingleTool(core,projectId,tool,payload,resume).catch(error=>({ok:false,error:(error as Error).message})),
     isApproved:id=>core.executionRuntime.approvals.isApproved(id),
     cloudAvailable:cloudReady,
-    externalAgent:()=>{const a=pickExternalAgent("auto");return a&&(a.kind==="local"||cloudReady())?{name:a.name,kind:a.kind}:null;}
+    externalAgent:()=>{const a=pickExternalAgent("auto");return a&&(a.kind==="local"||cloudReady())?{name:a.name,kind:a.kind}:null;},
+    openUrl:url=>{if(process.env.LAYANX_OPEN_BROWSER!=="off")openInBrowser(url);}
   };
 }
