@@ -3,7 +3,7 @@ import type {AgentContract} from "./core/contracts.js";
 import {configureProviders,providerSummary} from "./config/providers.js";
 import {prewarmDesktopHelper} from "./tools/desktop-control.js";
 import {registerBuiltinTools,registerHttpReadTool,registerGitHubReadTools,registerToolFabric,registerDesktopControlTools,registerTradingTools} from "./tools/builtin.js";
-import {registerMt5TradingTools} from "./trading/mt5-agent-integration.js";
+import {registerMt5TradingTools,MT5_TOOLS} from "./trading/mt5-agent-integration.js";
 import {RuntimePersistence} from "./core/runtime-persistence.js";
 import {RuntimeStorage} from "./storage/runtime-storage.js";
 import {createOllamaEmbedder,embeddingModelFromEnv} from "./memory/embedder.js";
@@ -90,7 +90,7 @@ export function createRuntime(options:RuntimeOptions={}){
    "research.internet","agent-reach.status","agent-reach.channels","agent-reach.collect","agent-reach.capabilities","agent-reach.update.check","agent-reach.setup",
    "trading.strategy.list","trading.strategy.backtest","trading.strategy.optimize","trading.strategy.walk_forward","trading.strategy.monte_carlo",
    "trading.account","trading.quote","trading.order.place","trading.position.close",
-   "trading.mt5.account","trading.mt5.autoscalper.status","trading.mt5.autoscalper.start","trading.mt5.autoscalper.stop",
+   ...MT5_TOOLS,
    "google.sheets.read","google.drive.file.organize",
    "project.run","browser.test","agent.external","project.knowledge","project.knowledge.record","project.code_map","project.references","apis.search","mcp.registry.search","mcp.servers.list","mcp.server.request","project.security","git.merge","git.publish_pr","learning.search","learning.record"],
   forbiddenResources:["secrets","security-controls"],

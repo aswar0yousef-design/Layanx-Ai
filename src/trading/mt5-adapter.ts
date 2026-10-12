@@ -31,6 +31,10 @@ export interface Mt5OrderResult {
   executedPrice?: number;
   executedQuantity?: number;
   message?: string;
+  /** The tag the order carried on the account (comment "LX:<id>"). */
+  clientOrderId?: string;
+  /** True when an order with this tag was already on the account, so it was not sent again. */
+  replayed?: boolean;
 }
 
 export interface Mt5Adapter {

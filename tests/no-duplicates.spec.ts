@@ -21,7 +21,7 @@ assert.deepEqual(tools.filter(t=>!core.toolAdapters.has(t.name)).map(t=>t.name),
 const names=new Set(tools.map(t=>t.name));
 for(const agent of core.agents.list() as Array<{agentId:string;allowedTools:string[]}>)
   assert.deepEqual(agent.allowedTools.filter(t=>t!=="*"&&!t.endsWith(".")&&!names.has(t)),[],`agent ${agent.agentId} lists missing tools`);
-for(const required of ["desktop.ui.tree","project.code_map","project.references","apis.search","mcp.registry.search","mcp.server.request","memory.recall"])assert.ok(names.has(required),required+" is registered");
+for(const required of ["desktop.ui.tree","project.code_map","project.references","apis.search","mcp.registry.search","mcp.server.request","memory.recall","trading.mt5.positions","trading.mt5.history","trading.mt5.tester.run"])assert.ok(names.has(required),required+" is registered");
 
 // 3. HTTP routes: no method+path is handled twice, inside a file or between the API server and the local host.
 const routes=new Map<string,string[]>();
@@ -36,11 +36,13 @@ assert.deepEqual([...routes].filter(([,files])=>files.length>1),[],"route handle
 const guide=fs.readFileSync(new URL("../docs/دليل-التشغيل.md",import.meta.url),"utf8");
 for(const name of ["LAYANX_OLLAMA_STRUCTURED","LAYANX_STORAGE","LAYANX_SEMANTIC_MEMORY","LAYANX_EMBEDDING_MODEL","LAYANX_CLOUD_MONTHLY_BUDGET_USD","LAYANX_CLOUD_MONTHLY_TOKENS","LAYANX_PROMPT_BUDGET_CHARS",
   "LAYANX_TTS_BASE_URL","LAYANX_TTS_VOICE_AR","LAYANX_AGENT_IMAGE_AIDER","LAYANX_TOOLS_DIR","LAYANX_EXTERNAL_SCANNERS","LAYANX_OPENGREP_CONFIG","LAYANX_MCP_REGISTRY_URL","LAYANX_DESKTOP_PREWARM","LAYANX_SKILLS_DIR",
-  "LAYANX_ZAP","LAYANX_ZAP_IMAGE","LAYANX_VOICE_SENSE_URL","LAYANX_VOICE_SENSE_PORT","LAYANX_STT_ENGINE","LAYANX_COHERE_PORT","LAYANX_COHERE_DEVICE","LAYANX_URL","LAYANX_API_TOKEN","LAYANX_DOCKER_MEMORY","LAYANX_OLLAMA_NUM_PREDICT","LAYANX_STT_FALLBACK_URL","LAYANX_OPEN_BROWSER","LAYANX_API_CATALOG"])
+  "LAYANX_ZAP","LAYANX_ZAP_IMAGE","LAYANX_VOICE_SENSE_URL","LAYANX_VOICE_SENSE_PORT","LAYANX_STT_ENGINE","LAYANX_COHERE_PORT","LAYANX_COHERE_DEVICE","LAYANX_URL","LAYANX_API_TOKEN","LAYANX_DOCKER_MEMORY","LAYANX_OLLAMA_NUM_PREDICT","LAYANX_STT_FALLBACK_URL","LAYANX_OPEN_BROWSER","LAYANX_API_CATALOG",
+  "MT5_ALLOW_REAL_ACCOUNT","MT5_MAX_CONSECUTIVE_LOSSES","MT5_TESTER_TERMINAL","MT5_TESTER_TIMEOUT_MINUTES"])
   assert.ok(guide.includes(name),name+" is documented in docs/دليل-التشغيل.md");
 // 5. Every LAYANX_* setting the new code reads appears in .env.example too.
 const example=fs.readFileSync(new URL("../.env.example",import.meta.url),"utf8");
-for(const name of ["LAYANX_ZAP","LAYANX_ZAP_IMAGE","LAYANX_VOICE_SENSE_URL","LAYANX_VOICE_SENSE_PORT","LAYANX_STT_ENGINE","LAYANX_COHERE_PORT","LAYANX_COHERE_DEVICE","LAYANX_URL","LAYANX_EVAL_DIR","LAYANX_OLLAMA_NUM_PREDICT","LAYANX_STT_FALLBACK_URL","LAYANX_OPEN_BROWSER","LAYANX_API_CATALOG"])
+for(const name of ["LAYANX_ZAP","LAYANX_ZAP_IMAGE","LAYANX_VOICE_SENSE_URL","LAYANX_VOICE_SENSE_PORT","LAYANX_STT_ENGINE","LAYANX_COHERE_PORT","LAYANX_COHERE_DEVICE","LAYANX_URL","LAYANX_EVAL_DIR","LAYANX_OLLAMA_NUM_PREDICT","LAYANX_STT_FALLBACK_URL","LAYANX_OPEN_BROWSER","LAYANX_API_CATALOG",
+  "MT5_ALLOW_REAL_ACCOUNT","MT5_MAX_CONSECUTIVE_LOSSES","MT5_TESTER_TERMINAL","MT5_TESTER_TIMEOUT_MINUTES"])
   assert.ok(new RegExp("^"+name+"=","m").test(example),name+" is in .env.example");
 // 6. One Python finder for all Windows installers (no copies drifting apart).
 for(const f of ["install-piper.ps1","install-voice-sense.ps1","install-cohere-asr.ps1"]){

@@ -29,6 +29,17 @@ interface Transport{
 }
 
 export interface StdioOptions{command:string;args:string[];env:NodeJS.ProcessEnv;cwd?:string}
+/**
+ * A PyPI MCP server whose program name differs from its package name (mt5-trading-mcp -> mt5-mcp) cannot
+ * start as `uvx <package>==<version>`; uv names the right program, and this says how to fix the config.
+ */
+export function uvxHint(options:Pick<StdioOptions,"command"|"args">,stderr:string):string{
+  if(!/(^|[\\/])uvx(\.exe)?$/i.test(options.command))return "";
+  const m=/executable named `([^`]+)` is not provided by package `([^`]+)`[\s\S]*?available:\s*(?:-\s*)?([\w.-]+)/i.exec(stderr);
+  if(!m)return "";
+  const spec=options.args.find(a=>!a.startsWith("-"))??m[2]!;
+  return ` (fix: in Control Center -> Integrations -> MCP set the arguments to ["--from","${spec}","${m[3]}"] and approve again)`;
+}
 class StdioTransport implements Transport{
   readonly kind="stdio" as const;
   private child:ChildProcessWithoutNullStreams;
@@ -40,7 +51,7 @@ class StdioTransport implements Transport{
     this.child.stdin.on("error",()=>undefined);
     this.child.stderr.setEncoding("utf8").on("data",(c:string)=>{this.stderr=(this.stderr+c).slice(-4000);});
     createInterface({input:this.child.stdout}).on("line",line=>this.onLine(line));
-    const fail=(why:string)=>{this.exited=true;for(const [id,p] of this.pending){clearTimeout(p.timer);p.reject(new McpError(why+(this.stderr?": "+this.stderr.slice(-400):"")));this.pending.delete(id);}};
+    const fail=(why:string)=>{this.exited=true;const detail=why+(this.stderr?": "+this.stderr.slice(-400):"")+uvxHint(options,this.stderr);for(const [id,p] of this.pending){clearTimeout(p.timer);p.reject(new McpError(detail));this.pending.delete(id);}};
     this.child.on("exit",code=>fail("MCP server exited (code "+code+")"));
     this.child.on("error",error=>fail("MCP server could not start: "+error.message));
   }

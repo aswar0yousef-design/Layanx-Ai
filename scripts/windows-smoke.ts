@@ -140,6 +140,39 @@ await check("project scripts run through npm-cli.js (no .cmd spawning)",async()=
     return r.command;
   }finally{rmSync(dir,{recursive:true,force:true});}
 });
+await check("MT5 Strategy Tester: the terminal is started with /config and /portable from a path with spaces and Arabic",async()=>{
+  // A stand-in terminal64.exe (compiled here) does what MT5 does with the INI: reads Report= and writes
+  // a UTF-16 report into its own (portable) folder, then exits. Proves the real spawn, quoting and parsing.
+  const {cscPath}=await import("../src/platform/windows-sandbox.js");
+  const {runStrategyTest}=await import("../src/trading/mt5-strategy-tester.js");
+  const {mkdirSync,readFileSync,copyFileSync}=await import("node:fs");
+  const csc=cscPath();assert.ok(csc,"csc.exe found");
+  const root=mkdtempSync(join(tmpdir(),"lx-tester-"));
+  const install=join(root,"MT5 Tester اختبار");
+  try{
+    mkdirSync(join(install,"MQL5","Experts","Advisors"),{recursive:true});
+    writeFileSync(join(install,"MQL5","Experts","Advisors","SmokeRobot.ex5"),"");
+    const fixture=readFileSync(join(process.cwd(),"tests","fixtures","mt5-tester-report.htm"),"utf8");
+    writeFileSync(join(root,"report.htm"),Buffer.concat([Buffer.from([0xff,0xfe]),Buffer.from(fixture,"utf16le")]));
+    const src=join(root,"fake.cs");
+    writeFileSync(src,`using System;using System.IO;using System.Linq;
+class T{static int Main(string[] a){
+  string cfg=a.FirstOrDefault(x=>x.StartsWith("/config:"));if(cfg==null||!a.Contains("/portable"))return 3;
+  string ini=File.ReadAllText(cfg.Substring(8));
+  string rep=ini.Split(new[]{"\\r\\n"},StringSplitOptions.None).First(l=>l.StartsWith("Report=")).Substring(7);
+  string dir=AppDomain.CurrentDomain.BaseDirectory;
+  File.Copy(Path.Combine(dir,"..","report.htm"),Path.Combine(dir,rep+".htm"));
+  return 0;}}`);
+    const built=join(root,"terminal64.exe");const exe=join(install,"terminal64.exe");
+    const c=spawnSync(csc!,["/nologo","/target:exe","/out:"+built,src],{encoding:"utf8"});
+    assert.equal(c.status,0,"csc: "+c.stdout+c.stderr);
+    copyFileSync(built,exe);
+    const result=await runStrategyTest({expert:"Advisors\\SmokeRobot",symbol:"XAUUSD",period:"H1",from:"2024-01-01",to:"2025-03-31",timeoutMinutes:2},{env:{...process.env,MT5_TESTER_TERMINAL:exe}});
+    assert.equal(result.metrics.netProfit,920.75,JSON.stringify(result).slice(0,400));
+    assert.equal(result.metrics.monthsAnalyzed,15);
+    return `net ${result.metrics.netProfit}, ${result.metrics.pctPositiveMonths}% positive months, ${result.durationSeconds}s`;
+  }finally{rmSync(root,{recursive:true,force:true});}
+});
 // ---------------------------------------------------------------- restricted isolation (no Docker, no admin)
 group="sandbox";
 if(!only||only.includes("sandbox")){
