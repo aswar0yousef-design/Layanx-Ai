@@ -53,7 +53,7 @@ export function registerAutonomyTools(core:LayanXCore,options:{coding:boolean}):
     return{symbol,...findReferences(projectDir(request.projectId),symbol,{maxResults:typeof input.limit==="number"?input.limit:200})};
   }});
   // ---- Free public web APIs (public-apis/public-apis), for projects that need outside data
-  core.tools.register({name:"apis.search",description:"find a free public web API for data a project needs (exchange rates, weather, maps and geocoding, email checks, products, news, test data...) in the public-apis catalog (~2,000 APIs in 50 categories). payload: {query, category?, auth:\"none\" = no key needed, cors:true = callable from a web page, kind:\"mcp\" = MCP servers, limit}. Results are third-party: read the API's docs (http.read) and test it before writing code for it.",
+  core.tools.register({name:"apis.search",description:"find a free public web API for data a project needs (exchange rates, weather, maps and geocoding, email checks, products, news, test data...) in the public-apis catalog (~2,000 APIs in 50 categories). payload: {query, category?, auth:\"none\" = no key needed, cors:true = callable from a web page, limit}. For the project's own code; to give LayanX itself a new tool use mcp.registry.search instead. Results are third-party: read the API's docs (http.read) and test it before writing code for it.",
     permission:"L2_ANALYZE",dangerous:false,actions:["search public apis","find free api","البحث عن واجهة API مجانية","البحث في دليل الواجهات"],
     tags:["api","apis","public","free","data","catalog","exchange","weather","geocoding","واجهات","بيانات","مجانية"]});
   core.toolAdapters.register("apis.search",{async execute(request){
@@ -65,7 +65,6 @@ export function registerAutonomyTools(core:LayanXCore,options:{coding:boolean}):
       auth:input.auth==="none"?"none":"any",
       ...(typeof input.https==="boolean"?{https:input.https}:{}),
       ...(input.cors===true?{cors:true}:{}),
-      kind:input.kind==="mcp"?"mcp":input.kind==="any"?"any":"api",
       ...(typeof input.limit==="number"?{limit:input.limit}:{})
     });
     return{source:{repo:PINNED_CATALOG.repo,commit:PINNED_CATALOG.commit.slice(0,12),license:PINNED_CATALOG.license},count:results.length,results,note:CATALOG_NOTE};

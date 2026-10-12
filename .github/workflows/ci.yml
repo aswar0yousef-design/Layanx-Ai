@@ -99,11 +99,18 @@ jobs:
       - run: npm install
       - name: Install Ollama and a small model
         run: |
-          # The download from ollama.com fails now and then: three attempts before giving up.
-          for attempt in 1 2 3; do curl -fsSL https://ollama.com/install.sh | sh && break; echo "Ollama install attempt $attempt failed"; sleep 20; done
-          for i in {1..30}; do curl -sf http://127.0.0.1:11434/api/version && break; sleep 1; done
-          for attempt in 1 2 3; do ollama pull qwen2.5:0.5b && break; sleep 15; done
-          ollama list | grep -q qwen2.5:0.5b
+          # The official Docker image (Docker Hub is steadier on the runners than the 1.5 GB download from
+          # ollama.com, which failed several runs); install.sh only if the image cannot be pulled.
+          started=""
+          for attempt in 1 2 3; do docker run -d --name ollama -p 127.0.0.1:11434:11434 ollama/ollama:latest && started=docker && break; docker rm -f ollama >/dev/null 2>&1; sleep 15; done
+          if [ -z "$started" ]; then
+            for attempt in 1 2 3; do curl -fsSL https://ollama.com/install.sh | sh && started=script && break; sleep 20; done
+          fi
+          [ -n "$started" ] || { echo "::error::Ollama could not be installed (Docker image and install.sh both failed)"; exit 1; }
+          for i in {1..60}; do curl -sf http://127.0.0.1:11434/api/version && break; sleep 1; done
+          ol(){ if [ "$started" = docker ]; then docker exec ollama ollama "$@"; else ollama "$@"; fi; }
+          for attempt in 1 2 3 4; do ol pull qwen2.5:0.5b && break; echo "pull attempt $attempt failed"; sleep 20; done
+          ol list | grep -q qwen2.5:0.5b || { echo "::error::Ollama is running ($started) but qwen2.5:0.5b could not be pulled"; exit 1; }
       - run: npm run eval -- --model qwen2.5:0.5b --json eval-report.json
   windows:
     # Real Windows: typecheck, the full test suite, then the Windows-only smoke test
