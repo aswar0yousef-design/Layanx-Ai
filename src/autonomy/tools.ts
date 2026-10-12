@@ -10,6 +10,7 @@ import {createMergeAdapter,createPublishPrAdapter} from "./integrate.js";
 import {detectProject} from "./project-runner.js";
 import {findLessons,matchPlaybooks,recordLesson,listPlaybooks} from "./learning.js";
 import {buildRepoMap,findReferences} from "./repo-map.js";
+import {CATALOG_NOTE,PINNED_CATALOG,loadCatalog,searchCatalog} from "./api-catalog.js";
 
 /** Phase 1 tools: build/check projects, look at web pages, delegate to coding agents. */
 export function registerAutonomyTools(core:LayanXCore,options:{coding:boolean}):void{
@@ -50,6 +51,24 @@ export function registerAutonomyTools(core:LayanXCore,options:{coding:boolean}):
     const input=(request.payload&&typeof request.payload==="object"?request.payload:{}) as Record<string,unknown>;
     const symbol=typeof input.symbol==="string"?input.symbol.trim():"";
     return{symbol,...findReferences(projectDir(request.projectId),symbol,{maxResults:typeof input.limit==="number"?input.limit:200})};
+  }});
+  // ---- Free public web APIs (public-apis/public-apis), for projects that need outside data
+  core.tools.register({name:"apis.search",description:"find a free public web API for data a project needs (exchange rates, weather, maps and geocoding, email checks, products, news, test data...) in the public-apis catalog (~2,000 APIs in 50 categories). payload: {query, category?, auth:\"none\" = no key needed, cors:true = callable from a web page, kind:\"mcp\" = MCP servers, limit}. Results are third-party: read the API's docs (http.read) and test it before writing code for it.",
+    permission:"L2_ANALYZE",dangerous:false,actions:["search public apis","find free api","البحث عن واجهة API مجانية","البحث في دليل الواجهات"],
+    tags:["api","apis","public","free","data","catalog","exchange","weather","geocoding","واجهات","بيانات","مجانية"]});
+  core.toolAdapters.register("apis.search",{async execute(request){
+    const input=(request.payload&&typeof request.payload==="object"?request.payload:{}) as Record<string,unknown>;
+    const entries=await loadCatalog();
+    const results=searchCatalog(entries,{
+      query:typeof input.query==="string"?input.query.slice(0,300):"",
+      ...(typeof input.category==="string"?{category:input.category.slice(0,60)}:{}),
+      auth:input.auth==="none"?"none":"any",
+      ...(typeof input.https==="boolean"?{https:input.https}:{}),
+      ...(input.cors===true?{cors:true}:{}),
+      kind:input.kind==="mcp"?"mcp":input.kind==="any"?"any":"api",
+      ...(typeof input.limit==="number"?{limit:input.limit}:{})
+    });
+    return{source:{repo:PINNED_CATALOG.repo,commit:PINNED_CATALOG.commit.slice(0,12),license:PINNED_CATALOG.license},count:results.length,results,note:CATALOG_NOTE};
   }});
   core.tools.register({name:"project.knowledge.record",description:"write to the project's memory: payload.type = decision (title + why) | issue (title + detail) | resolve (title). Record why you chose an approach and any problem you could not fix.",
     permission:"L3_MODIFY",dangerous:false,actions:["record project decision","record known issue","resolve known issue","تسجيل قرار","تسجيل مشكلة","حل مشكلة"],tags:["project","knowledge","decision","issue","memory","ذاكرة"]});
@@ -106,9 +125,9 @@ export function specialisedAgents(base:AgentContract):AgentContract[]{
   const pick=(names:string[])=>base.allowedTools.filter(t=>names.some(n=>n.endsWith(".")?t.startsWith(n):t===n));
   const make=(agentId:string,purpose:string,tools:string[]):AgentContract=>({...base,agentId,purpose,allowedTools:pick(tools)});
   return[
-    make("coder","Write and fix code inside the project, then verify it. Read project.knowledge and project.code_map first, run project.references before changing shared code, record decisions.",["files.","project.","development.prepare","terminal.exec","git.status","git.diff","git.log","git.checkpoint","git.branch","git.add","git.commit","git.rollback","browser.test","agent.external","memory.recall","mission.inspect","github.","http.read","browser.read","learning.","git.merge"]),
+    make("coder","Write and fix code inside the project, then verify it. Read project.knowledge and project.code_map first, run project.references before changing shared code, record decisions.",["files.","project.","apis.search","development.prepare","terminal.exec","git.status","git.diff","git.log","git.checkpoint","git.branch","git.add","git.commit","git.rollback","browser.test","agent.external","memory.recall","mission.inspect","github.","http.read","browser.read","learning.","git.merge"]),
     make("tester","Run tests, builds, browser and security checks and report precisely what fails.",["project.run","project.verify","project.security","project.knowledge","project.references","project.knowledge.record","browser.test","files.read","files.list","files.stat","git.status","git.diff","terminal.exec","memory.recall","mission.inspect"]),
-    make("researcher","Research on the internet (official documentation first) and write playbooks to .layanx/playbooks.",["research.internet","agent-reach.","browser.read","http.read","github.","files.write","files.read","memory.recall","learning.","project.knowledge"]),
+    make("researcher","Research on the internet (official documentation first) and write playbooks to .layanx/playbooks.",["research.internet","agent-reach.","browser.read","http.read","apis.search","github.","files.write","files.read","memory.recall","learning.","project.knowledge"]),
     make("operator","Operate desktop applications with screenshots, mouse and keyboard.",["desktop.","files.read","files.list","browser.test","memory.recall"]),
     make("business","Run commerce, content, social, ads, email and growth work.",["commerce.","content.","campaign.create","media.","ads.","growth.","google.","yahoo.","email.invoices.scan","creator.","quran.","memory.recall","mission.inspect"])
   ];

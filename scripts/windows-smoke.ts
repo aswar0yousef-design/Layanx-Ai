@@ -340,6 +340,17 @@ if(withTools){
       return results.map(r=>r.tool+"="+r.findings.length).join(" ");
     }finally{rmSync(dir,{recursive:true,force:true});}
   });
+  await check("free public API catalog: pinned download (SHA-256) and an Arabic search",async()=>{
+    const {loadCatalog,searchCatalog,PINNED_CATALOG}=await import("../src/autonomy/api-catalog.js");
+    const store=mkdtempSync(join(tmpdir(),"lx-catalog-"));
+    try{
+      const entries=await loadCatalog({...process.env,LAYANX_STORE_DIR:store});
+      assert.ok(entries.length>1500,"catalog entries: "+entries.length);
+      const hits=searchCatalog(entries,{query:"أسعار العملات",auth:"none"});
+      assert.ok(hits.some(h=>h.category==="Currency Exchange"),"currency APIs found: "+hits.map(h=>h.name).join(", "));
+      return `${entries.length} entries at ${PINNED_CATALOG.commit.slice(0,8)}; currency: ${hits.slice(0,3).map(h=>h.name).join(", ")}`;
+    }finally{rmSync(store,{recursive:true,force:true});}
+  });
 }
 group="voice";
 if(withVoice&&(!only||only.includes("voice"))){
