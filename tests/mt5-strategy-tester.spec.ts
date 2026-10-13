@@ -79,7 +79,9 @@ await assert.rejects(runStrategyTest(base,{platform:"win32",env,run:async()=>({c
 await assert.rejects(runStrategyTest({...base,timeoutMinutes:1},{platform:"win32",env,run:async(_t,_a,ms)=>{assert.equal(ms,60_000);return{code:null,timedOut:true};}}),/did not finish within 1 minutes/);
 let release!:()=>void;
 const slow=runStrategyTest(base,{platform:"win32",env,run:()=>new Promise(r=>{release=()=>r({code:0,timedOut:false});})});
-await new Promise(r=>setTimeout(r,10));
+// Wait until the first run really started its terminal (on Windows the checks before it take a while).
+for(let i=0;i<2000&&!release;i++)await new Promise(r=>setTimeout(r,5));
+assert.ok(release,"the first run started");
 await assert.rejects(runStrategyTest(base,{platform:"win32",env,run:async()=>({code:0,timedOut:false})}),/already in progress/);
 release();await assert.rejects(slow,/without a report/);
 await assert.rejects(runStrategyTest(base,{platform:"linux",env}),/Windows only/);

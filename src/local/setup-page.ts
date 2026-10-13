@@ -154,6 +154,7 @@ aside h2{margin-bottom:.5rem}
         <p class="lead">مساعد صوتي بالعربية والإنجليزية: ناده باسمه، اطلب منه مهمة أو تقريراً، ويرد عليك بالصوت. يعمل في Microsoft Edge أو Google Chrome.</p>
         <div class="roles">
           <label><input type="checkbox" id="assistant-open"> فتح المساعد تلقائياً عند تشغيل LayanX</label>
+          <label><input type="checkbox" id="desktop-island"> الجزيرة العائمة على سطح المكتب: المهمة الجارية والموافقات المنتظرة (ويندوز)</label>
         </div>
         <form class="row" id="briefing-form" style="margin-top:.75rem">
           <div><label for="briefing-time">وقت التقرير اليومي (اتركه فارغاً لإيقافه)</label><input id="briefing-time" type="time" dir="ltr"></div>
@@ -320,6 +321,7 @@ function render(){
   $("known-secrets").replaceChildren(...s.secrets.known.map(n=>el("option",{value:n})));
 
   $("assistant-open").checked=!!s.assistant.openOnStart;
+  $("desktop-island").checked=s.assistant.desktopIsland!==false;
   $("briefing-time").value=s.assistant.briefingTime||"";
   $("stt-line").textContent=s.assistant.stt==="local"?"التعرف على الكلام: محلي على جهازك عبر Whisper (لا يخرج صوتك من الجهاز).":"التعرف على الكلام: من المتصفح. لتشغيله محلياً على جهازك ثبّت Whisper بتشغيل ⁦scripts\\\\windows\\\\install-whisper.ps1⁩ ثم أعد التشغيل.";
   const roles=$("roles");roles.replaceChildren();
@@ -348,6 +350,7 @@ function render(){
   renderRemote(s.remote);
 }
 
+$("desktop-island").addEventListener("change",async e=>{try{await api("/v1/setup/settings","PUT",{desktopIsland:e.target.checked});await load();toast(e.target.checked?"تظهر الجزيرة بعد إعادة التشغيل":"لن تظهر الجزيرة بعد إعادة التشغيل");}catch(err){e.target.checked=!e.target.checked;toast(err.message);}});
 $("assistant-open").addEventListener("change",async e=>{try{await api("/v1/setup/settings","PUT",{openAssistantOnStart:e.target.checked});await load();toast(e.target.checked?"سيُفتح المساعد عند التشغيل":"لن يُفتح المساعد تلقائياً");}catch(err){e.target.checked=!e.target.checked;toast(err.message);}});
 $("briefing-form").addEventListener("submit",async e=>{e.preventDefault();try{await api("/v1/setup/settings","PUT",{briefingTime:$("briefing-time").value||""});await load();toast($("briefing-time").value?"سيُجهَّز التقرير يومياً الساعة "+$("briefing-time").value:"أُوقف التقرير اليومي");}catch(err){toast(err.message);}});
 $("refresh-models").addEventListener("click",async e=>{e.target.disabled=true;try{await api("/v1/setup/ollama/refresh","POST",{});await load();toast("فُحصت النماذج");}catch(err){toast(err.message);}finally{e.target.disabled=false;}});

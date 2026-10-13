@@ -20,6 +20,8 @@ export interface LocalSettings{
   remoteHosts:string[];
   /** Folder that holds your projects; each sub-folder is one LayanX project. "" = ~/LayanX-Projects. */
   workspaceRoot:string;
+  /** Windows: the small always-on-top island with the running mission and waiting approvals. */
+  desktopIsland:boolean;
 }
 
 export type CloudProviderId="openai"|"anthropic"|"gemini";
@@ -40,7 +42,7 @@ export interface CloudSettings{
 }
 
 export const DEFAULT_SETTINGS:LocalSettings={mobileAccess:false,publicPort:3000,flowPublicPort:3100,capabilities:{},pinnedModels:{},openAssistantOnStart:false,briefingTime:"",
-  cloud:{policy:"fallback",order:["anthropic","openai","gemini"],models:{},disabled:{}},remoteAccess:false,remoteHosts:[],workspaceRoot:""};
+  cloud:{policy:"fallback",order:["anthropic","openai","gemini"],models:{},disabled:{}},remoteAccess:false,remoteHosts:[],workspaceRoot:"",desktopIsland:true};
 
 function port(value:unknown,fallback:number):number{
   return typeof value==="number"&&Number.isInteger(value)&&value>0&&value<65536?value:fallback;
@@ -69,6 +71,7 @@ export function sanitizeSettings(raw:unknown,base:LocalSettings=DEFAULT_SETTINGS
     cloud:sanitizeCloud(input.cloud,base.cloud),
     workspaceRoot:typeof input.workspaceRoot==="string"&&input.workspaceRoot.length<=400&&!/[\0<>|"?*]/.test(input.workspaceRoot)?input.workspaceRoot.trim():base.workspaceRoot,
     remoteAccess:typeof input.remoteAccess==="boolean"?input.remoteAccess:base.remoteAccess,
+    desktopIsland:typeof input.desktopIsland==="boolean"?input.desktopIsland:base.desktopIsland,
     remoteHosts:Array.isArray(input.remoteHosts)?input.remoteHosts.filter((h):h is string=>typeof h==="string").map(h=>h.trim().toLowerCase()).filter(h=>/^[a-z0-9.-]{3,253}$/.test(h)&&h.includes(".")).slice(0,5):base.remoteHosts,
     briefingTime:typeof input.briefingTime==="string"&&(input.briefingTime===""||/^([01]?\d|2[0-3]):[0-5]\d$/.test(input.briefingTime))?input.briefingTime:base.briefingTime
   };

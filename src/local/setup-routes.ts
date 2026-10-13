@@ -308,7 +308,7 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
         },
         appliedModels:host.appliedModels,
         pinnedModels:settings.pinnedModels,
-        assistant:{openOnStart:settings.openAssistantOnStart,briefingTime:settings.briefingTime,stt:process.env.LAYANX_STT_BASE_URL?"local":"browser"},
+        assistant:{openOnStart:settings.openAssistantOnStart,desktopIsland:settings.desktopIsland,briefingTime:settings.briefingTime,stt:process.env.LAYANX_STT_BASE_URL?"local":"browser"},
         cloud:{
           policy:settings.cloud.policy,
           order:settings.cloud.order,

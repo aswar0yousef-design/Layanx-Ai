@@ -17,6 +17,8 @@ import {buildModelPlan,currentMachine,detectGpuVramBytes,recommendNumCtx,type Mo
 import {consoleLogger,installLogTee,type Logger} from "./log.js";
 import {CLOUD_PROVIDERS,loadSettings,saveSettings,type CloudProviderId,type LocalSettings} from "./settings.js";
 import {createSetupRoutes} from "./setup-routes.js";
+import {startDesktopIsland} from "./island.js";
+import type {ChildProcess} from "node:child_process";
 
 export interface LocalContext{
   paths:DataPaths;
@@ -219,10 +221,12 @@ export async function runLocalHost():Promise<void>{
   let restartFlag=false;
   let runtime:{state:"starting"|"running"|"failed";error?:string}={state:"starting"};
   let gateway:GatewayHandle|null=null;
+  let island:ChildProcess|null=null;
 
   const cleanup=()=>{try{fs.rmSync(paths.pidFile,{force:true});}catch{}};
   const shutdown=async(code=0)=>{
     log("info","shutting down");
+    try{island?.kill();}catch{}
     setTimeout(()=>{cleanup();process.exit(code);},3000).unref();
     try{await gateway?.close();}catch{}
     cleanup();
@@ -299,5 +303,7 @@ export async function runLocalHost():Promise<void>{
   }
   log(runtime.state==="running"?"info":"error",`runtime ${runtime.state}${runtime.error?": "+runtime.error:""}`);
   access.issueLaunchTicket();
+  if(runtime.state==="running"&&settings.desktopIsland&&env.LAYANX_DESKTOP_ISLAND!=="off")
+    island=startDesktopIsland({port:publicPort,dataDir:paths.dataDir,token:ctx.apiToken,log});
   log("info",`ready: http://127.0.0.1:${publicPort}/setup`);
 }

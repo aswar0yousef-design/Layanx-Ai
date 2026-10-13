@@ -173,6 +173,47 @@ class T{static int Main(string[] a){
     return `net ${result.metrics.netProfit}, ${result.metrics.pctPositiveMonths}% positive months, ${result.durationSeconds}s`;
   }finally{rmSync(root,{recursive:true,force:true});}
 });
+await check("desktop island: reads the feed with the token from stdin, draws itself, keeps polling",async()=>{
+  const http=await import("node:http");
+  const {existsSync,statSync}=await import("node:fs");
+  const {ISLAND_SCRIPT}=await import("../src/local/island.js");
+  const seen:string[]=[];
+  const feed={ok:true,cursor:"c",at:new Date().toISOString(),
+    approvals:[{id:"a1",tool:"project.run",projectId:"shop",pending:true}],
+    jobs:[{id:"j1",projectId:"shop",goal:"متجر إلكتروني لمحل كمبيوتر",status:"running",stage:"الصفحة الرئيسية",done:2,total:5,updatedAt:""}],
+    scalper:{running:false,tradesToday:0},load:{cpu:{percent:23,cores:12,model:"x"},memory:{totalBytes:1,usedBytes:1,percent:61},gpu:null}};
+  const server=http.createServer((q,r)=>{seen.push(String(q.headers.authorization));r.writeHead(200,{"content-type":"application/json; charset=utf-8"});r.end(JSON.stringify(feed));});
+  await new Promise<void>(r=>server.listen(0,"127.0.0.1",()=>r()));
+  const port=(server.address() as {port:number}).port;
+  const dir=mkdtempSync(join(tmpdir(),"lx-island-"));const png=join(dir,"island.png");
+  const args=["-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-STA","-InputFormat","None","-File",ISLAND_SCRIPT,"-Port",String(port),"-DataDir",dir];
+  try{
+    const out=await new Promise<string>((resolve,reject)=>{
+      const child=spawn("powershell.exe",[...args,"-Once","-Snapshot",png],{windowsHide:true,stdio:["pipe","pipe","pipe"]});
+      let o="",e="";child.stdout.on("data",d=>o+=d);child.stderr.on("data",d=>e+=d);
+      const t=setTimeout(()=>{child.kill();reject(new Error("timeout "+e));},60_000);
+      child.on("close",code=>{clearTimeout(t);if(code===0)resolve(o.trim());else reject(new Error("exit "+code+": "+e+o));});
+      child.stdin.end("lxm_island_test\n");
+    });
+    const r=JSON.parse(out.split(/\r?\n/).pop()!);
+    assert.equal(r.online,true,out);
+    assert.match(r.main,/موافقة واحدة بانتظارك/,out);
+    assert.match(r.side,/CPU 23%/);
+    assert.ok(existsSync(png)&&statSync(png).size>500,"snapshot written");
+    assert.deepEqual(seen,["Bearer lxm_island_test"],"the token came from stdin");
+    // The real window: stays up and keeps asking; only one island at a time.
+    const live=spawn("powershell.exe",args,{windowsHide:true,stdio:["pipe","ignore","pipe"]});
+    live.stdin.end("lxm_island_test\n");
+    await new Promise(r=>setTimeout(r,10_000));
+    const second=spawnSync("powershell.exe",args,{input:"lxm_island_test\n",encoding:"utf8",timeout:60_000});
+    try{
+      assert.equal(live.exitCode,null,"the island is still open");
+      assert.ok(seen.length>=3,"it polled the feed: "+seen.length);
+      assert.equal(second.status,0,"a second island leaves quietly: "+second.stderr);
+    }finally{spawnSync("taskkill",["/PID",String(live.pid),"/T","/F"],{stdio:"ignore"});}
+    return `${r.main} | ${r.side} | ${r.lines} lines, ${seen.length} feed requests`;
+  }finally{server.close();rmSync(dir,{recursive:true,force:true});}
+});
 // ---------------------------------------------------------------- restricted isolation (no Docker, no admin)
 group="sandbox";
 if(!only||only.includes("sandbox")){
