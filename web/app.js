@@ -232,6 +232,8 @@ const vscodeUrl=()=>{const p=projectPath();return p?"vscode://file/"+encodeURI(p
 async function decideApproval(a,action,onResult){
  await api("/v1/approvals/"+encodeURIComponent(a.id)+"/"+action+"?projectId="+encodeURIComponent(project()),{method:"POST",body:{}});
  if(action!=="approve"){toast(t("rejected"));return null;}
+ // An autonomous job waiting for this approval continues by itself; resuming here too would run the step twice.
+ if(a.jobId){toast(t("approved"));return null;}
  const d=a.missionId?await missionDetail(a.missionId):null;
  const index=typeof a.index==="number"?a.index:(d?.mission?.tools||[]).findIndex(x=>x.tool===a.tool&&x.action===a.action);
  if(!a.missionId||index<0){toast(t("approved"));return null;}

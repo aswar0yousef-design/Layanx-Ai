@@ -39,6 +39,7 @@ import {CodeReviewAgent} from "./core/code-review-agent.js";
 import {SecurityReviewAgent} from "./core/security-review-agent.js";
 import {assertSafeGitRef} from "./platform/git-ref.js";
 import {safeChildEnv} from "./platform/safe-env.js";
+import {ApprovalDecisionError,approvalViews,decideApproval,waitForFeed} from "./remote/companion.js";
 export interface RuntimeApiOptions{core:LayanXCore;business:BusinessManager;ads?:AdsManager;media?:MediaManager;growth?:GrowthEngine;channels?:MessagingChannels;persistence?:RuntimePersistence;host?:string;port?:number;maxBodyBytes?:number;token?:string;requireToken?:boolean;}
 function json(response:ServerResponse,status:number,body:unknown){response.statusCode=status;response.setHeader("content-type","application/json; charset=utf-8");response.end(JSON.stringify(body));}
 async function rawBody(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}return Buffer.concat(chunks);}
@@ -378,19 +379,15 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const projectId=new URL(request.url,"http://localhost").searchParams.get("projectId")?.trim()??"";
    if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
-   const approvals=options.core.executionRuntime.approvals.list().filter(approval=>{
-    const mission=options.core.missions.get(approval.missionId);
-    if(!mission)return false;
-    try{options.core.projectIsolation.assertMissionProject(projectId,mission.projectId);}catch{return false;}
-    return Date.parse(approval.expiresAt)>Date.now();
-   }).map(approval=>{
-    const approved=options.core.executionRuntime.approvals.isApproved(approval.id);
-    const status=options.core.missions.get(approval.missionId)?.status;
-    // A finished mission withdraws its approvals; they are history, not something to decide.
-    const pending=!approved&&!["completed","cancelled","failed"].includes(String(status));
-    return{...approval,approved,pending};
-   });
-   json(response,200,{ok:true,approvals});return;
+   json(response,200,{ok:true,approvals:approvalViews(options.core,supervisor,projectId)});return;
+  }
+  // Everything the phone and the desktop island follow, in one long-poll request.
+  if(request.method==="GET"&&request.url?.split("?")[0]==="/v1/companion/feed"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const params=new URL(request.url,"http://localhost").searchParams;
+   let closed=false;request.on("close",()=>{closed=true;});
+   const feed=await waitForFeed(options.core,supervisor,{cursor:params.get("cursor")??undefined,waitMs:(Number(params.get("wait"))||0)*1000,withLoad:params.get("load")!=="0",closed:()=>closed});
+   if(!closed)json(response,200,{ok:true,...feed});return;
   }
   if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/approvals\/[^/]+\/(approve|revoke)$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
@@ -401,15 +398,16 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    const projectId=parsedApprovalUrl.searchParams.get("projectId")?.trim()??"";
    if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
    try{
-    const approval=options.core.executionRuntime.approvals.get(approvalId);
-    const mission=options.core.missions.get(approval.missionId);
-    if(!mission){json(response,404,{ok:false,error:"mission_not_found"});return;}
-    options.core.projectIsolation.assertMissionProject(projectId,mission.projectId);
-    if(action==="approve")options.core.executionRuntime.approvals.approve(approvalId);
-    else options.core.executionRuntime.approvals.revoke(approvalId);
-    await options.core.executionRuntime.persist(mission);
-    json(response,200,{ok:true,approval:{...approval,approved:options.core.executionRuntime.approvals.isApproved(approvalId)}});return;
-   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"approval operation failed"});return;}
+    const input=await body(request,max);
+    // A phone decides on exactly what it showed (digest), and LayanX carries on by itself (resume).
+    const fromPhone=String(request.headers["x-layanx-principal"]??"").startsWith("device:");
+    const result=await decideApproval(options.core,supervisor,{id:decodeURIComponent(approvalId),projectId,action:action==="approve"?"approve":"revoke",
+     digest:input.digest,requireDigest:fromPhone,resume:input.resume===true,log:m=>console.warn("[approvals] "+m)});
+    json(response,200,{ok:true,...result});return;
+   }catch(error){
+    if(error instanceof ApprovalDecisionError){json(response,error.status,{ok:false,error:error.code,message:error.message});return;}
+    json(response,422,{ok:false,error:error instanceof Error?error.message:"approval operation failed"});return;
+   }
   }
   if(request.method==="GET"&&request.url==="/v1/oauth/connections"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
