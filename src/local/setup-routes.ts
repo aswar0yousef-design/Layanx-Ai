@@ -44,7 +44,8 @@ async function phoneAddresses(host:SetupHost,settings:LocalSettings):Promise<str
     const ts=await tailscale();
     if(ts.dnsName)out.push(`https://${ts.dnsName}`);
     for(const h of settings.remoteHosts)out.push(`https://${h}`);
-    if(host.mobileActive||host.remoteActive)for(const ip of ts.ips)if(ip.includes("."))out.push(`http://${ip}:${settings.publicPort}`);
+    // Tailscale is encrypted already; with the LAN certificate the phone still uses TLS (and its pin) there.
+    if(host.mobileActive||host.remoteActive)for(const ip of ts.ips)if(ip.includes("."))out.push(`${host.lanTls?"https":"http"}://${ip}:${settings.publicPort}`);
   }
   if(host.mobileActive)out.push(...lanUrls(settings.publicPort,undefined,host.lanTls?"https":"http"));
   return [...new Set(out)];

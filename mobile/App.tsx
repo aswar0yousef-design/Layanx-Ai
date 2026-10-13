@@ -1,14 +1,19 @@
 import React,{useCallback,useEffect,useMemo,useRef,useState}from"react";
-import{Alert,Image,Pressable,RefreshControl,SafeAreaView,ScrollView,StyleSheet,Switch,Text,TextInput,View}from"react-native";
+import{Alert,Image,Modal,PermissionsAndroid,Platform,Pressable,RefreshControl,SafeAreaView,ScrollView,StyleSheet,Switch,Text,TextInput,View}from"react-native";
 import*as SecureStore from"expo-secure-store";
-import{LayanXApi,type Approval,type Job,type MissionSummary}from"./src/api";
+import{CameraView,useCameraPermissions}from"expo-camera";
+import{LayanXApi,type Approval,type Feed,type Job,type MissionSummary}from"./src/api";
+import{parsePairingLink}from"./src/pairing";
+import{LayanXNative,type DecideResult}from"./modules/layanx-native";
 
 /**
  * A device = one paired computer. `urls` holds every address of that computer
  * (home Wi-Fi, Tailscale, tunnel). The app tries them in order and remembers the
  * one that answered, so the same pairing works at home and away.
  */
-type Device={name:string;url:string;urls?:string[];token:string;deviceId:string};
+type Device={name:string;url:string;urls?:string[];token:string;deviceId:string;
+ /** SHA-256 of the computer's LAN certificate, from the QR code: the only certificate accepted on IP addresses. */
+ pin?:string|null};
 type Tab="home"|"missions"|"apps"|"settings";
 const K={devices:"layanx.devices",selected:"layanx.selected",project:"layanx.project"};
 const C={bg:"#0A0F1E",panel:"#121A2E",panel2:"#18223A",line:"#24304D",ink:"#EEF2FA",soft:"#9AA6C2",purple:"#6D4AFF",purple2:"#8B6CFF",green:"#22C55E",amber:"#F59E0B",rose:"#EF4444",blue:"#3B82F6"};
@@ -28,6 +33,9 @@ export default function App(){
  const[error,setError]=useState(""),[busy,setBusy]=useState(false),[refreshing,setRefreshing]=useState(false);
  const[ask,setAsk]=useState(""),[answers,setAnswers]=useState<{q:string;a:string}[]>([]);
  const[approvals,setApprovals]=useState<Approval[]>([]),[missions,setMissions]=useState<MissionSummary[]>([]);
+ const[feed,setFeed]=useState<Feed|null>(null),[scanning,setScanning]=useState(false),[watching,setWatching]=useState(()=>LayanXNative?.isWatching()??false);
+ const[camera,askCamera]=useCameraPermissions();
+ const scanned=useRef(false);
  const[jobs,setJobs]=useState<Job[]>([]),[toEnd,setToEnd]=useState(true);
  const[live,setLive]=useState(false),[frame,setFrame]=useState<string|null>(null),[biz,setBiz]=useState<any>(null),[ads,setAds]=useState<any>(null);
  const liveTimer=useRef<ReturnType<typeof setInterval>|null>(null);
@@ -47,16 +55,19 @@ export default function App(){
  const connect=useCallback(async(d:Device|undefined=device):Promise<LayanXApi|null>=>{
   if(!d)return null;
   setOnline("trying");setError("");
-  const urls=[d.url,...(d.urls??[])].filter((u,i,a)=>u&&a.indexOf(u)===i);
+  const urls=[d.url,...(d.urls??[])].filter((u,i,a)=>u&&a.indexOf(u)===i&&u.startsWith("https://"));
+  if(!urls.length){setApi(null);setOnline("no");setError("هذا الربط قديم وغير مشفّر. اربط الهاتف من جديد: «ربط بمسح QR» في الإعدادات.");return null;}
   for(const url of urls){
-   const candidate=new LayanXApi(url,d.token);
+   const candidate=new LayanXApi(url,d.token,d.pin??null);
    try{
     await candidate.identity(6000);
     let known=d.urls??[];
     try{const who=await candidate.whoami();if(who.addresses?.length)known=who.addresses;}catch{}
-    const updated={...d,url,urls:[...new Set([url,...known])]};
+    const updated={...d,url,urls:[...new Set([url,...known])].filter(u=>u.startsWith("https://"))};
     const next=devices.map(x=>x.deviceId===d.deviceId?updated:x);
     if(JSON.stringify(next)!==JSON.stringify(devices))await save(next,selected);
+    // The background parts (notifications, tile, widget) use the same pairing, token encrypted by Android.
+    await LayanXNative?.saveDevice(JSON.stringify({name:updated.name,deviceId:updated.deviceId,urls:updated.urls,pin:updated.pin??"",token:updated.token,projectId:project.trim()||"default"})).catch(()=>undefined);
     setApi(candidate);setOnline("yes");return candidate;
    }catch{}
   }
@@ -67,8 +78,9 @@ export default function App(){
   if(!client)return;
   try{
    const p=project.trim()||"default";
-   const[a,m]=await Promise.all([client.approvals(p),client.missions(p)]);
-   setApprovals((a.approvals??[]).filter(x=>(x as any).pending??!x.approved));
+   // Approvals of every project, the PC's load and the auto-scalper come from one call.
+   const[f,m]=await Promise.all([client.feed(),client.missions(p)]);
+   setFeed(f);setApprovals((f.approvals??[]).filter(x=>x.pending??!x.approved));
    setMissions((m.missions??[]).slice().sort((x,y)=>Date.parse(y.createdAt??"0")-Date.parse(x.createdAt??"0")).slice(0,12));
    const jb=await client.jobs(p).catch(()=>null);if(jb)setJobs(jb.jobs.slice(0,8));
    const[b,ad]=await Promise.all([client.business().catch(()=>null),client.ads().catch(()=>null)]);setBiz(b?.business??null);setAds(ad?.dashboard??null);
@@ -79,19 +91,52 @@ export default function App(){
  useEffect(()=>{if(online!=="yes")return;const id=setInterval(()=>void load(),8000);return()=>clearInterval(id);},[online,load]);
  useEffect(()=>()=>{if(liveTimer.current)clearInterval(liveTimer.current)},[]);
 
- async function pair(){
-  setError("");if(!pairUrl.trim()||!pairCode.trim()){setError("أدخل عنوان الكمبيوتر ورمز الربط");return}
-  setBusy(true);
+ /** Pair with one of the computer's addresses; `pin` (from the QR code) is the certificate it must present. */
+ async function pairWith(urls:string[],code:string,pin:string|null){
+  setError("");setBusy(true);
   try{
-   const url=pairUrl.trim().replace(/\/$/,"");
-   const paired=await LayanXApi.pair(url,pairCode.trim(),pairName.trim()||"هاتف");
-   const client=new LayanXApi(url,paired.deviceToken);
-   const identity=(await client.identity()).device;
-   let urls:string[]=[url];try{const who=await client.whoami();if(who.addresses?.length)urls=[...new Set([url,...who.addresses])];}catch{}
-   const d:Device={name:identity.name||pairName,url,urls,token:paired.deviceToken,deviceId:identity.deviceId};
-   const i=devices.findIndex(x=>x.deviceId===d.deviceId);const next=[...devices];if(i>=0)next[i]=d;else next.push(d);
-   await save(next,i>=0?i:next.length-1);setPairCode("");setPairUrl("");setTab("home");
-  }catch(e){setError(e instanceof Error?e.message:"فشل الربط")}finally{setBusy(false)}
+   let lastError="فشل الربط";
+   for(const raw of urls){
+    const url=raw.trim().replace(/\/$/,"");
+    try{
+     const paired=await LayanXApi.pair(url,code,pairName.trim()||"هاتف",pin);
+     const client=new LayanXApi(url,paired.deviceToken,pin);
+     const identity=(await client.identity()).device;
+     let known:string[]=[url];try{const who=await client.whoami();if(who.addresses?.length)known=[...new Set([url,...who.addresses,...urls])];}catch{}
+     const d:Device={name:identity.name||pairName,url,urls:known.filter(u=>u.startsWith("https://")),token:paired.deviceToken,deviceId:identity.deviceId,pin};
+     const i=devices.findIndex(x=>x.deviceId===d.deviceId);const next=[...devices];if(i>=0)next[i]=d;else next.push(d);
+     await save(next,i>=0?i:next.length-1);setPairCode("");setPairUrl("");setTab("home");
+     return;
+    }catch(e){lastError=e instanceof Error?e.message:lastError;if(/code|رمز|429|410/i.test(lastError))break;}
+   }
+   setError(lastError);
+  }finally{setBusy(false)}
+ }
+ async function pair(){
+  if(!pairUrl.trim()||!pairCode.trim()){setError("أدخل عنوان الكمبيوتر ورمز الربط");return}
+  // Typed addresses: only names with real certificates (Tailscale *.ts.net, a tunnel). At home use the QR code.
+  await pairWith([pairUrl.trim()],pairCode.trim(),null);
+ }
+ async function startScan(){
+  setError("");scanned.current=false;
+  if(!camera?.granted){const r=await askCamera();if(!r.granted){setError("اسمح باستخدام الكاميرا لمسح رمز الربط.");return}}
+  setScanning(true);
+ }
+ function onScanned(data:string){
+  if(scanned.current)return;
+  const link=parsePairingLink(data);
+  if(!link){setError("هذا ليس رمز ربط LayanX.");return}
+  scanned.current=true;setScanning(false);
+  void pairWith(link.urls,link.code,link.pin);
+ }
+ async function toggleWatch(on:boolean){
+  if(!LayanXNative)return;
+  if(on&&Platform.OS==="android"&&Number(Platform.Version)>=33){
+   const r=await PermissionsAndroid.request("android.permission.POST_NOTIFICATIONS" as any);
+   if(r!==PermissionsAndroid.RESULTS.GRANTED){setError("اسمح بالإشعارات حتى تصلك الموافقات وحالة المهمة.");return}
+  }
+  if(on&&LayanXNative.authStatus()!==0)Alert.alert("البصمة","فعّل البصمة أو قفل الشاشة في الهاتف: كل موافقة تحتاجها.");
+  setWatching(await LayanXNative.setWatching(on));
  }
 
  async function send(asTask:boolean,text?:string){
@@ -105,13 +150,21 @@ export default function App(){
   }catch(e){setError(e instanceof Error?e.message:"تعذر الإرسال")}finally{setBusy(false)}
  }
 
+ /**
+  * Every decision goes through the fingerprint screen (the same one the notification buttons open),
+  * carries the request's digest, and the PC continues the work by itself.
+  */
  async function decide(a:Approval,action:"approve"|"revoke"){
-  if(!api)return;const p=project.trim()||"default";
-  const go=async()=>{try{
-   await api.decide(a.id,action,p);
-   if(action==="approve"){const m=await api.mission(a.missionId,p);const idx=m.mission.tools?.findIndex(t=>t.tool===a.tool&&t.action===a.action)??-1;if(idx>=0){setBusy(true);const r=await api.resume(a.missionId,p,{[idx]:a.id});setAnswers(x=>[...x,{q:"موافقة: "+(a.tool??""),a:r.completed?"اكتملت المهمة بعد موافقتك.":r.paused?"تحتاج موافقة أخرى.":"توقف التنفيذ: "+(r.reason??r.status??"")}]);}}
-   await load();
-  }catch(e){setError(e instanceof Error?e.message:"تعذر تنفيذ القرار")}finally{setBusy(false)}};
+  if(!api)return;
+  const report=(r:DecideResult)=>{
+   if(r.cancelled)return;
+   setAnswers(x=>[...x,{q:(action==="approve"?"موافقة: ":"رفض: ")+(a.tool??""),a:r.ok?(action==="approve"?(r.continuing==="job"?"تكمل المهمة المستقلة من حيث توقفت.":"يكمل LayanX العمل على الكمبيوتر."):"رُفض الطلب."):r.status===409?"تغيّر الطلب منذ ظهوره؛ راجعه من جديد.":"لم يُنفّذ: "+(r.message??"")}]);
+  };
+  if(LayanXNative){
+   try{report(JSON.parse(await LayanXNative.decide(JSON.stringify(a),action)) as DecideResult);}catch(e){setError(e instanceof Error?e.message:"تعذر تنفيذ القرار")}
+   await load();return;
+  }
+  const go=async()=>{try{const r=await api.decide(a,action);report({ok:true,continuing:(r.continuing??null) as DecideResult["continuing"]});await load();}catch(e){setError(e instanceof Error?e.message:"تعذر تنفيذ القرار")}};
   if(action==="approve")Alert.alert("موافقة على إجراء حساس",(a.tool??"")+"\n"+(a.reason??a.action??""),[{text:"إلغاء",style:"cancel"},{text:"موافقة",style:"destructive",onPress:()=>void go()}]);else void go();
  }
 
@@ -138,11 +191,24 @@ export default function App(){
 
  const approvalCards=approvals.map(a=><View key={a.id} style={[s.card,{borderColor:C.amber+"88"}]}>
   <Text style={s.itemTitle}>بانتظار موافقتك: {a.tool??a.action}</Text>{muted(a.reason??a.action??"")}
+  {muted((a.goal?a.goal+" · ":"")+"المشروع: "+(a.projectId??"default"))}
   <View style={s.row}><Pressable style={[s.warn,{flex:1}]} onPress={()=>decide(a,"approve")}><Text style={s.warnText}>موافقة</Text></Pressable><Pressable style={[s.ghost,{flex:1}]} onPress={()=>decide(a,"revoke")}><Text style={[s.bt,{color:C.rose}]}>رفض</Text></Pressable></View>
  </View>);
 
+ const pcLoad=feed?.load,sc=feed?.scalper;
+ const pcCard=feed&&<View style={s.card}>
+  <View style={s.between}><Text style={s.h2}>حالة الكمبيوتر</Text>{LayanXNative&&<Pressable onPress={()=>void LayanXNative?.ask()}><Text style={[s.status,{color:C.purple2,borderColor:C.purple2+"66"}]}>اسأل بالصوت</Text></Pressable>}</View>
+  {pcLoad?<View style={s.grid}>
+   <View style={s.tile}><Text style={s.muted}>المعالج</Text><Text style={[s.tileValue,{color:pcLoad.cpu.percent>85?C.rose:pcLoad.cpu.percent>60?C.amber:C.ink}]}>{pcLoad.cpu.percent}%</Text></View>
+   <View style={s.tile}><Text style={s.muted}>الذاكرة</Text><Text style={[s.tileValue,{color:pcLoad.memory.percent>85?C.rose:pcLoad.memory.percent>60?C.amber:C.ink}]}>{pcLoad.memory.percent}%</Text></View>
+   <View style={s.tile}><Text style={s.muted}>كرت الشاشة</Text><Text style={s.tileValue}>{pcLoad.gpu?pcLoad.gpu.percent+"%":"—"}</Text></View>
+  </View>:muted("…")}
+  {sc&&muted((sc.running?"السكالبر يعمل":"السكالبر متوقف")+(sc.tradesToday!==undefined?" · صفقات اليوم "+sc.tradesToday:"")+(sc.dailyPnl!==undefined?" · "+(sc.dailyPnl>=0?"+":"")+sc.dailyPnl.toFixed(2):"")+(sc.demo===false?" · حساب حقيقي":""))}
+ </View>;
+
  const home=<>
   {approvalCards}
+  {pcCard}
   <View style={s.mission}>
    <Text style={s.missionLabel}>مهمة جديدة</Text>
    <TextInput ref={input} style={s.missionInput} multiline placeholder="مثال: نشر منتجات جديدة في المتجر وإنشاء محتوى للسوشيال ميديا" placeholderTextColor="#B9B2FF" value={ask} onChangeText={setAsk}/>
@@ -163,7 +229,8 @@ export default function App(){
   {jobs.length>0&&<View style={s.card}><Text style={s.h2}>المهام المستقلة</Text>
    {jobs.map(j=>{const done=j.milestones.filter(m=>m.status==="done").length;return <View key={j.id} style={s.task}><View style={[s.taskDot,{backgroundColor:j.status==="completed"?C.green:j.status==="waiting_approval"?C.amber:["failed","cancelled","budget_exhausted"].includes(j.status)?C.rose:C.blue}]}/>
     <View style={{flex:1}}><Text style={s.taskText} numberOfLines={2}>{j.goal.split("\n")[0]}</Text><Text style={s.muted}>{done}/{j.milestones.length} مراحل · {({queued:"في الانتظار",planning:"يخطط",running:"يعمل",waiting_approval:"ينتظر موافقتك",verifying:"تحقق نهائي",completed:"اكتملت",failed:"توقفت",cancelled:"أُلغيت",budget_exhausted:"انتهى الوقت"} as Record<string,string>)[j.status]??j.status}</Text></View>
-    {["queued","planning","running","waiting_approval","verifying"].includes(j.status)&&<Pressable onPress={async()=>{await api?.cancelJob(j.id);await load();}}><Text style={[s.status,{color:C.rose,borderColor:C.rose+"55"}]}>إيقاف</Text></Pressable>}</View>;})}
+    {["queued","planning","running","waiting_approval","verifying"].includes(j.status)&&<Pressable onPress={async()=>{await api?.cancelJob(j.id);await load();}}><Text style={[s.status,{color:C.rose,borderColor:C.rose+"55"}]}>إيقاف</Text></Pressable>}
+    {j.status==="completed"&&<Pressable onPress={async()=>{try{const r=await api?.openJobSite(j.id);setAnswers(x=>[...x,{q:"افتح الموقع",a:r?.ok?"فُتح في متصفح الكمبيوتر: "+(r.url??""):r?.needsApproval?"تشغيل الموقع يحتاج موافقتك (ستظهر في الأعلى).":"تعذر فتحه."}]);await load();}catch(e){setError(e instanceof Error?e.message:"تعذر فتح الموقع")}}}><Text style={[s.status,{color:C.green,borderColor:C.green+"55"}]}>افتح الموقع</Text></Pressable>}</View>;})}
   </View>}
   <View style={s.card}><Text style={s.h2}>المهام</Text>
    {missions.length?missions.map(m=><View key={m.id} style={s.task}><View style={[s.taskDot,{backgroundColor:(STATUS[m.status]??["",C.soft])[1]}]}/><Text style={s.taskText} numberOfLines={2}>{m.goal.split("\n")[0]}</Text>{statusChip(m.status)}</View>):muted("لا توجد مهام.")}
@@ -188,12 +255,20 @@ export default function App(){
   {devices.length>1&&<View style={s.card}><Text style={s.h2}>الأجهزة</Text>{devices.map((d,i)=><Pressable key={d.deviceId} style={[s.ghost,i===selected&&{borderColor:C.purple}]} onPress={()=>void save(devices,i)}><Text style={s.bt}>{d.name}</Text></Pressable>)}</View>}
   <View style={s.card}>
    <Text style={s.h2}>ربط الكمبيوتر</Text>
-   {muted("على الكمبيوتر: صفحة الإعداد ← الهاتف و VS Code ← إنشاء رمز ربط. ثم أدخل العنوان والرمز الظاهرين هناك.")}
+   {muted("على الكمبيوتر: صفحة الإعداد ← الهاتف و VS Code ← إنشاء رمز ربط. ثم امسح رمز QR الظاهر هناك. الاتصال مشفّر، والهاتف لا يقبل إلا شهادة كمبيوترك.")}
    <TextInput style={s.input} placeholder="اسم هذا الهاتف" placeholderTextColor={C.soft} value={pairName} onChangeText={setPairName}/>
+   <Pressable style={s.start} onPress={()=>void startScan()} disabled={busy}><Text style={s.startText}>{busy?"جارٍ الربط…":"ربط بمسح QR"}</Text></Pressable>
+   {muted("أو من خارج المنزل: عنوان Tailscale (https://…ts.net) والرمز:")}
    <TextInput style={s.input} placeholder="عنوان الكمبيوتر، مثل https://my-pc.tailnet.ts.net" placeholderTextColor={C.soft} autoCapitalize="none" autoCorrect={false} value={pairUrl} onChangeText={setPairUrl}/>
    <TextInput style={s.input} placeholder="رمز الربط مثل ABCD-EFGH" placeholderTextColor={C.soft} autoCapitalize="characters" value={pairCode} onChangeText={setPairCode}/>
-   <Pressable style={s.start} onPress={pair} disabled={busy}><Text style={s.startText}>{busy?"جارٍ الربط…":"ربط"}</Text></Pressable>
+   <Pressable style={s.ghost} onPress={pair} disabled={busy}><Text style={s.bt}>ربط بالعنوان والرمز</Text></Pressable>
   </View>
+  {!!device&&LayanXNative&&<View style={s.card}>
+   <View style={s.between}><Text style={s.h2}>المتابعة في الخلفية</Text><Switch value={watching} onValueChange={v=>void toggleWatch(v)} trackColor={{true:C.purple2,false:C.line}}/></View>
+   {muted("إشعار فوري لكل موافقة (موافقة أو رفض بالبصمة من الإشعار نفسه)، وإشعار دائم للمهمة الجارية بمرحلتها وتقدمها، وتحديث الويدجت. يعمل والتطبيق مغلق، عبر شبكتك أو Tailscale فقط، بلا أي خادم سحابي.")}
+   {!LayanXNative.ignoringBatteryOptimizations()&&<Pressable style={s.ghost} onPress={()=>void LayanXNative?.openBatterySettings()}><Text style={s.bt}>السماح بالعمل في الخلفية (توفير البطارية)</Text></Pressable>}
+   {muted("أضف بلاطة «اسأل LayanX» من الإعدادات السريعة، وويدجت LayanX من الشاشة الرئيسية.")}
+  </View>}
   {!!device&&<View style={s.card}>
    <Text style={s.h2}>المشروع</Text>
    <TextInput style={s.input} value={project} onChangeText={setProject} onEndEditing={async()=>{await SecureStore.setItemAsync(K.project,project.trim()||"default");await load()}} autoCapitalize="none"/>
@@ -203,6 +278,13 @@ export default function App(){
 
  const tabs:Array<[Tab,string]>=[["home","الرئيسية"],["missions","المهام"],["apps","التطبيقات"],["settings","الإعدادات"]];
  return <SafeAreaView style={s.safe}>
+  <Modal visible={scanning} animationType="slide" onRequestClose={()=>setScanning(false)}>
+   <View style={{flex:1,backgroundColor:"#000"}}>
+    <CameraView style={{flex:1}} facing="back" barcodeScannerSettings={{barcodeTypes:["qr"]}} onBarcodeScanned={r=>onScanned(r.data)}/>
+    <View style={s.scanBar}><Text style={s.scanText}>وجّه الكاميرا إلى رمز QR في صفحة الإعداد على الكمبيوتر</Text>
+     <Pressable style={s.ghost} onPress={()=>setScanning(false)}><Text style={s.bt}>إلغاء</Text></Pressable></View>
+   </View>
+  </Modal>
   <ScrollView contentContainerStyle={s.container} refreshControl={<RefreshControl refreshing={refreshing} tintColor={C.purple} onRefresh={async()=>{setRefreshing(true);const c=api??await connect();await load(c);setRefreshing(false)}}/>}>
    {header}
    {!!error&&<Text style={s.err}>{error}</Text>}
@@ -251,5 +333,6 @@ const s=StyleSheet.create({
  tabbar:{position:"absolute",left:0,right:0,bottom:0,flexDirection:"row-reverse",alignItems:"center",justifyContent:"space-around",backgroundColor:"#0E1428",borderTopColor:C.line,borderTopWidth:1,paddingBottom:18,paddingTop:8},
  tabBtn:{alignItems:"center",paddingHorizontal:6,paddingVertical:6},tabText:{color:C.soft,fontSize:12},tabOn:{color:C.purple2,fontWeight:"800"},
  tabBadge:{position:"absolute",top:2,right:0,width:8,height:8,borderRadius:4,backgroundColor:C.rose},
+ scanBar:{position:"absolute",left:0,right:0,bottom:0,padding:20,backgroundColor:"#000000CC"},scanText:{color:"#fff",textAlign:"center",fontSize:15,marginBottom:6},
  center:{width:56,height:56,borderRadius:28,backgroundColor:C.blue,alignItems:"center",justifyContent:"center",marginTop:-26,borderWidth:4,borderColor:C.bg},centerText:{color:"#fff",fontSize:24,fontWeight:"900"}
 });

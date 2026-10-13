@@ -1,0 +1,69 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/lx_root"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:background="@drawable/layanx_widget_bg"
+  android:orientation="vertical"
+  android:layoutDirection="rtl"
+  android:padding="12dp">
+
+  <LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <TextView
+      android:id="@+id/lx_title"
+      android:layout_width="0dp"
+      android:layout_height="wrap_content"
+      android:layout_weight="1"
+      android:text="LayanX"
+      android:textColor="#FFEEF2FA"
+      android:textSize="15sp"
+      android:textStyle="bold" />
+
+    <TextView
+      android:id="@+id/lx_ask"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:background="@drawable/layanx_widget_button"
+      android:paddingStart="12dp"
+      android:paddingTop="6dp"
+      android:paddingEnd="12dp"
+      android:paddingBottom="6dp"
+      android:text="اسأل"
+      android:textColor="#FFFFFFFF"
+      android:textSize="13sp"
+      android:textStyle="bold" />
+  </LinearLayout>
+
+  <TextView
+    android:id="@+id/lx_load"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="6dp"
+    android:text="—"
+    android:textColor="#FF9AA6C2"
+    android:textSize="13sp" />
+
+  <TextView
+    android:id="@+id/lx_job"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="2dp"
+    android:maxLines="2"
+    android:ellipsize="end"
+    android:text=""
+    android:textColor="#FFEEF2FA"
+    android:textSize="13sp" />
+
+  <TextView
+    android:id="@+id/lx_scalper"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="2dp"
+    android:text=""
+    android:textColor="#FF9AA6C2"
+    android:textSize="12sp" />
+</LinearLayout>
