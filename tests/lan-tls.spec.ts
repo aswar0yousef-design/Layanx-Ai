@@ -113,6 +113,25 @@ try{
   assert.equal(r,426);
 }finally{await noCert.close();await new Promise<void>(r=>upstream.close(()=>r()));}
 
+// A stalled request is closed (408) on both sides of the sniffer, like on a normal server (slowloris).
+const port3=await freeLoopbackPort();
+const slowUp=http.createServer((_q,r)=>r.end("ok"));await new Promise<void>(r=>slowUp.listen(0,"127.0.0.1",()=>r()));
+const slow=await startGateway({bindHost:"127.0.0.1",listeners:[{name:"api",publicPort:port3,internalPort:(slowUp.address() as net.AddressInfo).port}],access,internalToken:"i",mobileAccess:false,
+  tls:{key:fresh.key,cert:fresh.cert},timeouts:{headersMs:600,checkMs:150},log:()=>undefined,handleOwnRoute:async()=>false});
+try{
+  const stall=(useTls:boolean)=>new Promise<{first:string;ms:number}>(resolve=>{
+    const t0=Date.now();let got="";
+    const sock:net.Socket=useTls?tls.connect({host:"127.0.0.1",port:port3,rejectUnauthorized:false}):net.connect(port3,"127.0.0.1");
+    sock.on(useTls?"secureConnect":"connect",()=>sock.write("GET /x HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Slow: "));
+    sock.on("data",d=>{got+=d;});sock.on("error",()=>undefined);
+    sock.on("close",()=>resolve({first:got.split("\r\n")[0]??"",ms:Date.now()-t0}));
+    setTimeout(()=>sock.destroy(),8000);
+  });
+  const [p1,t1]=await Promise.all([stall(false),stall(true)]);
+  assert.equal(p1.first,"HTTP/1.1 408 Request Timeout",JSON.stringify(p1));assert.ok(p1.ms<5000);
+  assert.equal(t1.first,"HTTP/1.1 408 Request Timeout",JSON.stringify(t1));assert.ok(t1.ms<5000);
+}finally{await slow.close();slowUp.close();}
+
 assert.deepEqual(lanUrls(3000,["192.168.1.5"],"https"),["https://192.168.1.5:3000"]);
 assert.deepEqual(lanUrls(3000,["192.168.1.5"]),["http://192.168.1.5:3000"]);
 

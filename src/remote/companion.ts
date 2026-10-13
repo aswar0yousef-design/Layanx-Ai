@@ -24,11 +24,13 @@ export interface ApprovalView extends ApprovalRequest{
   external?:boolean;
 }
 const FINISHED=["completed","cancelled","failed"];
+const JOB_ACTIVE:string[]=["queued","planning","running","waiting_approval","verifying"];
 
 export function approvalViews(core:LayanXCore,supervisor:Supervisor,projectId?:string):ApprovalView[]{
   const now=Date.now();
-  const waiting=new Map<string,string>();
-  for(const j of supervisor.list())if(j.status==="waiting_approval"&&j.waiting)waiting.set(j.waiting.approvalId,j.id);
+  // The job that asked (waiting now, or queued behind another job, or stopped since).
+  const owner=new Map<string,SupervisorJob>();
+  for(const j of supervisor.list())if(j.waiting)owner.set(j.waiting.approvalId,j);
   const out:ApprovalView[]=[];
   for(const a of core.executionRuntime.approvals.list()){
     if(Date.parse(a.expiresAt)<=now)continue;
@@ -44,10 +46,13 @@ export function approvalViews(core:LayanXCore,supervisor:Supervisor,projectId?:s
     if(projectId){try{core.projectIsolation.assertMissionProject(projectId,mission.projectId);}catch{continue;}}
     const approved=core.executionRuntime.approvals.isApproved(a.id);
     const rejected=core.executionRuntime.approvals.isRejected(a.id);
-    const jobId=waiting.get(a.id);
+    const job=owner.get(a.id);
+    const jobId=job?.id;
+    const jobStopped=Boolean(job&&!JOB_ACTIVE.includes(job.status));
     out.push({...a,projectId:mission.projectId??"default",goal:(mission.goal.split("\n")[0]??"").slice(0,200),approved,rejected,
       // A finished mission withdraws its approvals; they are history, not something to decide.
-      pending:!approved&&!rejected&&!FINISHED.includes(String(mission.status)),
+      // A finished mission (or a job you stopped) withdraws its approvals.
+      pending:!approved&&!rejected&&!jobStopped&&!FINISHED.includes(String(mission.status)),
       digest:approvalDigest(a),...(jobId?{jobId}:{})});
   }
   return out;
@@ -74,7 +79,10 @@ function toolIndex(tools:NonNullable<ReturnType<LayanXCore["missions"]["get"]>>[
  *  - otherwise the mission's agent loop resumes with this approval ("mission").
  */
 function continueAfterApproval(core:LayanXCore,supervisor:Supervisor,request:ApprovalRequest,projectId:string,log:(m:string)=>void):"job"|"tool"|"mission"|null{
-  if(supervisor.list().some(j=>j.status==="waiting_approval"&&j.waiting?.approvalId===request.id))return "job";
+  // An autonomous job that asked carries on by itself when it gets there (also when it is queued behind
+  // another job); a job you stopped does not run the step at all.
+  const job=supervisor.list().find(j=>j.waiting?.approvalId===request.id);
+  if(job)return JOB_ACTIVE.includes(job.status)?"job":null;
   if(continued.has(request.id))return null;
   const mission=core.missions.get(request.missionId);
   if(!mission||FINISHED.includes(String(mission.status)))return null;
@@ -204,7 +212,6 @@ export interface Feed{
   scalper:{running:boolean;tradesToday?:number;dailyPnl?:number;consecutiveLosses?:number;lastAction?:string;demo?:boolean}|null;
   load?:SystemLoad;
 }
-const ACTIVE=["queued","planning","running","waiting_approval","verifying"];
 const RECENT_MS=6*3600_000;
 
 function feedJob(j:SupervisorJob):FeedJob{
@@ -227,7 +234,7 @@ async function scalperStatus(core:LayanXCore):Promise<Feed["scalper"]>{
 
 export async function companionFeed(core:LayanXCore,supervisor:Supervisor,now=Date.now()):Promise<Omit<Feed,"load">>{
   const approvals=approvalViews(core,supervisor).filter(a=>a.pending);
-  const jobs=supervisor.list().filter(j=>ACTIVE.includes(j.status)||now-Date.parse(j.updatedAt)<RECENT_MS).slice(0,8).map(feedJob);
+  const jobs=supervisor.list().filter(j=>JOB_ACTIVE.includes(j.status)||now-Date.parse(j.updatedAt)<RECENT_MS).slice(0,8).map(feedJob);
   const scalper=await scalperStatus(core);
   // The cursor changes when something the phone shows changes (not with CPU load).
   const cursor=createHash("sha256").update(JSON.stringify([approvals.map(a=>a.id),jobs.map(j=>[j.id,j.status,j.stage,j.done,j.total,j.result,j.preview]),scalper&&[scalper.running,scalper.tradesToday,scalper.lastAction]])).digest("base64url").slice(0,22);

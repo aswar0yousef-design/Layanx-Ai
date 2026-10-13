@@ -11,8 +11,8 @@ export function parsePairingLink(text:string):PairingLink|null{
   const values:Record<string,string[]>={};
   for(const part of (m[1]??"").split("&")){
     const i=part.indexOf("=");if(i<1)continue;
-    const k=decodeURIComponent(part.slice(0,i));
-    let v="";try{v=decodeURIComponent(part.slice(i+1).replace(/\+/g," "));}catch{continue;}
+    // A code from elsewhere may be malformed: skip the part, never throw from the scanner.
+    let k="",v="";try{k=decodeURIComponent(part.slice(0,i));v=decodeURIComponent(part.slice(i+1).replace(/\+/g," "));}catch{continue;}
     (values[k]??=[]).push(v);
   }
   if(values.v?.[0]!=="1")return null;

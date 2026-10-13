@@ -79,6 +79,8 @@ export interface GatewayOptions{
   /** test hooks */
   isLoopback?:(address:string|undefined)=>boolean;
   localAddresses?:()=>string[];
+  /** test hook: shorter request-header timeout and check interval (defaults 30 s / 30 s) */
+  timeouts?:{headersMs:number;checkMs:number};
 }
 
 const HOP_BY_HOP=new Set(["connection","keep-alive","proxy-authenticate","proxy-authorization","proxy-connection","te","trailer","transfer-encoding","upgrade"]);
@@ -380,19 +382,24 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
       tunnels.add(s);s.once("close",()=>tunnels.delete(s));
       handleUpgrade(listener,req,s,head);
     };
-    const plain=http.createServer(onRequest);
+    const headersMs=options.timeouts?.headersMs??30_000;
+    const serverOptions={connectionsCheckingInterval:options.timeouts?.checkMs??30_000,headersTimeout:headersMs,requestTimeout:Math.max(headersMs,300_000)};
+    const plain=http.createServer(serverOptions,onRequest);
     plain.on("upgrade",onUpgrade);
-    plain.headersTimeout=30_000;
+    plain.headersTimeout=headersMs;
     inner.push(plain);
     let server:net.Server=plain;
     if(options.tls){
-      const secure=https.createServer({key:options.tls.key,cert:options.tls.cert,minVersion:"TLSv1.2"},onRequest);
+      const secure=https.createServer({...serverOptions,key:options.tls.key,cert:options.tls.cert,minVersion:"TLSv1.2"},onRequest);
       secure.on("upgrade",onUpgrade);
-      secure.headersTimeout=30_000;
+      secure.headersTimeout=headersMs;
       secure.on("tlsClientError",()=>undefined);
       inner.push(secure);
       // One port, two protocols: a TLS connection starts with a handshake record (0x16).
-      server=net.createServer(socket=>{
+      // The inner servers never listen themselves: "listening" starts their header/request timeout checks
+      // (a stalled request is closed with 408, as on a normal server). noDelay: small streamed chunks go at once.
+      plain.emit("listening");secure.emit("listening");
+      server=net.createServer({noDelay:true},socket=>{
         socket.setTimeout(30_000,()=>socket.destroy());
         socket.once("data",first=>{
           socket.setTimeout(0);
@@ -418,6 +425,8 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
         Promise.all(servers.map(s=>new Promise<void>(resolve=>{s.close(()=>resolve());for(const i of inner)i.closeAllConnections?.();}))),
         new Promise<void>(resolve=>setTimeout(resolve,1500).unref())
       ]);
+      // Behind the TLS sniffer the inner servers never listened: this only stops their timeout checks.
+      for(const i of inner)if(!servers.includes(i))i.close(()=>undefined);
     }
   };
 }

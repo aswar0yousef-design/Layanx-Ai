@@ -69,8 +69,10 @@ async function main(){
     try{
       const left=Math.max(1,Math.min(25,Math.floor((deadline-Date.now())/1000)));
       const r=await call(port,token,"GET",`/v1/external/approvals/${encodeURIComponent(id)}?wait=${left}`,undefined,(left+10)*1000);
-      if(r.status===404)return;
-      status=r.json.status??"pending";
+      // Gone, or this hook was disconnected meanwhile: the terminal asks.
+      if(r.status===401||r.status===403||r.status===404)return;
+      if(r.status===200)status=r.json.status??"pending";
+      else await new Promise(r=>setTimeout(r,2000)); // LayanX restarting: ask again in a moment
     }catch{await new Promise(r=>setTimeout(r,2000));}
   }
   if(status==="approved"){decide("allow");return;}

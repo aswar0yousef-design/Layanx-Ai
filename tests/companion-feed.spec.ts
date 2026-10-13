@@ -105,6 +105,34 @@ try{
   assert.equal(typeof loaded.load?.memory?.percent,"number");
 }finally{server.close();}
 
+// ---------- approvals of an autonomous job: it continues by itself; a job you stopped runs nothing ----------
+{
+  const {approvalViews,decideApproval}=await import("../src/remote/companion.js");
+  const {coreSupervisorDeps}=await import("../src/autonomy/runtime-deps.js");
+  const store=fs.mkdtempSync(path.join(os.tmpdir(),"lx-sup-owner-"));
+  const iso=(ms:number)=>new Date(ms).toISOString();const t=Date.now();
+  const job=(id:string,status:string,waiting:unknown)=>({id,projectId:"shop",goal:"goal "+id,status,createdAt:iso(t-1000),updatedAt:iso(t),deadline:iso(t+3600_000),trust:"supervised",
+    acceptance:[],checks:null,milestones:[{title:"m",goal:"m",kind:"general",agent:"core",status:"running",attempts:1,missions:[]}],current:0,rounds:0,maxRounds:30,
+    cloudUsed:false,externalUsed:[],checkpoints:[],log:[],finalRepairs:0,waiting});
+  const before=ran;
+  const stopped=await runSingleTool(core,"shop","test.danger",{job:"stopped"});
+  const queued=await runSingleTool(core,"shop","test.danger",{job:"queued"});
+  const w=(r:{approvalId?:string;missionId?:string},x:string)=>({approvalId:r.approvalId,missionId:r.missionId,index:0,kind:"tool",tool:"test.danger",payload:{job:x},milestone:0});
+  const file=path.join(store,"jobs.json");
+  fs.writeFileSync(file,JSON.stringify([job("S","cancelled",w(stopped,"stopped")),job("Q","queued",w(queued,"queued"))]));
+  const sup=new Supervisor(coreSupervisorDeps(core),{file,pollMs:20}); // not started: the jobs stay as they are
+  const views=approvalViews(core,sup,"shop");
+  const s1=views.find(v=>v.id===stopped.approvalId)!,q1=views.find(v=>v.id===queued.approvalId)!;
+  assert.equal(s1.pending,false,"a job you stopped withdraws its request");assert.equal(s1.jobId,"S");
+  assert.equal(q1.pending,true);assert.equal(q1.jobId,"Q","a queued job still owns its request");
+  const rs=await decideApproval(core,sup,{id:s1.id,projectId:"shop",action:"approve",digest:s1.digest,requireDigest:true,resume:true});
+  const rq=await decideApproval(core,sup,{id:q1.id,projectId:"shop",action:"approve",digest:q1.digest,requireDigest:true,resume:true});
+  assert.equal(rs.continuing,null,"nothing runs for a stopped job");
+  assert.equal(rq.continuing,"job","the queued job runs it when its turn comes, not now");
+  await new Promise(r=>setTimeout(r,200));
+  assert.equal(ran,before,"no step ran twice or out of turn");
+}
+
 // ---------- a job whose approval the owner rejects stops instead of waiting forever ----------
 {
   const store=fs.mkdtempSync(path.join(os.tmpdir(),"lx-sup-reject-"));

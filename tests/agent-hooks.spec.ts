@@ -129,6 +129,17 @@ try{
   // a wrong token is refused
   fs.writeFileSync(offline,JSON.stringify({port,token:"lxh_"+"x".repeat(43)}));
   assert.equal((await runHook(ask,"20",offline)).out,"");
+  // LayanX accepted the question, then the hook was disconnected (or LayanX is restarting): no busy loop
+  let polls=0;const mode={status:403};
+  const fake=http.createServer((q,r)=>{if(q.method==="POST"){r.writeHead(201,{"content-type":"application/json"});r.end(JSON.stringify({ok:true,id:"abc"}));return;}polls++;r.writeHead(mode.status,{"content-type":"application/json"});r.end("{}");});
+  await new Promise<void>(r=>fake.listen(0,"127.0.0.1",()=>r()));
+  fs.writeFileSync(offline,JSON.stringify({port:(fake.address() as {port:number}).port,token:hookToken}));
+  const t1=Date.now();assert.equal((await runHook(ask,"20",offline)).out,"");
+  assert.ok(Date.now()-t1<3000&&polls===1,"403: stop at once ("+polls+" polls)");
+  polls=0;mode.status=503;
+  assert.equal((await runHook(ask,"10",offline)).out,"");
+  assert.ok(polls<=8,"503: wait between tries ("+polls+" polls in 10 s)");
+  fake.close();
 }finally{
   await gw.close();api.close();
 }
