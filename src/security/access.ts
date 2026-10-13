@@ -55,6 +55,8 @@ export interface AccessManagerOptions{
   masterToken:string;
   /** Persist browser-session hashes so a restart does not log the owner out. */
   sessionsFile?:string;
+  /** Claude Code / Codex hooks (agent-hooks.ts): {token} they send to ask the owner. */
+  hooksFile?:string;
   now?:()=>number;
 }
 
@@ -62,6 +64,8 @@ export class AccessManager{
   private readonly devicesFile:string;
   private readonly launchTicketFile:string;
   private readonly sessionsFile:string|undefined;
+  private readonly hooksFile:string|undefined;
+  private hookCache:{mtimeMs:number;hash:string}|null=null;
   private readonly masterHash:string;
   private readonly now:()=>number;
   private devices:DeviceRecord[];
@@ -78,6 +82,7 @@ export class AccessManager{
     this.now=options.now??Date.now;
     this.devices=readJsonFile<{devices?:DeviceRecord[]}>(this.devicesFile,{}).devices??[];
     this.sessionsFile=options.sessionsFile;
+    this.hooksFile=options.hooksFile;
     if(this.sessionsFile){
       const saved=readJsonFile<{sessions?:Record<string,number>}>(this.sessionsFile,{}).sessions??{};
       const now=this.now();
@@ -86,6 +91,23 @@ export class AccessManager{
   }
 
   isMasterToken(token:string):boolean{return sameHash(hashToken(token),this.masterHash);}
+
+  /**
+   * The token the Claude Code / Codex hooks use. It can only ask the owner (create an external
+   * approval and read its answer); the gateway refuses it everywhere else, and it never decides.
+   * Re-read when the installer rewrites the file.
+   */
+  verifyHookToken(token:string):boolean{
+    if(!token.startsWith("lxh_")||!this.hooksFile)return false;
+    try{
+      const stat=fs.statSync(this.hooksFile);
+      if(!this.hookCache||this.hookCache.mtimeMs!==stat.mtimeMs){
+        const saved=readJsonFile<{token?:string}>(this.hooksFile,{}).token;
+        this.hookCache={mtimeMs:stat.mtimeMs,hash:typeof saved==="string"&&saved.startsWith("lxh_")?hashToken(saved):""};
+      }
+      return Boolean(this.hookCache.hash)&&sameHash(hashToken(token),this.hookCache.hash);
+    }catch{return false;}
+  }
 
   // ---------- devices ----------
   listDevices():PublicDevice[]{return this.devices.map(({tokenHash:_hash,...rest})=>rest);}

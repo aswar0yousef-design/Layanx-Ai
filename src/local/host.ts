@@ -217,7 +217,7 @@ export async function runLocalHost():Promise<void>{
   env.LAYANX_API_REQUIRE_TOKEN="true";
   if(!env.LAYANX_OAUTH_REDIRECT_URI)env.LAYANX_OAUTH_REDIRECT_URI=`http://127.0.0.1:${publicPort}/v1/oauth/callback`;
 
-  const access=new AccessManager({devicesFile:paths.devicesFile,launchTicketFile:paths.launchTicketFile,sessionsFile:paths.sessionsFile,masterToken:ctx.apiToken});
+  const access=new AccessManager({devicesFile:paths.devicesFile,launchTicketFile:paths.launchTicketFile,sessionsFile:paths.sessionsFile,hooksFile:paths.agentHooksFile,masterToken:ctx.apiToken});
   let restartFlag=false;
   let runtime:{state:"starting"|"running"|"failed";error?:string}={state:"starting"};
   let gateway:GatewayHandle|null=null;

@@ -223,6 +223,12 @@ aside h2{margin-bottom:.5rem}
         <ul class="urls" id="remote-urls"></ul>
       </div>
 
+      <h2 style="margin-top:2rem">Claude Code و Codex</h2>
+      <p class="note">عندما يطلب Claude Code أو Codex (خارج LayanX) إذناً لأمر أو تعديل، يصلك الطلب على الهاتف لتوافق أو ترفض بالبصمة، ويظهر في الجزيرة ولوحة التحكم. تُحفظ نسخة احتياطية من إعداداتهما قبل أي تغيير. إن لم تردّ خلال دقيقتين يعود السؤال إلى نافذتهما كالعادة.</p>
+      <ul class="devices" id="agent-hooks"></ul>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="primary" id="hooks-install">ربطهما بـ LayanX</button><button id="hooks-uninstall">إلغاء الربط</button></div>
+      <p class="note" id="hooks-note"></p>
+
       <h2 style="margin-top:2rem">Zed و JetBrains</h2>
       <p class="note">LayanX يعمل داخل المحرر عبر بروتوكول ACP: الطلب يصبح مهمة على المجلد المفتوح، والخطوات التي تحتاج موافقتك تظهر في المحرر. في Zed الصق هذا في settings.json. في JetBrains ضعه في ~/.jetbrains/acp.json. شغّل LayanX أولاً.</p>
       <pre id="acp-zed" dir="ltr" style="white-space:pre-wrap;word-break:break-all;font-size:.75rem;background:rgba(127,127,127,.12);padding:.6rem;border-radius:8px;max-height:14rem;overflow:auto"></pre>
@@ -269,7 +275,7 @@ async function boot(){
   try{await load();$("locked").hidden=true;$("app").hidden=false;}catch(e){if(e.message!=="locked")toast(e.message);}
 }
 
-async function load(){state=await api("/v1/setup/status");render();}
+async function load(){state=await api("/v1/setup/status");render();void loadHooks();}
 
 function render(){
   const s=state,o=s.ollama;
@@ -425,6 +431,22 @@ $("ws-form").addEventListener("submit",async e=>{e.preventDefault();try{await ap
 $("budget-form").addEventListener("submit",async e=>{e.preventDefault();const n=v=>v.trim()===""?null:Number(v);
   try{await api("/v1/setup/settings","PUT",{cloud:{monthlyBudgetUsd:n($("budget-usd").value),monthlyTokens:n($("budget-tokens").value)}});await load();toast("حُفظ الحد. يعمل بعد إعادة التشغيل.");}catch(err){toast(err.message);}});
 document.querySelectorAll("#cloud-policy input").forEach(i=>i.addEventListener("change",async()=>{try{await api("/v1/setup/settings","PUT",{cloud:{policy:i.value}});await load();toast("حُفظت سياسة السحابة");}catch(e){toast(e.message);}}));
+async function loadHooks(){
+  try{
+    const d=await api("/v1/setup/agent-hooks");
+    $("agent-hooks").replaceChildren(...d.agents.map(a=>el("li",{},el("div",{},a.label,el("small",{text:a.error?a.error:a.installed?"مربوط: طلبات الإذن تصل إلى هاتفك":a.found?"غير مربوط":"غير مثبّت على هذا الجهاز"})))));
+  }catch(e){$("hooks-note").textContent=e.message;}
+}
+async function hooks(action){
+  try{
+    const d=await api("/v1/setup/agent-hooks","POST",{action});
+    const lines=d.results.map(r=>r.label+": "+(r.error?r.error:(r.changed?(action==="install"?"رُبط":"أُلغي الربط"):"لا تغيير")+(r.backup?" (نسخة احتياطية: "+r.backup+")":"")+(r.note&&action==="install"?" — في Codex افتح ‎/hooks مرة واحدة ووافق على خطاف LayanX.":"")));
+    $("hooks-note").textContent=lines.length?lines.join(" · "):"لم يُعثر على Claude Code أو Codex في هذا الحساب.";
+    await loadHooks();
+  }catch(e){toast(e.message);}
+}
+$("hooks-install").addEventListener("click",()=>hooks("install"));
+$("hooks-uninstall").addEventListener("click",()=>hooks("uninstall"));
 $("remote-toggle").addEventListener("change",async e=>{try{await api("/v1/setup/settings","PUT",{remoteAccess:e.target.checked});await load();}catch(err){e.target.checked=!e.target.checked;toast(err.message);}});
 boot();
 </script>

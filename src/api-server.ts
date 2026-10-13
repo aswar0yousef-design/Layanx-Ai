@@ -39,7 +39,7 @@ import {CodeReviewAgent} from "./core/code-review-agent.js";
 import {SecurityReviewAgent} from "./core/security-review-agent.js";
 import {assertSafeGitRef} from "./platform/git-ref.js";
 import {safeChildEnv} from "./platform/safe-env.js";
-import {ApprovalDecisionError,approvalViews,decideApproval,waitForFeed} from "./remote/companion.js";
+import {ApprovalDecisionError,approvalViews,createExternalApproval,decideApproval,externalStatus,waitExternal,waitForFeed,withdrawExternal} from "./remote/companion.js";
 export interface RuntimeApiOptions{core:LayanXCore;business:BusinessManager;ads?:AdsManager;media?:MediaManager;growth?:GrowthEngine;channels?:MessagingChannels;persistence?:RuntimePersistence;host?:string;port?:number;maxBodyBytes?:number;token?:string;requireToken?:boolean;}
 function json(response:ServerResponse,status:number,body:unknown){response.statusCode=status;response.setHeader("content-type","application/json; charset=utf-8");response.end(JSON.stringify(body));}
 async function rawBody(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}return Buffer.concat(chunks);}
@@ -66,6 +66,9 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    try{const content=await readFile(join(process.cwd(),"web",file));response.statusCode=200;response.setHeader("content-type",file.endsWith(".js")?"text/javascript; charset=utf-8":file.endsWith(".css")?"text/css; charset=utf-8":"text/html; charset=utf-8");response.end(content);return;}catch{json(response,404,{ok:false,error:"ui_asset_not_found"});return;}
   }
   const publicWebhook=request.url==="/v1/channels/whatsapp/webhook";
+  // The Claude Code / Codex hook token only asks the owner (the gateway already enforces this).
+  const caller=String(request.headers["x-layanx-principal"]??"");
+  if(caller==="hook"&&!/^\/v1\/external\/approvals(\/|$|\?)/.test(request.url??"")){json(response,403,{ok:false,error:"forbidden"});return;}
   if(requireToken&&!authorized(request,options.token)&&!publicWebhook&&request.url!=="/v1/health"&&request.url?.split("?")[0]!=="/voice"){json(response,401,{ok:false,error:"unauthorized"});return;}
   if(request.method==="GET"&&request.url==="/v1/device/identity"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
@@ -374,6 +377,30 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     json(response,result.completed?200:result.paused?202:422,result);
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"agent gateway failed"});}
    return;
+  }
+  // ---- Claude Code / Codex permission requests (their PermissionRequest hook, scripts/agent-hook.mjs)
+  if(request.url?.split("?")[0]?.startsWith("/v1/external/approvals")){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   if(caller.startsWith("device:")||caller.startsWith("public:")){json(response,403,{ok:false,error:"forbidden"});return;}
+   const url=new URL(request.url,"http://localhost");const parts=url.pathname.split("/").filter(Boolean);
+   try{
+    if(request.method==="POST"&&parts.length===3){
+     const input=await body(request,max);
+     const created=createExternalApproval(options.core,{agent:input.agent,sessionId:input.sessionId,cwd:input.cwd,tool:input.tool,toolInput:input.toolInput,waitSeconds:input.waitSeconds});
+     json(response,201,{ok:true,id:created.id,projectId:created.projectId,expiresAt:created.expiresAt});return;
+    }
+    const id=decodeURIComponent(parts[3]??"");
+    if(request.method==="GET"&&parts.length===4){
+     let closed=false;request.on("close",()=>{closed=true;});
+     const status=await waitExternal(options.core,id,(Number(url.searchParams.get("wait"))||0)*1000,()=>closed);
+     if(!closed)json(response,status==="unknown"?404:200,{ok:status!=="unknown",status});return;
+    }
+    if(request.method==="DELETE"&&parts.length===4){json(response,200,{ok:true,withdrawn:withdrawExternal(options.core,id),status:externalStatus(options.core,id)});return;}
+   }catch(error){
+    if(error instanceof ApprovalDecisionError){json(response,error.status,{ok:false,error:error.code,message:error.message});return;}
+    json(response,422,{ok:false,error:error instanceof Error?error.message:"external_approval_failed"});return;
+   }
+   json(response,404,{ok:false,error:"not_found"});return;
   }
   if(request.method==="GET"&&request.url?.split("?")[0]==="/v1/approvals"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}

@@ -1,4 +1,6 @@
 import {createHash} from "node:crypto";
+import path from "node:path";
+import {listLinkedProjects} from "../platform/linked-projects.js";
 import type {LayanXCore} from "../core/orchestrator.js";
 import type {Supervisor,SupervisorJob} from "../autonomy/supervisor.js";
 import {approvalDigest,type ApprovalRequest} from "../security/approval.js";
@@ -18,6 +20,8 @@ export interface ApprovalView extends ApprovalRequest{
   digest:string;
   /** The autonomous job waiting for this approval; it continues by itself once approved. */
   jobId?:string;
+  /** Asked by Claude Code or Codex through their hook (agent-hooks.ts), not by a LayanX mission. */
+  external?:boolean;
 }
 const FINISHED=["completed","cancelled","failed"];
 
@@ -28,6 +32,13 @@ export function approvalViews(core:LayanXCore,supervisor:Supervisor,projectId?:s
   const out:ApprovalView[]=[];
   for(const a of core.executionRuntime.approvals.list()){
     if(Date.parse(a.expiresAt)<=now)continue;
+    const ext=external.get(a.id);
+    if(ext){
+      if(projectId&&projectId.trim().toLowerCase()!==ext.projectId)continue;
+      const approved=core.executionRuntime.approvals.isApproved(a.id),rejected=core.executionRuntime.approvals.isRejected(a.id);
+      out.push({...a,projectId:ext.projectId,goal:`${AGENT_LABEL[ext.agent]} — ${ext.cwd}`.slice(0,200),approved,rejected,pending:!approved&&!rejected,digest:approvalDigest(a),external:true});
+      continue;
+    }
     const mission=core.missions.get(a.missionId);
     if(!mission)continue;
     if(projectId){try{core.projectIsolation.assertMissionProject(projectId,mission.projectId);}catch{continue;}}
@@ -82,22 +93,102 @@ function continueAfterApproval(core:LayanXCore,supervisor:Supervisor,request:App
 
 export async function decideApproval(core:LayanXCore,supervisor:Supervisor,input:{
   id:string;projectId:string;action:"approve"|"revoke";digest?:unknown;requireDigest:boolean;resume:boolean;log?:(m:string)=>void;
-}):Promise<{approval:ApprovalView|ApprovalRequest&{approved:boolean};continuing:"job"|"tool"|"mission"|null}>{
+}):Promise<{approval:ApprovalView|ApprovalRequest&{approved:boolean};continuing:"job"|"tool"|"mission"|"external"|null}>{
   let request:ApprovalRequest;
   try{request=core.executionRuntime.approvals.get(input.id);}catch{throw new ApprovalDecisionError(404,"approval_not_found","This request no longer exists.");}
+  const ext=external.get(input.id);
+  if(ext){
+    if(input.projectId.trim().toLowerCase()!==ext.projectId)throw new ApprovalDecisionError(422,"project_mismatch","This request belongs to another project.");
+    checkDigest(request,input.digest,input.requireDigest);
+    if(input.action==="approve")core.executionRuntime.approvals.approve(input.id);
+    else core.executionRuntime.approvals.revoke(input.id);
+    // Claude Code / Codex is waiting on the hook: it reads this decision and carries on (or not) by itself.
+    return{approval:approvalViews(core,supervisor).find(v=>v.id===input.id)??{...request,approved:input.action==="approve"},continuing:input.action==="approve"?"external":null};
+  }
   const mission=core.missions.get(request.missionId);
   if(!mission)throw new ApprovalDecisionError(404,"mission_not_found","Its mission no longer exists.");
   core.projectIsolation.assertMissionProject(input.projectId,mission.projectId);
-  if(input.requireDigest||input.digest!==undefined){
-    if(typeof input.digest!=="string"||!input.digest)throw new ApprovalDecisionError(428,"digest_required","Send the request's digest with the decision.");
-    if(input.digest!==approvalDigest(request))throw new ApprovalDecisionError(409,"approval_changed","This request changed since you saw it. Look at it again.");
-  }
+  checkDigest(request,input.digest,input.requireDigest);
   if(input.action==="approve")core.executionRuntime.approvals.approve(input.id);
   else core.executionRuntime.approvals.revoke(input.id);
   await core.executionRuntime.persist(mission);
   const continuing=input.action==="approve"&&input.resume?continueAfterApproval(core,supervisor,request,input.projectId,input.log??(()=>undefined)):null;
   const view=approvalViews(core,supervisor).find(v=>v.id===input.id);
   return{approval:view??{...request,approved:core.executionRuntime.approvals.isApproved(input.id)},continuing};
+}
+
+function checkDigest(request:ApprovalRequest,digest:unknown,required:boolean){
+  if(!required&&digest===undefined)return;
+  if(typeof digest!=="string"||!digest)throw new ApprovalDecisionError(428,"digest_required","Send the request's digest with the decision.");
+  if(digest!==approvalDigest(request))throw new ApprovalDecisionError(409,"approval_changed","This request changed since you saw it. Look at it again.");
+}
+
+// ---------------------------------------------------------------- Claude Code / Codex (hooks)
+export type ExternalAgent="claude-code"|"codex";
+const AGENT_LABEL:Record<ExternalAgent,string>={"claude-code":"Claude Code",codex:"Codex"};
+interface ExternalMeta{agent:ExternalAgent;sessionId:string;cwd:string;projectId:string;createdAt:number}
+const external=new Map<string,ExternalMeta>();
+const MAX_EXTERNAL_PENDING=20;
+
+/** The project a folder belongs to: a linked folder, a folder in the projects folder, or "external". */
+export function projectForPath(cwd:string):string{
+  if(!cwd)return "external";
+  const norm=(p:string)=>path.resolve(p).toLowerCase();
+  const target=norm(cwd);
+  for(const l of listLinkedProjects()){const base=norm(l.path);if(target===base||target.startsWith(base+path.sep))return l.projectId.toLowerCase();}
+  const root=process.env.LAYANX_WORKSPACE_ROOT?.trim();
+  if(root){const rel=path.relative(norm(root),target);if(rel&&!rel.startsWith("..")&&!path.isAbsolute(rel))return(rel.split(/[\\/]/)[0]??"external").toLowerCase();}
+  return "external";
+}
+
+/** One line the owner can judge on a phone: the command, the file, the address. */
+export function externalSummary(tool:string,input:unknown):string{
+  const i=(input&&typeof input==="object"?input:{}) as Record<string,unknown>;
+  const pick=(...keys:string[])=>{for(const k of keys){const v=i[k];if(typeof v==="string"&&v.trim())return v.trim();if(Array.isArray(v)&&v.every(x=>typeof x==="string"))return(v as string[]).join(" ");}return"";};
+  const text=pick("command","cmd","file_path","notebook_path","path","url","pattern","query","description")||JSON.stringify(input??"");
+  return text.replace(/\s+/g," ").slice(0,300)||tool;
+}
+
+export function createExternalApproval(core:LayanXCore,input:{agent?:unknown;sessionId?:unknown;cwd?:unknown;tool?:unknown;toolInput?:unknown;waitSeconds?:unknown}):ApprovalRequest&{projectId:string}{
+  const now=Date.now();
+  for(const [id,m] of external)if(now-m.createdAt>3600_000){external.delete(id);}
+  const pending=[...external.keys()].filter(id=>externalStatus(core,id)==="pending").length;
+  if(pending>=MAX_EXTERNAL_PENDING)throw new ApprovalDecisionError(429,"too_many_requests","Too many requests are already waiting for the owner.");
+  const agent:ExternalAgent=input.agent==="codex"?"codex":"claude-code";
+  const tool=(typeof input.tool==="string"&&input.tool.trim()?input.tool.trim():"tool").replace(/[^\w.:-]/g,"").slice(0,80)||"tool";
+  const cwd=typeof input.cwd==="string"?input.cwd.slice(0,400):"";
+  const sessionId=typeof input.sessionId==="string"?input.sessionId.replace(/[^\w.-]/g,"").slice(0,80):"";
+  const wait=Math.min(Math.max(typeof input.waitSeconds==="number"&&Number.isFinite(input.waitSeconds)?input.waitSeconds:120,10),600);
+  const summary=externalSummary(tool,input.toolInput);
+  const request=core.executionRuntime.approvals.create({missionId:`external:${agent}:${sessionId||"session"}`,agentId:agent,tool,action:summary.slice(0,200),
+    permission:"L4_EXECUTE",payloadHash:createHash("sha256").update(JSON.stringify(input.toolInput??null)).digest("hex"),
+    reason:`${AGENT_LABEL[agent]}: ${summary}`.slice(0,500),expiresAt:new Date(now+wait*1000).toISOString()});
+  const projectId=projectForPath(cwd);
+  external.set(request.id,{agent,sessionId,cwd,projectId,createdAt:now});
+  return{...request,projectId};
+}
+
+export function externalStatus(core:LayanXCore,id:string):"pending"|"approved"|"rejected"|"expired"|"unknown"{
+  if(!external.has(id))return "unknown";
+  let r:ApprovalRequest;try{r=core.executionRuntime.approvals.get(id);}catch{return "unknown";}
+  if(core.executionRuntime.approvals.isRejected(id))return "rejected";
+  if(Date.parse(r.expiresAt)<=Date.now())return "expired";
+  return core.executionRuntime.approvals.isApproved(id)?"approved":"pending";
+}
+
+/** The hook waits here (long poll) for the owner's answer. */
+export async function waitExternal(core:LayanXCore,id:string,waitMs:number,closed:()=>boolean=()=>false){
+  const end=Date.now()+Math.min(Math.max(waitMs,0),30_000);
+  let status=externalStatus(core,id);
+  while(status==="pending"&&Date.now()<end&&!closed()){await new Promise(r=>setTimeout(r,400));status=externalStatus(core,id);}
+  return status;
+}
+
+/** The hook gave up (answered in the terminal, or timed out): the request leaves the phone and the island. */
+export function withdrawExternal(core:LayanXCore,id:string):boolean{
+  if(externalStatus(core,id)!=="pending")return false;
+  core.executionRuntime.approvals.revoke(id);
+  return true;
 }
 
 // ---------------------------------------------------------------- feed

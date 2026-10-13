@@ -10,6 +10,7 @@ import type {AccessManager} from "../security/access.js";
 import type {RouteContext} from "../security/local-gateway.js";
 import {lanUrls} from "../security/local-gateway.js";
 import {qrSvg} from "../platform/qr.js";
+import {agentHooksStatus,installAgentHooks,uninstallAgentHooks} from "./agent-hooks.js";
 import {assertSecretName,type SecretStore} from "../security/secret-store.js";
 import {CAPABILITY_GROUPS,ALL_CAPABILITIES} from "../platform/capabilities.js";
 import {recommendedPull} from "../providers/ollama-discovery.js";
@@ -406,6 +407,16 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
       if(!key){ctx.sendJson(400,{ok:false,error:"no_key",message:`Save ${CLOUD_PROVIDERS[id].keyName} first.`});return true;}
       try{const models=await listCloudModels(id,key);ctx.sendJson(200,{ok:true,models:models.slice(0,60)});}
       catch(error){ctx.sendJson(200,{ok:false,message:(error as Error).message});}
+      return true;
+    }
+
+    // Claude Code / Codex: their permission questions through LayanX (phone + fingerprint), settings backed up first.
+    if(path==="/v1/setup/agent-hooks"&&method==="GET"){ctx.sendJson(200,{agents:agentHooksStatus({dataDir:host.dataDir})});return true;}
+    if(path==="/v1/setup/agent-hooks"&&method==="POST"){
+      const body=await ctx.readJson() as {action?:unknown};
+      const port=Number(process.env.LAYANX_PUBLIC_PORT)||host.getSettings().publicPort;
+      const results=body.action==="uninstall"?uninstallAgentHooks({dataDir:host.dataDir}):installAgentHooks({dataDir:host.dataDir,port});
+      ctx.sendJson(200,{ok:!results.some(r=>r.error),results,agents:agentHooksStatus({dataDir:host.dataDir})});
       return true;
     }
 

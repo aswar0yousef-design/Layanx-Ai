@@ -28,7 +28,9 @@ export interface GatewayListener{name:string;publicPort:number;internalPort:numb
 export type Principal=
   |{kind:"owner";via:"session"|"master"}
   |{kind:"device";device:PublicDevice}
-  |{kind:"public";route:string};
+  |{kind:"public";route:string}
+  /** Claude Code / Codex hook on this PC: may only ask the owner (/v1/external/approvals). */
+  |{kind:"hook"};
 
 /**
  * Requests that cannot carry a LayanX session but must still reach the runtime:
@@ -83,6 +85,7 @@ const HOP_BY_HOP=new Set(["connection","keep-alive","proxy-authenticate","proxy-
 const LOOPBACK_HOSTS=new Set(["127.0.0.1","localhost","[::1]","::1"]);
 const UNSAFE_METHODS=new Set(["POST","PUT","PATCH","DELETE"]);
 const MAX_JSON_BYTES=64*1024;
+const HOOK_ROUTES=/^\/v1\/external\/approvals(\/[A-Za-z0-9-]+)?$/;
 
 export function isLoopbackAddress(address:string|undefined):boolean{
   if(!address)return false;
@@ -217,6 +220,7 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
     if(token){
       const device=options.access.verifyDeviceToken(token);
       if(device)return{principal:{kind:"device",device}};
+      if(loopback&&options.access.verifyHookToken(token))return{principal:{kind:"hook"}};
       if(loopback&&options.access.isMasterToken(token))return{principal:{kind:"owner",via:"master"}};
       // An old token saved by a page (localStorage) must not lock out a valid local session.
       if(!loopback||!options.access.verifySession(readCookie(req.headers.cookie,cookieName)??""))
@@ -252,7 +256,7 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
     if(authHeader==="authorization")out.authorization=`Bearer ${options.internalToken}`;
     else out[authHeader]=options.internalToken;
     out["x-layanx-api-token"]=options.internalToken;
-    out["x-layanx-principal"]=principal.kind==="device"?`device:${principal.device.id}`:principal.kind==="public"?`public:${principal.route}`:"owner";
+    out["x-layanx-principal"]=principal.kind==="device"?`device:${principal.device.id}`:principal.kind==="public"?`public:${principal.route}`:principal.kind==="hook"?"hook":"owner";
     out["x-forwarded-for"]=req.socket.remoteAddress??"";
     out["x-forwarded-proto"]=(req.socket as tls.TLSSocket).encrypted===true?"https":"http";
     return out;
@@ -313,6 +317,8 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
       readJson:()=>readJson(req),
       sendJson:(status,body,headers={})=>sendJson(res,status,body,{...cors,...headers})
     };
+    // A hook token reaches exactly one place, before any other route sees it.
+    if(principal?.kind==="hook"&&!HOOK_ROUTES.test(url.pathname)){ctx.sendJson(403,{error:"forbidden",message:"This token can only ask the owner for approval."});return;}
     try{
       if(await options.handleOwnRoute(ctx))return;
     }catch(err){
@@ -346,6 +352,7 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
     const origin=typeof req.headers.origin==="string"?req.headers.origin:undefined;
     const {principal}=authenticate(req,loopback,origin,url);
     if(!principal)return reject("401 Unauthorized");
+    if(principal.kind==="hook")return reject("403 Forbidden");
     url.searchParams.delete("layanx_token");
     const path=url.pathname+(url.search||"");
     const upstream=net.connect(listener.internalPort,"127.0.0.1",()=>{
