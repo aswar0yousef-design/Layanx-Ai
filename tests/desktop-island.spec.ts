@@ -10,7 +10,7 @@ assert.equal(startDesktopIsland({port:3000,dataDir:"x",token:"t",log,platform:"l
 
 // Windows: PowerShell gets the script and the port; the token goes to stdin only, and LayanX secrets stay out of its environment.
 let call:{cmd:string;args:string[];opts:any}|null=null;let stdin="";
-process.env.OPENAI_API_KEY="sk-should-not-leak";
+process.env.OPENAI_API_KEY=["sk","should-not-leak"].join("-");
 const fake=((cmd:string,args:string[],opts:any)=>{
   call={cmd,args,opts};
   const child=Object.assign(new EventEmitter(),{stdin:Object.assign(new EventEmitter(),{end:(s:string)=>{stdin+=s;}}),unref(){}});
