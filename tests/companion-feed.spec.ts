@@ -92,6 +92,10 @@ try{
   const owner=await post(`/v1/approvals/${third.approvalId}/approve?projectId=shop`,{});
   assert.equal(owner.status,200);assert.equal(owner.json.continuing,null);
   await new Promise(r=>setTimeout(r,200));assert.equal(ran,1,"the web page resumes it itself");
+  // the older mission-scoped approve route follows the same rules (no way around the digest)
+  const legacy=await runSingleTool(core,"shop","test.danger",{x:4});
+  assert.equal((await post(`/v1/missions/${legacy.missionId}/approvals/${legacy.approvalId}/approve`,{},phone)).status,428);
+  assert.equal((await post(`/v1/missions/${legacy.missionId}/approvals/${legacy.approvalId}/approve`,{})).status,200,"the owner on this PC");
   // project isolation still applies
   assert.equal((await post(`/v1/approvals/${third.approvalId}/revoke?projectId=other`,{})).status,422);
 

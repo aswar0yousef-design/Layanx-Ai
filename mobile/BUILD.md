@@ -1,63 +1,50 @@
-# Build LayanX Remote APK
+# Build the LayanX Remote APK
 
-The mobile client is already merged into `main`.
+## On GitHub (no Expo account, nothing to install)
 
-## 1. Install Node.js
+Every push that touches `mobile/` runs **LayanX Mobile CI**:
 
-Use Node.js 22 or newer.
+1. `mobile`: install, TypeScript check, JavaScript bundle (`expo export`).
+2. `apk`: `expo prebuild` + `./gradlew assembleRelease` (arm64-v8a, armeabi-v7a, x86_64).
+   It then signs the APK and checks its manifest: the watch service, the approval screen, the
+   voice screen, the tile, the widget and their permissions must be present, and there must be
+   no cleartext traffic and no microphone permission.
+3. `launch`: installs the APK on an Android 14 emulator and fails on any crash at start.
 
-## 2. Install Expo/EAS
+Download the artifact `LayanX-Remote-apk` from the run and install `LayanX-Remote.apk` on the phone.
+
+### Signing
+
+Without secrets, the APK is signed with the standard React Native debug key. That key is the same
+on every build, so new builds install over old ones and the pairing survives. To sign with your
+own key, add two repository secrets (Settings → Secrets and variables → Actions):
+
+- `LAYANX_ANDROID_KEYSTORE`: your keystore file in base64 (`base64 -w0 layanx.jks`), key alias `layanx`.
+- `LAYANX_ANDROID_KEYSTORE_PASSWORD`: its password.
+
+Create one with:
 
 ```bash
-npm install
-npm install -g eas-cli
+keytool -genkeypair -v -keystore layanx.jks -alias layanx -keyalg RSA -keysize 3072 -validity 10000
 ```
 
-## 3. Enter the mobile project
+Moving from the debug key to your own key needs one uninstall of the old app (Android refuses an
+update signed by a different key).
+
+## Locally
+
+Node.js 22, JDK 17 and the Android SDK:
 
 ```bash
 cd mobile
+npm install
+npx expo prebuild --platform android --no-install
+cd android && ./gradlew assembleRelease
+# android/app/build/outputs/apk/release/app-release.apk
 ```
 
-## 4. Authenticate EAS
+## Pair the phone
 
-```bash
-eas login
-```
-
-## 5. Build an installable Android APK
-
-```bash
-eas build --platform android --profile preview
-```
-
-The `preview` profile in `mobile/eas.json` is configured with:
-
-- Android
-- internal distribution
-- APK output
-
-When the build finishes, EAS provides the APK build page/link.
-
-## 6. Install on the phone
-
-Open the EAS build link on the Android phone and install the APK. Android may ask permission to install an app from that source.
-
-## 7. Connect LayanX
-
-On first launch enter:
-
-- **API URL**: the reachable HTTPS address of the LayanX API
-- **Bearer token**: the API authentication token
-- **Project ID**
-- **Mission ID** when monitoring a specific mission
-
-The token is stored using Expo SecureStore and is not committed to Git.
-
-## Important network requirement
-
-If the LayanX API is running only on the development PC as `localhost`, the phone cannot use `http://localhost` to reach that PC.
-
-For testing on the same Wi-Fi, expose the API on the computer's LAN address and configure the API to listen on an appropriate interface. For remote access outside the local network, use a secured HTTPS endpoint/reverse proxy or a VPN/private network.
-
-Do not expose an unauthenticated LayanX API directly to the public internet.
+On the PC: setup page → allow phone access → restart → **Create pairing code**. In the app:
+Settings → **Pair by scanning the QR code**. Then turn on **Follow in the background** and allow
+notifications and background work.

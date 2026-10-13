@@ -68,6 +68,15 @@ export class AcpAgent{
   private seq=0;
   constructor(private readonly api:LayanxApi,private readonly send:(message:Json)=>void,private readonly opts:{version:string;pollMs?:number;maxSteps?:number;log?:(s:string)=>void}={version:"0"}){}
 
+  /** With a paired-device token LayanX needs the digest of the request the editor showed. */
+  private async approvalDigest(approvalId:string,projectId:string):Promise<string>{
+    try{
+      const r=await this.api.request("GET",`/v1/approvals?projectId=${encodeURIComponent(projectId)}`);
+      const found=(r.data?.approvals??[]).find((a:{id?:string})=>a.id===approvalId) as {digest?:string}|undefined;
+      return typeof found?.digest==="string"?found.digest:"";
+    }catch{return"";}
+  }
+
   /** One incoming JSON-RPC message (request, notification or a response to our own request). */
   async handle(msg:Json):Promise<void>{
     if(!msg||msg.jsonrpc!=="2.0"){this.send({jsonrpc:"2.0",id:msg?.id??null,error:{code:-32600,message:"Invalid request"}});return;}
@@ -189,14 +198,15 @@ export class AcpAgent{
         const toolCall={toolCallId:id,title:`${planned.tool}${planned.action?` (${planned.action})`:""}${planned.reason?`: ${planned.reason}`:""}`,kind:toolKind(planned.tool),status:"pending",rawInput:planned.payload??{}};
         if(!calls.has(id)){calls.set(id,planned.tool);this.update(s,{sessionUpdate:"tool_call",...toolCall});}
         const answer=await this.askPermission(s,toolCall);
-        if(s.cancelled||answer?.outcome?.outcome!=="selected"){await this.api.request("POST",`/v1/approvals/${encodeURIComponent(result.approvalId)}/revoke?projectId=${encodeURIComponent(s.projectId)}`,{}).catch(()=>undefined);return{stopReason:"cancelled"};}
+        const digest=await this.approvalDigest(result.approvalId,s.projectId);
+        if(s.cancelled||answer?.outcome?.outcome!=="selected"){await this.api.request("POST",`/v1/approvals/${encodeURIComponent(result.approvalId)}/revoke?projectId=${encodeURIComponent(s.projectId)}`,digest?{digest}:{}).catch(()=>undefined);return{stopReason:"cancelled"};}
         if(answer.outcome.optionId!=="approve"){
-          await this.api.request("POST",`/v1/approvals/${encodeURIComponent(result.approvalId)}/revoke?projectId=${encodeURIComponent(s.projectId)}`,{}).catch(()=>undefined);
+          await this.api.request("POST",`/v1/approvals/${encodeURIComponent(result.approvalId)}/revoke?projectId=${encodeURIComponent(s.projectId)}`,digest?{digest}:{}).catch(()=>undefined);
           this.update(s,{sessionUpdate:"tool_call_update",toolCallId:id,status:"failed",content:[{type:"content",content:{type:"text",text:"Declined in the editor."}}]});
           this.say(s,`Stopped before ${planned.tool}: you declined it.`);
           return{stopReason:"end_turn"};
         }
-        const granted=await this.api.request("POST",`/v1/approvals/${encodeURIComponent(result.approvalId)}/approve?projectId=${encodeURIComponent(s.projectId)}`,{});
+        const granted=await this.api.request("POST",`/v1/approvals/${encodeURIComponent(result.approvalId)}/approve?projectId=${encodeURIComponent(s.projectId)}`,digest?{digest}:{});
         if(granted.status>=400){this.say(s,`LayanX did not accept the approval: ${granted.data?.error??granted.status}`);return{stopReason:"end_turn"};}
         approvals[index]=result.approvalId;
         continue;

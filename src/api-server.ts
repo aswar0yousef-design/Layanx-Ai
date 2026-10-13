@@ -824,15 +824,22 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   }
   if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/missions\/[^/]+\/approvals\/[^/]+\/approve$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
-   const parts=request.url.split("/");
-   const missionId=parts[3] as string,approvalId=parts[5] as string;
-   if(!options.core.missions.get(missionId)){json(response,404,{ok:false,error:"mission_not_found"});return;}
+   const parts=(request.url.split("?")[0]??"").split("/");
+   const missionId=decodeURIComponent(parts[3]??""),approvalId=decodeURIComponent(parts[5]??"");
+   const mission=options.core.missions.get(missionId);
+   if(!mission){json(response,404,{ok:false,error:"mission_not_found"});return;}
    try{
     const approval=options.core.executionRuntime.approvals.get(approvalId);
     if(approval.missionId!==missionId){json(response,403,{ok:false,error:"approval scope mismatch"});return;}
-    options.core.executionRuntime.approvals.approve(approvalId);
+    // Same rules as /v1/approvals/:id/approve: one decision path (a phone sends the digest).
+    const input=await body(request,max).catch(()=>({} as Record<string,unknown>));
+    await decideApproval(options.core,supervisor,{id:approvalId,projectId:mission.projectId??"default",action:"approve",digest:input.digest,
+     requireDigest:String(request.headers["x-layanx-principal"]??"").startsWith("device:"),resume:false});
     json(response,200,{ok:true,approvalId});
-   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"approval failed"});}
+   }catch(error){
+    if(error instanceof ApprovalDecisionError){json(response,error.status,{ok:false,error:error.code,message:error.message});return;}
+    json(response,422,{ok:false,error:error instanceof Error?error.message:"approval failed"});
+   }
    return;
   }
   if(request.method==="GET"&&request.url==="/v1/traces"){
