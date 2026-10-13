@@ -12,7 +12,9 @@ export class FileLock{
         let released=false;
         return async()=>{if(released)return;released=true;await rm(this.lockPath,{recursive:true,force:true});};
       }catch(error){
-        if((error as NodeJS.ErrnoException).code!=="EEXIST")throw error;
+        // Windows answers EPERM/EACCES while the previous holder's lock folder is still being deleted: busy, not broken.
+        const code=(error as NodeJS.ErrnoException).code;
+        if(code!=="EEXIST"&&!(process.platform==="win32"&&(code==="EPERM"||code==="EACCES")))throw error;
         if(Date.now()-started>=this.timeoutMs)throw new Error("Storage lock acquisition timed out.");
         await new Promise(resolve=>setTimeout(resolve,this.retryMs));
       }

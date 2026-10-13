@@ -101,9 +101,9 @@ function Draw([System.Drawing.Graphics]$g, [int]$w, [int]$h, $view) {
   $rtl = [System.Windows.Forms.TextFormatFlags]::Right -bor [System.Windows.Forms.TextFormatFlags]::RightToLeft -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::SingleLine
   $ltr = [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::SingleLine
   $sideW = if ($view.Side) { 132 } else { 0 }
-  [System.Windows.Forms.TextRenderer]::DrawText($g, $view.Main, $FontMain, (New-Object System.Drawing.Rectangle((30 + $sideW), 0, ($w - 62 - $sideW), $Collapsed)), $C.Ink, $rtl)
-  if ($view.Side) { [System.Windows.Forms.TextRenderer]::DrawText($g, $view.Side, $FontSmall, (New-Object System.Drawing.Rectangle(28, 0, $sideW, $Collapsed)), $C.Soft, $ltr) }
-  [System.Windows.Forms.TextRenderer]::DrawText($g, '×', $FontMain, (New-Object System.Drawing.Rectangle(8, 0, 18, $Collapsed)), $C.Soft, $ltr)
+  [System.Windows.Forms.TextRenderer]::DrawText($g, $view.Main, $FontMain, ([System.Drawing.Rectangle]::new((30 + $sideW), 0, ($w - 62 - $sideW), $Collapsed)), $C.Ink, $rtl)
+  if ($view.Side) { [System.Windows.Forms.TextRenderer]::DrawText($g, $view.Side, $FontSmall, ([System.Drawing.Rectangle]::new(28, 0, $sideW, $Collapsed)), $C.Soft, $ltr) }
+  [System.Windows.Forms.TextRenderer]::DrawText($g, '×', $FontMain, ([System.Drawing.Rectangle]::new(8, 0, 18, $Collapsed)), $C.Soft, $ltr)
   if ($h -le $Collapsed) { return }
   $y = $Collapsed + 2
   if ($view.Progress -ge 0) {
@@ -112,7 +112,7 @@ function Draw([System.Drawing.Graphics]$g, [int]$w, [int]$h, $view) {
     $y += 10
   }
   foreach ($line in $view.Lines) {
-    [System.Windows.Forms.TextRenderer]::DrawText($g, $line, $FontSmall, (New-Object System.Drawing.Rectangle(16, $y, $w - 32, 20)), $C.Soft, $rtl)
+    [System.Windows.Forms.TextRenderer]::DrawText($g, $line, $FontSmall, ([System.Drawing.Rectangle]::new(16, $y, $w - 32, 20)), $C.Soft, $rtl)
     $y += 20
   }
 }
@@ -161,7 +161,7 @@ $form.Text = 'LayanX'
 $form.Width = $Width
 $form.Height = $Collapsed
 $area = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-$form.Location = New-Object System.Drawing.Point(($area.Left + [int](($area.Width - $Width) / 2)), ($area.Top + 8))
+$form.Location = [System.Drawing.Point]::new(($area.Left + [int](($area.Width - $Width) / 2)), ($area.Top + 8))
 $prop = $form.GetType().GetProperty('DoubleBuffered', [System.Reflection.BindingFlags]'NonPublic,Instance')
 $prop.SetValue($form, $true, $null)
 
@@ -195,7 +195,7 @@ $form.Add_MouseMove({ param($s, $e)
   if ($script:drag -and $e.Button -eq 'Left') {
     $dx = $e.X - $script:drag.X; $dy = $e.Y - $script:drag.Y
     if ([Math]::Abs($dx) + [Math]::Abs($dy) -gt 3) { $script:moved = $true }
-    if ($script:moved) { $form.Location = New-Object System.Drawing.Point(($form.Left + $dx), ($form.Top + $dy)) }
+    if ($script:moved) { $form.Location = [System.Drawing.Point]::new(($form.Left + $dx), ($form.Top + $dy)) }
   }
 })
 $form.Add_MouseUp({ param($s, $e)
