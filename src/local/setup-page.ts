@@ -76,6 +76,8 @@ aside h2{margin-bottom:.5rem}
 .code{font-family:var(--mono);font-size:clamp(1.9rem,4.2vw,2.5rem);font-weight:600;letter-spacing:.06em;white-space:nowrap;direction:ltr;text-align:center;margin:1.25rem 0 .25rem;line-height:1.1}
 .code-meta{text-align:center;color:var(--soft);font-size:.9rem;margin:0}
 .urls{list-style:none;padding:0;margin:.75rem 0 0;text-align:center}
+.qr{display:block;margin:1rem auto .25rem;width:min(100%,240px);height:auto;image-rendering:pixelated;border-radius:8px}
+.fp{direction:ltr;text-align:center;font-family:var(--mono);font-size:.72rem;word-break:break-all}
 .urls li{font-family:var(--mono);direction:ltr}
 .urls li.note{font-family:var(--sans);direction:rtl}
 .note{font-size:.85rem;color:var(--soft);margin:1rem 0 0}
@@ -202,10 +204,13 @@ aside h2{margin-bottom:.5rem}
       <label class="switch"><input type="checkbox" id="mobile-toggle"><span>السماح للهاتف بالاتصال عبر شبكة Wi-Fi نفسها</span></label>
       <button class="primary" id="pair-start">إنشاء رمز ربط</button>
       <div id="pair-box" hidden>
+        <img class="qr" id="pair-qr" alt="رمز QR لربط الهاتف" hidden>
+        <p class="note" id="pair-qr-note" hidden>في تطبيق LayanX على الهاتف: «ربط بمسح QR» ثم وجّه الكاميرا إلى هذا المربع.</p>
         <p class="code" id="pair-code"></p>
         <p class="code-meta" id="pair-expiry"></p>
-        <p class="note">في تطبيق LayanX على الهاتف أدخل أحد العناوين ثم الرمز:</p>
+        <p class="note">أو أدخل أحد العناوين ثم الرمز يدوياً (عناوين Tailscale فقط؛ داخل المنزل استخدم QR):</p>
         <ul class="urls" id="pair-urls"></ul>
+        <p class="note fp" id="pair-fp" hidden></p>
       </div>
       <p class="note" id="mobile-note"></p>
       <ul class="devices" id="devices"></ul>
@@ -328,7 +333,7 @@ function render(){
   $("pair-start").disabled=false;
   if(s.acp)$("acp-zed").textContent=JSON.stringify(s.acp.zed,null,2);
   
-  $("mobile-note").textContent=s.gateway.mobileAccess&&!s.gateway.mobileActive?"فُعّل الاتصال من الهاتف. أعد التشغيل ليبدأ العمل.":s.gateway.mobileAccess?"الاتصال داخل الشبكة المحلية غير مشفّر. استخدمه على شبكة منزلية موثوقة فقط.":"VS Code على هذا الجهاز يُربط مباشرة برمز. الهاتف يحتاج تفعيل الخيار أعلاه أو «التحكم من أي مكان».";
+  $("mobile-note").textContent=s.gateway.mobileAccess&&!s.gateway.mobileActive?"فُعّل الاتصال من الهاتف. أعد التشغيل ليبدأ العمل.":s.gateway.mobileAccess?(s.gateway.tlsFingerprint?"الاتصال داخل الشبكة المحلية مشفّر (TLS) بشهادة هذا الجهاز، ويثبّت الهاتف بصمتها عند مسح رمز QR.":"تعذر تجهيز شهادة التشفير، لذلك يُرفض اتصال الهاتف داخل الشبكة. راجع السجل."):"VS Code على هذا الجهاز يُربط مباشرة برمز. الهاتف يحتاج تفعيل الخيار أعلاه أو «التحكم من أي مكان».";
   const devices=$("devices");devices.replaceChildren();
   for(const d of s.devices){
     const b=el("button",{class:"danger",text:"إلغاء الربط"});
@@ -354,9 +359,12 @@ $("pair-start").addEventListener("click",async()=>{
     const p=await api("/v1/pair/start","POST",{});
     $("pair-box").hidden=false;$("pair-code").textContent=p.code;
     $("pair-urls").replaceChildren(...p.urls.map(u=>el("li",{text:u})));
+    const qr=$("pair-qr");qr.hidden=!p.qrSvg;$("pair-qr-note").hidden=!p.qrSvg;
+    if(p.qrSvg)qr.src="data:image/svg+xml;base64,"+btoa(p.qrSvg);
+    $("pair-fp").hidden=!p.fingerprint;$("pair-fp").textContent=p.fingerprint?"بصمة الشهادة: "+p.fingerprint.match(/.{1,4}/g).join(" "):"";
     clearInterval(pairTimer);
     const end=Date.parse(p.expiresAt);
-    const tick=()=>{const left=Math.max(0,Math.round((end-Date.now())/1000));$("pair-expiry").textContent=left?("ينتهي خلال "+Math.floor(left/60)+":"+String(left%60).padStart(2,"0")):"انتهت صلاحية الرمز. أنشئ رمزاً جديداً.";if(!left){clearInterval(pairTimer);$("pair-code").textContent="————";}};
+    const tick=()=>{const left=Math.max(0,Math.round((end-Date.now())/1000));$("pair-expiry").textContent=left?("ينتهي خلال "+Math.floor(left/60)+":"+String(left%60).padStart(2,"0")):"انتهت صلاحية الرمز. أنشئ رمزاً جديداً.";if(!left){clearInterval(pairTimer);$("pair-code").textContent="————";$("pair-qr").hidden=true;}};
     tick();pairTimer=setInterval(tick,1000);
   }catch(e){toast(e.message);}
 });

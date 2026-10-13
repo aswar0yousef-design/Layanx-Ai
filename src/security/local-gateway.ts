@@ -96,8 +96,8 @@ export function localInterfaceAddresses():string[]{
   return out;
 }
 
-export function lanUrls(port:number,addresses:string[]=localInterfaceAddresses()):string[]{
-  return addresses.map(address=>`http://${address}:${port}`);
+export function lanUrls(port:number,addresses:string[]=localInterfaceAddresses(),scheme:"http"|"https"="http"):string[]{
+  return addresses.map(address=>`${scheme}://${address}:${port}`);
 }
 
 function parseHost(value:string|undefined):{hostname:string;port:number|null}|null{
