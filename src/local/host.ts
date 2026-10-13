@@ -16,6 +16,9 @@ import {buildModelPlan,currentMachine,detectGpuVramBytes,recommendNumCtx,type Mo
 import {consoleLogger,installLogTee,type Logger} from "./log.js";
 import {CLOUD_PROVIDERS,loadSettings,saveSettings,type CloudProviderId,type LocalSettings} from "./settings.js";
 import {createSetupRoutes} from "./setup-routes.js";
+import {LinkIdentity} from "../security/phone-link.js";
+import {ensureHookRelay,ensureIsland,startIsland,writeHookConfig} from "../companion/windows-helpers.js";
+import type {ChildProcess} from "node:child_process";
 
 export interface LocalContext{
   paths:DataPaths;
@@ -28,6 +31,17 @@ export interface LocalContext{
 }
 
 const SESSION_COOKIE="layanx_session";
+
+/** This PC's key for the encrypted phone link: 32 random bytes kept in the secret store (DPAPI on Windows). */
+async function phoneLinkIdentity(store:SecretStore):Promise<LinkIdentity>{
+  const existing=await ensureGeneratedSecret(store,"LAYANX_PHONE_LINK_KEY");
+  try{return new LinkIdentity(existing);}catch{
+    // Out of the curve's range (about 1 in 4 billion): make another one. Phones pair again.
+    const fresh=crypto.randomBytes(32).toString("base64url");
+    await store.set("LAYANX_PHONE_LINK_KEY",fresh);
+    return new LinkIdentity(fresh);
+  }
+}
 
 function loadInstallId(file:string):string{
   const existing=readJsonFile<{installId?:string}>(file,{}).installId;
@@ -212,11 +226,15 @@ export async function runLocalHost():Promise<void>{
   let restartFlag=false;
   let runtime:{state:"starting"|"running"|"failed";error?:string}={state:"starting"};
   let gateway:GatewayHandle|null=null;
+  let island:ChildProcess|null=null;
+  // Claude Code / Codex hooks reach LayanX with this token (hook.json, rewritten at every start).
+  const hookToken="lxh_"+crypto.randomBytes(24).toString("base64url");
 
   const cleanup=()=>{try{fs.rmSync(paths.pidFile,{force:true});}catch{}};
   const shutdown=async(code=0)=>{
     log("info","shutting down");
     setTimeout(()=>{cleanup();process.exit(code);},3000).unref();
+    try{island?.kill();}catch{}
     try{await gateway?.close();}catch{}
     cleanup();
     process.exit(code);
@@ -232,6 +250,11 @@ export async function runLocalHost():Promise<void>{
   };
 
   const routes=createSetupRoutes({
+    linkIdentity:await phoneLinkIdentity(ctx.store),
+    internalToken:ctx.apiToken,
+    internalAuthHeader:env.LAYANX_GATEWAY_AUTH_HEADER||"authorization",
+    hookToken,
+    hookRelay:()=>ensureHookRelay(paths.dataDir),
     installId:ctx.installId,
     dataDir:paths.dataDir,
     store:ctx.store,
@@ -267,6 +290,9 @@ export async function runLocalHost():Promise<void>{
     log
   });
   if(mobileActive)log("warn","phone access is ON: the gateway listens on the LAN. Only paired devices are accepted.");
+  writeHookConfig(paths.dataDir,publicPort,hookToken);
+  // Keep the relay current, so hooks installed earlier keep working after an update.
+  if(process.platform==="win32")void ensureHookRelay(paths.dataDir).catch(e=>log("warn",`hook relay: ${(e as Error).message}`));
 
   writeFileAtomic(paths.pidFile,String(process.pid));
   process.on("exit",cleanup);
@@ -287,6 +313,11 @@ export async function runLocalHost():Promise<void>{
     log("error",`runtime failed to start: ${(error as Error).stack??error}`);
   }
   log(runtime.state==="running"?"info":"error",`runtime ${runtime.state}${runtime.error?": "+runtime.error:""}`);
+  // The screen-top island (Windows): jobs, approvals and coding agents at a glance.
+  if(process.platform==="win32"&&settings.island&&runtime.state==="running"&&env.LAYANX_ISLAND!=="off"){
+    void ensureIsland(paths.dataDir).then(exe=>{island=startIsland(exe,publicPort,access.issueAppToken("island"),m=>log("info",m));})
+      .catch(e=>log("warn",`island: ${(e as Error).message}`));
+  }
   access.issueLaunchTicket();
   log("info",`ready: http://127.0.0.1:${publicPort}/setup`);
 }

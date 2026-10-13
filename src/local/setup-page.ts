@@ -152,6 +152,7 @@ aside h2{margin-bottom:.5rem}
         <p class="lead">مساعد صوتي بالعربية والإنجليزية: ناده باسمه، اطلب منه مهمة أو تقريراً، ويرد عليك بالصوت. يعمل في Microsoft Edge أو Google Chrome.</p>
         <div class="roles">
           <label><input type="checkbox" id="assistant-open"> فتح المساعد تلقائياً عند تشغيل LayanX</label>
+          <label><input type="checkbox" id="island-toggle"> الجزيرة أعلى الشاشة: المهام والموافقات ووكلاء البرمجة في نظرة (Windows)</label>
         </div>
         <form class="row" id="briefing-form" style="margin-top:.75rem">
           <div><label for="briefing-time">وقت التقرير اليومي (اتركه فارغاً لإيقافه)</label><input id="briefing-time" type="time" dir="ltr"></div>
@@ -183,6 +184,15 @@ aside h2{margin-bottom:.5rem}
       </section>
 
       <section>
+        <h2>Claude Code و Codex</h2>
+        <p class="lead">إن كنت تستخدم Claude Code أو Codex في الطرفية، يرى LayanX ما يفعلانه، وتُجيب على طلبات الصلاحية من الهاتف أو من الجزيرة أعلى الشاشة. إن لم تُجب، أو كان LayanX مغلقاً، يسألك الوكيل في الطرفية كالمعتاد.</p>
+        <p class="note">قبل أي تعديل تُعرض عليك التغييرات بالضبط في ملف إعداداته، وتُحفظ نسخة احتياطية منه، ولا يُلمس أي إعداد آخر. Codex يطلب منك مرة واحدة الوثوق بها عبر الأمر <code>/hooks</code>.</p>
+        <div id="hooks-list"></div>
+        <pre id="hooks-diff" dir="ltr" hidden style="max-height:320px;overflow:auto;background:#0b1020;color:#d7e3ff;padding:10px;border-radius:8px;font-size:.8rem"></pre>
+        <p id="hooks-actions" hidden><button class="primary" id="hooks-apply">تطبيق هذا التغيير</button> <button id="hooks-cancel">إلغاء</button></p>
+      </section>
+
+      <section>
         <h2>مجلد مشاريعك</h2>
         <p class="lead">يعمل الوكيل على الملفات وGit والاختبارات داخل هذا المجلد فقط. كل مجلد بداخله مشروع؛ اكتب اسمه في خانة «المشروع» في لوحة التحكم.</p>
         <form class="row" id="ws-form"><div><label for="ws-root">المسار</label><input id="ws-root" dir="ltr" placeholder="C:\\Users\\you\\Projects"></div><div></div><button type="submit">حفظ</button></form>
@@ -202,9 +212,11 @@ aside h2{margin-bottom:.5rem}
       <label class="switch"><input type="checkbox" id="mobile-toggle"><span>السماح للهاتف بالاتصال عبر شبكة Wi-Fi نفسها</span></label>
       <button class="primary" id="pair-start">إنشاء رمز ربط</button>
       <div id="pair-box" hidden>
+        <p class="note">في تطبيق LayanX على الهاتف اضغط «ربط بمسح الرمز» ووجّه الكاميرا إلى هذا المربع:</p>
+        <img id="pair-qr" alt="رمز الربط" width="240" height="240" style="display:block;margin:8px auto;background:#fff;border-radius:8px;max-width:100%;height:auto">
         <p class="code" id="pair-code"></p>
         <p class="code-meta" id="pair-expiry"></p>
-        <p class="note">في تطبيق LayanX على الهاتف أدخل أحد العناوين ثم الرمز:</p>
+        <p class="note">الاتصال بين الهاتف وهذا الجهاز مشفّر من طرف إلى طرف بمفتاح هذا الجهاز الموجود داخل الرمز، حتى على شبكة Wi-Fi عادية. عناوين هذا الجهاز:</p>
         <ul class="urls" id="pair-urls"></ul>
       </div>
       <p class="note" id="mobile-note"></p>
@@ -315,6 +327,8 @@ function render(){
   $("known-secrets").replaceChildren(...s.secrets.known.map(n=>el("option",{value:n})));
 
   $("assistant-open").checked=!!s.assistant.openOnStart;
+  $("island-toggle").checked=s.island!==false;
+  loadHooks();
   $("briefing-time").value=s.assistant.briefingTime||"";
   $("stt-line").textContent=s.assistant.stt==="local"?"التعرف على الكلام: محلي على جهازك عبر Whisper (لا يخرج صوتك من الجهاز).":"التعرف على الكلام: من المتصفح. لتشغيله محلياً على جهازك ثبّت Whisper بتشغيل ⁦scripts\\\\windows\\\\install-whisper.ps1⁩ ثم أعد التشغيل.";
   const roles=$("roles");roles.replaceChildren();
@@ -328,7 +342,7 @@ function render(){
   $("pair-start").disabled=false;
   if(s.acp)$("acp-zed").textContent=JSON.stringify(s.acp.zed,null,2);
   
-  $("mobile-note").textContent=s.gateway.mobileAccess&&!s.gateway.mobileActive?"فُعّل الاتصال من الهاتف. أعد التشغيل ليبدأ العمل.":s.gateway.mobileAccess?"الاتصال داخل الشبكة المحلية غير مشفّر. استخدمه على شبكة منزلية موثوقة فقط.":"VS Code على هذا الجهاز يُربط مباشرة برمز. الهاتف يحتاج تفعيل الخيار أعلاه أو «التحكم من أي مكان».";
+  $("mobile-note").textContent=s.gateway.mobileAccess&&!s.gateway.mobileActive?"فُعّل الاتصال من الهاتف. أعد التشغيل ليبدأ العمل.":s.gateway.mobileAccess?"الهاتف يتصل عبر رابط مشفّر من طرف إلى طرف (يُربط بمسح رمز QR). الهواتف المربوطة بالطريقة القديمة تحتاج تحديث التطبيق والربط من جديد.":"VS Code على هذا الجهاز يُربط مباشرة برمز. الهاتف يحتاج تفعيل الخيار أعلاه أو «التحكم من أي مكان».";
   const devices=$("devices");devices.replaceChildren();
   for(const d of s.devices){
     const b=el("button",{class:"danger",text:"إلغاء الربط"});
@@ -344,6 +358,38 @@ function render(){
 }
 
 $("assistant-open").addEventListener("change",async e=>{try{await api("/v1/setup/settings","PUT",{openAssistantOnStart:e.target.checked});await load();toast(e.target.checked?"سيُفتح المساعد عند التشغيل":"لن يُفتح المساعد تلقائياً");}catch(err){e.target.checked=!e.target.checked;toast(err.message);}});
+$("island-toggle").addEventListener("change",async e=>{try{await api("/v1/setup/settings","PUT",{island:e.target.checked});await load();toast(e.target.checked?"تظهر الجزيرة بعد إعادة التشغيل":"تختفي الجزيرة بعد إعادة التشغيل");}catch(err){e.target.checked=!e.target.checked;toast(err.message);}});
+let hookPlan=null;
+async function loadHooks(){
+  try{
+    const d=await api("/v1/setup/agent-hooks","GET");
+    const box=$("hooks-list");box.replaceChildren();
+    if(!d.windows){box.append(el("p",{class:"note",text:"متاح على Windows فقط."}));return;}
+    for(const a of d.agents){
+      const name=a.agent==="claude"?"Claude Code":"Codex";
+      const b=el("button",{text:a.installed?"إزالة الربط":"ربط "+name});
+      b.addEventListener("click",()=>planHooks(a.agent,a.installed?"remove":"install"));
+      box.append(el("div",{class:"cloud-row"},el("div",{},el("b",{text:name}),el("small",{text:(a.installed?"مربوط · ":"غير مربوط · ")+a.file})),b));
+    }
+  }catch(e){toast(e.message);}
+}
+async function planHooks(agent,action){
+  try{
+    const d=await api("/v1/setup/agent-hooks/plan","POST",{agent,action});
+    hookPlan=d.plan;
+    if(d.plan.error){toast(d.plan.error);return;}
+    if(!d.plan.changes){toast("لا يوجد ما يُغيَّر");return;}
+    $("hooks-diff").textContent=(d.plan.backup?"# نسخة احتياطية: "+d.plan.backup+"\\n":"")+"# "+d.plan.file+"\\n"+d.plan.diff;
+    $("hooks-diff").hidden=false;$("hooks-actions").hidden=false;
+  }catch(e){toast(e.message);}
+}
+$("hooks-cancel").addEventListener("click",()=>{hookPlan=null;$("hooks-diff").hidden=true;$("hooks-actions").hidden=true;});
+$("hooks-apply").addEventListener("click",async()=>{
+  if(!hookPlan)return;
+  try{const r=await api("/v1/setup/agent-hooks/apply","POST",{agent:hookPlan.agent,action:hookPlan.action,fingerprint:hookPlan.fingerprint});toast(r.backup?"طُبّق التغيير. النسخة الاحتياطية: "+r.backup:"طُبّق التغيير");}
+  catch(e){toast(e.message);}
+  hookPlan=null;$("hooks-diff").hidden=true;$("hooks-actions").hidden=true;loadHooks();
+});
 $("briefing-form").addEventListener("submit",async e=>{e.preventDefault();try{await api("/v1/setup/settings","PUT",{briefingTime:$("briefing-time").value||""});await load();toast($("briefing-time").value?"سيُجهَّز التقرير يومياً الساعة "+$("briefing-time").value:"أُوقف التقرير اليومي");}catch(err){toast(err.message);}});
 $("refresh-models").addEventListener("click",async e=>{e.target.disabled=true;try{await api("/v1/setup/ollama/refresh","POST",{});await load();toast("فُحصت النماذج");}catch(err){toast(err.message);}finally{e.target.disabled=false;}});
 $("secret-form").addEventListener("submit",async e=>{e.preventDefault();const name=$("secret-name").value.trim(),value=$("secret-value").value;try{await api("/v1/setup/secrets","PUT",{name,value});$("secret-value").value="";await load();toast("حُفظ "+name);}catch(err){toast(err.message);}});
@@ -353,10 +399,11 @@ $("pair-start").addEventListener("click",async()=>{
   try{
     const p=await api("/v1/pair/start","POST",{});
     $("pair-box").hidden=false;$("pair-code").textContent=p.code;
+    if(p.qrSvg){$("pair-qr").hidden=false;$("pair-qr").src="data:image/svg+xml;base64,"+btoa(p.qrSvg);}else $("pair-qr").hidden=true;
     $("pair-urls").replaceChildren(...p.urls.map(u=>el("li",{text:u})));
     clearInterval(pairTimer);
     const end=Date.parse(p.expiresAt);
-    const tick=()=>{const left=Math.max(0,Math.round((end-Date.now())/1000));$("pair-expiry").textContent=left?("ينتهي خلال "+Math.floor(left/60)+":"+String(left%60).padStart(2,"0")):"انتهت صلاحية الرمز. أنشئ رمزاً جديداً.";if(!left){clearInterval(pairTimer);$("pair-code").textContent="————";}};
+    const tick=()=>{const left=Math.max(0,Math.round((end-Date.now())/1000));$("pair-expiry").textContent=left?("ينتهي خلال "+Math.floor(left/60)+":"+String(left%60).padStart(2,"0")):"انتهت صلاحية الرمز. أنشئ رمزاً جديداً.";if(!left){clearInterval(pairTimer);$("pair-code").textContent="————";$("pair-qr").hidden=true;}};
     tick();pairTimer=setInterval(tick,1000);
   }catch(e){toast(e.message);}
 });

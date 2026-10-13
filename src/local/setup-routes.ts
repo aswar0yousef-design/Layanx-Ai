@@ -8,7 +8,12 @@ import crypto from "node:crypto";
 import os from "node:os";
 import type {AccessManager} from "../security/access.js";
 import type {RouteContext} from "../security/local-gateway.js";
-import {lanUrls} from "../security/local-gateway.js";
+import {forwardInternal,lanUrls} from "../security/local-gateway.js";
+import {createLinkRoutes} from "../security/link-routes.js";
+import {applyHooks,installed as hooksInstalled,hookFile,planHooks} from "../companion/agent-hook-install.js";
+import {HOOK_AGENTS,type HookAgent} from "../companion/agent-hooks.js";
+import {pairingUri,type LinkIdentity} from "../security/phone-link.js";
+import {qrSvg} from "../platform/qr.js";
 import {assertSecretName,type SecretStore} from "../security/secret-store.js";
 import {CAPABILITY_GROUPS,ALL_CAPABILITIES} from "../platform/capabilities.js";
 import {recommendedPull} from "../providers/ollama-discovery.js";
@@ -72,7 +77,7 @@ async function listCloudModels(id:CloudProviderId,key:string):Promise<string[]>{
 import {renderSetupPage} from "./setup-page.js";
 
 /** Managed by LayanX itself; shown but never editable from the UI. */
-export const SYSTEM_SECRETS=new Set(["LAYANX_API_TOKEN","LAYANX_SECRET_VAULT_KEY"]);
+export const SYSTEM_SECRETS=new Set(["LAYANX_API_TOKEN","LAYANX_SECRET_VAULT_KEY","LAYANX_PHONE_LINK_KEY"]);
 
 export const KNOWN_SECRETS=[
   "OPENAI_API_KEY","ANTHROPIC_API_KEY","GEMINI_API_KEY","GROQ_API_KEY","OPENROUTER_API_KEY","MISTRAL_API_KEY","COHERE_API_KEY","HF_TOKEN",
@@ -95,6 +100,13 @@ export interface SetupHost{
   /** Remote (anywhere) access is active right now. */
   remoteActive?:boolean;
   appliedModels:Record<string,string|undefined>;
+  /** This PC's key for the encrypted phone link, and the runtime's token for forwarding to it. */
+  linkIdentity?:LinkIdentity;
+  internalToken?:string;
+  internalAuthHeader?:string;
+  /** The coding-agent hook relay's token (hook.json), and the relay itself (compiled on Windows). */
+  hookToken?:string;
+  hookRelay?:()=>Promise<string>;
   runtimeState():{state:"starting"|"running"|"failed";error?:string};
   markRestartRequired():void;
   restartRequired():boolean;
@@ -116,9 +128,29 @@ function loopbackOnly(ctx:RouteContext):boolean{
 }
 
 export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<boolean>{
+  const link=host.linkIdentity&&host.internalToken?createLinkRoutes({access:host.access,identity:host.linkIdentity,installId:host.installId,computer:os.hostname(),
+    addresses:()=>phoneAddresses(host,host.getSettings()),internalToken:host.internalToken,...(host.internalAuthHeader?{authHeader:host.internalAuthHeader}:{})}):null;
   return async ctx=>{
     const {method,url}=ctx;
     const path=url.pathname.replace(/\/+$/,"")||"/";
+    if(link&&path.startsWith("/v1/link")&&await link(ctx))return true;
+
+    // Claude Code / Codex hooks: the relay on this PC, with the token from hook.json. Answers are plain
+    // text (what the agent reads); any problem answers nothing, so the agent asks in its own terminal.
+    if(path==="/v1/agents/hook"&&method==="POST"){
+      const given=String(ctx.req.headers["x-layanx-hook-token"]??"");
+      const ok=ctx.loopback&&!!host.hookToken&&!!host.internalToken&&given.length===host.hookToken.length&&crypto.timingSafeEqual(Buffer.from(given),Buffer.from(host.hookToken));
+      if(!ok){ctx.sendJson(403,{error:"forbidden"});return true;}
+      let out="";
+      try{
+        const body=await ctx.readJson(1024*1024);
+        const r=await forwardInternal({port:ctx.listener.internalPort,internalToken:host.internalToken!,...(host.internalAuthHeader?{authHeader:host.internalAuthHeader}:{}),principal:"hook",
+          method:"POST",path:"/v1/agents/hook?agent="+encodeURIComponent(ctx.url.searchParams.get("agent")??""),contentType:"application/json",body:Buffer.from(JSON.stringify(body)),timeoutMs:112_000});
+        if(r.status===200)out=r.body.toString("utf8");
+      }catch{}
+      ctx.res.writeHead(200,{"content-type":"text/plain; charset=utf-8","cache-control":"no-store"});ctx.res.end(out);
+      return true;
+    }
 
     if(path==="/v1/gateway/health"&&method==="GET"){ctx.sendJson(200,{ok:true,app:"layanx-gateway"});return true;}
     if(path==="/favicon.ico"&&method==="GET"){ctx.res.writeHead(204,{"cache-control":"max-age=86400"});ctx.res.end();return true;}
@@ -155,6 +187,8 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
     }
 
     if(path==="/v1/pair/complete"&&method==="POST"){
+      // The old (bearer token) pairing is not offered on the Wi-Fi: the token would travel in clear.
+      if(ctx.plainLan){ctx.sendJson(426,{error:"update_app",message:"Update the LayanX app: pairing at home now uses the encrypted link (scan the QR code)."});return true;}
       const body=await ctx.readJson() as {code?:unknown;deviceName?:unknown};
       const result=host.access.completePairing(body.code,body.deviceName,ctx.remoteAddress);
       if(!result.ok){ctx.sendJson(result.status,{error:"pairing_failed",message:result.error});return true;}
@@ -291,6 +325,7 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
         appliedModels:host.appliedModels,
         pinnedModels:settings.pinnedModels,
         assistant:{openOnStart:settings.openAssistantOnStart,briefingTime:settings.briefingTime,stt:process.env.LAYANX_STT_BASE_URL?"local":"browser"},
+        island:settings.island,
         cloud:{
           policy:settings.cloud.policy,
           order:settings.cloud.order,
@@ -362,10 +397,33 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
       return true;
     }
 
+    // Hooks for Claude Code and Codex: the owner sees the exact change (diff) before anything is written.
+    if(path==="/v1/setup/agent-hooks"&&method==="GET"){
+      ctx.sendJson(200,{ok:true,windows:process.platform==="win32",agents:HOOK_AGENTS.map(agent=>({agent,file:hookFile(agent),installed:hooksInstalled(agent)}))});
+      return true;
+    }
+    if((path==="/v1/setup/agent-hooks/plan"||path==="/v1/setup/agent-hooks/apply")&&method==="POST"){
+      const body=await ctx.readJson() as {agent?:unknown;action?:unknown;fingerprint?:unknown};
+      const agent=String(body.agent??"") as HookAgent;const action=body.action==="remove"?"remove":"install";
+      if(!HOOK_AGENTS.includes(agent)){ctx.sendJson(400,{error:"bad_agent"});return true;}
+      let exe:string;
+      try{
+        if(!host.hookRelay)throw new Error("The hook relay is not available.");
+        exe=await host.hookRelay();
+      }catch(error){ctx.sendJson(422,{error:"relay_unavailable",message:(error as Error).message});return true;}
+      if(path.endsWith("/plan")){ctx.sendJson(200,{ok:true,plan:planHooks(agent,action,exe)});return true;}
+      const r=applyHooks(agent,action,exe,String(body.fingerprint??""));
+      ctx.sendJson(r.ok?200:409,r.ok?r:{error:"not_applied",message:r.error});
+      return true;
+    }
+
     if(path==="/v1/pair/start"&&method==="POST"){
       const pairing=host.access.startPairing();
       const settings=host.getSettings();
-      ctx.sendJson(200,{...pairing,urls:await phoneAddresses(host,settings),computer:os.hostname()});
+      const urls=await phoneAddresses(host,settings);
+      // The QR code carries this PC's public key: the phone pins it, so nothing on the Wi-Fi can pose as this PC.
+      const uri=host.linkIdentity?pairingUri({publicKey:host.linkIdentity.publicKey,code:pairing.code,computer:os.hostname(),urls}):null;
+      ctx.sendJson(200,{...pairing,urls,computer:os.hostname(),...(uri?{uri,qrSvg:qrSvg(uri)}:{})});
       return true;
     }
 

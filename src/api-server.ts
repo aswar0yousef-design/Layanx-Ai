@@ -39,6 +39,8 @@ import {CodeReviewAgent} from "./core/code-review-agent.js";
 import {SecurityReviewAgent} from "./core/security-review-agent.js";
 import {assertSafeGitRef} from "./platform/git-ref.js";
 import {safeChildEnv} from "./platform/safe-env.js";
+import {AgentHookHub,HOOK_AGENTS,type HookAgent} from "./companion/agent-hooks.js";
+import {Companion,approvalDigest} from "./companion/companion.js";
 export interface RuntimeApiOptions{core:LayanXCore;business:BusinessManager;ads?:AdsManager;media?:MediaManager;growth?:GrowthEngine;channels?:MessagingChannels;persistence?:RuntimePersistence;host?:string;port?:number;maxBodyBytes?:number;token?:string;requireToken?:boolean;}
 function json(response:ServerResponse,status:number,body:unknown){response.statusCode=status;response.setHeader("content-type","application/json; charset=utf-8");response.end(JSON.stringify(body));}
 async function rawBody(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}return Buffer.concat(chunks);}
@@ -56,6 +58,22 @@ export function startRuntimeApi(options:RuntimeApiOptions){
  // Autonomous supervisor: finishes goals end to end; resumes unfinished jobs after a restart.
  const supervisor=new Supervisor(coreSupervisorDeps(options.core),{file:joinPath(process.env.LAYANX_STORE_DIR?.trim()||".layanx","supervisor-jobs.json")});
  supervisor.start();
+ // What the phone, the screen-top island and the dashboard watch, and the one path for their decisions.
+ const hooks=new AgentHookHub();
+ const companion=new Companion({
+  approvals:options.core.executionRuntime.approvals,
+  mission:id=>options.core.missions.get(id),
+  persist:async id=>{const m=options.core.missions.get(id);if(m)await options.core.executionRuntime.persist(m);},
+  cancelMission:(id,projectId)=>control.cancel(id,projectId),
+  jobs:()=>supervisor.list(),
+  cancelJob:id=>{supervisor.cancel(id);},
+  resumeTool:(projectId,tool,payload,resume)=>runSingleTool(options.core,projectId,tool,payload,resume),
+  resumeAgent:(missionId,projectId,approvalIds)=>options.core.executeAgentLoop(missionId,projectId,10,approvalIds,"core"),
+  hub:hooks,
+  load:()=>systemLoad(),
+  scalper:()=>options.core.toolAdapters.has("trading.mt5.autoscalper.status")?options.core.toolAdapters.get("trading.mt5.autoscalper.status").execute({tool:"trading.mt5.autoscalper.status",payload:{}} as never):undefined,
+  log:m=>console.warn(m)
+ });
  const oauth=new OAuthConnectionCenter();
  const business=options.business??new BusinessManager(); const ads=options.ads??new AdsManager(business.store); const media=options.media??new MediaManager(); const growth=options.growth;
  const server=createServer(async(request,response)=>{
@@ -297,6 +315,29 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    json(response,200,{ok:true,enabled:Boolean(briefing),time:process.env.LAYANX_BRIEFING_TIME?.trim()||null,briefing:briefing?.latest()??null});return;
   }
   // How busy the PC is (CPU, RAM, GPU, loaded Ollama models), for the dashboard.
+  if(request.url?.split("?")[0]==="/v1/companion/feed"&&request.method==="GET"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const q=new URL(request.url,"http://localhost").searchParams;
+   json(response,200,{ok:true,...await companion.feed(q.get("since")??undefined,Math.min(Number(q.get("wait")??0)||0,25)*1000)});return;
+  }
+  if(request.url==="/v1/companion/decide"&&request.method==="POST"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const input=await body(request,max);
+    const r=await companion.decide({id:String(input.id??""),digest:String(input.digest??""),decision:input.decision==="approve"?"approve":input.decision==="deny"?"deny":"bad" as never,wait:input.wait===true});
+    json(response,r.ok?200:409,r);
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"decide_failed"});}
+   return;
+  }
+  // Coding agents' hooks (Claude Code, Codex): only through the gateway, which checked the relay's token.
+  if(request.url?.split("?")[0]==="/v1/agents/hook"&&request.method==="POST"){
+   if(!authorized(request,options.token)||request.headers["x-layanx-principal"]!=="hook"){json(response,403,{ok:false,error:"forbidden"});return;}
+   const agent=new URL(request.url,"http://localhost").searchParams.get("agent")??"";
+   let payload:Record<string,unknown>;
+   try{payload=await body(request,1024*1024);}catch{response.statusCode=400;response.end("");return;}
+   const out=HOOK_AGENTS.includes(agent as HookAgent)?await hooks.handle(agent as HookAgent,payload):"";
+   response.statusCode=200;response.setHeader("content-type","text/plain; charset=utf-8");response.end(out);return;
+  }
   if(request.method==="GET"&&request.url==="/v1/system/load"){json(response,200,{ok:true,...await systemLoad()});return;}
   if(request.method==="GET"&&request.url==="/v1/cloud/usage"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
@@ -310,7 +351,9 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{
     const contentType=typeof request.headers["content-type"]==="string"?request.headers["content-type"]:"audio/webm";
-    const filename=typeof request.headers["x-layanx-filename"]==="string"?request.headers["x-layanx-filename"]:"voice.webm";
+    // The phone sends WAV through the encrypted link (no file name header there).
+    const ext=/wav/.test(contentType)?"wav":/mp4|m4a|aac/.test(contentType)?"m4a":/ogg/.test(contentType)?"ogg":/mpeg/.test(contentType)?"mp3":"webm";
+    const filename=typeof request.headers["x-layanx-filename"]==="string"?request.headers["x-layanx-filename"]:"voice."+ext;
     const language=typeof request.headers["x-layanx-language"]==="string"?request.headers["x-layanx-language"]:undefined;
     const audio=await rawBody(request,Math.max(max,16*1024*1024));
     if(!audio.length){json(response,400,{ok:false,error:"audio body is required"});return;}
@@ -388,7 +431,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     const status=options.core.missions.get(approval.missionId)?.status;
     // A finished mission withdraws its approvals; they are history, not something to decide.
     const pending=!approved&&!["completed","cancelled","failed"].includes(String(status));
-    return{...approval,approved,pending};
+    return{...approval,approved,pending,digest:approvalDigest(approval)};
    });
    json(response,200,{ok:true,approvals});return;
   }

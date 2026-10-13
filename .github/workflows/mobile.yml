@@ -2,7 +2,7 @@ name: LayanX Mobile CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "wip/**"]
     paths:
       - "mobile/**"
       - ".github/workflows/mobile.yml"
@@ -11,6 +11,7 @@ on:
     paths:
       - "mobile/**"
       - ".github/workflows/mobile.yml"
+  workflow_dispatch:
 
 jobs:
   mobile:
@@ -26,3 +27,46 @@ jobs:
       - run: npm install
       - run: npx tsc --noEmit
       - run: npx expo export --platform android
+
+  # The installable Android app: the JavaScript bundle plus the native part (encrypted link, live
+  # notifications, fingerprint approvals, quick tile, widget, voice). Signed with the standard debug key
+  # of the Expo template, so each new APK installs over the previous one.
+  android-apk:
+    needs: mobile
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm install
+      - run: npx expo prebuild --platform android --no-install --clean
+      - name: Build the APK (arm64 phones)
+        working-directory: mobile/android
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a
+      - name: Check the APK carries the LayanX native parts
+        working-directory: mobile/android
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          ls -l "$APK"
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/aapt2" dump xmltree --file AndroidManifest.xml "$APK" > manifest.txt
+          for name in CompanionService ApproveActivity DecisionReceiver BootReceiver AskTileService StatusWidget usesCleartextTraffic specialUse layanx; do
+            grep -q "$name" manifest.txt || { echo "missing in manifest: $name"; exit 1; }
+          done
+          "$BT/apksigner" verify --print-certs "$APK" | head -3
+          cp "$APK" ../LayanX-Remote.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LayanX-Remote-apk
+          path: mobile/LayanX-Remote.apk
+          retention-days: 30

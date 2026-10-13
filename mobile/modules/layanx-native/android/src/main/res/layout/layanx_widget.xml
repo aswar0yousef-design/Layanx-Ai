@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/layanx_widget_root"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="14dp" android:background="@drawable/layanx_widget_bg"
+    android:layoutDirection="rtl">
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+    <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_layanx" android:contentDescription="@null"/>
+    <TextView android:id="@+id/layanx_widget_title" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+        android:layout_marginStart="8dp" android:textColor="#EEF2FA" android:textSize="15sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" android:text="LayanX"/>
+    <TextView android:id="@+id/layanx_widget_badge" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:textColor="#2A1A02" android:background="#F59E0B" android:paddingStart="7dp" android:paddingEnd="7dp" android:textSize="12sp" android:textStyle="bold" android:visibility="gone"/>
+  </LinearLayout>
+  <TextView android:id="@+id/layanx_widget_line1" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp"
+      android:textColor="#EEF2FA" android:textSize="13sp" android:maxLines="2" android:ellipsize="end" android:text="@string/layanx_widget_waiting"/>
+  <TextView android:id="@+id/layanx_widget_line2" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp"
+      android:textColor="#9AA6C2" android:textSize="12sp" android:maxLines="1" android:ellipsize="end"/>
+  <TextView android:id="@+id/layanx_widget_ask" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp"
+      android:textColor="#FFFFFF" android:background="#6D4AFF" android:paddingStart="12dp" android:paddingEnd="12dp" android:paddingTop="6dp" android:paddingBottom="6dp"
+      android:textSize="13sp" android:textStyle="bold" android:text="@string/layanx_ask"/>
+</LinearLayout>

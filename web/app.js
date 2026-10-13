@@ -229,19 +229,22 @@ function projectPath(){
 const vscodeUrl=()=>{const p=projectPath();return p?"vscode://file/"+encodeURI(p.replace(/\\/g,"/")):"#";};
 
 // ------------------------------------------------------------------ approvals
+/** The same decision path as the phone and the screen-top island (/v1/companion/decide): the server
+ *  approves, then continues the job, the one tool or the agent loop; deny stops that work. */
+async function digestOf(id,projectId=project()){
+ let a=S.approvals.find(x=>x.id===id);
+ if(!a?.digest){const d=await safe(api("/v1/approvals?projectId="+encodeURIComponent(projectId)),null);if(d)S.approvals=d.approvals||[];a=S.approvals.find(x=>x.id===id);}
+ return a?.digest||"";
+}
 async function decideApproval(a,action,onResult){
- await api("/v1/approvals/"+encodeURIComponent(a.id)+"/"+action+"?projectId="+encodeURIComponent(project()),{method:"POST",body:{}});
- if(action!=="approve"){toast(t("rejected"));return null;}
- const d=a.missionId?await missionDetail(a.missionId):null;
- const index=typeof a.index==="number"?a.index:(d?.mission?.tools||[]).findIndex(x=>x.tool===a.tool&&x.action===a.action);
- if(!a.missionId||index<0){toast(t("approved"));return null;}
- if((d?.mission?.goal||"").startsWith("run terminal command")||(d?.mission?.tools||[]).length===1&&d?.mission?.tools?.[0]?.reason==="owner quick action"){
-  const r=await api("/v1/tools/run",{method:"POST",body:{tool:d.mission.tools[0].tool,payload:d.mission.tools[0].payload||{},projectId:project(),missionId:a.missionId,approvalId:a.id},allow:[422]});
-  onResult&&onResult(r);return r;
- }
- toast(t("resuming"));
- const r=await api("/v1/missions/"+encodeURIComponent(a.missionId)+"/agent-loop",{method:"POST",body:{projectId:project(),maxSteps:10,agentId:"core",approvalIds:{[index]:a.id}},allow:[422]});
- toast(r.completed?t("completedVerified"):r.paused?t("needAnother"):t("stoppedMsg")+": "+reasonText(r.reason||r.status));
+ const decision=action==="approve"?"approve":"deny";
+ if(decision==="approve")toast(t("resuming"));
+ const d=await api("/v1/companion/decide",{method:"POST",body:{id:a.id,digest:a.digest||await digestOf(a.id),decision,wait:true},allow:[409]});
+ if(!d.ok){toast(reasonText(d.error||""));return null;}
+ if(decision!=="approve"){toast(t("rejected"));return null;}
+ const r=d.result;
+ if(!r){toast(t("approved"));return null;}
+ if(!r.tool)toast(r.completed?t("completedVerified"):r.paused?t("needAnother"):t("stoppedMsg")+": "+reasonText(r.reason||r.status));
  onResult&&onResult(r);return r;
 }
 
@@ -280,7 +283,7 @@ async function noteForRunningJob(text){
 function jobView(j,full){
  const done=j.milestones.filter(m=>m.status==="done").length,total=j.milestones.length;const pct=total?Math.round(done/total*100):0;
  const box=el("div",{class:"term",hidden:!full,style:"max-height:16rem"},(j.log||[]).slice(full?-60:-8).map(l=>el("div",{class:l.level==="error"?"bad":l.level==="warn"?"wait":"",text:(l.at||"").slice(11,19)+"  "+l.msg})));
- const approve=j.status==="waiting_approval"&&j.waiting?el("button",{class:"btn warn small",onclick:async e=>{e.target.disabled=true;try{await api("/v1/approvals/"+encodeURIComponent(j.waiting.approvalId)+"/approve?projectId="+encodeURIComponent(j.projectId),{method:"POST",body:{}});toast(t("approved"));}catch(err){toast(err.message);}}},t("approve")):null;
+ const approve=j.status==="waiting_approval"&&j.waiting?el("button",{class:"btn warn small",onclick:async e=>{e.target.disabled=true;try{const d=await api("/v1/companion/decide",{method:"POST",body:{id:j.waiting.approvalId,digest:await digestOf(j.waiting.approvalId,j.projectId),decision:"approve"},allow:[409]});toast(d.ok?t("approved"):reasonText(d.error||""));}catch(err){toast(err.message);}}},t("approve")):null;
  const stopped=JOB_STOPPED.includes(j.status);const stuck=j.milestones[Math.min(j.current,Math.max(total-1,0))];
  const summary=j.status==="completed"?el("div",{class:"job-sum ok",text:"✓ "+t("jobDoneSummary",{a:done,b:total})}):stopped&&stuck?el("div",{class:"job-sum bad",dir:"auto",text:t("jobStoppedAt",{n:Math.min(j.current+1,total),title:stuck.title})}):null;
  const notes=(j.notes||[]).length||j.openWhenDone?el("div",{class:"small muted",dir:"auto",style:"margin-top:.3rem"},(j.notes||[]).length?t("ownerNotesL")+": "+j.notes.slice(-3).join(" · "):"",j.openWhenDone&&JOB_ACTIVE.includes(j.status)?((j.notes||[]).length?" — ":"")+t("willOpenL"):""):null;

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="layanx_tile_label">اسأل LayanX</string>
+  <string name="layanx_ask">اسأل بالصوت</string>
+  <string name="layanx_widget_description">حالة LayanX: المهام والموافقات وحالة الكمبيوتر</string>
+  <string name="layanx_widget_waiting">فعّل «التحديثات المباشرة» في التطبيق</string>
+  <string name="layanx_live_service">يتابع LayanX على كمبيوترك: المهام والموافقات</string>
+</resources>

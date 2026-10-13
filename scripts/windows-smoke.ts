@@ -173,6 +173,65 @@ class T{static int Main(string[] a){
     return `net ${result.metrics.netProfit}, ${result.metrics.pctPositiveMonths}% positive months, ${result.durationSeconds}s`;
   }finally{rmSync(root,{recursive:true,force:true});}
 });
+await check("Claude Code / Codex hook relay: compiled, run through Git Bash and cmd as the agents do, silent when LayanX is closed",async()=>{
+  const {ensureHookRelay,writeHookConfig}=await import("../src/companion/windows-helpers.js");
+  const {hookCommand}=await import("../src/companion/agent-hook-install.js");
+  const http=await import("node:http");const {existsSync}=await import("node:fs");
+  const dataDir=mkdtempSync(join(tmpdir(),"lx relay data "));
+  const seen:Array<{token:string;url:string;body:string}>=[];
+  const server=http.createServer((req,res)=>{const c:Buffer[]=[];req.on("data",x=>c.push(x));req.on("end",()=>{seen.push({token:String(req.headers["x-layanx-hook-token"]),url:String(req.url),body:Buffer.concat(c).toString("utf8")});res.writeHead(200,{"content-type":"text/plain"});res.end(JSON.stringify({hookSpecificOutput:{hookEventName:"PermissionRequest",decision:{behavior:"allow"}}}));});});
+  await new Promise<void>(r=>server.listen(0,"127.0.0.1",()=>r()));
+  try{
+    const exe=await ensureHookRelay(dataDir);
+    const token="lxh_"+"s".repeat(32);
+    writeHookConfig(dataDir,(server.address() as {port:number}).port,token);
+    const payload=JSON.stringify({session_id:"x",hook_event_name:"PermissionRequest",tool_name:"Bash",tool_input:{command:"echo مرحبا"}});
+    // Claude Code runs the command through Git Bash.
+    const bash=["C:\\Program Files\\Git\\bin\\bash.exe","C:\\Program Files\\Git\\usr\\bin\\bash.exe"].find(p=>existsSync(p));
+    assert.ok(bash,"Git Bash present on the runner");
+    const viaBash=await new Promise<string>((resolve,reject)=>{const c=spawn(bash!,["-c",hookCommand("claude",exe,"win32")]);let o="";c.stdout.on("data",d=>o+=d);c.on("error",reject);c.on("close",()=>resolve(o));c.stdin.end(payload);});
+    assert.equal(JSON.parse(viaBash).hookSpecificOutput.decision.behavior,"allow","printed what LayanX answered");
+    assert.equal(seen[0]!.token,token);assert.equal(seen[0]!.url,"/v1/agents/hook?agent=claude");
+    assert.equal(JSON.parse(seen[0]!.body).tool_input.command,"echo مرحبا","Arabic intact");
+    // Codex runs it through cmd /C.
+    const viaCmd=await new Promise<string>((resolve,reject)=>{const c=spawn(process.env.ComSpec??"cmd.exe",["/d","/c",hookCommand("codex",exe,"win32")],{windowsVerbatimArguments:true});let o="";c.stdout.on("data",d=>o+=d);c.on("error",reject);c.on("close",()=>resolve(o));c.stdin.end(payload);});
+    assert.match(viaCmd,/"allow"/);assert.equal(seen[1]!.url,"/v1/agents/hook?agent=codex");
+    // LayanX closed: nothing printed, exit 0, quickly.
+    server.close();
+    const t0=Date.now();
+    const closed=spawnSync(exe,["claude"],{input:payload,encoding:"utf8",timeout:20_000});
+    assert.equal(closed.status,0);assert.equal(closed.stdout,"");assert.ok(Date.now()-t0<10_000,"did not hold the agent up");
+    return `relay ${exe.length} chars path; bash + cmd ok; closed -> silent in ${Date.now()-t0} ms`;
+  }finally{server.close();rmSync(dataDir,{recursive:true,force:true});}
+});
+await check("screen-top island: compiled (WinForms, Arabic), draws a feed, reads the real feed with its token",async()=>{
+  const {ensureIsland}=await import("../src/companion/windows-helpers.js");
+  const http=await import("node:http");const {existsSync,statSync}=await import("node:fs");
+  const dataDir=mkdtempSync(join(tmpdir(),"lx-island-"));
+  const feed={ok:true,v:"abc",approvals:[{id:"a1",kind:"layanx",digest:"d",tool:"terminal.exec",title:"بناء متجر إلكتروني",detail:"npm install"}],
+    jobs:[{id:"j1",goal:"متجر لمحل كمبيوترات",status:"running",milestone:{index:2,total:5,title:"صفحة المنتجات"},progress:0.4}],
+    agents:[{id:"s1",agent:"claude",project:"shop",status:"working",lastTool:"Edit",lastDetail:"src/pay.ts"}],pc:{cpu:23.6,ram:61,gpu:40}};
+  const server=http.createServer((req,res)=>{
+    if(req.headers.authorization!=="Bearer lxa_island_test"){res.writeHead(401);res.end();return;}
+    res.writeHead(200,{"content-type":"application/json; charset=utf-8"});res.end(JSON.stringify(feed));
+  });
+  await new Promise<void>(r=>server.listen(0,"127.0.0.1",()=>r()));
+  try{
+    const exe=await ensureIsland(dataDir);
+    const feedFile=join(dataDir,"feed.json");writeFileSync(feedFile,JSON.stringify(feed));
+    const png=join(dataDir,"island.png");
+    const drawn=spawnSync(exe,["--selftest",png,"--feed",feedFile],{encoding:"utf8",timeout:60_000});
+    assert.equal(drawn.status,0,"selftest: "+drawn.stdout+drawn.stderr);
+    assert.ok(existsSync(png)&&statSync(png).size>2000,"an image was drawn");
+    assert.match(drawn.stdout,/approvals=1 jobs=1 agents=1/);
+    const port=String((server.address() as {port:number}).port);
+    const once=spawnSync(exe,["--once","--port",port],{input:"lxa_island_test\n",encoding:"utf8",timeout:60_000});
+    assert.equal(once.status,0,"once: "+once.stdout+once.stderr);assert.match(once.stdout,/^ok approvals=1 jobs=1 agents=1/);
+    const wrong=spawnSync(exe,["--once","--port",port],{input:"lxa_wrong\n",encoding:"utf8",timeout:60_000});
+    assert.match(wrong.stdout,/error 401/,"a wrong token is refused");
+    return drawn.stdout.trim();
+  }finally{server.close();rmSync(dataDir,{recursive:true,force:true});}
+});
 // ---------------------------------------------------------------- restricted isolation (no Docker, no admin)
 group="sandbox";
 if(!only||only.includes("sandbox")){

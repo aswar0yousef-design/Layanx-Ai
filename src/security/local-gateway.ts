@@ -20,7 +20,7 @@ import {isTailscaleAddress} from "../platform/tailscale.js";
 export interface GatewayListener{name:string;publicPort:number;internalPort:number}
 
 export type Principal=
-  |{kind:"owner";via:"session"|"master"}
+  |{kind:"owner";via:"session"|"master"|"app"}
   |{kind:"device";device:PublicDevice}
   |{kind:"public";route:string};
 
@@ -43,9 +43,12 @@ export interface RouteContext{
   method:string;
   principal:Principal|null;
   loopback:boolean;
+  /** On the home network over plain HTTP (not this PC, not Tailscale, not an HTTPS tunnel). */
+  plainLan:boolean;
   remoteAddress:string;
   listener:GatewayListener;
-  readJson():Promise<unknown>;
+  /** Body limit: 64 KB unless a route asks for more. */
+  readJson(maxBytes?:number):Promise<unknown>;
   sendJson(status:number,body:unknown,headers?:http.OutgoingHttpHeaders):void;
 }
 
@@ -148,7 +151,7 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
    * so a remote hostname (*.ts.net or a configured tunnel host) makes the request REMOTE:
    * no browser sessions, no master token, no setup pages; paired devices only.
    */
-  function admit(req:http.IncomingMessage):{ok:true;loopback:boolean;hostname:string}|{ok:false;status:number;error:string;message:string}{
+  function admit(req:http.IncomingMessage):{ok:true;loopback:boolean;plainLan:boolean;hostname:string}|{ok:false;status:number;error:string;message:string}{
     const remoteAddress=req.socket.remoteAddress??"";
     const socketLoopback=isLoopback(remoteAddress);
     const host=parseHost(req.headers.host);
@@ -156,7 +159,7 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
     const proxiedRemote=host.hostname.endsWith(".ts.net")||(options.remoteHosts??[]).includes(host.hostname);
     if(proxiedRemote){
       if(!options.remoteAccess)return{ok:false,status:403,error:"remote_disabled",message:"Control from anywhere is turned off on this computer."};
-      return{ok:true,loopback:false,hostname:host.hostname};
+      return{ok:true,loopback:false,plainLan:false,hostname:host.hostname};
     }
     if(!socketLoopback){
       const tailnet=isTailscaleAddress(remoteAddress);
@@ -164,7 +167,7 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
         return{ok:false,status:403,error:"lan_disabled",message:tailnet?"Control from anywhere is turned off on this computer.":"Phone access is turned off on this computer."};
     }
     if(!hostAllowed(host.hostname,socketLoopback))return{ok:false,status:421,error:"host_not_allowed",message:"Unexpected Host header."};
-    return{ok:true,loopback:socketLoopback,hostname:host.hostname};
+    return{ok:true,loopback:socketLoopback,plainLan:!socketLoopback&&!isTailscaleAddress(remoteAddress),hostname:host.hostname};
   }
 
   function hostAllowed(hostname:string,loopback:boolean):boolean{
@@ -179,14 +182,14 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
     res.end(JSON.stringify(body));
   }
 
-  function readJson(req:http.IncomingMessage):Promise<unknown>{
+  function readJson(req:http.IncomingMessage,maxBytes=MAX_JSON_BYTES):Promise<unknown>{
     return new Promise((resolve,reject)=>{
       const type=String(req.headers["content-type"]??"").split(";")[0]?.trim().toLowerCase();
       if(type!=="application/json"){reject(Object.assign(new Error("Content-Type must be application/json."),{status:415}));return;}
       let size=0;const chunks:Buffer[]=[];
       req.on("data",(chunk:Buffer)=>{
         size+=chunk.length;
-        if(size>MAX_JSON_BYTES){reject(Object.assign(new Error("Request body too large."),{status:413}));req.destroy();return;}
+        if(size>maxBytes){reject(Object.assign(new Error("Request body too large."),{status:413}));req.destroy();return;}
         chunks.push(chunk);
       });
       req.on("end",()=>{
@@ -198,13 +201,18 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
     });
   }
 
-  function authenticate(req:http.IncomingMessage,loopback:boolean,origin:string|undefined,allowQueryToken:URL|null):{principal:Principal|null;error?:string}{
+  function authenticate(req:http.IncomingMessage,loopback:boolean,origin:string|undefined,allowQueryToken:URL|null,plainLan=false):{principal:Principal|null;error?:string}{
     let token=bearerToken(req);
     if(!token&&allowQueryToken){token=allowQueryToken.searchParams.get("layanx_token");}
     if(token){
       const device=options.access.verifyDeviceToken(token);
+      // A bearer token over plain HTTP on the Wi-Fi can be read by anyone on that network: the old link
+      // still works through Tailscale or an HTTPS tunnel, and at home the encrypted link (/v1/link) is used.
+      if(device&&plainLan)return{principal:null,error:"This phone uses the old unencrypted link. Update the LayanX app and pair it again (encrypted link)."};
       if(device)return{principal:{kind:"device",device}};
       if(loopback&&options.access.isMasterToken(token))return{principal:{kind:"owner",via:"master"}};
+      // A program LayanX started on this PC (the island): loopback only, never accepted from the network.
+      if(loopback&&options.access.verifyAppToken(token))return{principal:{kind:"owner",via:"app"}};
       // An old token saved by a page (localStorage) must not lock out a valid local session.
       if(!loopback||!options.access.verifySession(readCookie(req.headers.cookie,cookieName)??""))
         return{principal:null,error:"Invalid or revoked token."};
@@ -290,14 +298,18 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
       sendJson(res,403,{error:"cors_blocked"});return;
     }
 
-    const {principal,error}=authenticate(req,loopback,origin,null);
+    const {principal,error}=authenticate(req,loopback,origin,null,admission.plainLan);
     const cors:http.OutgoingHttpHeaders={};
     if(origin&&trusted){cors["access-control-allow-origin"]=origin;cors["access-control-allow-credentials"]="true";cors.vary="Origin";}
     else if(origin&&principal?.kind==="device"){cors["access-control-allow-origin"]=origin;cors.vary="Origin";}
 
+    // The island may read the companion feed and answer approvals; nothing else (no setup, no secrets).
+    if(principal?.kind==="owner"&&principal.via==="app"&&!url.pathname.startsWith("/v1/companion/")){
+      sendJson(res,403,{error:"forbidden",message:"This token only reaches /v1/companion."},cors);return;
+    }
     const ctx:RouteContext={
-      req,res,url,method,principal,loopback,remoteAddress,listener,
-      readJson:()=>readJson(req),
+      req,res,url,method,principal,loopback,plainLan:admission.plainLan,remoteAddress,listener,
+      readJson:(maxBytes?:number)=>readJson(req,maxBytes),
       sendJson:(status,body,headers={})=>sendJson(res,status,body,{...cors,...headers})
     };
     try{
@@ -331,8 +343,9 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
     const loopback=admission.loopback;
     const url=new URL(req.url??"/","http://gateway.local");
     const origin=typeof req.headers.origin==="string"?req.headers.origin:undefined;
-    const {principal}=authenticate(req,loopback,origin,url);
+    const {principal}=authenticate(req,loopback,origin,url,admission.plainLan);
     if(!principal)return reject("401 Unauthorized");
+    if(principal.kind==="owner"&&principal.via==="app")return reject("403 Forbidden");
     url.searchParams.delete("layanx_token");
     const path=url.pathname+(url.search||"");
     const upstream=net.connect(listener.internalPort,"127.0.0.1",()=>{
@@ -376,6 +389,30 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
       ]);
     }
   };
+}
+
+export interface InternalResponse{status:number;contentType:string;body:Buffer}
+/**
+ * One request to the runtime API on its loopback port, on behalf of a principal the gateway already
+ * checked (the encrypted phone link, the PC island). Same identity headers as the proxy.
+ */
+export function forwardInternal(input:{port:number;internalToken:string;authHeader?:string;principal:string;method:string;path:string;contentType?:string;body?:Buffer;timeoutMs?:number;maxBytes?:number}):Promise<InternalResponse>{
+  const authHeader=(input.authHeader??"authorization").toLowerCase();
+  const headers:http.OutgoingHttpHeaders={host:`127.0.0.1:${input.port}`,"x-layanx-api-token":input.internalToken,"x-layanx-principal":input.principal,accept:"application/json"};
+  if(authHeader==="authorization")headers.authorization=`Bearer ${input.internalToken}`;else headers[authHeader]=input.internalToken;
+  if(input.body){headers["content-type"]=input.contentType??"application/json";headers["content-length"]=String(input.body.length);}
+  const max=input.maxBytes??12*1024*1024;
+  return new Promise((resolve,reject)=>{
+    const req=http.request({host:"127.0.0.1",port:input.port,method:input.method,path:input.path,headers},res=>{
+      const chunks:Buffer[]=[];let size=0;
+      res.on("data",(c:Buffer)=>{size+=c.length;if(size>max){req.destroy(new Error("response too large"));return;}chunks.push(c);});
+      res.on("end",()=>resolve({status:res.statusCode??502,contentType:String(res.headers["content-type"]??"application/json"),body:Buffer.concat(chunks)}));
+      res.on("error",reject);
+    });
+    req.setTimeout(input.timeoutMs??120_000,()=>req.destroy(new Error("runtime did not answer in time")));
+    req.on("error",reject);
+    req.end(input.body);
+  });
 }
 
 /** Retries EADDRINUSE for a few seconds so an in-place restart can reuse the port. */

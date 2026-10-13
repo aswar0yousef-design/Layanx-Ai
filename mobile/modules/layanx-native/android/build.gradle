@@ -1,0 +1,26 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.layanxnative'
+version = '0.2.0'
+
+android {
+  namespace "expo.modules.layanxnative"
+  defaultConfig {
+    versionCode 2
+    versionName "0.2.0"
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  // Fingerprint / face / PIN before an approval leaves the phone.
+  implementation "androidx.biometric:biometric:1.1.0"
+  // Notifications and the approve screen (React Native already ships newer copies; Gradle picks the newest).
+  implementation "androidx.core:core:1.13.1"
+  implementation "androidx.fragment:fragment:1.6.2"
+}

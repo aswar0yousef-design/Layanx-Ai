@@ -222,6 +222,10 @@ try{
   const code=access.startPairing().code;
   const paired=await call(lanPort,"POST","/v1/pair/complete",{},{code});
   assert.equal(paired.status,200);
+  // A bearer token over plain Wi-Fi travels in clear: refused (phones use the encrypted link, tests/phone-link.spec.ts).
+  const clear=await call(lanPort,"GET","/x",{authorization:"Bearer "+paired.json.deviceToken});
+  assert.equal(clear.status,403);assert.match(clear.json.message,/old unencrypted link/);
+  remoteIsLan=false;// the same token from this PC (or over Tailscale) still works
   const ok=await call(lanPort,"GET","/x",{authorization:"Bearer "+paired.json.deviceToken,origin:"capacitor://localhost"});
   assert.equal(ok.status,200);
   assert.match(ok.json.principal,/^device:/);

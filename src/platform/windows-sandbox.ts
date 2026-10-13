@@ -2,6 +2,7 @@ import {execFile} from "node:child_process";
 import {createHash} from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import {cscPath,ensureCompiled} from "./csharp.js";
 
 /**
  * "restricted" isolation on Windows, without Docker and without administrator rights.
@@ -220,11 +221,7 @@ export function sandboxMemoryBytes(env:NodeJS.ProcessEnv=process.env):number{
 function storeDir(env:NodeJS.ProcessEnv){return path.resolve(env.LAYANX_STORE_DIR?.trim()||".layanx");}
 export function sandboxRoot(env:NodeJS.ProcessEnv=process.env){return path.join(storeDir(env),"sandbox");}
 
-export function cscPath(env:NodeJS.ProcessEnv=process.env):string|null{
-  const win=env.WINDIR||env.SystemRoot||"C:\\Windows";
-  for(const fw of ["Framework64","Framework"]){const p=path.join(win,"Microsoft.NET",fw,"v4.0.30319","csc.exe");if(fs.existsSync(p))return p;}
-  return null;
-}
+export {cscPath};
 export function launcherPath(env:NodeJS.ProcessEnv=process.env):string{
   const hash=createHash("sha256").update(LAUNCHER_CS).digest("hex").slice(0,12);
   return path.join(storeDir(env),"bin",`lx-sandbox-${hash}.exe`);
@@ -235,25 +232,9 @@ function run(command:string,args:string[],timeout=120_000):Promise<{code:number|
   }));
 }
 
-let compiling:Promise<string>|null=null;
 /** Compile the launcher once (a few seconds); later runs reuse the .exe named after the source hash. */
 export function ensureLauncher(env:NodeJS.ProcessEnv=process.env):Promise<string>{
-  const exe=launcherPath(env);
-  if(fs.existsSync(exe))return Promise.resolve(exe);
-  if(compiling)return compiling;
-  compiling=(async()=>{
-    if(process.platform!=="win32")throw new Error("Restricted isolation runs on Windows only.");
-    const csc=cscPath(env);
-    if(!csc)throw new Error("Restricted isolation needs the .NET Framework 4 compiler (csc.exe), which is part of Windows 10 and 11.");
-    fs.mkdirSync(path.dirname(exe),{recursive:true});
-    const src=exe.replace(/\.exe$/,".cs"),tmp=exe+".tmp";
-    fs.writeFileSync(src,LAUNCHER_CS);
-    const r=await run(csc,["/nologo","/target:exe","/optimize+","/out:"+tmp,src]);
-    if(r.code!==0||!fs.existsSync(tmp))throw new Error("Could not compile the sandbox launcher: "+r.out.slice(-800));
-    fs.renameSync(tmp,exe);
-    return exe;
-  })().finally(()=>{compiling=null;});
-  return compiling;
+  return ensureCompiled({source:LAUNCHER_CS,exe:launcherPath(env),env,what:"Restricted isolation (the sandbox launcher)"});
 }
 
 export interface RestrictedSetup{launcher:string;tmp:string;cache:string;home:string;

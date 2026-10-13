@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+  <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
+  <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+  <!-- Android 16: the live notification may appear as a status-bar "live update". -->
+  <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS"/>
+
+  <application>
+    <!-- Live updates: one long-poll to the paired PC, an ongoing notification, approval notifications. -->
+    <service
+        android:name="expo.modules.layanxnative.CompanionService"
+        android:exported="false"
+        android:foregroundServiceType="specialUse">
+      <property
+          android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+          android:value="Keeps the owner's own LayanX PC companion connected to show its jobs and approval requests"/>
+    </service>
+
+    <!-- Approve from a notification: asks for the fingerprint / face / PIN first, over the lock screen. -->
+    <activity
+        android:name="expo.modules.layanxnative.ApproveActivity"
+        android:exported="false"
+        android:excludeFromRecents="true"
+        android:taskAffinity=""
+        android:showWhenLocked="true"
+        android:turnScreenOn="true"
+        android:theme="@android:style/Theme.Translucent.NoTitleBar"/>
+
+    <!-- Deny from a notification (no fingerprint needed to refuse). -->
+    <receiver android:name="expo.modules.layanxnative.DecisionReceiver" android:exported="false"/>
+
+    <receiver android:name="expo.modules.layanxnative.BootReceiver" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED"/>
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+      </intent-filter>
+    </receiver>
+
+    <!-- Quick settings tile: "Ask LayanX" by voice. -->
+    <service
+        android:name="expo.modules.layanxnative.AskTileService"
+        android:exported="true"
+        android:icon="@drawable/ic_layanx"
+        android:label="@string/layanx_tile_label"
+        android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+      <intent-filter>
+        <action android:name="android.service.quicksettings.action.QS_TILE"/>
+      </intent-filter>
+    </service>
+
+    <!-- Home screen widget. -->
+    <receiver android:name="expo.modules.layanxnative.StatusWidget" android:exported="true" android:label="LayanX">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/layanx_widget_info"/>
+    </receiver>
+  </application>
+</manifest>

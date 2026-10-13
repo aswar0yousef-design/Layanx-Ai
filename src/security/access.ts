@@ -17,8 +17,10 @@ import {readJsonFile,writeFileAtomic} from "../platform/paths.js";
  * same repository get different tokens, codes and device lists, so a phone
  * paired with one computer can never control another.
  */
-export interface DeviceRecord{id:string;name:string;tokenHash:string;createdAt:string;lastSeenAt?:string}
-export type PublicDevice=Omit<DeviceRecord,"tokenHash">;
+export interface DeviceRecord{id:string;name:string;tokenHash:string;createdAt:string;lastSeenAt?:string;
+  /** Encrypted link (v2): the phone's P-256 public key (base64url). Such devices have no bearer token. */
+  linkKey?:string;link?:2}
+export type PublicDevice=Omit<DeviceRecord,"tokenHash"|"linkKey">;
 
 const CODE_ALPHABET="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const PAIRING_TTL_MS=5*60_000;
@@ -69,6 +71,8 @@ export class AccessManager{
   private readonly launchTickets=new Map<string,number>();
   private readonly sessions=new Map<string,number>();
   private readonly attempts=new Map<string,{count:number;resetAt:number}>();
+  /** Programs LayanX starts on this PC (the screen-top island): in memory only, loopback only. */
+  private readonly appTokens=new Map<string,string>();
   private lastSeenFlush=0;
 
   constructor(options:AccessManagerOptions){
@@ -88,7 +92,18 @@ export class AccessManager{
   isMasterToken(token:string):boolean{return sameHash(hashToken(token),this.masterHash);}
 
   // ---------- devices ----------
-  listDevices():PublicDevice[]{return this.devices.map(({tokenHash:_hash,...rest})=>rest);}
+  listDevices():PublicDevice[]{return this.devices.map(({tokenHash:_hash,linkKey:_key,...rest})=>rest);}
+
+  /** A phone on the encrypted link (v2): its record and public key. Marks it as seen. */
+  linkDevice(id:string):{device:PublicDevice;linkKey:string}|null{
+    const device=this.devices.find(d=>d.id===id&&d.link===2&&typeof d.linkKey==="string");
+    if(!device)return null;
+    const now=this.now();
+    device.lastSeenAt=new Date(now).toISOString();
+    if(now-this.lastSeenFlush>60_000){this.lastSeenFlush=now;this.saveDevices();}
+    const {tokenHash:_hash,linkKey,...rest}=device;
+    return{device:rest,linkKey:linkKey!};
+  }
 
   verifyDeviceToken(token:string):PublicDevice|null{
     if(!token.startsWith("lxd_"))return null;
@@ -98,7 +113,7 @@ export class AccessManager{
     const now=this.now();
     device.lastSeenAt=new Date(now).toISOString();
     if(now-this.lastSeenFlush>60_000){this.lastSeenFlush=now;this.saveDevices();}
-    const {tokenHash:_hash,...rest}=device;
+    const {tokenHash:_hash,linkKey:_key,...rest}=device;
     return rest;
   }
 
@@ -120,7 +135,8 @@ export class AccessManager{
 
   cancelPairing():void{this.pairing=null;}
 
-  completePairing(rawCode:unknown,rawName:unknown,remoteKey:string):PairingResult{
+  /** Checks the code shown on this computer and uses it up (one phone per code). */
+  private consumeCode(rawCode:unknown,remoteKey:string):{ok:true}|{ok:false;status:400|401|410|429;error:string}{
     if(!this.allowAttempt(remoteKey))return{ok:false,status:429,error:"Too many pairing attempts. Wait 10 minutes."};
     const code=normalizePairingCode(rawCode);
     if(code.length!==8)return{ok:false,status:400,error:"Pairing code must be 8 characters."};
@@ -132,6 +148,25 @@ export class AccessManager{
       return{ok:false,status:401,error:"Wrong pairing code."};
     }
     this.pairing=null;
+    return{ok:true};
+  }
+
+  /** Encrypted link (v2): the phone is known by its public key, no bearer token exists. */
+  completePairingV2(rawCode:unknown,rawName:unknown,linkKey:string,remoteKey:string):{ok:true;deviceId:string}|{ok:false;status:400|401|410|429;error:string}{
+    if(!/^[A-Za-z0-9_-]{86,88}$/.test(linkKey))return{ok:false,status:400,error:"Bad phone key."};
+    const used=this.consumeCode(rawCode,remoteKey);
+    if(!used.ok)return used;
+    // Pairing the same phone again replaces its old record.
+    this.devices=this.devices.filter(d=>d.linkKey!==linkKey);
+    const device:DeviceRecord={id:"dev_"+crypto.randomBytes(6).toString("hex"),name:sanitizeDeviceName(rawName),tokenHash:"",linkKey,link:2,createdAt:new Date(this.now()).toISOString()};
+    this.devices.push(device);
+    this.saveDevices();
+    return{ok:true,deviceId:device.id};
+  }
+
+  completePairing(rawCode:unknown,rawName:unknown,remoteKey:string):PairingResult{
+    const used=this.consumeCode(rawCode,remoteKey);
+    if(!used.ok)return used;
     const deviceToken=randomToken("lxd_");
     const device:DeviceRecord={
       id:"dev_"+crypto.randomBytes(6).toString("hex"),
@@ -143,6 +178,19 @@ export class AccessManager{
     this.saveDevices();
     return{ok:true,deviceId:device.id,deviceToken};
   }
+
+  // ---------- programs LayanX starts on this PC ----------
+  /** A token for a program LayanX itself starts (handed to it on stdin); gone when LayanX stops. */
+  issueAppToken(name:string):string{
+    const token=randomToken("lxa_");
+    this.appTokens.set(hashToken(token),name.slice(0,40));
+    return token;
+  }
+  verifyAppToken(token:string):string|null{
+    if(!token.startsWith("lxa_"))return null;
+    return this.appTokens.get(hashToken(token))??null;
+  }
+  revokeAppTokens(name:string){for(const [hash,n] of this.appTokens)if(n===name)this.appTokens.delete(hash);}
 
   // ---------- launcher + browser sessions ----------
   /** Writes a one-time code into a file only this Windows user can read. */

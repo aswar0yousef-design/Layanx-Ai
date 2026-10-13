@@ -10,6 +10,8 @@ export interface LocalSettings{
   pinnedModels:Partial<Record<ModelTask,string>>;
   /** Open the voice assistant window (listening) when LayanX starts. */
   openAssistantOnStart:boolean;
+  /** The small status window at the top of the screen (Windows): jobs, approvals, coding agents. */
+  island:boolean;
   /** HH:MM daily briefing time, "" = off. */
   briefingTime:string;
   /** Cloud models for work local models cannot do well. */
@@ -39,7 +41,7 @@ export interface CloudSettings{
   prices?:Partial<Record<CloudProviderId,{input:number;output:number}>>;
 }
 
-export const DEFAULT_SETTINGS:LocalSettings={mobileAccess:false,publicPort:3000,flowPublicPort:3100,capabilities:{},pinnedModels:{},openAssistantOnStart:false,briefingTime:"",
+export const DEFAULT_SETTINGS:LocalSettings={mobileAccess:false,publicPort:3000,flowPublicPort:3100,capabilities:{},pinnedModels:{},openAssistantOnStart:false,island:true,briefingTime:"",
   cloud:{policy:"fallback",order:["anthropic","openai","gemini"],models:{},disabled:{}},remoteAccess:false,remoteHosts:[],workspaceRoot:""};
 
 function port(value:unknown,fallback:number):number{
@@ -66,6 +68,7 @@ export function sanitizeSettings(raw:unknown,base:LocalSettings=DEFAULT_SETTINGS
     capabilities,
     pinnedModels,
     openAssistantOnStart:typeof input.openAssistantOnStart==="boolean"?input.openAssistantOnStart:base.openAssistantOnStart,
+    island:typeof input.island==="boolean"?input.island:base.island,
     cloud:sanitizeCloud(input.cloud,base.cloud),
     workspaceRoot:typeof input.workspaceRoot==="string"&&input.workspaceRoot.length<=400&&!/[\0<>|"?*]/.test(input.workspaceRoot)?input.workspaceRoot.trim():base.workspaceRoot,
     remoteAccess:typeof input.remoteAccess==="boolean"?input.remoteAccess:base.remoteAccess,
