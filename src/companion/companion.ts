@@ -3,6 +3,7 @@ import type {ApprovalRequest} from "../security/approval.js";
 import type {SupervisorJob} from "../autonomy/supervisor.js";
 import type {SystemLoad} from "../platform/system-load.js";
 import type {AgentHookHub,AgentSession} from "./agent-hooks.js";
+import {describeInput} from "./describe.js";
 
 /**
  * What the phone, the screen-top island and the dashboard all watch: approvals waiting for the owner
@@ -13,7 +14,10 @@ import type {AgentHookHub,AgentSession} from "./agent-hooks.js";
  * answer given on an older view can never apply to a different request.
  */
 export interface CompanionApproval{
-  id:string;kind:"layanx"|"agent";digest:string;tool:string;action?:string;title:string;detail:string;
+  id:string;kind:"layanx"|"agent";digest:string;tool:string;action?:string;title:string;
+  /** Everything that will run (every field of the input). When full is false it was too long or is not
+   *  known exactly; the phone and the island then send the owner to the PC instead of a quick approve. */
+  detail:string;full:boolean;
   projectId?:string;agent?:string;jobId?:string;createdAt?:string;expiresAt?:string;
 }
 export interface CompanionJob{id:string;projectId:string;goal:string;status:string;milestone?:{index:number;total:number;title:string};progress:number;updatedAt:string;result?:string;preview?:string}
@@ -39,19 +43,32 @@ export interface CompanionDeps{
 
 const ACTIVE_JOB=new Set(["queued","planning","running","waiting_approval","verifying"]);
 const FINISHED_JOB=new Set(["completed","failed","cancelled","budget_exhausted"]);
+const ENDED_MISSION=new Set(["completed","cancelled","failed"]);
 const line=(v:unknown,n:number)=>String(v??"").split("\n")[0]!.replace(/\s+/g," ").trim().slice(0,n);
+const hashOf=(payload:unknown)=>crypto.createHash("sha256").update(JSON.stringify(payload??null)).digest("hex");
 
 export const approvalDigest=(a:Pick<ApprovalRequest,"id"|"missionId"|"tool"|"action"|"payloadHash">)=>
   crypto.createHash("sha256").update([a.id,a.missionId,a.tool,a.action,a.payloadHash].join("\u0000")).digest("hex").slice(0,16);
 
-function payloadSummary(p:Record<string,unknown>|undefined):string{
-  if(!p)return"";
-  const pick=p.command??p.task??p.agent??p.url??p.branch??p.goal??p.path;
-  if(pick!==undefined)return line(Array.isArray(pick)?pick.join(" "):pick,300);
-  try{return line(JSON.stringify(p),300);}catch{return"";}
+/**
+ * The exact step an approval covers: the payload and plan index stored with it, or (approvals saved by
+ * an older version) the planned step whose payload has the approved hash. Never "the first step with
+ * the same tool": two terminal steps would be confused.
+ */
+function stepOf(a:ApprovalRequest,m:MissionLike,jobPayload?:Record<string,unknown>):{payload?:unknown;known:boolean;index:number}{
+  const tools=m.tools??[];
+  const hashed=tools.findIndex(t=>t.tool===a.tool&&t.action===a.action&&hashOf(t.payload)===a.payloadHash);
+  const index=typeof a.planIndex==="number"&&tools[a.planIndex]?.tool===a.tool&&tools[a.planIndex]?.action===a.action?a.planIndex:hashed;
+  if(a.payload!==undefined&&hashOf(a.payload)===a.payloadHash)return{payload:a.payload,known:true,index};
+  if(jobPayload&&hashOf(jobPayload)===a.payloadHash)return{payload:jobPayload,known:true,index};
+  if(hashed>=0)return{payload:tools[hashed]!.payload,known:true,index};
+  return{known:false,index};
 }
+const FIRST_KEYS=["command","task","agent","url","branch","goal","path","message","text"];
 
 export class Companion{
+  /** Approvals the owner refused: they never come back, and a late "approve" for them is refused. */
+  private readonly denied=new Set<string>();
   constructor(private readonly deps:CompanionDeps){}
   private now(){return(this.deps.now??Date.now)();}
 
@@ -59,16 +76,19 @@ export class Companion{
     const jobs=this.deps.jobs();
     const out:CompanionApproval[]=[];
     for(const a of this.deps.approvals.list()){
-      if(Date.parse(a.expiresAt)<=this.now()||this.deps.approvals.isApproved(a.id))continue;
+      if(Date.parse(a.expiresAt)<=this.now()||this.deps.approvals.isApproved(a.id)||this.denied.has(a.id))continue;
       const m=this.deps.mission(a.missionId);
-      if(!m||["completed","cancelled","failed"].includes(String(m.status)))continue;
-      const job=jobs.find(j=>j.waiting?.approvalId===a.id&&j.status==="waiting_approval");
-      const planned=m.tools?.find(t=>t.tool===a.tool&&t.action===a.action);
+      if(!m||ENDED_MISSION.has(String(m.status)))continue;
+      const owner=jobs.find(j=>j.waiting?.approvalId===a.id);
+      if(owner&&FINISHED_JOB.has(owner.status))continue;
+      const job=owner?.status==="waiting_approval"?owner:undefined;
+      const step=stepOf(a,m,job?.waiting?.payload);
+      const shown=step.known?describeInput(step.payload,FIRST_KEYS):{text:line(a.reason,300),full:false};
       out.push({id:a.id,kind:"layanx",digest:approvalDigest(a),tool:a.tool,action:a.action,
-        title:line(job?job.goal:m.goal,90)||a.tool,detail:payloadSummary(job?.waiting?.payload??planned?.payload)||line(a.reason,300),
+        title:line(job?job.goal:m.goal,90)||a.tool,detail:shown.text,full:shown.full,
         projectId:m.projectId??"default",...(job?{jobId:job.id}:{}),expiresAt:a.expiresAt});
     }
-    for(const p of this.deps.hub.pending())out.push({id:p.id,kind:"agent",digest:p.digest,tool:p.tool,title:`${p.agent==="claude"?"Claude Code":"Codex"} · ${p.project||"?"}`,detail:p.detail,agent:p.agent,createdAt:p.createdAt,expiresAt:p.expiresAt});
+    for(const p of this.deps.hub.pending())out.push({id:p.id,kind:"agent",digest:p.digest,tool:p.tool,title:`${p.agent==="claude"?"Claude Code":"Codex"} · ${p.project||"?"}`,detail:p.detail,full:p.full,agent:p.agent,createdAt:p.createdAt,expiresAt:p.expiresAt});
     return out;
   }
 
@@ -121,19 +141,22 @@ export class Companion{
     if(approvalDigest(a)!==digest)return{ok:false,error:"changed"};
     const m=this.deps.mission(a.missionId);
     if(!m)return{ok:false,error:"mission_not_found"};
-    if(this.deps.approvals.isApproved(id)&&decision==="approve")return{ok:true};
     const job=this.deps.jobs().find(j=>j.waiting?.approvalId===id);
     if(decision==="deny"){
+      this.denied.add(id);
       this.deps.approvals.revoke(id);
       if(job)this.deps.cancelJob(job.id);else this.deps.cancelMission(m.id,m.projectId??"default");
       await this.deps.persist(m.id).catch(()=>undefined);
       return{ok:true};
     }
+    // Refused once, or the work already ended (refused elsewhere, cancelled, finished): nothing to approve.
+    if(this.denied.has(id)||ENDED_MISSION.has(String(m.status))||(job&&FINISHED_JOB.has(job.status)))return{ok:false,error:"not_pending"};
+    if(this.deps.approvals.isApproved(id))return{ok:true};
     try{this.deps.approvals.approve(id);}catch(error){return{ok:false,error:error instanceof Error?error.message:"approve_failed"};}
     await this.deps.persist(m.id).catch(()=>undefined);
     if(job)return{ok:true};// the job sees the approval and continues
-    const index=(m.tools??[]).findIndex(t=>t.tool===a.tool&&t.action===a.action);
-    if(index<0)return{ok:true};
+    const index=stepOf(a,m).index;
+    if(index<0)return{ok:true};// approved; whoever asked for it resumes it with its own step
     const quick=(m.goal??"").startsWith("run terminal command")||((m.tools??[]).length===1&&m.tools?.[0]?.reason==="owner quick action");
     const projectId=m.projectId??"default";
     const run=()=>quick?this.deps.resumeTool(projectId,m.tools![0]!.tool,m.tools![0]!.payload??{},{missionId:m.id,approvalId:id}):this.deps.resumeAgent(m.id,projectId,{[index]:id});

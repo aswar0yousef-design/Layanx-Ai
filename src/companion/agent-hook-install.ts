@@ -118,6 +118,9 @@ export function applyHooks(agent:HookAgent,action:"install"|"remove",exe:string,
   if(!merged.ok)return{ok:false,error:merged.error};
   fs.mkdirSync(path.dirname(plan.file),{recursive:true});
   if(plan.backup&&cur.bytes)fs.writeFileSync(plan.backup,cur.bytes,{flag:"wx"});
-  writeFileAtomic(plan.file,JSON.stringify(merged.value,null,2)+"\n");
+  // A settings file kept elsewhere (dotfiles) and linked here: write the real file, keep the link.
+  let target=plan.file;
+  try{target=fs.realpathSync(plan.file);}catch{/* not there yet */}
+  writeFileAtomic(target,JSON.stringify(merged.value,null,2)+"\n");
   return{ok:true,backup:plan.backup,file:plan.file};
 }

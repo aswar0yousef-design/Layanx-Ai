@@ -2,6 +2,7 @@ import {execFile} from "node:child_process";
 import {createHash} from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import {safeChildEnv} from "./safe-env.js";
 
 /**
  * Small Windows helpers LayanX ships as C# source and compiles on the PC with the .NET Framework 4
@@ -15,7 +16,8 @@ export function cscPath(env:NodeJS.ProcessEnv=process.env):string|null{
 }
 
 function run(command:string,args:string[],timeout=120_000):Promise<{code:number|null;out:string}>{
-  return new Promise(resolve=>execFile(command,args,{windowsHide:true,timeout,maxBuffer:4*1024*1024},(err,stdout,stderr)=>{
+  // The compiler gets no LayanX secrets (process.env holds the vault's keys once LayanX has started).
+  return new Promise(resolve=>execFile(command,args,{windowsHide:true,timeout,maxBuffer:4*1024*1024,env:safeChildEnv()},(err,stdout,stderr)=>{
     resolve({code:err?(typeof (err as {code?:unknown}).code==="number"?(err as {code:number}).code:1):0,out:String(stdout)+String(stderr)});
   }));
 }

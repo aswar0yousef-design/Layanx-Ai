@@ -156,7 +156,10 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
     const socketLoopback=isLoopback(remoteAddress);
     const host=parseHost(req.headers.host);
     if(!host)return{ok:false,status:421,error:"host_not_allowed",message:"Unexpected Host header."};
-    const proxiedRemote=host.hostname.endsWith(".ts.net")||(options.remoteHosts??[]).includes(host.hostname);
+    // Only a connection that really comes through the tunnel / `tailscale serve` (from this PC) or over
+    // the tailnet itself may use a remote name; anyone on the Wi-Fi can send any Host header.
+    const remoteName=host.hostname.endsWith(".ts.net")||(options.remoteHosts??[]).includes(host.hostname);
+    const proxiedRemote=remoteName&&(socketLoopback||(host.hostname.endsWith(".ts.net")&&isTailscaleAddress(remoteAddress)));
     if(proxiedRemote){
       if(!options.remoteAccess)return{ok:false,status:403,error:"remote_disabled",message:"Control from anywhere is turned off on this computer."};
       return{ok:true,loopback:false,plainLan:false,hostname:host.hostname};
@@ -254,8 +257,11 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
   }
 
   function proxy(req:http.IncomingMessage,res:http.ServerResponse,listener:GatewayListener,principal:Principal,corsHeaders:http.OutgoingHttpHeaders){
+    // The runtime gets the same normalized path every check here looked at ("/a/../b" is "/b"), never the
+    // raw one: a raw "/v1/companion/../x" must not reach a route the token was not allowed to use.
+    const normalized=new URL(req.url??"/","http://gateway.local");
     const upstream=http.request({
-      host:"127.0.0.1",port:listener.internalPort,method:req.method,path:req.url,agent,
+      host:"127.0.0.1",port:listener.internalPort,method:req.method,path:normalized.pathname+normalized.search,agent,
       headers:upstreamHeaders(req,listener,principal,false)
     },up=>{
       const headers:http.OutgoingHttpHeaders={};

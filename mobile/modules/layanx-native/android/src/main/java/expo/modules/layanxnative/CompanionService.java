@@ -31,8 +31,15 @@ public final class CompanionService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         // A foreground service must show its notification at once, even if it is about to stop.
-        if (Build.VERSION.SDK_INT >= 34) startForeground(Notify.ONGOING_ID, Notify.ongoing(this, null, null, -1), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
-        else startForeground(Notify.ONGOING_ID, Notify.ongoing(this, null, null, -1));
+        try {
+            if (Build.VERSION.SDK_INT >= 34) startForeground(Notify.ONGOING_ID, Notify.ongoing(this, null, null, -1), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+            else startForeground(Notify.ONGOING_ID, Notify.ongoing(this, null, null, -1));
+        } catch (RuntimeException notAllowedNow) {
+            // Android restarted the service from the background, where it may not start one (12+).
+            // Opening the app (or the next boot) starts it again.
+            stopSelf();
+            return START_NOT_STICKY;
+        }
         if (!DeviceStore.live(this) || DeviceStore.selected(this) == null) {
             stopSelf();
             return START_NOT_STICKY;
@@ -47,7 +54,7 @@ public final class CompanionService extends Service {
 
     private void loop() {
         String since = null;
-        int backoff = 2;
+        int backoff = 2, removed = 0;
         while (running) {
             LinkClient.Device d = DeviceStore.selected(this);
             if (d == null || !DeviceStore.live(this)) break;
@@ -64,16 +71,26 @@ public final class CompanionService extends Service {
                     if (!running) break;
                     Notify.applyFeed(this, d, feed); // also refreshes the PC load numbers
                     backoff = 2;
+                    removed = 0;
                     // Nothing changed and the PC answered at once (it did not wait): do not ask again at once.
                     if (same && System.currentTimeMillis() - asked < 2000) pause(3);
                     continue;
                 }
                 since = null;
                 Notify.offline(this, d, r.status == 503 ? "LayanX يبدأ التشغيل" : "HTTP " + r.status);
-            } catch (LinkClient.DeviceRemovedException removed) {
-                DeviceStore.setLive(this, false);
-                Notify.removed(this, d);
-                break;
+            } catch (LinkClient.DeviceRemovedException gone) {
+                // "Unknown device" is not signed by the PC (it cannot be: it no longer knows this phone), so
+                // one such answer could come from anything at that address. Only a PC that keeps saying it
+                // over several minutes ends live updates.
+                since = null;
+                if (++removed >= 4) {
+                    DeviceStore.setLive(this, false);
+                    Notify.removed(this, d);
+                    break;
+                }
+                Notify.offline(this, d, gone.getMessage());
+                pause(60 * removed);
+                continue;
             } catch (Exception e) {
                 since = null;
                 if (running) Notify.offline(this, d, e.getMessage());

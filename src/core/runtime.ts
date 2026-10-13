@@ -185,7 +185,7 @@ export class ExecutionRuntime{
   });
  }
  private ensureApproval(mission:Mission,request:ToolRequest,reason:string){
-  return this.approvals.ensure({missionId:mission.id,agentId:request.agentId,tool:request.tool,action:request.action,permission:request.permission,payloadHash:createHash("sha256").update(JSON.stringify(request.payload??null)).digest("hex"),reason,expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
+  return this.approvals.ensure({missionId:mission.id,agentId:request.agentId,tool:request.tool,action:request.action,permission:request.permission,payloadHash:createHash("sha256").update(JSON.stringify(request.payload??null)).digest("hex"),reason,expiresAt:new Date(Date.now()+15*60*1000).toISOString(),payload:request.payload??null,...(typeof request.planIndex==="number"?{planIndex:request.planIndex}:{})});
  }
  private async block(mission:Mission,request:ToolRequest,error:string,approvalId?:string):Promise<RuntimeResult>{
   if(!this.core.executionStates.get(mission.id))this.core.executionStates.start(mission.id);

@@ -82,7 +82,8 @@ export default function App(){
     }catch(e){
      if(stop)break;
      setOnline("no");since=undefined;
-     if(e instanceof LinkError&&e.code==="ERR_DEVICE_REMOVED"){setError("أُلغي ربط هذا الهاتف من الكمبيوتر. اربطه من جديد بمسح الرمز.");break;}
+     // "Unknown device" carries no proof it came from the PC; keep trying, slowly, and say what to do.
+     if(e instanceof LinkError&&e.code==="ERR_DEVICE_REMOVED"){setError("يقول الكمبيوتر إن هذا الهاتف غير مربوط. إن ألغيت ربطه، اربطه من جديد بمسح الرمز.");await sleep(30_000);continue;}
      await sleep(4000);
     }
    }
@@ -150,6 +151,7 @@ export default function App(){
  async function decide(a:CompanionApproval,decision:"approve"|"deny"){
   if(!api||!LayanxNative)return;
   if(decision==="approve"){
+   if(!a.full){setError("راجع هذا الطلب ووافق عليه من LayanX على الكمبيوتر.");return;}
    const title=a.kind==="agent"?`السماح لـ ${agentName(a.agent)}: ${a.tool}`:`موافقة: ${a.tool}`;
    const outcome=await LayanxNative.authenticate(title,(a.detail||a.title).slice(0,120)).catch(()=>"unavailable" as const);
    if(outcome==="cancelled")return;
@@ -234,9 +236,10 @@ export default function App(){
  const approvalCards=approvals.map(a=><View key={a.id} style={[s.card,{borderColor:C.amber+"88"}]}>
   <Text style={s.itemTitle}>{a.kind==="agent"?`${agentName(a.agent)} يطلب الإذن: ${a.tool}`:`بانتظار موافقتك: ${a.tool}`}</Text>
   <Text style={s.a}>{a.title}</Text>
-  {!!a.detail&&<Text style={s.code}>{a.detail}</Text>}
+  {!!a.detail&&<ScrollView style={s.codeBox} nestedScrollEnabled><Text style={s.code} selectable>{a.detail}</Text></ScrollView>}
+  {!a.full&&<Text style={[s.muted,{color:C.amber,marginTop:6}]}>الطلب أطول من أن يُعرض كاملاً هنا. راجعه ووافق عليه من LayanX على الكمبيوتر، أو ارفضه من هنا.</Text>}
   <View style={s.row}>
-   <Pressable style={[s.warn,{flex:1},deciding===a.id&&{opacity:.5}]} disabled={deciding===a.id} onPress={()=>void decide(a,"approve")}><Text style={s.warnText}>موافقة بالبصمة</Text></Pressable>
+   {a.full&&<Pressable style={[s.warn,{flex:1},deciding===a.id&&{opacity:.5}]} disabled={deciding===a.id} onPress={()=>void decide(a,"approve")}><Text style={s.warnText}>موافقة بالبصمة</Text></Pressable>}
    <Pressable style={[s.ghost,{flex:1,marginTop:0}]} disabled={deciding===a.id} onPress={()=>void decide(a,"deny")}><Text style={[s.bt,{color:C.rose}]}>رفض</Text></Pressable>
   </View>
  </View>);
@@ -381,7 +384,7 @@ const s=StyleSheet.create({
  taskDot:{width:10,height:10,borderRadius:5},taskText:{flex:1,color:C.ink,textAlign:"right"},
  status:{fontSize:12,borderWidth:1,borderRadius:8,paddingHorizontal:8,paddingVertical:2,overflow:"hidden"},
  itemTitle:{color:C.ink,fontWeight:"700",textAlign:"right",marginBottom:4},
- code:{color:"#FDE68A",backgroundColor:"#0B1222",borderRadius:8,padding:8,marginTop:6,fontFamily:Platform.OS==="android"?"monospace":undefined,fontSize:12,textAlign:"left"},
+ codeBox:{maxHeight:220,backgroundColor:"#0B1222",borderRadius:8,marginTop:6},code:{color:"#FDE68A",padding:8,fontFamily:Platform.OS==="android"?"monospace":undefined,fontSize:12,textAlign:"left"},
  q:{color:C.purple2,textAlign:"right",fontWeight:"600"},a:{color:C.ink,textAlign:"right",marginTop:4,lineHeight:21},
  bar:{height:6,backgroundColor:C.line,borderRadius:3,marginTop:6,overflow:"hidden"},barFill:{height:6,backgroundColor:C.purple2,borderRadius:3},
  screen:{width:"100%",aspectRatio:16/9,marginTop:10,borderRadius:10,backgroundColor:"#000"},

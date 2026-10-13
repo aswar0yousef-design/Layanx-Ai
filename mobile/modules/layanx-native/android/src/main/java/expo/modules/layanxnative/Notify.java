@@ -200,8 +200,11 @@ public final class Notify {
         String id = MiniJson.str(a, "id"), digest = MiniJson.str(a, "digest"), tool = MiniJson.str(a, "tool");
         String title = MiniJson.str(a, "title"), detail = MiniJson.str(a, "detail");
         boolean agent = "agent".equals(MiniJson.str(a, "kind"));
+        // full: the text is everything that will run. Otherwise it was too long to show: no quick approve.
+        boolean full = Boolean.TRUE.equals(a.get("full"));
         String heading = (agent ? "يطلب الإذن: " : "بانتظار موافقتك: ") + (tool == null ? "" : tool);
-        String body = (title == null ? "" : title) + (detail == null || detail.isEmpty() ? "" : "\n" + detail);
+        String body = (title == null ? "" : title) + (detail == null || detail.isEmpty() ? "" : "\n" + detail)
+                + (full ? "" : "\n\nالطلب أطول من أن يُعرض هنا كاملاً: راجعه ووافق عليه من LayanX على الكمبيوتر.");
         int request = id.hashCode() & 0x0fffffff;
         Intent approve = new Intent(c, ApproveActivity.class)
                 .putExtra("device", d.id).putExtra("id", id).putExtra("digest", digest).putExtra("title", heading).putExtra("detail", body)
@@ -218,9 +221,9 @@ public final class Notify {
                 .setAutoCancel(false)
                 .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
                 .setPublicVersion(base(c, APPROVALS).setContentTitle("LayanX: طلب ينتظر موافقتك").setContentText("افتح القفل لرؤية التفاصيل").build())
-                .setContentIntent(open(c, "layanx://approvals", 2))
-                .addAction(0, "موافقة (بالبصمة)", PendingIntent.getActivity(c, request, approve, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT))
-                .addAction(0, "رفض", PendingIntent.getBroadcast(c, request, deny, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
+                .setContentIntent(open(c, "layanx://approvals", 2));
+        if (full) b.addAction(0, "موافقة (بالبصمة)", PendingIntent.getActivity(c, request, approve, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
+        b.addAction(0, "رفض", PendingIntent.getBroadcast(c, request, deny, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
         long expires = millis(a.get("expiresAt"));
         if (expires > System.currentTimeMillis()) b.setTimeoutAfter(expires - System.currentTimeMillis());
         return b.build();

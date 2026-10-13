@@ -100,7 +100,8 @@ export function parseInner(raw:Buffer):InnerRequest{
   const m=String(v.m??"").toUpperCase();
   const p=String(v.p??"");
   if(!METHODS.has(m))throw new Error("bad method");
-  if(!/^\/v1\/[A-Za-z0-9/_.~%-]*(\?[A-Za-z0-9/_.~%=&+-]*)?$/.test(p)||p.includes(".."))throw new Error("bad path");
+  // No dot segments, encoded dots or slashes: the runtime must see the path exactly as checked here.
+  if(!/^\/v1\/[A-Za-z0-9/_.~%-]*(\?[A-Za-z0-9/_.~%=&+-]*)?$/.test(p)||p.includes("..")||/%(2e|2f|5c)/i.test(p.split("?")[0]!)||/\/\.(\/|$|\?)/.test(p))throw new Error("bad path");
   const bt=v.bt===undefined?"application/json":String(v.bt).toLowerCase();
   if(!BODY_TYPES.has(bt))throw new Error("bad body type");
   return{m,p,...(typeof v.b==="string"?{b:v.b}:{}),bt,b64:v.b64===true,t:Number(v.t),r:String(v.r??"")};

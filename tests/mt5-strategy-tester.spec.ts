@@ -77,11 +77,13 @@ assert.ok(result.reportFile.startsWith(path.join(install,"layanx-tester")));
 // 5. Failures say what to check; only one run at a time.
 await assert.rejects(runStrategyTest(base,{platform:"win32",env,run:async()=>({code:0,timedOut:false})}),/closed without a report.*not already open.*logged in/s);
 await assert.rejects(runStrategyTest({...base,timeoutMinutes:1},{platform:"win32",env,run:async(_t,_a,ms)=>{assert.equal(ms,60_000);return{code:null,timedOut:true};}}),/did not finish within 1 minutes/);
-let release!:()=>void;
-const slow=runStrategyTest(base,{platform:"win32",env,run:()=>new Promise(r=>{release=()=>r({code:0,timedOut:false});})});
-await new Promise(r=>setTimeout(r,10));
-await assert.rejects(runStrategyTest(base,{platform:"win32",env,run:async()=>({code:0,timedOut:false})}),/already in progress/);
-release();await assert.rejects(slow,/without a report/);
+let release:(()=>void)|undefined;
+// No real process listing here (on Windows it takes long enough for the second call to overtake the first).
+const none=async()=>[] as string[];
+const slow=runStrategyTest(base,{platform:"win32",env,runningTerminals:none,run:()=>new Promise(r=>{release=()=>r({code:0,timedOut:false});})});
+while(!release)await new Promise(r=>setTimeout(r,5));// the first run has started
+await assert.rejects(runStrategyTest(base,{platform:"win32",env,runningTerminals:none,run:async()=>({code:0,timedOut:false})}),/already in progress/);
+release!();await assert.rejects(slow,/without a report/);
 await assert.rejects(runStrategyTest(base,{platform:"linux",env}),/Windows only/);
 // The terminal LayanX trades with (as the bridge reports it) is refused, by install folder or data folder.
 const noRun=async()=>{throw new Error("must not start");};

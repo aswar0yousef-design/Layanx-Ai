@@ -109,7 +109,8 @@ export async function bootstrapLocalRuntime(env:NodeJS.ProcessEnv=process.env,lo
   const storage=applyStorageDefaults(env,paths);
   if(storage.length)log("info",`storage defaults -> ${paths.storeDir}`);
   await ensureVaultKey(store,env,log);
-  const applied=applySecretsToEnv(store,env);
+  // The phone-link private key is read from the store where it is used; it never goes into the environment.
+  const applied=applySecretsToEnv(store,env,new Set(["LAYANX_PHONE_LINK_KEY"]));
   log("info",`secret store: ${store.backend} (${applied.length} values loaded, names only are ever shown)`);
 
   const settings=loadSettings(paths.settingsFile);

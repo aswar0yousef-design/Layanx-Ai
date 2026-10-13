@@ -174,10 +174,10 @@ export async function openSecretStore(dir:string,options:OpenSecretStoreOptions=
 }
 
 /** Copy stored secrets into an env object without overriding values the user set explicitly. */
-export function applySecretsToEnv(store:SecretStore,env:NodeJS.ProcessEnv):string[]{
+export function applySecretsToEnv(store:SecretStore,env:NodeJS.ProcessEnv,skip:ReadonlySet<string>=new Set()):string[]{
   const applied:string[]=[];
   for(const name of store.names()){
-    if(env[name]!==undefined&&env[name]!=="")continue;
+    if(skip.has(name)||(env[name]!==undefined&&env[name]!==""))continue;
     const value=store.get(name);
     if(value!==undefined){env[name]=value;applied.push(name);}
   }

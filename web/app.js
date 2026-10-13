@@ -380,14 +380,19 @@ function finishTerm(e,r){const d=r.data||{};e.approval=undefined;if(r.ok){e.out=
 async function terminalRun(cmd){
  const e={cmd,out:"",state:"run",at:Date.now()};S.term.unshift(e);drawTerminal();
  const r=await safe(quickTool("terminal.exec",{command:cmd}),{ok:false,error:"network"});
- if(!r.ok&&r.approvalId){e.state="wait";e.approval={id:r.approvalId,missionId:r.missionId};drawTerminal();return;}
+ if(!r.ok&&r.approvalId){e.state="wait";e.approval={id:r.approvalId,missionId:r.missionId,digest:r.digest};drawTerminal();return;}
  finishTerm(e,r);
 }
+/** Same decision path as the phone and the island: the server runs the approved command once and answers with its result. */
+async function decideQuick(approval){
+ const d=await api("/v1/companion/decide",{method:"POST",body:{id:approval.id,digest:approval.digest||await digestOf(approval.id),decision:"approve",wait:true},allow:[409]});
+ if(!d.ok)throw new Error(reasonText(d.error||"")||d.error);
+ return d.result||{ok:true};
+}
 async function approveTerm(e){
- try{await api("/v1/approvals/"+encodeURIComponent(e.approval.id)+"/approve?projectId="+encodeURIComponent(project()),{method:"POST",body:{}});
-  e.state="run";drawTerminal();
-  const r=await quickTool("terminal.exec",{command:e.cmd},{missionId:e.approval.missionId,approvalId:e.approval.id});finishTerm(e,r);loadApprovals().then(drawBell);}
- catch(err){toast(err.message);}
+ try{e.state="run";drawTerminal();
+  finishTerm(e,await decideQuick(e.approval));loadApprovals().then(drawBell);}
+ catch(err){e.state="wait";drawTerminal();toast(err.message);}
 }
 function termEntries(n){
  if(!S.term.length)return[el("div",{class:"muted",text:t("termEmpty")})];
@@ -574,8 +579,7 @@ async function quickWithApproval(tool,payload){
  let r=await quickTool(tool,payload);
  if(!r.ok&&r.approvalId){
   if(!confirm(t("confirmApprove")+"\n"+tool+" "+JSON.stringify(payload)))return null;
-  await api("/v1/approvals/"+encodeURIComponent(r.approvalId)+"/approve?projectId="+encodeURIComponent(project()),{method:"POST",body:{}});
-  r=await quickTool(tool,payload,{missionId:r.missionId,approvalId:r.approvalId});
+  r=await decideQuick({id:r.approvalId,digest:r.digest});
  }
  return r;
 }

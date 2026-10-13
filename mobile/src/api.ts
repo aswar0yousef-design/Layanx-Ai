@@ -5,7 +5,8 @@ export type MissionSummary={id:string;goal:string;status:string;createdAt?:strin
 export type Job={id:string;goal:string;status:string;milestones:Array<{title:string;status:string}>;current:number;result?:string;waiting?:{approvalId:string}};
 export type AssistantReply={ok:boolean;lang:"ar"|"en";intent:string;reply:string;missionId?:string;task?:{completed:boolean;paused:boolean;reason?:string}};
 /** One item that waits for the owner: LayanX's own approvals and Claude Code / Codex permission prompts. */
-export type CompanionApproval={id:string;kind:"layanx"|"agent";digest:string;tool:string;action?:string;title:string;detail:string;projectId?:string;agent?:string;jobId?:string;expiresAt?:string};
+/** detail is everything that will run; when full is false it was too long, so approve on the PC instead. */
+export type CompanionApproval={id:string;kind:"layanx"|"agent";digest:string;tool:string;action?:string;title:string;detail:string;full:boolean;projectId?:string;agent?:string;jobId?:string;expiresAt?:string};
 export type CompanionJob={id:string;projectId:string;goal:string;status:string;milestone?:{index:number;total:number;title:string};progress:number;updatedAt:string;result?:string};
 export type AgentSession={id:string;agent:"claude"|"codex";project:string;status:"working"|"waiting"|"idle"|"ended";lastTool?:string;lastDetail?:string;prompt?:string;edits:number;updatedAt:string};
 export type CompanionFeed={ok:true;v:string;at:string;approvals:CompanionApproval[];jobs:CompanionJob[];agents:AgentSession[];pc:{cpu:number;ram:number;gpu?:number;vram?:number}|null};
@@ -25,12 +26,13 @@ export async function pairWithLink(link:string,phoneName:string):Promise<LinkedD
  */
 export class LayanXApi{
   constructor(readonly device:LinkedDevice){}
-  private async request<T>(method:string,path:string,body?:unknown,timeoutMs=20000):Promise<T>{
+  /** `allow`: statuses whose JSON body is the answer (e.g. 409 {ok:false,error} from decide). */
+  private async request<T>(method:string,path:string,body?:unknown,timeoutMs=20000,allow:number[]=[]):Promise<T>{
     let r;
     try{r=await native().request({deviceId:this.device.id,method,path,...(body!==undefined?{body:JSON.stringify(body),bodyType:"application/json"}:{}),timeoutMs});}
     catch(e){throw new LinkError(e instanceof Error?e.message:"Network error",(e as {code?:string}).code);}
     let d:any={};try{d=r.body&&!r.base64?JSON.parse(r.body):{};}catch{d={raw:r.body};}
-    if(r.status<200||r.status>=300)throw new LinkError(d?.message??d?.error??`HTTP ${r.status}`);
+    if((r.status<200||r.status>=300)&&!allow.includes(r.status))throw new LinkError(d?.message??d?.error??`HTTP ${r.status}`);
     return d as T;
   }
   private get<T>(path:string,timeoutMs?:number){return this.request<T>("GET",path,undefined,timeoutMs);}
@@ -39,7 +41,7 @@ export class LayanXApi{
   whoami(){return this.get<{deviceId:string;name:string;installId:string;computer?:string;addresses?:string[]}>("/v1/device/whoami",8000)}
   /** Waits up to `wait` seconds for something to change after version `since`. */
   feed(since?:string,wait=0){return this.get<CompanionFeed>(`/v1/companion/feed?wait=${wait}${since?"&since="+encodeURIComponent(since):""}`,(wait+20)*1000)}
-  decide(item:CompanionApproval,decision:"approve"|"deny"){return this.post<{ok:boolean;error?:string;resumed?:boolean}>("/v1/companion/decide",{id:item.id,digest:item.digest,decision})}
+  decide(item:CompanionApproval,decision:"approve"|"deny"){return this.request<{ok:boolean;error?:string;resumed?:boolean}>("POST","/v1/companion/decide",{id:item.id,digest:item.digest,decision},30000,[409])}
   missions(projectId:string){return this.get<{ok:true;missions:MissionSummary[]}>(`/v1/missions?projectId=${encodeURIComponent(projectId)}`)}
   run(goal:string,projectId:string,model="auto"){return this.post<any>("/v1/agent/gateway",{goal,projectId,maxSteps:10,model},180000)}
   createJob(goal:string,projectId:string){return this.post<{ok:true;job:Job}>("/v1/supervisor/jobs",{goal,projectId})}

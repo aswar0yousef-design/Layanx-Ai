@@ -193,13 +193,13 @@ try{
 const lanDir=fs.mkdtempSync(path.join(os.tmpdir(),"lx-lan-"));
 const access=new AccessManager({devicesFile:path.join(lanDir,"d.json"),launchTicketFile:path.join(lanDir,"t.json"),masterToken:"lxm_lan_master"});
 const upstreamPort=await freeLoopbackPort();
-const upstream=http.createServer((req,res)=>{res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify({principal:req.headers["x-layanx-principal"]}));});
+const upstream=http.createServer((req,res)=>{res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify({principal:req.headers["x-layanx-principal"],url:req.url}));});
 await new Promise<void>(r=>upstream.listen(upstreamPort,"127.0.0.1",()=>r()));
 const lanPort=await freeLoopbackPort();
 const {createSetupRoutes}=await import("../src/local/setup-routes.js");
 let remoteIsLan=true;
 const gw=await startGateway({
-  bindHost:"127.0.0.1",listeners:[{name:"api",publicPort:lanPort,internalPort:upstreamPort}],access,internalToken:"internal",mobileAccess:true,
+  bindHost:"127.0.0.1",listeners:[{name:"api",publicPort:lanPort,internalPort:upstreamPort}],access,internalToken:"internal",mobileAccess:true,remoteAccess:true,
   isLoopback:()=>!remoteIsLan,localAddresses:()=>["127.0.0.1"],log:()=>undefined,
   handleOwnRoute:async ctx=>{
     if(ctx.url.pathname==="/v1/pair/complete"){
@@ -225,12 +225,23 @@ try{
   // A bearer token over plain Wi-Fi travels in clear: refused (phones use the encrypted link, tests/phone-link.spec.ts).
   const clear=await call(lanPort,"GET","/x",{authorization:"Bearer "+paired.json.deviceToken});
   assert.equal(clear.status,403);assert.match(clear.json.message,/old unencrypted link/);
+  // Anyone on the Wi-Fi can write any Host header: a Tailscale name from a LAN address is not "remote".
+  assert.equal((await call(lanPort,"GET","/x",{authorization:"Bearer "+paired.json.deviceToken,host:"my-pc.tail1234.ts.net"})).status,421);
   remoteIsLan=false;// the same token from this PC (or over Tailscale) still works
   const ok=await call(lanPort,"GET","/x",{authorization:"Bearer "+paired.json.deviceToken,origin:"capacitor://localhost"});
   assert.equal(ok.status,200);
   assert.match(ok.json.principal,/^device:/);
   assert.equal(ok.headers["access-control-allow-origin"],"capacitor://localhost");
   assert.equal(ok.headers["access-control-allow-credentials"],undefined,"no credentialed CORS for token clients");
+  // The island's token reaches /v1/companion/* only, whatever the raw path says.
+  const island=access.issueAppToken("island");
+  const feed=await call(lanPort,"GET","/v1/companion/./feed?wait=0",{authorization:"Bearer "+island});
+  assert.deepEqual([feed.status,feed.json.url],[200,"/v1/companion/feed?wait=0"],"the runtime gets the normalized path");
+  for(const sneaky of ["/v1/companion/../learning/playbooks/x/approve","/v1/companion/%2e%2e/supervisor/jobs/j/cancel","/v1/companion\\..\\setup/status"])
+    assert.equal((await call(lanPort,"POST",sneaky,{authorization:"Bearer "+island},{})).status,403,sneaky);
+  remoteIsLan=true;
+  const fromLan=await call(lanPort,"GET","/v1/companion/feed",{authorization:"Bearer "+island});
+  assert.ok([401,403].includes(fromLan.status)&&fromLan.json.principal===undefined,"never from the network");
   remoteIsLan=false;
 }finally{
   await gw.close();

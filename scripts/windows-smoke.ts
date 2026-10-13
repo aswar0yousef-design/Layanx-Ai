@@ -208,7 +208,8 @@ await check("screen-top island: compiled (WinForms, Arabic), draws a feed, reads
   const {ensureIsland}=await import("../src/companion/windows-helpers.js");
   const http=await import("node:http");const {existsSync,statSync}=await import("node:fs");
   const dataDir=mkdtempSync(join(tmpdir(),"lx-island-"));
-  const feed={ok:true,v:"abc",approvals:[{id:"a1",kind:"layanx",digest:"d",tool:"terminal.exec",title:"بناء متجر إلكتروني",detail:"npm install"}],
+  const feed={ok:true,v:"abc",approvals:[{id:"a1",kind:"layanx",digest:"d",tool:"terminal.exec",title:"بناء متجر إلكتروني",detail:"command: npm install\nnpm run build",full:true},
+      {id:"ag_1",kind:"agent",digest:"e",tool:"Write",title:"Claude Code · shop",detail:"file_path: src/a.ts\ncontent: "+"x".repeat(3990)+"\n… (812 more characters; review on the PC)",full:false}],
     jobs:[{id:"j1",goal:"متجر لمحل كمبيوترات",status:"running",milestone:{index:2,total:5,title:"صفحة المنتجات"},progress:0.4}],
     agents:[{id:"s1",agent:"claude",project:"shop",status:"working",lastTool:"Edit",lastDetail:"src/pay.ts"}],pc:{cpu:23.6,ram:61,gpu:40}};
   const server=http.createServer((req,res)=>{
@@ -223,11 +224,16 @@ await check("screen-top island: compiled (WinForms, Arabic), draws a feed, reads
     const drawn=spawnSync(exe,["--selftest",png,"--feed",feedFile],{encoding:"utf8",timeout:60_000});
     assert.equal(drawn.status,0,"selftest: "+drawn.stdout+drawn.stderr);
     assert.ok(existsSync(png)&&statSync(png).size>2000,"an image was drawn");
-    assert.match(drawn.stdout,/approvals=1 jobs=1 agents=1/);
+    assert.match(drawn.stdout,/approvals=2 jobs=1 agents=1/);
     const port=String((server.address() as {port:number}).port);
-    const once=spawnSync(exe,["--once","--port",port],{input:"lxa_island_test\n",encoding:"utf8",timeout:60_000});
-    assert.equal(once.status,0,"once: "+once.stdout+once.stderr);assert.match(once.stdout,/^ok approvals=1 jobs=1 agents=1/);
-    const wrong=spawnSync(exe,["--once","--port",port],{input:"lxa_wrong\n",encoding:"utf8",timeout:60_000});
+    // Asynchronous: the feed server runs in this process, so a blocking spawnSync would never let it answer.
+    const runOnce=(token:string)=>new Promise<{status:number|null;stdout:string}>((resolve,reject)=>{
+      const c=spawn(exe,["--once","--port",port]);let o="";const t=setTimeout(()=>c.kill(),60_000);
+      c.stdout.on("data",d=>o+=d);c.on("error",reject);c.on("close",code=>{clearTimeout(t);resolve({status:code,stdout:o});});c.stdin.end(token+"\n");
+    });
+    const once=await runOnce("lxa_island_test");
+    assert.equal(once.status,0,"once: "+once.stdout);assert.match(once.stdout,/^ok approvals=2 jobs=1 agents=1/);
+    const wrong=await runOnce("lxa_wrong");
     assert.match(wrong.stdout,/error 401/,"a wrong token is refused");
     return drawn.stdout.trim();
   }finally{server.close();rmSync(dataDir,{recursive:true,force:true});}

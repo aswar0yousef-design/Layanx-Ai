@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
+import {describeInput} from "./describe.js";
 
 /**
  * Coding agents running on this PC outside LayanX (Claude Code, Codex): their hooks report what they do,
@@ -19,17 +20,17 @@ export interface AgentSession{
   lastTool?:string;lastDetail?:string;lastEvent:string;prompt?:string;
   edits:number;startedAt:string;updatedAt:string;
 }
-export interface AgentPermission{id:string;agent:HookAgent;sessionId:string;project:string;tool:string;detail:string;createdAt:string;expiresAt:string;digest:string}
+export interface AgentPermission{id:string;agent:HookAgent;sessionId:string;project:string;tool:string;detail:string;full:boolean;createdAt:string;expiresAt:string;digest:string}
 
 type Decision="allow"|"deny";
-interface Waiting{permission:AgentPermission;resolve:(d:Decision|null)=>void}
+interface Waiting{permission:AgentPermission;input:string;resolve:(d:Decision|null)=>void}
 
 const clean=(v:unknown,n:number)=>String(v??"").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g," ").replace(/\s+/g," ").trim().slice(0,n);
 const EDIT_TOOLS=new Set(["Edit","Write","MultiEdit","NotebookEdit","apply_patch"]);
 /** The folder name, for Windows (C:\\code\\shop) and POSIX paths alike. */
 const folderName=(p:string)=>path.win32.basename(p.replace(/[\\/]+$/,""));
 
-/** One short, readable line for what a tool is about to do (never the whole input). */
+/** One short line for the session list (what the agent is doing now); approvals use permissionDetail. */
 export function toolDetail(tool:string,input:unknown):string{
   const i=(input&&typeof input==="object"?input:{}) as Record<string,unknown>;
   const pick=i.command??i.cmd??i.file_path??i.path??i.notebook_path??i.url??i.pattern??i.description??i.query;
@@ -37,6 +38,11 @@ export function toolDetail(tool:string,input:unknown):string{
   if(pick!==undefined)return clean(pick,400);
   try{return clean(JSON.stringify(i),400);}catch{return"";}
 }
+/** Everything the agent is asking to do, as the owner reads it before allowing it. */
+export function permissionDetail(input:unknown):{text:string;full:boolean}{
+  return describeInput(input,["command","cmd","file_path","path","notebook_path","url","old_string","new_string","content","pattern","description"]);
+}
+const inputKey=(tool:string,input:unknown)=>{try{return tool+"\u0000"+JSON.stringify(input??null);}catch{return tool;}};
 export const permissionDigest=(p:{id:string;tool:string;detail:string;sessionId:string})=>
   crypto.createHash("sha256").update([p.id,p.sessionId,p.tool,p.detail].join("\u0000")).digest("hex").slice(0,16);
 
@@ -93,10 +99,12 @@ export class AgentHookHub{
     s.updatedAt=nowIso;s.lastEvent=event;
     if(cwd){s.cwd=cwd;s.project=folderName(cwd);}
     const tool=clean(payload.tool_name,60);
-    if(event!=="PermissionRequest"){
-      // Anything else from this session means its prompt was answered elsewhere (in the terminal).
-      for(const [id,w] of this.waiting)if(w.permission.sessionId===sessionId){this.waiting.delete(id);w.resolve(null);}
-    }
+    // The prompt was answered elsewhere (in the terminal) when the same tool call ran, or the turn or the
+    // session ended. Other events (a notification, a parallel tool, a subagent) leave it waiting.
+    const finishedCall=event==="PostToolUse"||event==="PostToolUseFailure"?inputKey(tool,payload.tool_input):null;
+    const turnOver=["UserPromptSubmit","Stop","StopFailure","Interrupt","SessionEnd"].includes(event);
+    if(finishedCall||turnOver)
+      for(const [id,w] of this.waiting)if(w.permission.sessionId===sessionId&&(turnOver||w.input===finishedCall)){this.waiting.delete(id);w.resolve(null);}
     switch(event){
       case"SessionStart":s.status="working";break;
       case"UserPromptSubmit":s.status="working";s.prompt=clean(payload.prompt,160);break;
@@ -112,13 +120,13 @@ export class AgentHookHub{
     // A permission prompt: wait for the owner (phone or island), then answer the agent.
     if(this.waiting.size>=40){this.changed();return"";}
     const id="ag_"+crypto.randomBytes(8).toString("hex");
-    const detail=toolDetail(tool,payload.tool_input);
-    const permission:AgentPermission={id,agent,sessionId,project:s.project,tool,detail,createdAt:nowIso,expiresAt:new Date(this.now()+this.waitMs).toISOString(),digest:""};
+    const {text:detail,full}=permissionDetail(payload.tool_input);
+    const permission:AgentPermission={id,agent,sessionId,project:s.project,tool,detail,full,createdAt:nowIso,expiresAt:new Date(this.now()+this.waitMs).toISOString(),digest:""};
     permission.digest=permissionDigest(permission);
-    s.status="waiting";s.lastTool=tool;s.lastDetail=detail;
+    s.status="waiting";s.lastTool=tool;s.lastDetail=toolDetail(tool,payload.tool_input);
     const decision=await new Promise<Decision|null>(resolve=>{
       const timer=setTimeout(()=>{if(this.waiting.delete(id)){resolve(null);this.changed();}},this.waitMs);
-      this.waiting.set(id,{permission,resolve:d=>{clearTimeout(timer);resolve(d);}});
+      this.waiting.set(id,{permission,input:inputKey(tool,payload.tool_input),resolve:d=>{clearTimeout(timer);resolve(d);}});
       this.changed();
     });
     const current=this.sessionsById.get(sessionId);

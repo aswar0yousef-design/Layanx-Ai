@@ -770,7 +770,7 @@ export class LayanXCore{
       if(risk.requiresApproval||tool.dangerous){
         const approvalId=approvalIds[index];
         if(!approvalId){
-          const created=this.executionRuntime.approvals.ensure({missionId,agentId,tool:plan.tool,action:plan.action,permission:plan.permission,payloadHash:createHash("sha256").update(JSON.stringify(request.payload??null)).digest("hex"),reason:"Explicit approval is required before this development session can execute.",expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
+          const created=this.executionRuntime.approvals.ensure({missionId,agentId,tool:plan.tool,action:plan.action,permission:plan.permission,payloadHash:createHash("sha256").update(JSON.stringify(request.payload??null)).digest("hex"),reason:"Explicit approval is required before this development session can execute.",expiresAt:new Date(Date.now()+15*60*1000).toISOString(),payload:request.payload??null,planIndex:index});
           requestedApprovals[index]=created.id;
           missing.push(index);
           continue;

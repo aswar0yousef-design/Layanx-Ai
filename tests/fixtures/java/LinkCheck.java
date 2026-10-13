@@ -26,6 +26,27 @@ public final class LinkCheck {
         out.put("first", LinkClient.send(d, d.lastUrl, e, 15000).status);
         out.put("replay", LinkClient.send(d, d.lastUrl, e, 15000).status);
         out.put("device", d.toMap(false));
+        if (args.length >= 4) {
+            String good = d.lastUrl;
+            // An address now answered by something else saying "unknown device": not proof, try the next one.
+            d.urls.add(0, args[1]);
+            d.lastUrl = args[1];
+            LinkClient.Response a = LinkClient.request(d, "GET", "/v1/device/whoami", null, null, false, 15000);
+            out.put("after401", a.status);
+            out.put("after401Url", d.lastUrl.equals(good));
+            // Something that answers 200 with an envelope this PC did not seal: next address.
+            d.lastUrl = args[2];
+            LinkClient.Response b = LinkClient.request(d, "GET", "/v1/device/whoami", null, null, false, 15000);
+            out.put("afterForeign", b.status);
+            // Sent but never answered: stop (no second send to another address).
+            d.lastUrl = args[3];
+            try {
+                LinkClient.request(d, "POST", "/v1/echo?x=2", "{}", "application/json", false, 1500);
+                out.put("silent", "answered");
+            } catch (java.io.IOException noAnswer) {
+                out.put("silent", noAnswer.getMessage());
+            }
+        }
         System.out.println(MiniJson.stringify(out));
     }
 }

@@ -3,6 +3,9 @@ import type {PermissionLevel} from "../core/types.js";
 export interface ApprovalRequest{
  id:string;missionId:string;agentId:string;tool:string;action:string;permission:PermissionLevel;
  payloadHash:string;reason:string;expiresAt:string;
+ /** What exactly is approved (its hash is payloadHash) and which planned step it is, so every place that
+  *  shows the request (dashboard, phone, island) shows that step and resumes that step. */
+ payload?:unknown;planIndex?:number;
 }
 export interface ApprovalSnapshot{requests:ApprovalRequest[];approvedIds:string[];}
 

@@ -3,6 +3,7 @@ import path from "node:path";
 import {spawn,type ChildProcess} from "node:child_process";
 import {ensureCompiled} from "../platform/csharp.js";
 import {writeFileAtomic} from "../platform/paths.js";
+import {safeChildEnv} from "../platform/safe-env.js";
 
 /**
  * Two small Windows programs, compiled on the PC from the C# below (C# 5, .NET Framework 4):
@@ -233,9 +234,19 @@ class Island : Form {
   }
   static string SessionState(string s) { switch (s) { case "waiting": return "ينتظر موافقتك"; case "idle": return "انتهى من الرد"; case "ended": return "أُغلق"; default: return "يعمل"; } }
 
+  // One Font per size (a new Font per label on every update would leak GDI handles).
+  static readonly Dictionary<string, Font> fonts = new Dictionary<string, Font>();
+  static Font FontOf(float size, bool bold) {
+    string key = size + (bold ? "b" : "");
+    Font f; if (!fonts.TryGetValue(key, out f)) { f = new Font("Segoe UI", size, bold ? FontStyle.Bold : FontStyle.Regular); fonts[key] = f; }
+    return f;
+  }
+  static bool Flag(Dictionary<string, object> d, string k) { object v; return d != null && d.TryGetValue(k, out v) && v is bool && (bool)v; }
+  static string Preview(string s, int n) { return s.Length <= n ? s : s.Substring(0, n) + " …"; }
+
   Label Text1(string text, Color color, float size, bool bold) {
     Label l = new Label(); l.AutoSize = false; l.Width = list.Width - 34; l.Text = text; l.ForeColor = color;
-    l.Font = new Font("Segoe UI", size, bold ? FontStyle.Bold : FontStyle.Regular); l.TextAlign = ContentAlignment.TopRight;
+    l.Font = FontOf(size, bold); l.TextAlign = ContentAlignment.TopRight;
     using (Graphics g = CreateGraphics()) l.Height = (int)Math.Ceiling(g.MeasureString(text, l.Font, l.Width).Height) + 2;
     return l;
   }
@@ -263,18 +274,32 @@ class Island : Form {
     List<Dictionary<string, object>> approvals = new List<Dictionary<string, object>>(L(feed, "approvals"));
     List<Dictionary<string, object>> jobs = new List<Dictionary<string, object>>(L(feed, "jobs"));
     List<Dictionary<string, object>> agents = new List<Dictionary<string, object>>(L(feed, "agents"));
-    list.SuspendLayout(); list.Controls.Clear();
+    list.SuspendLayout();
+    // Dispose what the last update drew (Clear alone would keep every window handle alive).
+    while (list.Controls.Count > 0) { Control old = list.Controls[0]; list.Controls.Remove(old); old.Dispose(); }
     foreach (Dictionary<string, object> a in approvals) {
       string id = S(a, "id"), digest = S(a, "digest"), tool = S(a, "tool"), title = S(a, "title"), detail = S(a, "detail");
-      Button ok = Btn("موافقة", Amber, Color.Black);
+      bool full = Flag(a, "full");
       Button no = Btn("رفض", Bg, Color.White);
-      ok.Click += delegate {
-        if (MessageBox.Show(this, "الموافقة على: " + tool + "\n" + detail, "LayanX", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign) != DialogResult.Yes) return;
-        ok.Enabled = no.Enabled = false; if (!Decide(id, digest, "approve")) MessageBox.Show(this, "لم تُسجَّل الموافقة (ربما أُجيب عليها من مكان آخر).", "LayanX");
-      };
-      no.Click += delegate { ok.Enabled = no.Enabled = false; Decide(id, digest, "deny"); };
-      FlowLayoutPanel buttons = new FlowLayoutPanel(); buttons.Width = list.Width - 34; buttons.Height = 36; buttons.Controls.Add(ok); buttons.Controls.Add(no);
-      list.Controls.Add(CardOf(Text1("⚠ " + title, Amber, 10f, true), Text1(tool + (detail.Length > 0 ? ": " + detail : ""), Color.White, 9.5f, false), buttons));
+      FlowLayoutPanel buttons = new FlowLayoutPanel(); buttons.Width = list.Width - 34; buttons.Height = 36;
+      if (full) {
+        Button ok = Btn("موافقة", Amber, Color.Black);
+        // The confirmation shows everything that will run, not the short preview on the card.
+        ok.Click += delegate {
+          if (MessageBox.Show(this, "الموافقة على: " + tool + "\n\n" + detail, "LayanX", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign) != DialogResult.Yes) return;
+          ok.Enabled = no.Enabled = false; if (!Decide(id, digest, "approve")) MessageBox.Show(this, "لم تُسجَّل الموافقة (ربما أُجيب عليها من مكان آخر).", "LayanX");
+        };
+        no.Click += delegate { ok.Enabled = no.Enabled = false; Decide(id, digest, "deny"); };
+        buttons.Controls.Add(ok);
+      } else {
+        // Too long to show here in full: review it in LayanX on this PC.
+        Button review = Btn("مراجعة", Amber, Color.Black);
+        review.Click += delegate { OpenLayanX(); };
+        no.Click += delegate { review.Enabled = no.Enabled = false; Decide(id, digest, "deny"); };
+        buttons.Controls.Add(review);
+      }
+      buttons.Controls.Add(no);
+      list.Controls.Add(CardOf(Text1("⚠ " + title, Amber, 10f, true), Text1(tool + (detail.Length > 0 ? ": " + Preview(detail, 280) : ""), Color.White, 9.5f, false), buttons));
     }
     foreach (Dictionary<string, object> j in jobs) {
       Dictionary<string, object> m = null; object mo; if (j.TryGetValue("milestone", out mo)) m = mo as Dictionary<string, object>;
@@ -333,7 +358,8 @@ export function writeHookConfig(dataDir:string,port:number,token:string){
 
 /** Starts the island with its token on stdin; stdin stays open so the island closes when LayanX stops. */
 export function startIsland(exe:string,port:number,token:string,log:(m:string)=>void):ChildProcess{
-  const child=spawn(exe,["--port",String(port)],{stdio:["pipe","ignore","ignore"],windowsHide:false});
+  // Its only key is the scoped token on stdin: no master token, no vault secrets in its environment.
+  const child=spawn(exe,["--port",String(port)],{stdio:["pipe","ignore","ignore"],windowsHide:false,env:safeChildEnv()});
   child.stdin?.write(token+"\n");
   child.on("exit",code=>log(`island exited (${code})`));
   child.on("error",e=>log(`island: ${e.message}`));

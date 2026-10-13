@@ -108,6 +108,11 @@ public final class LinkClient {
         String body;
     }
 
+    /** Nothing reached that address (no connection): the request can safely go to the next one. */
+    public static final class UnreachableException extends IOException {
+        public UnreachableException(String m, Throwable cause) { super(m, cause); }
+    }
+
     private static Http post(String url, String json, int timeoutMs) throws IOException {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         try {
@@ -119,6 +124,7 @@ public final class LinkClient {
             c.setRequestProperty("Accept", "application/json");
             byte[] payload = json.getBytes(StandardCharsets.UTF_8);
             c.setFixedLengthStreamingMode(payload.length);
+            try { c.connect(); } catch (IOException e) { throw new UnreachableException(e.getMessage(), e); }
             try (OutputStream o = c.getOutputStream()) { o.write(payload); }
             Http h = new Http();
             h.status = c.getResponseCode();
@@ -175,7 +181,7 @@ public final class LinkClient {
             Http h;
             try {
                 h = post(url + "/v1/link/pair", json, 15000);
-            } catch (IOException e) {
+            } catch (UnreachableException e) {
                 lastNetwork = e;
                 continue;
             }
@@ -233,18 +239,17 @@ public final class LinkClient {
         return e;
     }
 
-    /** Sends one envelope to one address and reads the answer (HTTP status of the link itself in status on errors). */
-    public static Response send(Device d, String url, Envelope e, int timeoutMs) throws Exception {
-        Http h = post(url + "/v1/link", e.json, timeoutMs);
-        if (h.status == 401) throw new DeviceRemovedException(message(h.body, "This phone was removed from the computer. Pair it again."));
-        if (h.status != 200) {
-            Response r = new Response();
-            r.status = h.status;
-            r.contentType = "application/json";
-            r.body = h.body;
-            return r;
-        }
-        Map<String, Object> env = MiniJson.object(h.body);
+    private static Response refusal(Http h) {
+        Response r = new Response();
+        r.status = h.status;
+        r.contentType = "application/json";
+        r.body = h.body;
+        return r;
+    }
+
+    /** Opens the PC's sealed answer; throws when it was not sealed by this PC for this request. */
+    private static Response openAnswer(Device d, Envelope e, String body) throws Exception {
+        Map<String, Object> env = MiniJson.object(body);
         byte[] shared = LinkCrypto.ecdh(LinkCrypto.privateFromPkcs8(LinkCrypto.B64.dec(d.privateKey)), LinkCrypto.B64.dec(d.pcKey));
         Map<String, Object> inner = MiniJson.object(new String(LinkCrypto.open(LinkCrypto.s2c(shared, d.id), MiniJson.str(env, "n"), MiniJson.str(env, "c"),
                 LinkCrypto.responseAad(d.id, e.requestId)), StandardCharsets.UTF_8));
@@ -257,28 +262,56 @@ public final class LinkClient {
         return r;
     }
 
+    /** Sends one envelope to one address and reads the answer (HTTP status of the link itself in status on errors). */
+    public static Response send(Device d, String url, Envelope e, int timeoutMs) throws Exception {
+        Http h = post(url + "/v1/link", e.json, timeoutMs);
+        if (h.status == 401) throw new DeviceRemovedException(message(h.body, "This phone was removed from the computer. Pair it again."));
+        if (h.status != 200) return refusal(h);
+        return openAnswer(d, e, h.body);
+    }
+
     /**
-     * One request, tried on each address (last good one first) until one answers. A network error moves
-     * on to the next address; any answer from the PC, even an error, ends the search. The address that
-     * answered is stored in d.lastUrl.
+     * One request, tried on each address (last good one first).
+     *  - No connection: the next address (nothing was sent).
+     *  - Sent but no answer (timeout): stop. The PC may be doing it; sending it again elsewhere could do it twice.
+     *  - An answer this PC did not seal (another device now has that address, a captive portal), or a
+     *    refusal of the envelope itself (unknown device, stale clock): the next address. Such answers carry
+     *    no proof they came from the PC, so one of them alone never ends the search or unpairs the phone.
+     * Only an answer sealed by the PC is returned as success; its address goes to d.lastUrl.
      */
     public static Response request(Device d, String method, String path, String body, String bodyType, boolean base64, int timeoutMs) throws Exception {
         List<String> order = new ArrayList<>();
         if (d.lastUrl != null) order.add(d.lastUrl);
         for (String u : d.urls) if (!order.contains(u)) order.add(u);
-        IOException last = null;
+        IOException lastNetwork = null;
+        Response refused = null;
+        String removed = null;
+        String name = d.computer != null ? d.computer : "the computer";
         for (String url : order) {
             Envelope e = envelope(d, method, path, body, bodyType, base64);
+            Http h;
             try {
-                Response r = send(d, url, e, timeoutMs);
-                d.lastUrl = url;
-                return r;
-            } catch (DeviceRemovedException removed) {
-                throw removed;
-            } catch (IOException network) {
-                last = network;
+                h = post(url + "/v1/link", e.json, timeoutMs);
+            } catch (UnreachableException unreachable) {
+                lastNetwork = unreachable;
+                continue;
+            } catch (IOException lost) {
+                throw new IOException("No answer from " + name + " (it may still be working on it): " + lost.getMessage(), lost);
             }
+            if (h.status == 401) { removed = message(h.body, "This phone was removed from the computer. Pair it again."); continue; }
+            if (h.status != 200) { refused = refusal(h); continue; }
+            Response r;
+            try {
+                r = openAnswer(d, e, h.body);
+            } catch (Exception notThisPc) {
+                lastNetwork = new IOException("Something else answered at " + url);
+                continue;
+            }
+            d.lastUrl = url;
+            return r;
         }
-        throw new IOException("Cannot reach " + (d.computer != null ? d.computer : "the computer") + (last != null ? ": " + last.getMessage() : ""));
+        if (refused != null) return refused;
+        if (removed != null) throw new DeviceRemovedException(removed);
+        throw new IOException("Cannot reach " + name + (lastNetwork != null ? ": " + lastNetwork.getMessage() : ""));
     }
 }

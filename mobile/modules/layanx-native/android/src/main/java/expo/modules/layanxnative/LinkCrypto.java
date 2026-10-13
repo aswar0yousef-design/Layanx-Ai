@@ -2,7 +2,6 @@ package expo.modules.layanxnative;
 
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import java.security.AlgorithmParameters;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -41,10 +40,12 @@ public final class LinkCrypto {
         return g.generateKeyPair();
     }
 
-    private static ECParameterSpec p256() throws Exception {
-        AlgorithmParameters p = AlgorithmParameters.getInstance("EC");
-        p.init(new ECGenParameterSpec("secp256r1"));
-        return p.getParameterSpec(ECParameterSpec.class);
+    private static ECParameterSpec curve;
+
+    /** The P-256 parameters, taken from a generated key (AlgorithmParameters "EC" needs Android 8+). */
+    private static synchronized ECParameterSpec p256() throws Exception {
+        if (curve == null) curve = ((ECPublicKey) generate().getPublic()).getParams();
+        return curve;
     }
 
     private static byte[] fixed32(BigInteger v) {

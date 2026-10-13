@@ -159,7 +159,10 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     const payload=input.payload&&typeof input.payload==="object"&&!Array.isArray(input.payload)?input.payload as Record<string,unknown>:{};
     const resume=typeof input.missionId==="string"&&typeof input.approvalId==="string"?{missionId:input.missionId,approvalId:input.approvalId}:undefined;
     const result=await runSingleTool(options.core,projectId,tool,payload,resume);
-    json(response,200,{...result,tool});
+    // Waiting for the owner: the digest lets the dashboard decide through /v1/companion/decide like the phone.
+    let digest:string|undefined;
+    if(!result.ok&&typeof result.approvalId==="string"){try{digest=approvalDigest(options.core.executionRuntime.approvals.get(result.approvalId));}catch{}}
+    json(response,200,{...result,tool,...(digest?{digest}:{})});
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"quick_action_failed"});}
    return;
   }
@@ -834,7 +837,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     const approval=options.core.executionRuntime.approvals.create({
       missionId:id,agentId,tool:plan.tool,action:plan.action,permission:plan.permission,payloadHash:createHash("sha256").update(JSON.stringify(plan.payload??null)).digest("hex"),
       reason:risk.reasons.join("; ")||"Dangerous tool execution",
-      expiresAt:new Date(Date.now()+15*60*1000).toISOString()
+      expiresAt:new Date(Date.now()+15*60*1000).toISOString(),payload:plan.payload??null,planIndex:toolIndex
     });
     json(response,201,{ok:true,approval});
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"approval creation failed"});}

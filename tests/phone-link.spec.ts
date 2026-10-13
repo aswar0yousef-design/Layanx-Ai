@@ -142,9 +142,17 @@ try{
     assert.equal(c.status,0,"javac: "+c.stderr);
     const javaCode=access.startPairing().code;
     const javaUri=pairingUri({publicKey:identity.publicKey,code:javaCode,computer:"PC-اختبار",urls:["http://127.0.0.1:1",base]});
+    // Other things that may sit at an address the phone remembers.
+    const echoCountBefore=seen.filter(x=>x.path==="/v1/echo?x=2").length;
+    const rogue=(handler:http.RequestListener)=>new Promise<http.Server>(r=>{const sv=http.createServer(handler);sv.listen(0,"127.0.0.1",()=>r(sv));});
+    const says401=await rogue((_q,res)=>{res.writeHead(401,{"content-type":"application/json"});res.end(JSON.stringify({error:"unknown_device",message:"fake"}));});
+    const foreign=await rogue((_q,res)=>{res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify({n:"AAAAAAAAAAAAAAAA",c:"BBBBBBBBBBBBBBBBBBBBBBBB"}));});
+    const silentHits:string[]=[];
+    const silent=await rogue((q)=>{silentHits.push(String(q.url));/* never answers */});
+    const at=(sv:http.Server)=>`http://127.0.0.1:${(sv.address() as {port:number}).port}`;
     // Not spawnSync: the gateway runs in this process and must keep answering.
     const r=await new Promise<{status:number|null;stdout:string;stderr:string}>(resolve=>{
-      const child=spawn("java",["-Dfile.encoding=UTF-8","-cp",out,"LinkCheck",javaUri]);let stdout="",stderr="";
+      const child=spawn("java",["-Dfile.encoding=UTF-8","-cp",out,"LinkCheck",javaUri,at(says401),at(foreign),at(silent)]);let stdout="",stderr="";
       child.stdout.on("data",d=>stdout+=d);child.stderr.on("data",d=>stderr+=d);
       const timer=setTimeout(()=>child.kill(),60_000);
       child.on("close",status=>{clearTimeout(timer);resolve({status,stdout,stderr});});
@@ -158,6 +166,11 @@ try{
     assert.deepEqual([j.first,j.replay],[200,409]);
     assert.equal(j.device.lastUrl,base,"the unreachable address was skipped and the working one remembered");
     assert.equal("privateKey" in j.device,false);
+    assert.deepEqual([j.after401,j.after401Url,j.afterForeign],[200,true,200],"an unsealed 401 or a foreign answer moves on to the next address");
+    assert.match(j.silent,/^No answer from PC-اختبار/,"a request that was sent is not sent again elsewhere");
+    assert.equal(silentHits.length,1);
+    assert.equal(seen.filter(x=>x.path==="/v1/echo?x=2").length,echoCountBefore,"the unanswered request did not also reach the PC");
+    for(const sv of [says401,foreign,silent]){sv.closeAllConnections?.();sv.close();}
     console.log("phone-link: Java phone code checked against the gateway");
   }else console.log("phone-link: Java part skipped (no javac)");
 }finally{
