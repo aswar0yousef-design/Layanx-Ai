@@ -10,6 +10,7 @@ import {applyStorageDefaults,migrateLegacyStore,readJsonFile,resolveDataPaths,wr
 import {serializeCapabilities} from "../platform/capabilities.js";
 import {AccessManager} from "../security/access.js";
 import {freeLoopbackPort,startGateway,type GatewayHandle} from "../security/local-gateway.js";
+import {ensureLanCertificate,type LanCertificate} from "../security/lan-tls.js";
 import {applySecretsToEnv,ensureGeneratedSecret,openSecretStore,type SecretStore} from "../security/secret-store.js";
 import {AdaptiveOllama} from "../providers/adaptive-ollama.js";
 import {buildModelPlan,currentMachine,detectGpuVramBytes,recommendNumCtx,type ModelTask} from "../providers/ollama-discovery.js";
@@ -196,6 +197,12 @@ export async function runLocalHost():Promise<void>{
   const remoteActive=settings.remoteAccess;
   // LAN phones, or Tailscale by IP, need a non-loopback listener; `tailscale serve` and tunnels work on loopback too.
   const bindHost=mobileActive||remoteActive?"0.0.0.0":"127.0.0.1";
+  // Phones on the home network speak TLS to a certificate they pinned from the QR code.
+  let lanTls:LanCertificate|null=null;
+  if(bindHost==="0.0.0.0"){
+    try{lanTls=ensureLanCertificate(path.join(paths.dataDir,"tls"),{installId:ctx.installId});log("info",`LAN certificate ${lanTls.fingerprint.slice(0,16)}… (phones pin it when pairing)`);}
+    catch(error){log("error",`LAN certificate: ${(error as Error).message}. Phones on the home network cannot connect until this is fixed.`);}
+  }
 
   // The existing API and Flow Builder move to random loopback ports behind the gateway.
   const apiInternal=await freeLoopbackPort();
@@ -241,6 +248,7 @@ export async function runLocalHost():Promise<void>{
     updateSettings:next=>{settings=next;saveSettings(paths.settingsFile,next);},
     mobileActive,
     remoteActive,
+    lanTls:lanTls?{fingerprint:lanTls.fingerprint,pin:lanTls.pin}:null,
     appliedModels:ctx.appliedModels,
     runtimeState:()=>runtime,
     markRestartRequired:()=>{restartFlag=true;},
@@ -262,6 +270,9 @@ export async function runLocalHost():Promise<void>{
     mobileAccess:mobileActive,
     remoteAccess:remoteActive,
     remoteHosts:settings.remoteHosts,
+    tls:lanTls,
+    // No certificate on a LAN listener: refuse the LAN rather than fall back to plain HTTP.
+    requireLanTls:bindHost==="0.0.0.0",
     sessionCookie:SESSION_COOKIE,
     handleOwnRoute:routes,
     log

@@ -1,6 +1,8 @@
 import http from "node:http";
+import https from "node:https";
 import net from "node:net";
 import os from "node:os";
+import type tls from "node:tls";
 import type {AccessManager,PublicDevice} from "./access.js";
 import {isTailscaleAddress} from "../platform/tailscale.js";
 
@@ -16,6 +18,10 @@ import {isTailscaleAddress} from "../platform/tailscale.js";
  *     a trusted LayanX origin            -> blocks CSRF from any website.
  *  3. Phones authenticate with a per-device bearer token from pairing.
  *  4. The internal API token is injected here; clients never see it.
+ *  5. With a LAN certificate (lan-tls.ts) every listener also speaks TLS on the
+ *     same port, and a request from the home network must use it: plain HTTP
+ *     would carry the phone's token in the clear. Loopback and Tailscale
+ *     (already encrypted by WireGuard) may stay on plain HTTP.
  */
 export interface GatewayListener{name:string;publicPort:number;internalPort:number}
 
@@ -62,6 +68,10 @@ export interface GatewayOptions{
   /** Public hostnames of a tunnel that forwards to this PC (requests arrive from 127.0.0.1). */
   remoteHosts?:string[];
   sessionCookie?:string;
+  /** LAN certificate: the same port then accepts TLS, and plain HTTP from the LAN is refused. */
+  tls?:{key:string;cert:string}|null;
+  /** Refuse plain HTTP from the LAN (default: when `tls` is set). True without `tls` = LAN refused outright. */
+  requireLanTls?:boolean;
   handleOwnRoute:(ctx:RouteContext)=>Promise<boolean>;
   log:(level:"info"|"warn"|"error",message:string)=>void;
   /** test hooks */
@@ -128,7 +138,7 @@ function htmlNotice(title:string,body:string,refreshSeconds?:number):string{
 }
 
 export interface GatewayHandle{
-  servers:http.Server[];
+  servers:net.Server[];
   close():Promise<void>;
 }
 
@@ -151,6 +161,7 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
   function admit(req:http.IncomingMessage):{ok:true;loopback:boolean;hostname:string}|{ok:false;status:number;error:string;message:string}{
     const remoteAddress=req.socket.remoteAddress??"";
     const socketLoopback=isLoopback(remoteAddress);
+    const encrypted=(req.socket as tls.TLSSocket).encrypted===true;
     const host=parseHost(req.headers.host);
     if(!host)return{ok:false,status:421,error:"host_not_allowed",message:"Unexpected Host header."};
     const proxiedRemote=host.hostname.endsWith(".ts.net")||(options.remoteHosts??[]).includes(host.hostname);
@@ -162,6 +173,8 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
       const tailnet=isTailscaleAddress(remoteAddress);
       if(tailnet?!(options.remoteAccess||options.mobileAccess):!options.mobileAccess)
         return{ok:false,status:403,error:"lan_disabled",message:tailnet?"Control from anywhere is turned off on this computer.":"Phone access is turned off on this computer."};
+      if((options.requireLanTls??Boolean(options.tls))&&!encrypted&&!tailnet)
+        return{ok:false,status:426,error:"tls_required",message:"Use the secure address (https://). Pair the phone again from the QR code on this computer."};
     }
     if(!hostAllowed(host.hostname,socketLoopback))return{ok:false,status:421,error:"host_not_allowed",message:"Unexpected Host header."};
     return{ok:true,loopback:socketLoopback,hostname:host.hostname};
@@ -241,7 +254,7 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
     out["x-layanx-api-token"]=options.internalToken;
     out["x-layanx-principal"]=principal.kind==="device"?`device:${principal.device.id}`:principal.kind==="public"?`public:${principal.route}`:"owner";
     out["x-forwarded-for"]=req.socket.remoteAddress??"";
-    out["x-forwarded-proto"]="http";
+    out["x-forwarded-proto"]=(req.socket as tls.TLSSocket).encrypted===true?"https":"http";
     return out;
   }
 
@@ -350,19 +363,43 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
     socket.on("error",()=>upstream.destroy());
   }
 
-  const servers:http.Server[]=[];
+  const servers:net.Server[]=[];
+  const inner:http.Server[]=[];
   const tunnels=new Set<net.Socket>();
   for(const listener of options.listeners){
-    const server=http.createServer((req,res)=>{void handle(listener,req,res);});
-    server.on("upgrade",(req,socket,head)=>{
+    const onRequest=(req:http.IncomingMessage,res:http.ServerResponse)=>{void handle(listener,req,res);};
+    const onUpgrade=(req:http.IncomingMessage,socket:import("node:stream").Duplex,head:Buffer)=>{
       const s=socket as net.Socket;
       tunnels.add(s);s.once("close",()=>tunnels.delete(s));
       handleUpgrade(listener,req,s,head);
-    });
-    server.headersTimeout=30_000;
+    };
+    const plain=http.createServer(onRequest);
+    plain.on("upgrade",onUpgrade);
+    plain.headersTimeout=30_000;
+    inner.push(plain);
+    let server:net.Server=plain;
+    if(options.tls){
+      const secure=https.createServer({key:options.tls.key,cert:options.tls.cert,minVersion:"TLSv1.2"},onRequest);
+      secure.on("upgrade",onUpgrade);
+      secure.headersTimeout=30_000;
+      secure.on("tlsClientError",()=>undefined);
+      inner.push(secure);
+      // One port, two protocols: a TLS connection starts with a handshake record (0x16).
+      server=net.createServer(socket=>{
+        socket.setTimeout(30_000,()=>socket.destroy());
+        socket.once("data",first=>{
+          socket.setTimeout(0);
+          socket.pause();
+          socket.unshift(first);
+          (first[0]===0x16?secure:plain).emit("connection",socket);
+          process.nextTick(()=>socket.resume());
+        });
+        socket.on("error",()=>undefined);
+      });
+    }
     await listenWithRetry(server,listener.publicPort,options.bindHost);
     servers.push(server);
-    options.log("info",`gateway ${listener.name} listening on ${options.bindHost}:${listener.publicPort} -> 127.0.0.1:${listener.internalPort}`);
+    options.log("info",`gateway ${listener.name} listening on ${options.bindHost}:${listener.publicPort}${options.tls?" (http + https)":""} -> 127.0.0.1:${listener.internalPort}`);
   }
   return{
     servers,
@@ -371,7 +408,7 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
       for(const socket of tunnels)socket.destroy();
       // Upgraded (WebSocket) connections can keep server.close() waiting; never block shutdown on them.
       await Promise.race([
-        Promise.all(servers.map(s=>new Promise<void>(resolve=>{s.close(()=>resolve());s.closeAllConnections?.();}))),
+        Promise.all(servers.map(s=>new Promise<void>(resolve=>{s.close(()=>resolve());for(const i of inner)i.closeAllConnections?.();}))),
         new Promise<void>(resolve=>setTimeout(resolve,1500).unref())
       ]);
     }
@@ -379,7 +416,7 @@ export async function startGateway(options:GatewayOptions):Promise<GatewayHandle
 }
 
 /** Retries EADDRINUSE for a few seconds so an in-place restart can reuse the port. */
-export function listenWithRetry(server:http.Server,port:number,host:string,attempts=20,delayMs=500):Promise<void>{
+export function listenWithRetry(server:net.Server,port:number,host:string,attempts=20,delayMs=500):Promise<void>{
   return new Promise((resolve,reject)=>{
     let tries=0;
     const attempt=()=>{
