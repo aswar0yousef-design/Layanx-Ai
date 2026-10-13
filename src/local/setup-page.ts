@@ -76,6 +76,8 @@ aside h2{margin-bottom:.5rem}
 .code{font-family:var(--mono);font-size:clamp(1.9rem,4.2vw,2.5rem);font-weight:600;letter-spacing:.06em;white-space:nowrap;direction:ltr;text-align:center;margin:1.25rem 0 .25rem;line-height:1.1}
 .code-meta{text-align:center;color:var(--soft);font-size:.9rem;margin:0}
 .urls{list-style:none;padding:0;margin:.75rem 0 0;text-align:center}
+.qr{display:block;margin:1rem auto .25rem;width:min(100%,240px);height:auto;image-rendering:pixelated;border-radius:8px}
+.fp{direction:ltr;text-align:center;font-family:var(--mono);font-size:.72rem;word-break:break-all}
 .urls li{font-family:var(--mono);direction:ltr}
 .urls li.note{font-family:var(--sans);direction:rtl}
 .note{font-size:.85rem;color:var(--soft);margin:1rem 0 0}
@@ -152,6 +154,7 @@ aside h2{margin-bottom:.5rem}
         <p class="lead">مساعد صوتي بالعربية والإنجليزية: ناده باسمه، اطلب منه مهمة أو تقريراً، ويرد عليك بالصوت. يعمل في Microsoft Edge أو Google Chrome.</p>
         <div class="roles">
           <label><input type="checkbox" id="assistant-open"> فتح المساعد تلقائياً عند تشغيل LayanX</label>
+          <label><input type="checkbox" id="desktop-island"> الجزيرة العائمة على سطح المكتب: المهمة الجارية والموافقات المنتظرة (ويندوز)</label>
         </div>
         <form class="row" id="briefing-form" style="margin-top:.75rem">
           <div><label for="briefing-time">وقت التقرير اليومي (اتركه فارغاً لإيقافه)</label><input id="briefing-time" type="time" dir="ltr"></div>
@@ -202,10 +205,13 @@ aside h2{margin-bottom:.5rem}
       <label class="switch"><input type="checkbox" id="mobile-toggle"><span>السماح للهاتف بالاتصال عبر شبكة Wi-Fi نفسها</span></label>
       <button class="primary" id="pair-start">إنشاء رمز ربط</button>
       <div id="pair-box" hidden>
+        <img class="qr" id="pair-qr" alt="رمز QR لربط الهاتف" hidden>
+        <p class="note" id="pair-qr-note" hidden>في تطبيق LayanX على الهاتف: «ربط بمسح QR» ثم وجّه الكاميرا إلى هذا المربع.</p>
         <p class="code" id="pair-code"></p>
         <p class="code-meta" id="pair-expiry"></p>
-        <p class="note">في تطبيق LayanX على الهاتف أدخل أحد العناوين ثم الرمز:</p>
+        <p class="note">أو أدخل أحد العناوين ثم الرمز يدوياً (عناوين Tailscale فقط؛ داخل المنزل استخدم QR):</p>
         <ul class="urls" id="pair-urls"></ul>
+        <p class="note fp" id="pair-fp" hidden></p>
       </div>
       <p class="note" id="mobile-note"></p>
       <ul class="devices" id="devices"></ul>
@@ -216,6 +222,12 @@ aside h2{margin-bottom:.5rem}
         <div id="remote-detail"></div>
         <ul class="urls" id="remote-urls"></ul>
       </div>
+
+      <h2 style="margin-top:2rem">Claude Code و Codex</h2>
+      <p class="note">عندما يطلب Claude Code أو Codex (خارج LayanX) إذناً لأمر أو تعديل، يصلك الطلب على الهاتف لتوافق أو ترفض بالبصمة، ويظهر في الجزيرة ولوحة التحكم. تُحفظ نسخة احتياطية من إعداداتهما قبل أي تغيير. إن لم تردّ خلال دقيقتين يعود السؤال إلى نافذتهما كالعادة.</p>
+      <ul class="devices" id="agent-hooks"></ul>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="primary" id="hooks-install">ربطهما بـ LayanX</button><button id="hooks-uninstall">إلغاء الربط</button></div>
+      <p class="note" id="hooks-note"></p>
 
       <h2 style="margin-top:2rem">Zed و JetBrains</h2>
       <p class="note">LayanX يعمل داخل المحرر عبر بروتوكول ACP: الطلب يصبح مهمة على المجلد المفتوح، والخطوات التي تحتاج موافقتك تظهر في المحرر. في Zed الصق هذا في settings.json. في JetBrains ضعه في ~/.jetbrains/acp.json. شغّل LayanX أولاً.</p>
@@ -263,7 +275,7 @@ async function boot(){
   try{await load();$("locked").hidden=true;$("app").hidden=false;}catch(e){if(e.message!=="locked")toast(e.message);}
 }
 
-async function load(){state=await api("/v1/setup/status");render();}
+async function load(){state=await api("/v1/setup/status");render();void loadHooks();}
 
 function render(){
   const s=state,o=s.ollama;
@@ -315,6 +327,7 @@ function render(){
   $("known-secrets").replaceChildren(...s.secrets.known.map(n=>el("option",{value:n})));
 
   $("assistant-open").checked=!!s.assistant.openOnStart;
+  $("desktop-island").checked=s.assistant.desktopIsland!==false;
   $("briefing-time").value=s.assistant.briefingTime||"";
   $("stt-line").textContent=s.assistant.stt==="local"?"التعرف على الكلام: محلي على جهازك عبر Whisper (لا يخرج صوتك من الجهاز).":"التعرف على الكلام: من المتصفح. لتشغيله محلياً على جهازك ثبّت Whisper بتشغيل ⁦scripts\\\\windows\\\\install-whisper.ps1⁩ ثم أعد التشغيل.";
   const roles=$("roles");roles.replaceChildren();
@@ -328,7 +341,7 @@ function render(){
   $("pair-start").disabled=false;
   if(s.acp)$("acp-zed").textContent=JSON.stringify(s.acp.zed,null,2);
   
-  $("mobile-note").textContent=s.gateway.mobileAccess&&!s.gateway.mobileActive?"فُعّل الاتصال من الهاتف. أعد التشغيل ليبدأ العمل.":s.gateway.mobileAccess?"الاتصال داخل الشبكة المحلية غير مشفّر. استخدمه على شبكة منزلية موثوقة فقط.":"VS Code على هذا الجهاز يُربط مباشرة برمز. الهاتف يحتاج تفعيل الخيار أعلاه أو «التحكم من أي مكان».";
+  $("mobile-note").textContent=s.gateway.mobileAccess&&!s.gateway.mobileActive?"فُعّل الاتصال من الهاتف. أعد التشغيل ليبدأ العمل.":s.gateway.mobileAccess?(s.gateway.tlsFingerprint?"الاتصال داخل الشبكة المحلية مشفّر (TLS) بشهادة هذا الجهاز، ويثبّت الهاتف بصمتها عند مسح رمز QR.":"تعذر تجهيز شهادة التشفير، لذلك يُرفض اتصال الهاتف داخل الشبكة. راجع السجل."):"VS Code على هذا الجهاز يُربط مباشرة برمز. الهاتف يحتاج تفعيل الخيار أعلاه أو «التحكم من أي مكان».";
   const devices=$("devices");devices.replaceChildren();
   for(const d of s.devices){
     const b=el("button",{class:"danger",text:"إلغاء الربط"});
@@ -343,6 +356,7 @@ function render(){
   renderRemote(s.remote);
 }
 
+$("desktop-island").addEventListener("change",async e=>{try{await api("/v1/setup/settings","PUT",{desktopIsland:e.target.checked});await load();toast(e.target.checked?"تظهر الجزيرة بعد إعادة التشغيل":"لن تظهر الجزيرة بعد إعادة التشغيل");}catch(err){e.target.checked=!e.target.checked;toast(err.message);}});
 $("assistant-open").addEventListener("change",async e=>{try{await api("/v1/setup/settings","PUT",{openAssistantOnStart:e.target.checked});await load();toast(e.target.checked?"سيُفتح المساعد عند التشغيل":"لن يُفتح المساعد تلقائياً");}catch(err){e.target.checked=!e.target.checked;toast(err.message);}});
 $("briefing-form").addEventListener("submit",async e=>{e.preventDefault();try{await api("/v1/setup/settings","PUT",{briefingTime:$("briefing-time").value||""});await load();toast($("briefing-time").value?"سيُجهَّز التقرير يومياً الساعة "+$("briefing-time").value:"أُوقف التقرير اليومي");}catch(err){toast(err.message);}});
 $("refresh-models").addEventListener("click",async e=>{e.target.disabled=true;try{await api("/v1/setup/ollama/refresh","POST",{});await load();toast("فُحصت النماذج");}catch(err){toast(err.message);}finally{e.target.disabled=false;}});
@@ -354,9 +368,12 @@ $("pair-start").addEventListener("click",async()=>{
     const p=await api("/v1/pair/start","POST",{});
     $("pair-box").hidden=false;$("pair-code").textContent=p.code;
     $("pair-urls").replaceChildren(...p.urls.map(u=>el("li",{text:u})));
+    const qr=$("pair-qr");qr.hidden=!p.qrSvg;$("pair-qr-note").hidden=!p.qrSvg;
+    if(p.qrSvg)qr.src="data:image/svg+xml;base64,"+btoa(p.qrSvg);
+    $("pair-fp").hidden=!p.fingerprint;$("pair-fp").textContent=p.fingerprint?"بصمة الشهادة: "+p.fingerprint.match(/.{1,4}/g).join(" "):"";
     clearInterval(pairTimer);
     const end=Date.parse(p.expiresAt);
-    const tick=()=>{const left=Math.max(0,Math.round((end-Date.now())/1000));$("pair-expiry").textContent=left?("ينتهي خلال "+Math.floor(left/60)+":"+String(left%60).padStart(2,"0")):"انتهت صلاحية الرمز. أنشئ رمزاً جديداً.";if(!left){clearInterval(pairTimer);$("pair-code").textContent="————";}};
+    const tick=()=>{const left=Math.max(0,Math.round((end-Date.now())/1000));$("pair-expiry").textContent=left?("ينتهي خلال "+Math.floor(left/60)+":"+String(left%60).padStart(2,"0")):"انتهت صلاحية الرمز. أنشئ رمزاً جديداً.";if(!left){clearInterval(pairTimer);$("pair-code").textContent="————";$("pair-qr").hidden=true;}};
     tick();pairTimer=setInterval(tick,1000);
   }catch(e){toast(e.message);}
 });
@@ -414,6 +431,22 @@ $("ws-form").addEventListener("submit",async e=>{e.preventDefault();try{await ap
 $("budget-form").addEventListener("submit",async e=>{e.preventDefault();const n=v=>v.trim()===""?null:Number(v);
   try{await api("/v1/setup/settings","PUT",{cloud:{monthlyBudgetUsd:n($("budget-usd").value),monthlyTokens:n($("budget-tokens").value)}});await load();toast("حُفظ الحد. يعمل بعد إعادة التشغيل.");}catch(err){toast(err.message);}});
 document.querySelectorAll("#cloud-policy input").forEach(i=>i.addEventListener("change",async()=>{try{await api("/v1/setup/settings","PUT",{cloud:{policy:i.value}});await load();toast("حُفظت سياسة السحابة");}catch(e){toast(e.message);}}));
+async function loadHooks(){
+  try{
+    const d=await api("/v1/setup/agent-hooks");
+    $("agent-hooks").replaceChildren(...d.agents.map(a=>el("li",{},el("div",{},a.label,el("small",{text:a.error?a.error:a.installed?"مربوط: طلبات الإذن تصل إلى هاتفك":a.found?"غير مربوط":"غير مثبّت على هذا الجهاز"})))));
+  }catch(e){$("hooks-note").textContent=e.message;}
+}
+async function hooks(action){
+  try{
+    const d=await api("/v1/setup/agent-hooks","POST",{action});
+    const lines=d.results.map(r=>r.label+": "+(r.error?r.error:(r.changed?(action==="install"?"رُبط":"أُلغي الربط"):"لا تغيير")+(r.backup?" (نسخة احتياطية: "+r.backup+")":"")+(r.note&&action==="install"?" — في Codex افتح ‎/hooks مرة واحدة ووافق على خطاف LayanX.":"")));
+    $("hooks-note").textContent=lines.length?lines.join(" · "):"لم يُعثر على Claude Code أو Codex في هذا الحساب.";
+    await loadHooks();
+  }catch(e){toast(e.message);}
+}
+$("hooks-install").addEventListener("click",()=>hooks("install"));
+$("hooks-uninstall").addEventListener("click",()=>hooks("uninstall"));
 $("remote-toggle").addEventListener("change",async e=>{try{await api("/v1/setup/settings","PUT",{remoteAccess:e.target.checked});await load();}catch(err){e.target.checked=!e.target.checked;toast(err.message);}});
 boot();
 </script>

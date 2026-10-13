@@ -9,6 +9,8 @@ import os from "node:os";
 import type {AccessManager} from "../security/access.js";
 import type {RouteContext} from "../security/local-gateway.js";
 import {lanUrls} from "../security/local-gateway.js";
+import {qrSvg} from "../platform/qr.js";
+import {agentHooksStatus,installAgentHooks,uninstallAgentHooks} from "./agent-hooks.js";
 import {assertSecretName,type SecretStore} from "../security/secret-store.js";
 import {CAPABILITY_GROUPS,ALL_CAPABILITIES} from "../platform/capabilities.js";
 import {recommendedPull} from "../providers/ollama-discovery.js";
@@ -43,10 +45,25 @@ async function phoneAddresses(host:SetupHost,settings:LocalSettings):Promise<str
     const ts=await tailscale();
     if(ts.dnsName)out.push(`https://${ts.dnsName}`);
     for(const h of settings.remoteHosts)out.push(`https://${h}`);
-    if(host.mobileActive||host.remoteActive)for(const ip of ts.ips)if(ip.includes("."))out.push(`http://${ip}:${settings.publicPort}`);
+    // Tailscale is encrypted already; with the LAN certificate the phone still uses TLS (and its pin) there.
+    if(host.mobileActive||host.remoteActive)for(const ip of ts.ips)if(ip.includes("."))out.push(`${host.lanTls?"https":"http"}://${ip}:${settings.publicPort}`);
   }
-  if(host.mobileActive)out.push(...lanUrls(settings.publicPort));
+  if(host.mobileActive)out.push(...lanUrls(settings.publicPort,undefined,host.lanTls?"https":"http"));
   return [...new Set(out)];
+}
+
+/**
+ * What the phone scans: the pairing code, the addresses of this PC, and the fingerprint of
+ * its LAN certificate. The phone trusts that one certificate for https addresses on the home
+ * network (and the normal web certificates for *.ts.net), so nobody else on the Wi-Fi can
+ * read or answer its requests, even during pairing.
+ */
+export function pairingLink(input:{code:string;urls:string[];pin?:string|null;computer:string}):string{
+  const q=new URLSearchParams({v:"1",c:input.code.replace(/-/g,"")});
+  if(input.pin)q.set("p",input.pin);
+  q.set("n",input.computer.slice(0,40));
+  for(const u of input.urls.slice(0,6))q.append("u",u);
+  return "layanx://pair?"+q.toString();
 }
 
 /** Lists the models a cloud key can use; doubles as a connection test. Keys never leave this request. */
@@ -94,6 +111,8 @@ export interface SetupHost{
   mobileActive:boolean;
   /** Remote (anywhere) access is active right now. */
   remoteActive?:boolean;
+  /** The LAN certificate phones pin (lan-tls.ts); null when the gateway is loopback-only. */
+  lanTls?:{fingerprint:string;pin:string}|null;
   appliedModels:Record<string,string|undefined>;
   runtimeState():{state:"starting"|"running"|"failed";error?:string};
   markRestartRequired():void;
@@ -277,7 +296,7 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
         acp:acpEditorConfig(),
         runtime:host.runtimeState(),
         restartRequired:host.restartRequired(),
-        gateway:{publicPort:settings.publicPort,flowPublicPort:settings.flowPublicPort,mobileAccess:settings.mobileAccess,mobileActive:host.mobileActive,lanUrls:host.mobileActive?lanUrls(settings.publicPort):[]},
+        gateway:{publicPort:settings.publicPort,flowPublicPort:settings.flowPublicPort,mobileAccess:settings.mobileAccess,mobileActive:host.mobileActive,lanUrls:host.mobileActive?lanUrls(settings.publicPort,undefined,host.lanTls?"https":"http"):[],tlsFingerprint:host.lanTls?.fingerprint??null},
         ollama:{
           baseUrl:host.ollama.baseUrl,
           reachable:discovery?.reachable??false,
@@ -290,7 +309,7 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
         },
         appliedModels:host.appliedModels,
         pinnedModels:settings.pinnedModels,
-        assistant:{openOnStart:settings.openAssistantOnStart,briefingTime:settings.briefingTime,stt:process.env.LAYANX_STT_BASE_URL?"local":"browser"},
+        assistant:{openOnStart:settings.openAssistantOnStart,desktopIsland:settings.desktopIsland,briefingTime:settings.briefingTime,stt:process.env.LAYANX_STT_BASE_URL?"local":"browser"},
         cloud:{
           policy:settings.cloud.policy,
           order:settings.cloud.order,
@@ -365,7 +384,9 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
     if(path==="/v1/pair/start"&&method==="POST"){
       const pairing=host.access.startPairing();
       const settings=host.getSettings();
-      ctx.sendJson(200,{...pairing,urls:await phoneAddresses(host,settings),computer:os.hostname()});
+      const urls=await phoneAddresses(host,settings);
+      const link=pairingLink({code:pairing.code,urls,pin:host.lanTls?.pin,computer:os.hostname()});
+      ctx.sendJson(200,{...pairing,urls,computer:os.hostname(),fingerprint:host.lanTls?.fingerprint??null,link,qrSvg:qrSvg(link)});
       return true;
     }
 
@@ -386,6 +407,16 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
       if(!key){ctx.sendJson(400,{ok:false,error:"no_key",message:`Save ${CLOUD_PROVIDERS[id].keyName} first.`});return true;}
       try{const models=await listCloudModels(id,key);ctx.sendJson(200,{ok:true,models:models.slice(0,60)});}
       catch(error){ctx.sendJson(200,{ok:false,message:(error as Error).message});}
+      return true;
+    }
+
+    // Claude Code / Codex: their permission questions through LayanX (phone + fingerprint), settings backed up first.
+    if(path==="/v1/setup/agent-hooks"&&method==="GET"){ctx.sendJson(200,{agents:agentHooksStatus({dataDir:host.dataDir})});return true;}
+    if(path==="/v1/setup/agent-hooks"&&method==="POST"){
+      const body=await ctx.readJson() as {action?:unknown};
+      const port=Number(process.env.LAYANX_PUBLIC_PORT)||host.getSettings().publicPort;
+      const results=body.action==="uninstall"?uninstallAgentHooks({dataDir:host.dataDir}):installAgentHooks({dataDir:host.dataDir,port});
+      ctx.sendJson(200,{ok:!results.some(r=>r.error),results,agents:agentHooksStatus({dataDir:host.dataDir})});
       return true;
     }
 

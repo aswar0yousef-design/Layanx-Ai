@@ -1,0 +1,7 @@
+{
+  "name": "layanx-native",
+  "version": "0.2.0",
+  "private": true,
+  "description": "LayanX Remote native parts (Android): pinned TLS, background watch, notifications, biometric approvals, Quick Settings tile, widget.",
+  "main": "index.ts"
+}

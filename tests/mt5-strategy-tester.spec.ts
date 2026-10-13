@@ -59,8 +59,10 @@ assert.match(ini,/Optimization=0\r\n.*Report=layanx-tester\\lx-1\r\nReplaceRepor
 
 // 4. A run: the terminal gets the INI and /portable; the report it writes is read.
 const env={MT5_TESTER_TERMINAL:terminal};
+// Which terminal64.exe run now is a slow CIM query on Windows; the tests that need it pass their own list.
+const noneRunning=async()=>[] as string[];
 const runs:Array<{terminal:string;args:string[];timeoutMs:number}>=[];
-const result=await runStrategyTest({...base,inputs:{Lots:0.1}},{platform:"win32",env,run:async(t,args,timeoutMs)=>{
+const result=await runStrategyTest({...base,inputs:{Lots:0.1}},{platform:"win32",env,runningTerminals:noneRunning,run:async(t,args,timeoutMs)=>{
   runs.push({terminal:t,args,timeoutMs});
   // Like the terminal: a relative /config path is read from the terminal's own folder.
   const iniPath=path.resolve(path.dirname(t),args[0]!.replace(/^\/config:/,""));
@@ -75,20 +77,22 @@ assert.ok(result.warnings.some(w=>/real_ticks/.test(w)),"a fast model is flagged
 assert.ok(result.reportFile.startsWith(path.join(install,"layanx-tester")));
 
 // 5. Failures say what to check; only one run at a time.
-await assert.rejects(runStrategyTest(base,{platform:"win32",env,run:async()=>({code:0,timedOut:false})}),/closed without a report.*not already open.*logged in/s);
-await assert.rejects(runStrategyTest({...base,timeoutMinutes:1},{platform:"win32",env,run:async(_t,_a,ms)=>{assert.equal(ms,60_000);return{code:null,timedOut:true};}}),/did not finish within 1 minutes/);
+await assert.rejects(runStrategyTest(base,{platform:"win32",env,runningTerminals:noneRunning,run:async()=>({code:0,timedOut:false})}),/closed without a report.*not already open.*logged in/s);
+await assert.rejects(runStrategyTest({...base,timeoutMinutes:1},{platform:"win32",env,runningTerminals:noneRunning,run:async(_t,_a,ms)=>{assert.equal(ms,60_000);return{code:null,timedOut:true};}}),/did not finish within 1 minutes/);
 let release!:()=>void;
-const slow=runStrategyTest(base,{platform:"win32",env,run:()=>new Promise(r=>{release=()=>r({code:0,timedOut:false});})});
-await new Promise(r=>setTimeout(r,10));
-await assert.rejects(runStrategyTest(base,{platform:"win32",env,run:async()=>({code:0,timedOut:false})}),/already in progress/);
+const slow=runStrategyTest(base,{platform:"win32",env,runningTerminals:noneRunning,run:()=>new Promise(r=>{release=()=>r({code:0,timedOut:false});})});
+// Wait until the first run really started its terminal (on Windows the checks before it take a while).
+for(let i=0;i<2000&&!release;i++)await new Promise(r=>setTimeout(r,5));
+assert.ok(release,"the first run started");
+await assert.rejects(runStrategyTest(base,{platform:"win32",env,runningTerminals:noneRunning,run:async()=>({code:0,timedOut:false})}),/already in progress/);
 release();await assert.rejects(slow,/without a report/);
 await assert.rejects(runStrategyTest(base,{platform:"linux",env}),/Windows only/);
 // The terminal LayanX trades with (as the bridge reports it) is refused, by install folder or data folder.
 const noRun=async()=>{throw new Error("must not start");};
-await assert.rejects(runStrategyTest(base,{platform:"win32",env,run:noRun,liveTerminal:async()=>({path:install+"/",dataPath:"C:\\elsewhere"})}),/terminal LayanX trades with/);
-await assert.rejects(runStrategyTest(base,{platform:"win32",env,run:noRun,liveTerminal:async()=>({path:"C:\\x",dataPath:install})}),/terminal LayanX trades with/);
-await assert.rejects(runStrategyTest(base,{platform:"win32",env,run:async()=>({code:0,timedOut:false}),liveTerminal:async()=>({path:path.join(root,"Other MT5"),dataPath:path.join(root,"Other data")})}),/without a report/,"a different terminal is fine");
-await assert.rejects(runStrategyTest(base,{platform:"win32",env,run:noRun,liveTerminal:async()=>{throw new Error("timeout");}}),/Could not check which MetaTrader 5 LayanX trades with \(timeout\)/,"the check failing stops the test (fail closed)");
+await assert.rejects(runStrategyTest(base,{platform:"win32",env,runningTerminals:noneRunning,run:noRun,liveTerminal:async()=>({path:install+"/",dataPath:"C:\\elsewhere"})}),/terminal LayanX trades with/);
+await assert.rejects(runStrategyTest(base,{platform:"win32",env,runningTerminals:noneRunning,run:noRun,liveTerminal:async()=>({path:"C:\\x",dataPath:install})}),/terminal LayanX trades with/);
+await assert.rejects(runStrategyTest(base,{platform:"win32",env,runningTerminals:noneRunning,run:async()=>({code:0,timedOut:false}),liveTerminal:async()=>({path:path.join(root,"Other MT5"),dataPath:path.join(root,"Other data")})}),/without a report/,"a different terminal is fine");
+await assert.rejects(runStrategyTest(base,{platform:"win32",env,runningTerminals:noneRunning,run:noRun,liveTerminal:async()=>{throw new Error("timeout");}}),/Could not check which MetaTrader 5 LayanX trades with \(timeout\)/,"the check failing stops the test (fail closed)");
 // Not connected: a running copy of this terminal is refused (it may be the one you trade with).
 await assert.rejects(runStrategyTest(base,{platform:"win32",env,run:noRun,runningTerminals:async()=>[path.join(root,"Other MT5","terminal64.exe"),terminal]}),/already open.*Close it first/);
 await assert.rejects(runStrategyTest(base,{platform:"win32",env,run:async()=>({code:0,timedOut:false}),runningTerminals:async()=>[path.join(root,"Other MT5","terminal64.exe")]}),/without a report/,"another terminal running is fine");

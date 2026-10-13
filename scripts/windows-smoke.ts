@@ -173,6 +173,87 @@ class T{static int Main(string[] a){
     return `net ${result.metrics.netProfit}, ${result.metrics.pctPositiveMonths}% positive months, ${result.durationSeconds}s`;
   }finally{rmSync(root,{recursive:true,force:true});}
 });
+await check("desktop island: reads the feed with the token from stdin, draws itself, keeps polling",async()=>{
+  const http=await import("node:http");
+  const {existsSync,statSync}=await import("node:fs");
+  const {ISLAND_SCRIPT}=await import("../src/local/island.js");
+  const seen:string[]=[];
+  const feed={ok:true,cursor:"c",at:new Date().toISOString(),
+    approvals:[{id:"a1",tool:"project.run",projectId:"shop",pending:true}],
+    jobs:[{id:"j1",projectId:"shop",goal:"متجر إلكتروني لمحل كمبيوتر",status:"running",stage:"الصفحة الرئيسية",done:2,total:5,updatedAt:""}],
+    scalper:{running:false,tradesToday:0},load:{cpu:{percent:23,cores:12,model:"x"},memory:{totalBytes:1,usedBytes:1,percent:61},gpu:null}};
+  const server=http.createServer((q,r)=>{seen.push(String(q.headers.authorization));r.writeHead(200,{"content-type":"application/json; charset=utf-8"});r.end(JSON.stringify(feed));});
+  await new Promise<void>(r=>server.listen(0,"127.0.0.1",()=>r()));
+  const port=(server.address() as {port:number}).port;
+  const dir=mkdtempSync(join(tmpdir(),"lx-island-"));const png=join(dir,"island.png");
+  const args=["-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-STA","-InputFormat","None","-File",ISLAND_SCRIPT,"-Port",String(port),"-DataDir",dir];
+  try{
+    const out=await new Promise<string>((resolve,reject)=>{
+      const child=spawn("powershell.exe",[...args,"-Once","-Snapshot",png],{windowsHide:true,stdio:["pipe","pipe","pipe"]});
+      let o="",e="";child.stdout.on("data",d=>o+=d);child.stderr.on("data",d=>e+=d);
+      const t=setTimeout(()=>{child.kill();reject(new Error("timeout "+e));},60_000);
+      child.on("close",code=>{clearTimeout(t);if(code===0)resolve(o.trim());else reject(new Error("exit "+code+": "+e+o));});
+      child.stdin.end("lxm_island_test\n");
+    });
+    const r=JSON.parse(out.split(/\r?\n/).pop()!);
+    assert.equal(r.online,true,out);
+    assert.match(r.main,/موافقة واحدة بانتظارك/,out);
+    assert.match(r.side,/CPU 23%/);
+    assert.ok(existsSync(png)&&statSync(png).size>500,"snapshot written");
+    assert.deepEqual(seen,["Bearer lxm_island_test"],"the token came from stdin");
+    // The real window: stays up and keeps asking; only one island at a time.
+    const live=spawn("powershell.exe",args,{windowsHide:true,stdio:["pipe","ignore","pipe"]});
+    live.stdin.end("lxm_island_test\n");
+    await new Promise(r=>setTimeout(r,10_000));
+    const second=spawnSync("powershell.exe",args,{input:"lxm_island_test\n",encoding:"utf8",timeout:60_000});
+    try{
+      assert.equal(live.exitCode,null,"the island is still open");
+      assert.ok(seen.length>=3,"it polled the feed: "+seen.length);
+      assert.equal(second.status,0,"a second island leaves quietly: "+second.stderr);
+    }finally{spawnSync("taskkill",["/PID",String(live.pid),"/T","/F"],{stdio:"ignore"});}
+    return `${r.main} | ${r.side} | ${r.lines} lines, ${seen.length} feed requests`;
+  }finally{server.close();rmSync(dir,{recursive:true,force:true});}
+});
+await check("Claude Code / Codex hook: the installed command runs from cmd.exe (Codex) and Git Bash (Claude Code)",async()=>{
+  const http=await import("node:http");
+  const {readFileSync,mkdirSync,existsSync}=await import("node:fs");
+  const {installAgentHooks}=await import("../src/local/agent-hooks.js");
+  const root=mkdtempSync(join(tmpdir(),"lx hooks اختبار-"));
+  const home=join(root,"home"),dataDir=join(root,"data");
+  mkdirSync(join(home,".claude"),{recursive:true});mkdirSync(join(home,".codex"),{recursive:true});mkdirSync(dataDir,{recursive:true});
+  let created=0;
+  const server=http.createServer((q,r)=>{
+    let body="";q.on("data",c=>body+=c);q.on("end",()=>{
+      r.writeHead(q.method==="POST"?201:200,{"content-type":"application/json"});
+      if(q.method==="POST"){created++;assert.match(String(q.headers.authorization),/^Bearer lxh_/);assert.equal(JSON.parse(body).tool,"Bash");r.end(JSON.stringify({ok:true,id:"ext-1"}));}
+      else r.end(JSON.stringify({ok:true,status:"approved"}));
+    });
+  });
+  await new Promise<void>(r=>server.listen(0,"127.0.0.1",()=>r()));
+  const port=(server.address() as {port:number}).port;
+  try{
+    const results=installAgentHooks({dataDir,port,home,env:{}});
+    assert.deepEqual(results.map(r=>r.agent),["claude","codex"]);
+    const command=(file:string)=>JSON.parse(readFileSync(file,"utf8")).hooks.PermissionRequest[0].hooks[0].command as string;
+    const input=JSON.stringify({hook_event_name:"PermissionRequest",session_id:"s",cwd:root,tool_name:"Bash",tool_input:{command:"dir"},permission_mode:"default",model:"m",transcript_path:null,turn_id:"t"});
+    const run=(exe:string,args:string[])=>new Promise<string>((resolve,reject)=>{
+      const child=spawn(exe,args,{windowsHide:true,windowsVerbatimArguments:exe.endsWith("cmd.exe"),stdio:["pipe","pipe","pipe"]});
+      let o="",e="";child.stdout.on("data",d=>o+=d);child.stderr.on("data",d=>e+=d);
+      const t=setTimeout(()=>{child.kill();reject(new Error("timeout "+e));},60_000);
+      child.on("close",()=>{clearTimeout(t);resolve(o.trim()||"(empty) "+e.trim());});
+      child.stdin.end(input);
+    });
+    // Codex: cmd.exe /C "<command>"
+    const viaCmd=await run(process.env.ComSpec||"C:\\Windows\\System32\\cmd.exe",["/C",`"${command(join(home,".codex","hooks.json"))}"`]);
+    assert.match(viaCmd,/"behavior":"allow"/,"cmd.exe: "+viaCmd);
+    // Claude Code on Windows runs hooks with Git Bash
+    const bash=["C:\\Program Files\\Git\\bin\\bash.exe","C:\\Program Files\\Git\\usr\\bin\\bash.exe"].find(p=>existsSync(p));
+    let viaBash="(Git Bash not found)";
+    if(bash){viaBash=await run(bash,["-c",command(join(home,".claude","settings.json"))]);assert.match(viaBash,/"behavior":"allow"/,"bash: "+viaBash);}
+    assert.equal(created,bash?2:1);
+    return "cmd.exe ok, "+(bash?"Git Bash ok":"no Git Bash");
+  }finally{server.close();rmSync(root,{recursive:true,force:true});}
+});
 // ---------------------------------------------------------------- restricted isolation (no Docker, no admin)
 group="sandbox";
 if(!only||only.includes("sandbox")){

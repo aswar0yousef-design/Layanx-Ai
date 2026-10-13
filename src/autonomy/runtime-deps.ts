@@ -45,6 +45,7 @@ export function coreSupervisorDeps(core:LayanXCore):SupervisorDeps{
     resumeAgent:(missionId,projectId,agentId,approvals,routing)=>core.executeAgentLoop(missionId,projectId,15,approvals,agentId,routing) as never,
     runTool:(projectId,tool,payload,resume)=>runSingleTool(core,projectId,tool,payload,resume).catch(error=>({ok:false,error:(error as Error).message})),
     isApproved:id=>core.executionRuntime.approvals.isApproved(id),
+    isRejected:id=>{try{return core.executionRuntime.approvals.isRejected(id);}catch{return false;}},
     cloudAvailable:cloudReady,
     externalAgent:()=>{const a=pickExternalAgent("auto");return a&&(a.kind==="local"||cloudReady())?{name:a.name,kind:a.kind}:null;},
     openUrl:url=>{if(process.env.LAYANX_OPEN_BROWSER!=="off")openInBrowser(url);}

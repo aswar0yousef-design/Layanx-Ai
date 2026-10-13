@@ -60,6 +60,8 @@ export interface SupervisorDeps{
   resumeAgent(missionId:string,projectId:string,agentId:string,approvals:Record<number,string>,routing?:{preferLocal:boolean}):Promise<AgentRun>;
   runTool(projectId:string,tool:string,payload:Record<string,unknown>,resume?:{missionId:string;approvalId:string}):Promise<ToolRun>;
   isApproved(approvalId:string):boolean;
+  /** The owner said no: the job stops there (it can be resumed later and asks again). */
+  isRejected?(approvalId:string):boolean;
   cloudAvailable():boolean;
   externalAgent():{name:string;kind:"local"|"cloud"}|null;
   detect?(projectId:string):ProjectInfo|null;
@@ -358,6 +360,10 @@ export class Supervisor{
   private async waitForApproval(job:SupervisorJob){
     const w=job.waiting;
     if(!w){this.set(job,"running");return;}
+    if(this.deps.isRejected?.(w.approvalId)){
+      job.waiting=undefined;job.result=`Stopped: you rejected ${w.tool??"the request"}.`;
+      this.set(job,"cancelled",`Rejected by you${w.tool?": "+w.tool:""}`);return;
+    }
     if(!this.deps.isApproved(w.approvalId)){await this.sleep(this.options.pollMs??2000);return;}
     job.waiting=undefined;this.set(job,job.milestones[w.milestone]?"running":"verifying","Approved, continuing");
     const m=job.milestones[w.milestone];

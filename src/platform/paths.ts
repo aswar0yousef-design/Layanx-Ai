@@ -20,6 +20,8 @@ export interface DataPaths{
   settingsFile:string;
   installFile:string;
   devicesFile:string;
+  /** Token the Claude Code / Codex hooks use to ask the owner (agent-hooks.ts). */
+  agentHooksFile:string;
   sessionsFile:string;
   launchTicketFile:string;
   pidFile:string;
@@ -48,6 +50,7 @@ export function resolveDataPaths(env:NodeJS.ProcessEnv=process.env,platform:Node
     settingsFile:path.join(dataDir,"settings.json"),
     installFile:path.join(dataDir,"install.json"),
     devicesFile:path.join(dataDir,"devices.json"),
+    agentHooksFile:path.join(dataDir,"agent-hooks.json"),
     sessionsFile:path.join(dataDir,"sessions.json"),
     launchTicketFile:path.join(dataDir,"launch-ticket.json"),
     pidFile:path.join(dataDir,"layanx.pid"),

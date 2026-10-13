@@ -1,0 +1,10 @@
+<resources>
+  <!-- Approval and voice screens float over whatever is on screen: only the system prompt shows. -->
+  <style name="LayanXTranslucent" parent="Theme.AppCompat.DayNight.NoActionBar">
+    <item name="android:windowIsTranslucent">true</item>
+    <item name="android:windowBackground">@android:color/transparent</item>
+    <item name="android:windowNoTitle">true</item>
+    <item name="android:backgroundDimEnabled">false</item>
+    <item name="android:windowAnimationStyle">@null</item>
+  </style>
+</resources>

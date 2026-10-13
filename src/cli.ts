@@ -16,5 +16,15 @@ else if(command==="status"){console.log(JSON.stringify(runtimeStatus(),null,2));
 else if(command==="check"){const status=runtimeStatus();console.log(JSON.stringify(status,null,2));process.exitCode=status.ready?0:1;}
 else if(command==="health"){const health=await runtimeHealth();console.log(JSON.stringify(health,null,2));process.exitCode=health.ready&&health.healthy?0:1;}
 else if(command==="doctor"){const doctor=await providerDoctor();console.log(JSON.stringify(doctor,null,2));process.exitCode=doctor.ok?0:1;}
+else if(command==="hooks"){
+ // layanx hooks [status|install|uninstall] [claude|codex|all]: Claude Code / Codex permission requests through LayanX (phone + fingerprint).
+ const {installAgentHooks,uninstallAgentHooks,agentHooksStatus}=await import("./local/agent-hooks.js");
+ const {resolveDataPaths}=await import("./platform/paths.js");const {loadSettings}=await import("./local/settings.js");
+ const paths=resolveDataPaths();const port=Number(process.env.LAYANX_PUBLIC_PORT)||loadSettings(paths.settingsFile).publicPort;
+ const action=process.argv[3]??"status",which=process.argv[4];
+ const agents=which==="claude"||which==="codex"?[which as "claude"|"codex"]:which==="all"?["claude","codex"] as Array<"claude"|"codex">:undefined;
+ const result=action==="install"?installAgentHooks({dataDir:paths.dataDir,port,agents}):action==="uninstall"?uninstallAgentHooks({dataDir:paths.dataDir,agents}):agentHooksStatus({dataDir:paths.dataDir});
+ console.log(JSON.stringify(result,null,2));process.exitCode=(result as Array<{error?:string}>).some(r=>r.error)?1:0;
+}
 else if(command==="ready"){const gate=await runReadinessGate();console.log(JSON.stringify(gate,null,2));process.exitCode=gate.ready?0:1;}
 else{console.error("Usage: layanx <status|check|health|doctor|ready>");process.exitCode=1;}

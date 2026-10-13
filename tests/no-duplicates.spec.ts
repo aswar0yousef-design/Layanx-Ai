@@ -37,17 +37,27 @@ const guide=fs.readFileSync(new URL("../docs/دليل-التشغيل.md",import.
 for(const name of ["LAYANX_OLLAMA_STRUCTURED","LAYANX_STORAGE","LAYANX_SEMANTIC_MEMORY","LAYANX_EMBEDDING_MODEL","LAYANX_CLOUD_MONTHLY_BUDGET_USD","LAYANX_CLOUD_MONTHLY_TOKENS","LAYANX_PROMPT_BUDGET_CHARS",
   "LAYANX_TTS_BASE_URL","LAYANX_TTS_VOICE_AR","LAYANX_AGENT_IMAGE_AIDER","LAYANX_TOOLS_DIR","LAYANX_EXTERNAL_SCANNERS","LAYANX_OPENGREP_CONFIG","LAYANX_MCP_REGISTRY_URL","LAYANX_DESKTOP_PREWARM","LAYANX_SKILLS_DIR",
   "LAYANX_ZAP","LAYANX_ZAP_IMAGE","LAYANX_VOICE_SENSE_URL","LAYANX_VOICE_SENSE_PORT","LAYANX_STT_ENGINE","LAYANX_COHERE_PORT","LAYANX_COHERE_DEVICE","LAYANX_URL","LAYANX_API_TOKEN","LAYANX_DOCKER_MEMORY","LAYANX_OLLAMA_NUM_PREDICT","LAYANX_STT_FALLBACK_URL","LAYANX_OPEN_BROWSER","LAYANX_API_CATALOG",
-  "MT5_ALLOW_REAL_ACCOUNT","MT5_MAX_CONSECUTIVE_LOSSES","MT5_TESTER_TERMINAL","MT5_TESTER_TIMEOUT_MINUTES"])
+  "MT5_ALLOW_REAL_ACCOUNT","MT5_MAX_CONSECUTIVE_LOSSES","MT5_TESTER_TERMINAL","MT5_TESTER_TIMEOUT_MINUTES","LAYANX_DESKTOP_ISLAND"])
   assert.ok(guide.includes(name),name+" is documented in docs/دليل-التشغيل.md");
 // 5. Every LAYANX_* setting the new code reads appears in .env.example too.
 const example=fs.readFileSync(new URL("../.env.example",import.meta.url),"utf8");
 for(const name of ["LAYANX_ZAP","LAYANX_ZAP_IMAGE","LAYANX_VOICE_SENSE_URL","LAYANX_VOICE_SENSE_PORT","LAYANX_STT_ENGINE","LAYANX_COHERE_PORT","LAYANX_COHERE_DEVICE","LAYANX_URL","LAYANX_EVAL_DIR","LAYANX_OLLAMA_NUM_PREDICT","LAYANX_STT_FALLBACK_URL","LAYANX_OPEN_BROWSER","LAYANX_API_CATALOG",
-  "MT5_ALLOW_REAL_ACCOUNT","MT5_MAX_CONSECUTIVE_LOSSES","MT5_TESTER_TERMINAL","MT5_TESTER_TIMEOUT_MINUTES"])
+  "MT5_ALLOW_REAL_ACCOUNT","MT5_MAX_CONSECUTIVE_LOSSES","MT5_TESTER_TERMINAL","MT5_TESTER_TIMEOUT_MINUTES","LAYANX_DESKTOP_ISLAND"])
   assert.ok(new RegExp("^"+name+"=","m").test(example),name+" is in .env.example");
 // 6. One Python finder for all Windows installers (no copies drifting apart).
 for(const f of ["install-piper.ps1","install-voice-sense.ps1","install-cohere-asr.ps1"]){
   const text=fs.readFileSync(new URL("../scripts/windows/"+f,import.meta.url),"utf8");
   assert.ok(!/function Find-Python/.test(text),f+" uses scripts/windows/python.ps1 instead of its own Find-Python");
 }
+// 7. One way to decide an approval and carry on: decideApproval() on the PC. The phone, the island and the
+//    Claude Code / Codex hook never resume missions themselves, and only the phone's native screen decides there.
+const read=(f:string)=>fs.readFileSync(new URL(f,import.meta.url),"utf8");
+assert.ok(!/agent-loop/.test(read("../mobile/src/api.ts")),"the phone does not resume missions itself (the PC continues after a decision)");
+assert.ok(!/\/approve|\/revoke/.test(read("../scripts/windows/island.ps1")),"the island shows approvals, it does not decide");
+assert.ok(!/\/approve|\/revoke/.test(read("../scripts/agent-hook.mjs")),"the hook asks, it does not decide");
+assert.equal((read("../src/api-server.ts").match(/approvals\.(approve|revoke)\(/g)??[]).length,0,"the API server decides only through decideApproval");
+assert.equal((read("../src/remote/companion.ts").match(/approvals\.approve\(/g)??[]).length,2,"decideApproval: mission and external requests");
+// 8. One QR encoder, one certificate maker.
+for(const f of ["../src/local/setup-routes.ts","../src/local/setup-page.ts"])assert.ok(!/function qr|qrcode/i.test(read(f).replace(/qrSvg|pair-qr|qr-note|\.qr\{|"qr"/g,"")),f+" uses src/platform/qr.ts");
 console.log(`no-duplicates: ${tools.length} tools, ${routes.size} routes, agent grants and settings docs consistent`);
 process.exit(0);

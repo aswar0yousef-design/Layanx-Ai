@@ -1,0 +1,24 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.layanx.remote'
+version = '0.2.0'
+
+android {
+  namespace "com.layanx.nativebridge"
+  defaultConfig {
+    versionCode 1
+    versionName "0.2.0"
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  implementation "androidx.appcompat:appcompat:1.7.0"
+  implementation "androidx.biometric:biometric:1.1.0"
+  implementation "androidx.core:core-ktx:1.13.1"
+}

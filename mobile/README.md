@@ -1,49 +1,38 @@
-# LayanX Remote
+# LayanX Remote (Android)
 
-Android/iOS remote control client for the LayanX API.
+The phone side of LayanX: follow and approve what your computer's agent does, from anywhere on
+your home network or over Tailscale. No cloud server is involved.
 
-## CI validation
+- **Secure pairing by QR code.** The setup page on the PC shows a QR code with the pairing code,
+  the PC's addresses and the SHA-256 fingerprint of its own TLS certificate. The app accepts only
+  that certificate on IP addresses, so nobody else on the Wi-Fi can read or answer its requests.
+  Plain `http://` is never used. Tailscale names (`https://…ts.net`) use their real certificates.
+- **Approvals with your fingerprint, even when the app is closed.** A foreground service follows
+  the PC (`/v1/companion/feed`, one long-poll request at a time). Every waiting approval becomes a
+  notification with Approve / Reject. Each button opens the fingerprint prompt (or the screen
+  lock), and the decision carries the request's digest. LayanX applies it to exactly that request
+  and continues the work on the PC by itself.
+- **Ongoing mission notification:** the goal, the stage and the progress, then the result, with
+  "Open the site on the computer".
+- **Quick Settings tile "Ask LayanX"** (voice; questions and reports, no tasks), and a **home-screen
+  widget** with the PC's CPU/RAM, the running mission, waiting approvals and the MT5 auto-scalper.
 
-The repository validates the mobile project with:
+The Android parts live in `modules/layanx-native` (Kotlin, an Expo local module): pinned HTTPS
+(`LxHttp`), Keystore-encrypted settings (`LxConfig`), `WatchService`, `ApprovalActivity`,
+`AskTileService` + `VoiceAskActivity`, `StatusWidget`, `ActionReceiver` and `BootReceiver`.
+iOS and Expo Go run the same JavaScript without them; there plain `fetch` reaches `*.ts.net` only.
 
-```bash
-cd mobile
-npm install
-npm run typecheck
-npm run export:android
-```
+## Get the APK
+
+GitHub → Actions → **LayanX Mobile CI** → the latest green run → Artifacts → `LayanX-Remote-apk`.
+See [BUILD.md](BUILD.md) to build it yourself.
 
 ## Development
 
 ```bash
 cd mobile
 npm install
-npx expo start
+npm run typecheck
+npx expo export --platform android     # JavaScript bundle check
+npx expo prebuild --platform android --no-install && (cd android && ./gradlew assembleRelease)
 ```
-
-## Android APK
-
-Authenticate with an Expo/EAS account:
-
-```bash
-cd mobile
-npx eas login
-npx eas build --platform android --profile preview
-```
-
-The `preview` profile produces an installable APK.
-
-## Connect LayanX
-
-On first launch enter:
-
-- **API URL**: the reachable HTTPS address of the LayanX API
-- **Bearer token**: the API authentication token
-- **Project ID**
-- **Mission ID** when monitoring a specific mission
-
-The token is stored using Expo SecureStore and is not committed to Git.
-
-For same-LAN testing, the phone must reach the computer's LAN address; `localhost` on the phone refers to the phone itself. For access outside the LAN, use a secured HTTPS reverse proxy, tunnel, or private VPN.
-
-Do not expose the LayanX control API directly to the public internet without an authenticated and secured gateway.

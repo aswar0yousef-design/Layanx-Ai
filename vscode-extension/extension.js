@@ -164,10 +164,16 @@ async function executeMissionLoop(context, missionId, projectId, approvalIds, on
   return result;
 }
 
-async function resumeApprovedGoal(context, missionId, toolIndex, approvalId, projectId, onUpdate) {
+/** A paired device decides on exactly the request it shows: LayanX checks this digest. */
+async function approvalDigest(context, approvalId, projectId) {
+  const list = await request(context, "/v1/approvals?projectId=" + encodeURIComponent(projectId), "GET");
+  return (list.approvals || []).find(a => a.id === approvalId)?.digest || "";
+}
+
+async function resumeApprovedGoal(context, missionId, toolIndex, approvalId, projectId, onUpdate, digest) {
   if (!missionId || !projectId || !approvalId || !Number.isInteger(toolIndex)) return {ok:false,error:"Approval resume data is incomplete."};
   // The approval must be granted on the server before the loop may use it.
-  const granted = await request(context, "/v1/approvals/" + encodeURIComponent(approvalId) + "/approve?projectId=" + encodeURIComponent(projectId), "POST", {});
+  const granted = await request(context, "/v1/approvals/" + encodeURIComponent(approvalId) + "/approve?projectId=" + encodeURIComponent(projectId), "POST", {digest: digest || await approvalDigest(context, approvalId, projectId)});
   if (!granted.ok) { onUpdate?.({command:"result",...granted}); return granted; }
   return executeMissionLoop(context, missionId, projectId, {[toolIndex]:approvalId}, onUpdate);
 }
@@ -363,11 +369,11 @@ async function showApprovals(context) {
   const pick = await vscode.window.showQuickPick(pending.map(a => ({ label: a.tool || a.action, description: a.permission, detail: a.reason || a.action, approval: a })), { title: "LayanX approvals waiting" });
   if (!pick) return;
   const choice = await vscode.window.showWarningMessage("Approve " + pick.label + "?", { modal: true, detail: pick.detail }, "Approve and Continue", "Reject");
-  if (choice === "Reject") { await request(context, "/v1/approvals/" + encodeURIComponent(pick.approval.id) + "/revoke?projectId=" + encodeURIComponent(projectId), "POST", {}); return; }
+  if (choice === "Reject") { await request(context, "/v1/approvals/" + encodeURIComponent(pick.approval.id) + "/revoke?projectId=" + encodeURIComponent(projectId), "POST", {digest: pick.approval.digest}); return; }
   if (choice !== "Approve and Continue") return;
   const mission = await request(context, "/v1/missions/" + encodeURIComponent(pick.approval.missionId) + "?projectId=" + encodeURIComponent(projectId), "GET");
   const index = (mission.mission?.tools || []).findIndex(t => t.tool === pick.approval.tool && t.action === pick.approval.action);
-  const run = await resumeApprovedGoal(context, pick.approval.missionId, index, pick.approval.id, projectId);
+  const run = await resumeApprovedGoal(context, pick.approval.missionId, index, pick.approval.id, projectId, undefined, pick.approval.digest);
   vscode.window.showInformationMessage(run.completed ? "LayanX completed the mission." : run.paused ? "LayanX needs another approval." : "LayanX: " + (run.reason || run.error || run.status || "stopped"));
 }
 
