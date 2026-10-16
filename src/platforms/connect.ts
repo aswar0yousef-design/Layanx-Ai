@@ -1,6 +1,6 @@
 import type {LayanXCore} from "../core/orchestrator.js";
 import type {McpManager,McpServerConfig,McpServerStatus} from "../mcp/manager.js";
-import {PLATFORMS,platform,type PlatformEntry,type PlatformId} from "./catalog.js";
+import {PLATFORMS,type PlatformEntry,type PlatformId} from "./catalog.js";
 
 /**
  * Connecting a platform = one owner action that uses what LayanX already has:
@@ -13,7 +13,7 @@ import {PLATFORMS,platform,type PlatformEntry,type PlatformId} from "./catalog.j
  * (GITHUB_TOKEN, ANTHROPIC_API_KEY) stays, because other parts of LayanX use it.
  */
 export interface SecretWriter{names():string[];set(name:string,value:string):Promise<void>;delete(name:string):Promise<boolean>}
-export interface PlatformDeps{/** The owner's secret store (setup routes); the agent's view reads only the environment. */store?:SecretWriter;mcp:McpManager|null;env?:NodeJS.ProcessEnv;fetcher?:typeof fetch;toolNames?:()=>string[];onSharedSecretChanged?:(name:string)=>void}
+export interface PlatformDeps{/** The owner's secret store (setup routes); the agent's view reads only the environment. */store?:SecretWriter;mcp:McpManager|null;env?:NodeJS.ProcessEnv;fetcher?:typeof fetch;toolNames?:()=>string[];onSharedSecretChanged?:(name:string)=>void;/** Tests only: another catalog. */catalog?:PlatformEntry[]}
 export type PlatformState="connected"|"available"|"needs_token"|"error"|"starting";
 export interface PlatformStatus{
   id:PlatformId;label:string;category:string;about:PlatformEntry["about"];via:PlatformEntry["via"];docs:string;
@@ -41,13 +41,15 @@ export function platformFor(config:Pick<McpServerConfig,"source"|"url"|"args">):
   return PLATFORMS.find(p=>p.mcp&&sameServer(config,p.mcp));
 }
 
+const entry=(deps:Pick<PlatformDeps,"catalog">,id:string)=>{const p=(deps.catalog??PLATFORMS).find(x=>x.id===id);if(!p)throw new Error("Unknown platform: "+id);return p;};
+
 export function platformStatuses(deps:PlatformDeps):PlatformStatus[]{
   const env=deps.env??process.env;
   const stored=new Set(deps.store?.names()??[]);
   const has=(n:string)=>stored.has(n)||!!env[n];
   const servers:McpServerStatus[]=deps.mcp?.list()??[];
   const tools=deps.toolNames?.()??[];
-  return PLATFORMS.map(p=>{
+  return (deps.catalog??PLATFORMS).map(p=>{
     const secrets=p.secrets.map(s=>({name:s.name,set:has(s.name),optional:!!s.optional,shared:!!s.shared,createUrl:s.createUrl,scopes:s.scopes}));
     const server=p.mcp?servers.find(s=>s.id===p.mcp!.id):undefined;
     const own=tools.filter(t=>p.tools.some(x=>x.endsWith(".")?t.startsWith(x):t===x));
@@ -64,17 +66,17 @@ export function platformStatuses(deps:PlatformDeps):PlatformStatus[]{
   });
 }
 
-async function verifyToken(id:PlatformId,value:string,fetcher:typeof fetch):Promise<void>{
+async function verifyToken(id:string,label:string,value:string,fetcher:typeof fetch):Promise<void>{
   const check:{url:string;headers:Record<string,string>}|null=id==="github"?{url:"https://api.github.com/user",headers:{accept:"application/vnd.github+json","x-github-api-version":"2022-11-28"}}:
     id==="vercel"?{url:"https://api.vercel.com/v2/user",headers:{}}:null;
   if(!check)return;
   const r=await fetcher(check.url,{headers:{authorization:"Bearer "+value,"user-agent":"LayanX",...check.headers},redirect:"error",signal:AbortSignal.timeout(15_000)});
-  if(r.status===401||r.status===403)throw new Error(`${platform(id).label} rejected this token (HTTP ${r.status}). Create a new one and paste it again.`);
-  if(!r.ok)throw new Error(`${platform(id).label} could not check the token (HTTP ${r.status}). Try again in a minute.`);
+  if(r.status===401||r.status===403)throw new Error(`${label} rejected this token (HTTP ${r.status}). Create a new one and paste it again.`);
+  if(!r.ok)throw new Error(`${label} could not check the token (HTTP ${r.status}). Try again in a minute.`);
 }
 
 export async function connectPlatform(id:string,values:Record<string,unknown>,deps:PlatformDeps&{store:SecretWriter}):Promise<{status:PlatformStatus;replaced:string[]}>{
-  const p=platform(id);
+  const p=entry(deps,id);
   if(p.id==="claude")throw new Error("Claude is managed on the setup page (cloud models and Claude Code).");
   const env=deps.env??process.env;
   const given:Array<[string,string]>=[];
@@ -87,7 +89,7 @@ export async function connectPlatform(id:string,values:Record<string,unknown>,de
     }else if(!s.optional&&!(deps.store.names().includes(s.name)||env[s.name]))throw new Error("Paste the "+s.name+" token first.");
   }
   const primary=given.find(([n])=>n===p.secrets[0]?.name);
-  if(primary)await verifyToken(p.id,primary[1],deps.fetcher??fetch);
+  if(primary)await verifyToken(p.id,p.label,primary[1],deps.fetcher??fetch);
   for(const [name,value] of given){
     const before=env[name];
     await deps.store.set(name,value);env[name]=value;
@@ -110,7 +112,7 @@ export async function connectPlatform(id:string,values:Record<string,unknown>,de
 }
 
 export async function disconnectPlatform(id:string,deps:PlatformDeps&{store:SecretWriter}):Promise<PlatformStatus>{
-  const p=platform(id);
+  const p=entry(deps,id);
   if(p.id==="claude")throw new Error("Claude is managed on the setup page.");
   const env=deps.env??process.env;
   if(p.mcp&&deps.mcp?.list().some(s=>s.id===p.mcp!.id))await deps.mcp.remove(p.mcp.id);
