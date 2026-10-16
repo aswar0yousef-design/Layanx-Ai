@@ -145,7 +145,7 @@ var L={
   engineFree:"التعرف على الكلام من المتصفح (مجاني؛ يعالجه Microsoft أو Google). العقل: النموذج المحلي في LayanX.",
   realtime:"محادثة مباشرة (OpenAI)",realtimeStop:"إنهاء المحادثة المباشرة",auto:"تلقائي",
   engineLocal:"التعرف على الكلام محلي على جهازك عبر Whisper؛ لا يخرج صوتك من الجهاز. العقل: النموذج المحلي في LayanX.",
-  engineL:"التعرف على الكلام",engAuto:"تلقائي",engLocal:"محلي على جهازي (Whisper)",engBrowser:"المتصفح",noLocal:"Whisper المحلي غير مشغّل؛ أستخدم المتصفح.",transcribing:"أحوّل كلامك إلى نص…"},
+  engineL:"التعرف على الكلام",engAuto:"تلقائي",engLocal:"محلي على جهازي (Whisper)",engBrowser:"المتصفح",noLocal:"Whisper المحلي غير مشغّل؛ أستخدم المتصفح.",transcribing:"أحوّل كلامك إلى نص…",sayIt:"نعم؟ أستمع…",heard:"سمعت:"},
  en:{idle:"Ready",ready:"Ready",off:"Assistant is off",wake:"Waiting for my name…",listen:"Listening…",think:"Thinking…",speak:"Speaking…",
   hintWake:"Say \"Jarvis\" or \"Layan\" followed by your request, e.g. Jarvis, give me today's report",hintTap:"Tap the circle and speak, or type below",
   noSR:"This browser can't recognise speech. Use Microsoft Edge or Google Chrome, or type your request.",
@@ -157,7 +157,7 @@ var L={
   engineFree:"Speech recognition by the browser (free; processed by Microsoft or Google). Brain: the local LayanX model.",
   realtime:"Live conversation (OpenAI)",realtimeStop:"End live conversation",auto:"Automatic",
   engineLocal:"Speech recognition runs on this computer with Whisper; your voice never leaves it. Brain: the local LayanX model.",
-  engineL:"Speech recognition",engAuto:"Automatic",engLocal:"On this computer (Whisper)",engBrowser:"Browser",noLocal:"Local Whisper is not running; using the browser.",transcribing:"Transcribing…"}
+  engineL:"Speech recognition",engAuto:"Automatic",engLocal:"On this computer (Whisper)",engBrowser:"Browser",noLocal:"Local Whisper is not running; using the browser.",transcribing:"Transcribing…",sayIt:"Yes? I'm listening…",heard:"Heard:"}
 };
 var DEFAULT_WAKE="جارفيس, جارفس, ليان, ليين, ليانكس, لايان اكس, jarvis, layan, layanx, lion x";
 var S={engine:localStorage.getItem("lx.engine")||"auto",lang:localStorage.getItem("lx.lang")||"ar",always:localStorage.getItem("lx.always")==="1",speak:localStorage.getItem("lx.speak")!=="0",
@@ -175,7 +175,15 @@ function setState(next,text){state=next;$("orb").dataset.state=next;$("state").t
 function norm(s){return String(s||"").toLowerCase().replace(/[\u064B-\u065F\u0670\u0640]/g,"").replace(/[أإآٱ]/g,"ا").replace(/ى/g,"ي").replace(/ة/g,"ه").replace(/[^\p{L}\p{N}\s]/gu," ").replace(/\s+/g," ").trim()}
 function wakeList(){return S.wake.split(/[,،]/).map(norm).filter(Boolean)}
 /** The command after the wake word, "" if only the name was said, null if no wake word was heard. */
-function afterWake(heard){var h=" "+norm(heard)+" ";var best=null;wakeList().forEach(function(w){var i=h.indexOf(" "+w+" ");if(i<0)return;var rest=h.slice(i+w.length+2).trim();if(best===null||rest.length>best.length)best=rest});return best}
+function afterWake(heard){var src=String(heard||""),words=[],re=/\S+/g,m;
+ while((m=re.exec(src))){var n=norm(m[0]),end=m.index+m[0].length;if(n)n.split(" ").forEach(function(p){words.push({n:p,end:end})})}
+ var best=null;wakeList().forEach(function(w){var parts=w.split(" ");
+  for(var i=0;i+parts.length<=words.length;i++){var ok=true;for(var k=0;k<parts.length;k++)if(words[i+k].n!==parts[k]){ok=false;break}
+   if(!ok)continue;
+   // The words after the name exactly as heard (hamza, punctuation, numbers and links intact).
+   var rest=src.slice(words[i+parts.length-1].end).replace(/^[\s,،.:;!?؟\-]+/,"").trim();
+   if(best===null||rest.length>best.length)best=rest;break}});
+ return best}
 
 function api(path,opts){opts=opts||{};var headers={"content-type":"application/json"};if(legacyToken)headers.authorization="Bearer "+legacyToken;
  return fetch(path,{method:opts.method||"GET",credentials:"same-origin",headers:headers,body:opts.body?JSON.stringify(opts.body):undefined}).then(function(r){
@@ -254,10 +262,14 @@ function startRec(mode){
  r.onstart=function(){setState(mode==="wake"?"wake":"listen")};
  r.onresult=function(e){for(var i=e.resultIndex;i<e.results.length;i++){var res=e.results[i],heard=res[0]?res[0].transcript:"";
    if(mode==="command"){if(res.isFinal){recMode=null;r.abort();handle(heard)}return}
-   var rest=afterWake(heard);if(rest===null||!res.isFinal)continue;
-   recMode=null;r.abort();chime();
-   if(rest)handle(rest);else setTimeout(function(){startRec("command")},250);
-   return}};
+   if(!res.isFinal)continue;
+   var rest=afterWake(heard);
+   if(rest===null){if(Date.now()<mic.pendingUntil){endPending();recMode=null;r.abort();handle(heard);return}heardHint(heard);continue}
+   chime();
+   if(rest){endPending();recMode=null;r.abort();handle(rest);return}
+   // Only the name: this session keeps listening (stopping it here lost what was said next);
+   // the next sentence, within 8 s, is the command.
+   awaitCommand()}};
  r.onerror=function(e){if(e.error==="not-allowed"||e.error==="service-not-allowed"){blocked=true;setState("off",t("denied"));$("always").checked=false;S.always=false;save()}};
  r.onend=function(){if(rec!==r)return;rec=null;var was=recMode;recMode=null;if(blocked||busy||speaking)return;
    if(was==="command"){scheduleResume(300);return}
@@ -318,18 +330,42 @@ function onFrame(data){
 function flushSegment(){var chunks=mic.buf,voiced=mic.voiced;mic.buf=[];mic.voiced=0;mic.silence=0;mic.nextCheck=0;
  if(voiced>=350)sendSegment(chunks);else if(mic.mode==="wake")setState("wake")}
 function mode(){return mic.mode}
+/**
+ * Clips are transcribed one after another, in the order they were said. While waiting for the name
+ * the microphone keeps listening during transcription (a CPU model takes seconds): the command said
+ * right after "Layan" used to be lost because the microphone was off while the name was transcribed.
+ */
+var sttQueue=Promise.resolve(),sttWaiting=0,pendingTimer=null;
 function sendSegment(chunks){
- var m=mic.mode;mic.active=false;interrupted=false;setState("think",t("transcribing"));
- fetch("/v1/voice/transcribe",{method:"POST",credentials:"same-origin",headers:{"content-type":"audio/wav","x-layanx-filename":"voice.wav","x-layanx-language":S.lang},body:encodeWav(chunks,mic.rate)})
-  .then(function(r){return r.json().catch(function(){return{}}).then(function(d){if(!r.ok)throw new Error(d.error||("HTTP "+r.status));return String(d.text||"").trim()})})
-  .then(function(text){
-   if(!text||/^[\[(].*[\])]$/.test(text)){resumeListening();return}
-   if(m==="command"){handle(text);return}
-   var rest=afterWake(text);
-   if(rest===null){if(Date.now()<mic.pendingUntil){mic.pendingUntil=0;handle(text);return}resumeListening();return}
-   chime();
-   if(rest)handle(rest);else{mic.pendingUntil=Date.now()+8000;resumeListening()}
-  }).catch(function(e){addLog("me",t("netErr")+e.message,null,"err");resumeListening()})}
+ var m=mic.mode,wav=encodeWav(chunks,mic.rate);
+ if(m==="command"){mic.active=false;interrupted=false;setState("think",t("transcribing"))}
+ else{if(sttWaiting>=3)return;if(Date.now()>=mic.pendingUntil)setState("wake")}
+ sttWaiting++;
+ sttQueue=sttQueue.then(function(){return transcribeClip(wav)}).then(function(text){sttWaiting--;onTranscript(text,m)},
+  function(e){sttWaiting--;addLog("me",t("netErr")+e.message,null,"err");if(m==="command"||!mic.active)resumeListening()})}
+function transcribeClip(wav){
+ return fetch("/v1/voice/transcribe",{method:"POST",credentials:"same-origin",headers:{"content-type":"audio/wav","x-layanx-filename":"voice.wav","x-layanx-language":S.lang},body:wav})
+  .then(function(r){return r.json().catch(function(){return{}}).then(function(d){if(!r.ok)throw new Error(d.error||("HTTP "+r.status));return String(d.text||"").trim()})})}
+function onTranscript(text,m){
+ if(busy)return;
+ var empty=!text||/^[\[(].*[\])]$/.test(text);
+ if(m==="command"){endPending();if(empty)resumeListening();else handle(text);return}
+ if(empty)return;
+ var rest=afterWake(text);
+ if(rest===null){if(Date.now()<mic.pendingUntil){endPending();handle(text);return}heardHint(text);return}
+ chime();
+ if(rest){endPending();handle(rest);return}
+ awaitCommand()}
+/** Only the name was heard: what is said next (within 8 s) is the command, without saying the name again. */
+function awaitCommand(){
+ mic.pendingUntil=Date.now()+8000;clearTimeout(pendingTimer);
+ if(useLocal()&&mic.ctx&&!busy&&!speaking&&mic.mode==="wake"){mic.mode="command";mic.active=true}
+ if(!busy&&!speaking&&!(useLocal()&&mic.buf.length))setState("listen",t("sayIt"));
+ pendingTimer=setTimeout(function(){if(busy||speaking)return;mic.pendingUntil=0;
+  if(useLocal()){if(mic.mode==="command"&&mic.active&&!mic.buf.length){mic.mode="wake";setState("wake")}}else if(recMode==="wake")setState("wake")},8000)}
+function endPending(){mic.pendingUntil=0;clearTimeout(pendingTimer)}
+/** What was heard without the name, shown so the owner can see the recognizer works (and what it understood). */
+function heardHint(text){if(state==="wake"||state==="listen")setState("wake",t("heard")+" «"+String(text).slice(0,60)+"»")}
 function encodeWav(chunks,rate){
  var len=0;chunks.forEach(function(c){len+=c.length});var data=new Float32Array(len),o=0;chunks.forEach(function(c){data.set(c,o);o+=c.length});
  if(rate!==16000){var ratio=rate/16000,n=Math.floor(len/ratio),r=new Float32Array(n);for(var i=0;i<n;i++){var p=i*ratio,j=Math.floor(p),f=p-j;r[i]=(data[j]||0)*(1-f)+(data[j+1]||0)*f}data=r}
