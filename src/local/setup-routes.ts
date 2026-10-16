@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import nodePath from "node:path";
 import {getMcpManager,searchRegistry} from "../mcp/manager.js";
+import {connectPlatform,disconnectPlatform,platformStatuses} from "../platforms/connect.js";
+import {PLATFORM_SECRETS} from "../platforms/catalog.js";
 import {acpEditorConfig} from "../acp/config.js";
 import {unprepareRestricted} from "../platform/windows-sandbox.js";
 import {projectDir} from "../autonomy/project-dir.js";
@@ -96,8 +98,10 @@ export const KNOWN_SECRETS=[
   "GITHUB_TOKEN","LAYANX_SHOPIFY_ACCESS_TOKEN","LAYANX_WOOCOMMERCE_CONSUMER_KEY","LAYANX_WOOCOMMERCE_CONSUMER_SECRET","LAYANX_COMMERCE_TOKEN",
   "LAYANX_META_ADS_TOKEN","LAYANX_TIKTOK_ADS_TOKEN","LAYANX_GOOGLE_ADS_TOKEN","LAYANX_X_ADS_TOKEN",
   "LAYANX_TIKTOK_OAUTH_CLIENT_SECRET","LAYANX_GOOGLE_OAUTH_CLIENT_SECRET","LAYANX_LINKEDIN_OAUTH_CLIENT_SECRET","LAYANX_PINTEREST_OAUTH_CLIENT_SECRET","LAYANX_YOUTUBE_OAUTH_CLIENT_SECRET",
-  "GOOGLE_CLIENT_SECRET","GOOGLE_REFRESH_TOKEN","YAHOO_APP_PASSWORD","QF_CLIENT_SECRET"
-];
+  "GOOGLE_CLIENT_SECRET","GOOGLE_REFRESH_TOKEN","YAHOO_APP_PASSWORD","QF_CLIENT_SECRET",
+  // Website platforms (src/platforms/catalog.ts); connected from Control Center -> Integrations -> Platforms.
+  ...PLATFORM_SECRETS
+].filter((name,i,all)=>all.indexOf(name)===i);
 
 export interface SetupHost{
   installId:string;
@@ -274,6 +278,25 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
         }
         ctx.sendJson(404,{error:"not_found"});return true;
       }catch(error){ctx.sendJson(400,{error:"mcp_failed",message:error instanceof Error?error.message:String(error)});return true;}
+    }
+
+    // Website platforms: anyone signed in may look; only the owner on this computer connects or disconnects.
+    // They use the same MCP manager and secret store as everything else (src/platforms/connect.ts).
+    if(path==="/v1/platforms"||path.startsWith("/v1/platforms/")){
+      if(!ctx.principal){ctx.sendJson(401,{error:"unauthorized"});return true;}
+      const mcp=getMcpManager();
+      const deps={store:host.store,mcp,onSharedSecretChanged:()=>host.markRestartRequired()};
+      try{
+        if(path==="/v1/platforms"&&method==="GET"){ctx.sendJson(200,{platforms:platformStatuses(deps)});return true;}
+        if(!owner(ctx))return true;
+        const m=/^\/v1\/platforms\/([a-z0-9]{2,20})\/(connect|disconnect)$/.exec(path);
+        if(m&&method==="POST"){
+          const [,id,op]=m as unknown as [string,string,string];
+          if(op==="connect"){const body=await ctx.readJson() as Record<string,unknown>;const r=await connectPlatform(id,body&&typeof body==="object"?body:{},deps);ctx.sendJson(200,{ok:r.status.state!=="error",...r});return true;}
+          ctx.sendJson(200,{ok:true,status:await disconnectPlatform(id,deps)});return true;
+        }
+        ctx.sendJson(404,{error:"not_found"});return true;
+      }catch(error){ctx.sendJson(400,{error:"platform_failed",message:error instanceof Error?error.message:String(error)});return true;}
     }
 
     if(!path.startsWith("/v1/setup/")&&!path.startsWith("/v1/pair/")&&path!=="/v1/session/logout")return false;

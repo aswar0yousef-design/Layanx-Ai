@@ -39,6 +39,8 @@ const T={
   gitLead:"أوامر القراءة تعمل فوراً؛ إنشاء الفروع والـ commit والـ push يحتاج موافقتك.",gitAsk:"اطلب من الوكيل",gitCommit:"اكتب commit واضحاً للتغييرات الحالية",gitPush:"ارفع الفرع الحالي إلى GitHub",gitPR:"جهّز Pull Request بعد مراجعة الكود والأمان",
   stores:"المتاجر",products:"المنتجات",orders:"الطلبات",orderValue:"قيمة الطلبات",content:"المحتوى",published:"منشور",scheduled:"مجدول",campaigns:"الحملات",media:"الوسائط",accounts:"الحسابات",
   shopGoals:"أنشئ 5 منتجات جديدة في المتجر مع أوصاف وصور|زامن الطلبات الجديدة من المتجر|اكتب وصفاً تسويقياً لأفضل منتج",
+  plL:"المنصات",plLead:"اربط LayanX بالمنصات التي يعمل عليها في المواقع. المفتاح يُحفظ مشفّراً على هذا الكمبيوتر فقط، والقراءة آمنة، وكل نشر للإنتاج أو تعديل أو حذف ينتظر موافقتك.",plConnect:"ربط",plDisconnect:"فصل",plSave:"ربط الآن",plCancel:"إلغاء",plGetToken:"أنشئ المفتاح من هنا",plTokenFor:"المفتاح",plOptional:"اختياري",plKeep:"محفوظ؛ اتركه فارغاً للإبقاء عليه",plTools:"أداة",plManaged:"يُدار من صفحة الإعداد",plConnected:"تم الربط",plDisconnected:"تم الفصل",plConfirm:"فصل {p}؟ يُحذف مفتاحه من هذا الكمبيوتر.",plReplaced:"استُبدلت نسخة سابقة: {x}",plDocs:"التوثيق",plShared:"مشترك مع أجزاء أخرى من LayanX",
+  pls_connected:"متصل",pls_available:"جاهز للربط",pls_needs_token:"يحتاج مفتاحاً",pls_error:"خطأ",pls_starting:"يبدأ…",plFromMcp:"منصة",
   cd_burstiness:"تنوّع أطوال الجمل",cd_specificity:"تفاصيل ملموسة: أرقام، أسماء، مواعيد",cd_slop:"عبارات نمطية يكثر منها الذكاء الاصطناعي",cd_fingerprint:"رموز مخفية وآثار آلية",cd_voice:"صوت طبيعي يشبه كتابتك",cd_platform:"حدود المنصة: الطول والوسوم",
   fk_hidden:"رموز مخفية (zero-width وغيرها)",fk_bidi:"رموز تغيّر اتجاه النص",fk_lookalike:"كلمات فيها حروف مشابهة (كيريلية أو يونانية)",fk_chatbot:"بقايا روبوت المحادثة («بالتأكيد! إليك…»)",fk_spaces:"مسافات غير عادية",fk_markdown:"رموز markdown ستظهر كما هي على المنصة",fk_presentation:"حروف بأشكال خاصة منسوخة من PDF أو روبوت",fk_em_dash:"شرطات طويلة (—) بكثرة",fk_emoji_bullets:"كل سطر يبدأ بإيموجي (شكل قالب)",fk_exclamations:"علامات تعجب كثيرة",
   pk_too_long:"أطول من حد المنصة بـ {n}",pk_long:"أطول من الطول المناسب بـ {n}",pk_caption:"مع صورة أو فيديو يُقص التعليق بعد 1024 حرفاً",pk_hashtags:"وسوم زائدة: {n}",pk_empty:"النص فارغ",
@@ -96,6 +98,8 @@ const T={
   gitLead:"Read commands run immediately; creating branches, commits and pushes needs your approval.",gitAsk:"Ask the agent",gitCommit:"Write a clear commit for the current changes",gitPush:"Push the current branch to GitHub",gitPR:"Prepare a pull request after code and security review",
   stores:"Stores",products:"Products",orders:"Orders",orderValue:"Order value",content:"Content",published:"Published",scheduled:"Scheduled",campaigns:"Campaigns",media:"Media",accounts:"Accounts",
   shopGoals:"Create 5 new products in the store with descriptions and images|Sync new orders from the store|Write a marketing description for the best product",
+  plL:"Platforms",plLead:"Connect LayanX to the platforms it works on for websites. The token is stored encrypted on this computer only; reading is safe, and every production deploy, change or deletion waits for your approval.",plConnect:"Connect",plDisconnect:"Disconnect",plSave:"Connect now",plCancel:"Cancel",plGetToken:"Create the token here",plTokenFor:"Token",plOptional:"optional",plKeep:"saved; leave empty to keep it",plTools:"tools",plManaged:"Managed on the setup page",plConnected:"Connected",plDisconnected:"Disconnected",plConfirm:"Disconnect {p}? Its token is deleted from this computer.",plReplaced:"Replaced an earlier copy: {x}",plDocs:"Docs",plShared:"shared with other parts of LayanX",
+  pls_connected:"Connected",pls_available:"Ready to connect",pls_needs_token:"Needs a token",pls_error:"Error",pls_starting:"Starting…",plFromMcp:"platform",
   cd_burstiness:"Variety in sentence length",cd_specificity:"Concrete details: numbers, names, dates",cd_slop:"Stock phrases AI overuses",cd_fingerprint:"Hidden characters and machine traces",cd_voice:"A natural voice, like yours",cd_platform:"Platform limits: length and hashtags",
   fk_hidden:"Hidden characters (zero-width and similar)",fk_bidi:"Characters that change text direction",fk_lookalike:"Words with look-alike Cyrillic or Greek letters",fk_chatbot:"Chatbot leftovers (\"Sure! Here's…\")",fk_spaces:"Unusual spaces",fk_markdown:"Markdown the platform shows as symbols",fk_presentation:"Special letter forms copied from a PDF or a chatbot",fk_em_dash:"Many em dashes (—)",fk_emoji_bullets:"Every line starts with an emoji (template look)",fk_exclamations:"Many exclamation marks",
   pk_too_long:"{n} over the platform's limit",pk_long:"{n} longer than reads well",pk_caption:"With a photo or video the caption is cut at 1024 characters",pk_hashtags:"{n} hashtags too many",pk_empty:"Empty text",
@@ -160,13 +164,53 @@ async function api(path,opts={}){
 }
 const safe=async(p,fb)=>{try{return await p;}catch{return fb;}};
 /** MCP tool servers: list, owner approval, registry search. */
+// ---------- Platforms (src/platforms): GitHub, Vercel, Hostinger, Cloudflare, Netlify, Supabase, Context7, Claude ----------
+async function platformsPanel(){
+ const box=el("section",{class:"card",style:"margin-top:1rem"});
+ const state=s=>s==="connected"?"done":s==="error"?"fail":s==="starting"?"run":s==="available"?"wait":"pend";
+ const render=async()=>{
+  const d=await safe(api("/v1/platforms"),{platforms:[]});
+  const tiles=(d.platforms||[]).map(p=>{
+   const form=el("div",{hidden:true,style:"margin-top:.6rem;display:grid;gap:.5rem"});
+   const inputs={};
+   for(const s of p.secrets.filter(x=>!x.shared||!x.set)){
+    const input=el("input",{class:"text",type:"password",autocomplete:"off",dir:"ltr",placeholder:s.set?t("plKeep"):s.name+(s.optional?" ("+t("plOptional")+")":"")});
+    inputs[s.name]=input;
+    form.append(el("label",{class:"f"},s.name+(s.optional?" · "+t("plOptional"):""),input,el("small",{class:"muted",dir:"auto",text:s.scopes[LANG]||s.scopes.en}),el("a",{href:s.createUrl,target:"_blank",rel:"noopener noreferrer",class:"small",text:t("plGetToken")+" ↗"})));
+   }
+   for(const s of p.secrets.filter(x=>x.shared&&x.set))form.append(el("small",{class:"muted",text:s.name+" ✓ · "+t("plShared")}));
+   const save=el("button",{class:"btn small primary",text:t("plSave"),onclick:async()=>{
+    save.disabled=true;
+    try{const body={};for(const [k,i] of Object.entries(inputs))if(i.value.trim())body[k]=i.value.trim();
+     const r=await api("/v1/platforms/"+p.id+"/connect",{method:"POST",body});
+     toast(r.ok?t("plConnected")+(r.replaced&&r.replaced.length?" · "+t("plReplaced",{x:r.replaced.join(", ")}):""):(r.status&&r.status.mcp&&r.status.mcp.error)||"✗");}
+    catch(e){toast(e.message);}
+    finally{save.disabled=false;for(const i of Object.values(inputs))i.value="";}
+    render();}});
+   form.append(el("div",{style:"display:flex;gap:.4rem"},save,el("button",{class:"btn small",text:t("plCancel"),onclick:()=>{form.hidden=true;}})));
+   const actions=p.managedOnSetup?el("a",{class:"btn small",href:"/setup",text:t("plManaged")}):
+    el("div",{style:"display:flex;gap:.4rem;flex-wrap:wrap"},
+     el("button",{class:"btn small"+(p.state==="connected"?"":" primary"),text:t("plConnect"),onclick:()=>{form.hidden=!form.hidden;}}),
+     p.state==="connected"||p.state==="error"||p.state==="starting"||p.secrets.some(s=>s.set&&!s.shared)?el("button",{class:"btn small",text:t("plDisconnect"),onclick:async()=>{if(!confirm(t("plConfirm",{p:p.label})))return;try{await api("/v1/platforms/"+p.id+"/disconnect",{method:"POST",body:{}});toast(t("plDisconnected"));}catch(e){toast(e.message);}render();}}):null);
+   return el("div",{class:"integ",style:"flex-direction:column;align-items:stretch"},
+    el("div",{style:"display:flex;gap:.6rem;align-items:center"},el("span",{class:"dot "+(p.state==="connected"?"on":p.state==="available"||p.state==="starting"?"part":"")}),el("b",{style:"flex:1",text:p.label}),pill(state(p.state),t("pls_"+p.state))),
+    el("small",{class:"muted",dir:"auto",text:p.about[LANG]||p.about.en}),
+    p.tools.length?el("small",{class:"mono",text:p.tools.length+" "+t("plTools")}):null,
+    p.mcp&&p.mcp.error?el("small",{class:"muted",style:"color:var(--red,#e5484d)",dir:"ltr",text:p.mcp.error.slice(0,240)}):null,
+    actions,form);
+  });
+  box.replaceChildren(el("h3",{text:t("plL")}),el("p",{class:"muted",text:t("plLead")}),el("div",{class:"grid3",style:"margin-top:.6rem"},tiles));
+ };
+ await render();
+ return box;
+}
 async function mcpPanel(){
  const box=el("section",{class:"card",style:"margin-top:1rem"});
  const render=async()=>{
   const d=await safe(api("/v1/mcp/servers"),{servers:[]});const servers=d.servers||[];
   const act=(id,op)=>async()=>{try{await api("/v1/mcp/servers/"+id+"/"+op,{method:"POST",body:{}});toast("✓");}catch(e){toast(e.message);}render();};
   const list=servers.length?el("div",{class:"rows"},servers.map(s=>el("div",{class:"row"},
-   el("div",{class:"t",dir:"auto",text:s.name+" · "+s.id}),
+   el("div",{class:"t",dir:"auto",text:s.name+" · "+s.id+(/^Platform: /.test(s.note||"")?" · "+t("plFromMcp"):"")}),
    el("div",{class:"s",dir:"auto",text:[s.connected?(s.tools.length+" "+t("mcpTools")):s.approved?"":t("mcpPending"),s.requestedBy?t("mcpRequested")+" "+s.requestedBy:"",s.note||"",(s.envFromSecrets||[]).length?t("mcpSecrets")+": "+s.envFromSecrets.join(", "):"",s.error||""].filter(Boolean).join(" · ")}),
    el("div",{class:"a"},pill(s.connected?"run":s.approved?"fail":"pend",s.connected?"on":s.approved?"off":t("mcpPending")),
     s.connected?el("button",{class:"btn small",text:t("mcpDisable"),onclick:act(s.id,"disable")}):el("button",{class:"btn small primary",text:t("mcpApprove"),onclick:act(s.id,"approve")}),
@@ -225,7 +269,8 @@ function integrationStatus(){
  return[
   ["Ollama",s.ollama?.reachable&&s.ollama?.models?.length?"on":"off",(s.ollama?.models?.length||0)+" models"],
   ["Whisper",s.assistant?.stt==="local"?"on":"part",s.assistant?.stt==="local"?"local":"browser"],
-  ...(s.cloud?.providers||[]).map(p=>[p.label,p.active?"on":p.hasKey?"part":"off",p.active?p.model:p.keyName]),
+  // Claude and GitHub are shown once, under Platforms.
+  ...(s.cloud?.providers||[]).filter(p=>p.keyName!=="ANTHROPIC_API_KEY").map(p=>[p.label,p.active?"on":p.hasKey?"part":"off",p.active?p.model:p.keyName]),
   ["Google Workspace",any("GOOGLE_REFRESH_TOKEN","GOOGLE_ACCESS_TOKEN")?"on":"off","GOOGLE_REFRESH_TOKEN"],
   ["Yahoo Mail",has("YAHOO_APP_PASSWORD")?"on":"off","YAHOO_APP_PASSWORD"],
   ["WhatsApp",ch.whatsapp?.configured||ch.whatsapp?.enabled?"on":"off","WhatsApp Cloud API"],
@@ -234,7 +279,6 @@ function integrationStatus(){
   ["WooCommerce",has("LAYANX_WOOCOMMERCE_CONSUMER_KEY")?"on":"off","LAYANX_WOOCOMMERCE_CONSUMER_KEY"],
   ["Ads (Meta, TikTok, Google, X)",any("LAYANX_META_ADS_TOKEN","LAYANX_TIKTOK_ADS_TOKEN","LAYANX_GOOGLE_ADS_TOKEN","LAYANX_X_ADS_TOKEN")?"on":"off","LAYANX_*_ADS_TOKEN"],
   ["Social OAuth",oc.length?"on":"off",oc.length?oc.map(c=>c.provider).join(", "):"OAuth"],
-  ["GitHub",has("GITHUB_TOKEN")?"on":"part","GITHUB_TOKEN"],
   ["Quran Foundation",has("QF_CLIENT_SECRET")?"part":"off","QF_CLIENT_SECRET"],
   ["VS Code / Phone",(s.devices||[]).length?"on":"off",(s.devices||[]).length+" devices"]
  ];
@@ -820,7 +864,7 @@ const VIEWS={
  },
  async integrations(v){
   await Promise.all([loadSetup(true),safe(api("/v1/channels/status"),null).then(x=>S.channels=x),safe(api("/v1/oauth/connections"),null).then(x=>S.oauth=x)]);
-  fill(v,head(t("integrations"),"",el("a",{class:"btn",href:"/setup",text:t("setup")})),el("div",{class:"grid3"},integrationStatus().map(([n,st,d])=>el("div",{class:"integ"},el("span",{class:"dot "+(st==="on"?"on":st==="part"?"part":"")}),el("div",{},el("b",{text:n}),el("small",{class:"mono",text:d}))))),await mcpPanel());
+  fill(v,head(t("integrations"),"",el("a",{class:"btn",href:"/setup",text:t("setup")})),el("div",{class:"grid3"},integrationStatus().map(([n,st,d])=>el("div",{class:"integ"},el("span",{class:"dot "+(st==="on"?"on":st==="part"?"part":"")}),el("div",{},el("b",{text:n}),el("small",{class:"mono",text:d}))))),await platformsPanel(),await mcpPanel());
  },
  async team(v){
   const s=await loadSetup(true);const caps=s?.capabilities||{};

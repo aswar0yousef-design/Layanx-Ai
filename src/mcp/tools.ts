@@ -1,5 +1,6 @@
 import type {LayanXCore} from "../core/orchestrator.js";
 import {searchRegistry,type McpManager} from "./manager.js";
+import {platformFor} from "../platforms/connect.js";
 
 /**
  * Agent-facing MCP tools. The agent can search the MCP Registry for a capability it lacks and
@@ -28,6 +29,9 @@ export function registerMcpTools(core:LayanXCore,manager:McpManager,options:{fet
       config={...hit.suggested};
     }
     if(!config)throw new Error("registryName or config is required.");
+    // A platform from the catalog is connected by the owner with its token, never requested as a second copy.
+    const known=platformFor(config as Parameters<typeof platformFor>[0]);
+    if(known)return{requested:null,platform:known.id,status:`${known.label} is a LayanX platform: ask the owner to connect it in Control Center -> Integrations -> Platforms (see platforms.list).`};
     const added=manager.add({...config,requestedBy:request.agentId??"agent",note:reason});
     return{requested:added.id,status:"waiting for the owner's approval in Control Center -> Integrations -> MCP",secretsNeeded:added.envFromSecrets??[]};
   }});

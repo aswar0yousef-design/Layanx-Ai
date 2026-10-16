@@ -67,5 +67,26 @@ const walk=(dir:string):string[]=>fs.readdirSync(dir,{withFileTypes:true}).flatM
 const listed=walk(fileURLToPath(new URL("../src",import.meta.url))).filter(f=>/في عالم اليوم|it's worth noting/i.test(fs.readFileSync(f,"utf8")));
 assert.deepEqual(listed.map(f=>path.basename(f)),["humanizer-patterns.ts"],"stock-phrase lists live in one file");
 assert.equal(tools.filter(t=>t.name==="content.humanize").length,1);
+// 10. Website platforms: one catalog, one way to connect each, one token per platform, shown once.
+{
+  const {PLATFORMS}=await import("../src/platforms/catalog.js");
+  const {platformFor}=await import("../src/platforms/connect.js");
+  for(const p of PLATFORMS.filter(x=>x.mcp))assert.equal(platformFor(p.mcp!)?.id,p.id,p.id+" is recognised as itself only");
+  const secretOwners=new Map<string,string[]>();
+  for(const p of PLATFORMS)for(const s of p.secrets)secretOwners.set(s.name,[...(secretOwners.get(s.name)??[]),p.id]);
+  for(const [name,owners] of secretOwners)assert.equal(owners.length,1,name+" belongs to one platform ("+owners.join(", ")+")");
+  // Vercel has native tools only, Claude is managed on the setup page: no MCP copy of either.
+  assert.equal(PLATFORMS.find(p=>p.id==="vercel")!.mcp,undefined);assert.equal(PLATFORMS.find(p=>p.id==="claude")!.mcp,undefined);
+  // The GitHub server adds Actions only; LayanX's own github.* tools cover repositories, issues and pull requests.
+  assert.match(PLATFORMS.find(p=>p.id==="github")!.mcp!.url!,/\/mcp\/x\/actions$/);
+  // Connecting goes through the one MCP manager and secret store (no second server list, no second vault).
+  const connect=read("../src/platforms/connect.ts");
+  assert.ok(!/writeFileSync|LocalSecretVault|new McpManager/.test(connect),"connect.ts reuses the MCP manager and the secret store");
+  // GitHub and Claude are shown once in the Control Center: under Platforms, not again in the status grid.
+  const ui=read("../web/app.js");
+  assert.ok(!/\["GitHub",has\("GITHUB_TOKEN"\)/.test(ui));
+  assert.match(ui,/filter\(p=>p\.keyName!=="ANTHROPIC_API_KEY"\)/);
+  assert.equal(tools.filter(t=>t.name==="platforms.list").length,1);
+}
 console.log(`no-duplicates: ${tools.length} tools, ${routes.size} routes, agent grants and settings docs consistent`);
 process.exit(0);
