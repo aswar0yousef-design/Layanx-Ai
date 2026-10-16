@@ -39,6 +39,15 @@ const T={
   gitLead:"أوامر القراءة تعمل فوراً؛ إنشاء الفروع والـ commit والـ push يحتاج موافقتك.",gitAsk:"اطلب من الوكيل",gitCommit:"اكتب commit واضحاً للتغييرات الحالية",gitPush:"ارفع الفرع الحالي إلى GitHub",gitPR:"جهّز Pull Request بعد مراجعة الكود والأمان",
   stores:"المتاجر",products:"المنتجات",orders:"الطلبات",orderValue:"قيمة الطلبات",content:"المحتوى",published:"منشور",scheduled:"مجدول",campaigns:"الحملات",media:"الوسائط",accounts:"الحسابات",
   shopGoals:"أنشئ 5 منتجات جديدة في المتجر مع أوصاف وصور|زامن الطلبات الجديدة من المتجر|اكتب وصفاً تسويقياً لأفضل منتج",
+  cd_burstiness:"تنوّع أطوال الجمل",cd_specificity:"تفاصيل ملموسة: أرقام، أسماء، مواعيد",cd_slop:"عبارات نمطية يكثر منها الذكاء الاصطناعي",cd_fingerprint:"رموز مخفية وآثار آلية",cd_voice:"صوت طبيعي يشبه كتابتك",cd_platform:"حدود المنصة: الطول والوسوم",
+  fk_hidden:"رموز مخفية (zero-width وغيرها)",fk_bidi:"رموز تغيّر اتجاه النص",fk_lookalike:"كلمات فيها حروف مشابهة (كيريلية أو يونانية)",fk_chatbot:"بقايا روبوت المحادثة («بالتأكيد! إليك…»)",fk_spaces:"مسافات غير عادية",fk_markdown:"رموز markdown ستظهر كما هي على المنصة",fk_presentation:"حروف بأشكال خاصة منسوخة من PDF أو روبوت",fk_em_dash:"شرطات طويلة (—) بكثرة",fk_emoji_bullets:"كل سطر يبدأ بإيموجي (شكل قالب)",fk_exclamations:"علامات تعجب كثيرة",
+  pk_too_long:"أطول من حد المنصة بـ {n}",pk_long:"أطول من الطول المناسب بـ {n}",pk_caption:"مع صورة أو فيديو يُقص التعليق بعد 1024 حرفاً",pk_hashtags:"وسوم زائدة: {n}",pk_empty:"النص فارغ",
+  vk_sentence_length:"جملك هنا أطول أو أقصر بكثير من منشوراتك",vk_emoji:"إيموجي أكثر بكثير من منشوراتك",vk_exclamations:"تعجب أكثر بكثير من منشوراتك",bk_same_opening:"جمل كثيرة تبدأ بنفس الكلمة: «{w}»",
+  fx_fp:"يزيله التنظيف تلقائياً",fx_vague:"سمِّه أو اذكر الرقم أو احذفه",fx_hedge:"قلها مباشرة",fx_stock_rhetoric:"ابدأ بالمعلومة",fx_avoid:"طلبت ألا تُستخدم هذه الكلمة",fx_same_opening:"نوّع بدايات الجمل",fx_too_long:"اختصره",fx_long:"اختصره",fx_hashtags:"أبقِ أفضلها",
+  hz:"تحسين النص",hzLead:"يجعل النص أقرب للكتابة البشرية لأي منصة: ينظّف الرموز المخفية والعبارات النمطية، ويحافظ على الأرقام والأسعار والروابط والوسوم كما هي.",hzText:"النص",hzPlatform:"المنصة",hzKind:"النوع",hzCheck:"فحص",hzClean:"تنظيف",hzRewrite:"تحسين",hzWorking:"جارٍ العمل…",hzScore:"درجة الكتابة البشرية",hzResult:"النص بعد التحسين",hzCopy:"نسخ",hzCopied:"نُسخ",hzUse:"ضعه في المربع",hzFindings:"ما وُجد",hzNone:"لا شيء يحتاج إصلاحاً.",hzV_pass:"ناجح",hzV_review:"يحتاج مراجعة",hzV_fail:"لم ينجح",hzNoteL:"ملاحظة",
+  hzN_no_model:"لا يوجد نموذج محلي يعمل الآن: نُظّف النص فقط. شغّل Ollama ثم أعد المحاولة.",hzN_model_error:"تعذّر الوصول إلى النموذج: نُظّف النص فقط.",hzN_rewrite_disabled:"إعادة الصياغة مطفأة (LAYANX_HUMANIZER): نُظّف النص فقط.",hzN_already_human:"النص يقرأ كتابة بشرية؛ لم يُغيَّر إلا ما خفي.",hzN_protected:"النص آيات أو اقتباسات محمية؛ لا يُعاد صياغته.",hzN_html_check_only:"HTML يُفحص فقط؛ حسّن كل فقرة كنص.",hzN_rewrite_lost_facts:"رُفضت الصياغة لأنها غيّرت رقماً أو رابطاً أو وسماً؛ بقي النص الأصلي منظّفاً.",hzN_rewrite_not_better:"لم تكن الصياغة الجديدة أفضل؛ بقي النص الأصلي منظّفاً.",
+  voiceL:"صوتك في الكتابة",voiceLead:"ألصق منشورات حقيقية كتبتها أنت (افصل بينها بسطر فارغ)؛ يقارن LayanX بها ويكتب بأسلوبك.",voiceSamples:"أمثلة من كتابتك",voiceDialect:"اللهجة",voiceTone:"النبرة",voicePerson:"تكتب بصيغة",voiceAny:"—",voiceI:"أنا",voiceWe:"نحن",voiceAvoid:"كلمات لا تريدها (مفصولة بفاصلة)",voicePrefer:"كلمات تحبها",voiceSaved:"حُفظ صوتك",voiceSave:"حفظ",qualityL:"الجودة",
+  k_post:"منشور",k_title:"عنوان",k_meta:"وصف الصفحة",k_cta:"زر",k_script:"سكربت فيديو",k_subject:"عنوان بريد",k_push:"إشعار",k_ui:"نص تطبيق",k_store_title:"اسم في المتجر",k_store_short:"وصف قصير للمتجر",k_store_description:"وصف المتجر",
   socialGoals:"اكتب منشوراً لإنستغرام عن أحدث منتج|جدول 3 منشورات لهذا الأسبوع|أعطني أداء المنشورات الأخيرة",
   adsGoals:"حلّل أداء الحملات الحالية واقترح تحسينات|أنشئ حملة إعلانية تجريبية بميزانية صغيرة|أوقف الحملات ضعيفة الأداء",
   analyticsLead:"أرقام الأعمال من متاجرك ومحتواك وتجارب النمو.",experiments:"التجارب",openActions:"إجراءات مفتوحة",
@@ -87,6 +96,15 @@ const T={
   gitLead:"Read commands run immediately; creating branches, commits and pushes needs your approval.",gitAsk:"Ask the agent",gitCommit:"Write a clear commit for the current changes",gitPush:"Push the current branch to GitHub",gitPR:"Prepare a pull request after code and security review",
   stores:"Stores",products:"Products",orders:"Orders",orderValue:"Order value",content:"Content",published:"Published",scheduled:"Scheduled",campaigns:"Campaigns",media:"Media",accounts:"Accounts",
   shopGoals:"Create 5 new products in the store with descriptions and images|Sync new orders from the store|Write a marketing description for the best product",
+  cd_burstiness:"Variety in sentence length",cd_specificity:"Concrete details: numbers, names, dates",cd_slop:"Stock phrases AI overuses",cd_fingerprint:"Hidden characters and machine traces",cd_voice:"A natural voice, like yours",cd_platform:"Platform limits: length and hashtags",
+  fk_hidden:"Hidden characters (zero-width and similar)",fk_bidi:"Characters that change text direction",fk_lookalike:"Words with look-alike Cyrillic or Greek letters",fk_chatbot:"Chatbot leftovers (\"Sure! Here's…\")",fk_spaces:"Unusual spaces",fk_markdown:"Markdown the platform shows as symbols",fk_presentation:"Special letter forms copied from a PDF or a chatbot",fk_em_dash:"Many em dashes (—)",fk_emoji_bullets:"Every line starts with an emoji (template look)",fk_exclamations:"Many exclamation marks",
+  pk_too_long:"{n} over the platform's limit",pk_long:"{n} longer than reads well",pk_caption:"With a photo or video the caption is cut at 1024 characters",pk_hashtags:"{n} hashtags too many",pk_empty:"Empty text",
+  vk_sentence_length:"Sentences much longer or shorter than your own posts",vk_emoji:"Far more emoji than your own posts",vk_exclamations:"Far more exclamation marks than your own posts",bk_same_opening:"Many sentences start with \"{w}\"",
+  fx_fp:"Removed by the clean step",fx_vague:"Name it, count it, or cut it",fx_hedge:"Say it plainly",fx_stock_rhetoric:"Start with the point",fx_avoid:"You asked never to use this",fx_same_opening:"Start sentences in different ways",fx_too_long:"Shorten it",fx_long:"Shorten it",fx_hashtags:"Keep the best ones",
+  hz:"Humanizer",hzLead:"Makes text read like a person wrote it, for any platform: removes hidden characters and stock phrases, keeps every number, price, link and hashtag.",hzText:"Text",hzPlatform:"Platform",hzKind:"Kind",hzCheck:"Check",hzClean:"Clean",hzRewrite:"Improve",hzWorking:"Working…",hzScore:"Human score",hzResult:"Improved text",hzCopy:"Copy",hzCopied:"Copied",hzUse:"Put it in the box",hzFindings:"Found",hzNone:"Nothing to fix.",hzV_pass:"Pass",hzV_review:"Review",hzV_fail:"Fail",hzNoteL:"Note",
+  hzN_no_model:"No local model is running: the text was only cleaned. Start Ollama and try again.",hzN_model_error:"The model could not be reached: the text was only cleaned.",hzN_rewrite_disabled:"Rewriting is off (LAYANX_HUMANIZER): the text was only cleaned.",hzN_already_human:"It already reads human; only hidden traces were removed.",hzN_protected:"Verses or quotations: protected, not reworded.",hzN_html_check_only:"HTML is checked only; improve each paragraph as text.",hzN_rewrite_lost_facts:"The rewrite changed a number, link or hashtag, so it was refused; the cleaned original stays.",hzN_rewrite_not_better:"The rewrite was not better; the cleaned original stays.",
+  voiceL:"Your writing voice",voiceLead:"Paste a few real posts you wrote (blank line between them); LayanX compares with them and writes like you.",voiceSamples:"Samples of your writing",voiceDialect:"Dialect",voiceTone:"Tone",voicePerson:"You write as",voiceAny:"—",voiceI:"I",voiceWe:"We",voiceAvoid:"Words you never want (comma-separated)",voicePrefer:"Words you like",voiceSaved:"Voice saved",voiceSave:"Save",qualityL:"Quality",
+  k_post:"Post",k_title:"Title",k_meta:"Meta description",k_cta:"Button",k_script:"Video script",k_subject:"E-mail subject",k_push:"Notification",k_ui:"App text",k_store_title:"Store name",k_store_short:"Store short description",k_store_description:"Store description",
   socialGoals:"Write an Instagram post about the newest product|Schedule 3 posts for this week|Show the performance of recent posts",
   adsGoals:"Analyze current campaigns and suggest improvements|Create a small test ad campaign|Pause under-performing campaigns",
   analyticsLead:"Business numbers from your stores, content and growth experiments.",experiments:"Experiments",openActions:"Open actions",
@@ -579,6 +597,62 @@ async function quickWithApproval(tool,payload){
  return r;
 }
 /** replaceChildren that skips null/undefined/false (replaceChildren would print them as text). */
+// ---------- Humanizer (content.humanize): check / clean / improve any text, and the owner's voice ----------
+const HZ_PLATFORMS=["instagram","facebook","tiktok","youtube","x","linkedin","snapchat","pinterest","threads","telegram","whatsapp","bluesky","google_business","ads","email","web","app","generic"];
+const HZ_LABEL={instagram:"Instagram",facebook:"Facebook",tiktok:"TikTok",youtube:"YouTube",x:"X",linkedin:"LinkedIn",snapchat:"Snapchat",pinterest:"Pinterest",threads:"Threads",telegram:"Telegram",whatsapp:"WhatsApp",bluesky:"Bluesky",google_business:"Google Business",ads:"Ads · إعلانات",email:"E-mail",web:"Website",app:"App",generic:"—"};
+const HZ_KINDS=["post","title","meta","cta","script","subject","push","ui","store_title","store_short","store_description"];
+function humanizerCard(){
+ const remember=k=>{try{return localStorage.getItem("lx.hz."+k)||"";}catch{return"";}},keep=(k,v)=>{try{localStorage.setItem("lx.hz."+k,v);}catch{}};
+ const text=el("textarea",{class:"text",rows:"7",dir:"auto",placeholder:t("hzText")});
+ const platform=el("select",{class:"text","aria-label":t("hzPlatform")},HZ_PLATFORMS.map(p=>el("option",{value:p,text:HZ_LABEL[p]})));
+ const kind=el("select",{class:"text","aria-label":t("hzKind")},HZ_KINDS.map(k=>el("option",{value:k,text:t("k_"+k)})));
+ platform.value=remember("platform")||"instagram";kind.value=remember("kind")||"post";
+ platform.addEventListener("change",()=>keep("platform",platform.value));kind.addEventListener("change",()=>keep("kind",kind.value));
+ const out=el("div",{style:"margin-top:1rem"});
+ const buttons=[];
+ const run=async mode=>{
+  const value=text.value;if(!value.trim()){text.focus();return;}
+  buttons.forEach(x=>x.disabled=true);fill(out,el("p",{class:"muted",text:t("hzWorking")}));
+  try{const r=await api("/v1/content/humanize",{method:"POST",body:{text:value,platform:platform.value,kind:kind.value,mode}});showHumanized(out,r,text);}
+  catch(e){fill(out,el("p",{class:"muted",text:e.message}));}
+  finally{buttons.forEach(x=>x.disabled=false);}
+ };
+ buttons.push(el("button",{class:"btn",text:t("hzCheck"),onclick:()=>run("check")}),el("button",{class:"btn",text:t("hzClean"),onclick:()=>run("clean")}),el("button",{class:"btn primary",text:t("hzRewrite"),onclick:()=>run("rewrite")}));
+ return el("section",{class:"card",style:"margin-top:1rem"},el("h3",{text:t("hz")}),el("p",{class:"muted",text:t("hzLead")}),
+  el("label",{class:"f",style:"margin-top:.6rem"},t("hzText"),text),
+  el("div",{class:"form",style:"margin-top:.6rem;grid-template-columns:1fr 1fr auto"},el("label",{class:"f"},t("hzPlatform"),platform),el("label",{class:"f"},t("hzKind"),kind),el("div",{style:"display:flex;gap:.4rem;flex-wrap:wrap"},buttons)),out);
+}
+function showHumanized(out,r,input){
+ const report=r.after||r.report;if(!report){fill(out);return;}
+ const state=v=>v==="pass"?"done":v==="review"||v==="warn"?"wait":"fail";
+ const rows=report.checks.map(c=>el("div",{class:"row",title:c.detail},el("div",{class:"t mono",text:c.label}),el("div",{class:"s"},t("cd_"+c.id)+" · ",el("span",{class:"mono",text:c.value})),el("div",{class:"a"},pill(state(c.status),c.status.toUpperCase()))));
+ const findings=(report.findings||[]).filter(f=>f.check!=="burstiness"||f.kind!=="even_rhythm").slice(0,14);
+ const has=k=>T.en[k]!==undefined;
+ const what=f=>f.check==="fingerprint"&&has("fk_"+f.kind)?t("fk_"+f.kind)+(f.count>1?" ×"+f.count:""):f.check==="platform"&&has("pk_"+f.kind)?t("pk_"+f.kind,{n:f.count}):f.check==="voice"&&has("vk_"+f.kind)?t("vk_"+f.kind):f.kind==="same_opening"?t("bk_same_opening",{w:f.text}):f.text+(f.count>1?" ×"+f.count:"");
+ const how=f=>f.check==="fingerprint"&&f.fix?t("fx_fp"):f.check!=="slop"&&has("fx_"+f.kind)?t("fx_"+f.kind):f.fix||"";
+ const result=r.text!==undefined?el("div",{style:"margin-top:1rem"},el("h3",{text:t("hzResult")}),el("textarea",{class:"text",rows:"7",dir:"auto",readonly:true},r.text),
+  el("div",{style:"display:flex;gap:.4rem;margin-top:.5rem"},el("button",{class:"btn small",text:t("hzCopy"),onclick:async()=>{try{await navigator.clipboard.writeText(r.text);toast(t("hzCopied"));}catch{toast(r.text);}}}),el("button",{class:"btn small",text:t("hzUse"),onclick:()=>{input.value=r.text;input.focus();}}))):null;
+ const before=r.before&&r.before.humanScore!==report.humanScore?" ("+r.before.humanScore+" → "+report.humanScore+")":"";
+ fill(out,
+  el("div",{style:"display:flex;gap:.6rem;align-items:center;flex-wrap:wrap"},el("b",{text:t("hzScore")+": "+report.humanScore+"/100"+before}),pill(state(report.verdict),t("hzV_"+report.verdict)),r.note?el("span",{class:"muted small",text:t("hzN_"+r.note.split(":")[0])}):null),
+  el("div",{class:"rows",style:"margin-top:.6rem"},rows),
+  el("h3",{style:"margin-top:1rem",text:t("hzFindings")}),
+  findings.length?el("div",{class:"rows"},findings.map(f=>el("div",{class:"row"},el("div",{class:"t",dir:"auto",text:what(f)}),el("div",{class:"s",dir:"auto",text:how(f)})))):el("p",{class:"muted",text:t("hzNone")}),
+  result);
+}
+async function voiceCard(){
+ const v=(await safe(api("/v1/content/voice"),{})).voice||{samples:[],avoid:[],prefer:[]};
+ const samples=el("textarea",{class:"text",rows:"5",dir:"auto"},(v.samples||[]).join("\n\n"));
+ const dialect=el("input",{class:"text",dir:"auto",value:v.dialect||""}),tone=el("input",{class:"text",dir:"auto",value:v.tone||""});
+ const person=el("select",{class:"text"},[["",t("voiceAny")],["i",t("voiceI")],["we",t("voiceWe")]].map(([k,l])=>el("option",{value:k,text:l})));person.value=v.person||"";
+ const avoid=el("input",{class:"text",dir:"auto",value:(v.avoid||[]).join("، ")}),prefer=el("input",{class:"text",dir:"auto",value:(v.prefer||[]).join("، ")});
+ const list=x=>x.value.split(/[,،\n]/).map(s=>s.trim()).filter(Boolean);
+ const save=el("button",{class:"btn primary",text:t("voiceSave"),onclick:async()=>{try{await api("/v1/content/voice",{method:"PUT",body:{samples:samples.value.split(/\n\s*\n/).map(s=>s.trim()).filter(Boolean),dialect:dialect.value,tone:tone.value,person:person.value,avoid:list(avoid),prefer:list(prefer)}});toast(t("voiceSaved"));}catch(e){toast(e.message);}}});
+ return el("section",{class:"card",style:"margin-top:1rem"},el("h3",{text:t("voiceL")}),el("p",{class:"muted",text:t("voiceLead")}),
+  el("label",{class:"f",style:"margin-top:.6rem"},t("voiceSamples"),samples),
+  el("div",{class:"form",style:"margin-top:.6rem;grid-template-columns:1fr 1fr 1fr"},el("label",{class:"f"},t("voiceDialect"),dialect),el("label",{class:"f"},t("voiceTone"),tone),el("label",{class:"f"},t("voicePerson"),person)),
+  el("div",{class:"form",style:"margin-top:.6rem;grid-template-columns:1fr 1fr auto"},el("label",{class:"f"},t("voiceAvoid"),avoid),el("label",{class:"f"},t("voicePrefer"),prefer),save));
+}
 function fill(node,...items){node.replaceChildren(...items.flat(Infinity).filter(x=>x!==null&&x!==undefined&&x!==false));return node;}
 function head(title,lead,...right){return el("div",{class:"page-head"},el("div",{},el("h1",{text:title}),lead?el("p",{text:lead}):null),el("div",{style:"display:flex;gap:.5rem;flex-wrap:wrap"},right));}
 function goalChips(list){return el("div",{class:"chips"},list.split("|").map(g=>el("button",{class:"chip",style:"font-family:inherit;direction:auto",text:g,onclick:()=>{go("agent");setTimeout(()=>{const i=$("#agentInput");if(i){i.value=g;i.focus();}},60);}})));}
@@ -726,8 +800,9 @@ const VIEWS={
   fill(v,head(t("social"),"Instagram · Facebook · TikTok · YouTube · X · LinkedIn · Pinterest"),
    stats([[t("accounts"),(b.socialAccounts||[]).length+(oc.connections||[]).length],[t("content"),content.length],[t("published"),content.filter(c=>c.status==="published").length],[t("scheduled"),content.filter(c=>c.status==="scheduled").length]]),
    el("div",{class:"grid2",style:"margin-top:1rem"},
-    el("section",{class:"card"},el("h3",{text:t("content")}),el("div",{class:"rows"},content.slice(-12).reverse().map(c=>el("div",{class:"row"},el("div",{class:"t",dir:"auto",text:c.title||c.id}),el("div",{class:"s",text:(c.platforms||[]).join(", ")+(c.scheduledAt?" · "+new Date(c.scheduledAt).toLocaleString():"")}),el("div",{class:"a"},pill(c.status==="published"?"done":c.status==="failed"?"fail":c.status==="scheduled"?"run":"pend",c.status)))),content.length?null:el("div",{class:"empty",text:"—"}))),
-    el("section",{class:"card"},el("h3",{text:t("gitAsk")}),goalChips(t("socialGoals")),el("h3",{style:"margin-top:1rem",text:t("accounts")}),el("div",{class:"rows"},[...(b.socialAccounts||[]).map(a=>a.platform+" · "+(a.name||a.externalId||"")),...(oc.connections||[]).map(c=>c.provider+" · "+(c.accountName||c.accountId))].map(x=>el("div",{class:"row"},el("div",{class:"t",text:x}))),((b.socialAccounts||[]).length+(oc.connections||[]).length)?null:el("div",{class:"empty",text:t("needsSetup")})))));
+    el("section",{class:"card"},el("h3",{text:t("content")}),el("div",{class:"rows"},content.slice(-12).reverse().map(c=>el("div",{class:"row"},el("div",{class:"t",dir:"auto",text:c.title||c.id}),el("div",{class:"s",text:(c.platforms||[]).join(", ")+(c.scheduledAt?" · "+new Date(c.scheduledAt).toLocaleString():"")}),el("div",{class:"a"},c.quality?el("span",{class:"status "+STATUS_CLASS[c.quality.verdict==="pass"?"done":c.quality.verdict==="review"?"wait":"fail"],title:t("qualityL")+" · "+t("hzV_"+c.quality.verdict),text:c.quality.humanScore+"/100"}):null,pill(c.status==="published"?"done":c.status==="failed"?"fail":c.status==="scheduled"?"run":"pend",c.status)))),content.length?null:el("div",{class:"empty",text:"—"}))),
+    el("section",{class:"card"},el("h3",{text:t("gitAsk")}),goalChips(t("socialGoals")),el("h3",{style:"margin-top:1rem",text:t("accounts")}),el("div",{class:"rows"},[...(b.socialAccounts||[]).map(a=>a.platform+" · "+(a.name||a.externalId||"")),...(oc.connections||[]).map(c=>c.provider+" · "+(c.accountName||c.accountId))].map(x=>el("div",{class:"row"},el("div",{class:"t",text:x}))),((b.socialAccounts||[]).length+(oc.connections||[]).length)?null:el("div",{class:"empty",text:t("needsSetup")})))),
+   humanizerCard(),await voiceCard());
  },
  async ads(v){
   const d=await safe(api("/v1/ads"),{});const a=d.ads||{};const dash=d.dashboard||{};

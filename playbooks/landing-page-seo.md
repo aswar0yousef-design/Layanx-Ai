@@ -9,4 +9,5 @@ stacks: [any]
 4. Mobile first: readable at 390px, tap targets at least 44px, no horizontal scrolling.
 5. Contact or purchase call-to-action visible without scrolling; forms validated with clear errors.
 6. For Arabic audiences follow the Arabic RTL playbook.
+7. Copy: run content.humanize on the headline, paragraphs and buttons (platform web; kind title for <title>, meta for the description, cta for buttons) and fix what fails; the page's facts and prices stay exactly as given.
 Visual check: browser.test on desktop and mobile with a baseline; fix every console error.

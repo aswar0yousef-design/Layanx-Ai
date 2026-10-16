@@ -7,6 +7,6 @@ stacks: [node]
 2. One component per file under src/components or the feature folder already used by the project.
 3. Accessibility: real buttons and labels, alt text on images, keyboard focus visible, lang/dir on <html>.
 4. Responsive: test at 390px (mobile) and 1280px (desktop); no horizontal scrolling.
-5. Never use dangerouslySetInnerHTML with user content.
+5. Never use dangerouslySetInnerHTML with user content. Check headings, buttons and empty states with content.humanize (platform web or app).
 6. Tests: vitest + @testing-library/react for behaviour (what the user sees and clicks), not implementation details.
 Visual check: npm run dev, then browser.test on the page with desktop and mobile viewports and a baseline.
