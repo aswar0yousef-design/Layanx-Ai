@@ -1,3 +1,4 @@
+import {fileURLToPath} from "node:url";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -37,12 +38,12 @@ const guide=fs.readFileSync(new URL("../docs/دليل-التشغيل.md",import.
 for(const name of ["LAYANX_OLLAMA_STRUCTURED","LAYANX_STORAGE","LAYANX_SEMANTIC_MEMORY","LAYANX_EMBEDDING_MODEL","LAYANX_CLOUD_MONTHLY_BUDGET_USD","LAYANX_CLOUD_MONTHLY_TOKENS","LAYANX_PROMPT_BUDGET_CHARS",
   "LAYANX_TTS_BASE_URL","LAYANX_TTS_VOICE_AR","LAYANX_AGENT_IMAGE_AIDER","LAYANX_TOOLS_DIR","LAYANX_EXTERNAL_SCANNERS","LAYANX_OPENGREP_CONFIG","LAYANX_MCP_REGISTRY_URL","LAYANX_DESKTOP_PREWARM","LAYANX_SKILLS_DIR",
   "LAYANX_ZAP","LAYANX_ZAP_IMAGE","LAYANX_VOICE_SENSE_URL","LAYANX_VOICE_SENSE_PORT","LAYANX_STT_ENGINE","LAYANX_COHERE_PORT","LAYANX_COHERE_DEVICE","LAYANX_URL","LAYANX_API_TOKEN","LAYANX_DOCKER_MEMORY","LAYANX_OLLAMA_NUM_PREDICT","LAYANX_STT_FALLBACK_URL","LAYANX_OPEN_BROWSER","LAYANX_API_CATALOG",
-  "MT5_ALLOW_REAL_ACCOUNT","MT5_MAX_CONSECUTIVE_LOSSES","MT5_TESTER_TERMINAL","MT5_TESTER_TIMEOUT_MINUTES","LAYANX_DESKTOP_ISLAND"])
+  "MT5_ALLOW_REAL_ACCOUNT","MT5_MAX_CONSECUTIVE_LOSSES","MT5_TESTER_TERMINAL","MT5_TESTER_TIMEOUT_MINUTES","LAYANX_DESKTOP_ISLAND","LAYANX_HUMANIZER"])
   assert.ok(guide.includes(name),name+" is documented in docs/دليل-التشغيل.md");
 // 5. Every LAYANX_* setting the new code reads appears in .env.example too.
 const example=fs.readFileSync(new URL("../.env.example",import.meta.url),"utf8");
 for(const name of ["LAYANX_ZAP","LAYANX_ZAP_IMAGE","LAYANX_VOICE_SENSE_URL","LAYANX_VOICE_SENSE_PORT","LAYANX_STT_ENGINE","LAYANX_COHERE_PORT","LAYANX_COHERE_DEVICE","LAYANX_URL","LAYANX_EVAL_DIR","LAYANX_OLLAMA_NUM_PREDICT","LAYANX_STT_FALLBACK_URL","LAYANX_OPEN_BROWSER","LAYANX_API_CATALOG",
-  "MT5_ALLOW_REAL_ACCOUNT","MT5_MAX_CONSECUTIVE_LOSSES","MT5_TESTER_TERMINAL","MT5_TESTER_TIMEOUT_MINUTES","LAYANX_DESKTOP_ISLAND"])
+  "MT5_ALLOW_REAL_ACCOUNT","MT5_MAX_CONSECUTIVE_LOSSES","MT5_TESTER_TERMINAL","MT5_TESTER_TIMEOUT_MINUTES","LAYANX_DESKTOP_ISLAND","LAYANX_HUMANIZER"])
   assert.ok(new RegExp("^"+name+"=","m").test(example),name+" is in .env.example");
 // 6. One Python finder for all Windows installers (no copies drifting apart).
 for(const f of ["install-piper.ps1","install-voice-sense.ps1","install-cohere-asr.ps1"]){
@@ -59,5 +60,12 @@ assert.equal((read("../src/api-server.ts").match(/approvals\.(approve|revoke)\(/
 assert.equal((read("../src/remote/companion.ts").match(/approvals\.approve\(/g)??[]).length,2,"decideApproval: mission and external requests");
 // 8. One QR encoder, one certificate maker.
 for(const f of ["../src/local/setup-routes.ts","../src/local/setup-page.ts"])assert.ok(!/function qr|qrcode/i.test(read(f).replace(/qrSvg|pair-qr|qr-note|\.qr\{|"qr"/g,"")),f+" uses src/platform/qr.ts");
+// 9. One humanizer: every path that writes for people uses src/business/humanizer.ts, not its own cleaner or word list.
+for(const f of ["../src/business/manager.ts","../src/creator/engine.ts","../src/business/humanizer-tool.ts","../src/api-server.ts"])
+  assert.match(read(f),/from "\.{1,2}\/(business\/)?humanizer\.js"/,f+" uses the shared humanizer");
+const walk=(dir:string):string[]=>fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(path.join(dir,e.name)):e.name.endsWith(".ts")?[path.join(dir,e.name)]:[]);
+const listed=walk(fileURLToPath(new URL("../src",import.meta.url))).filter(f=>/في عالم اليوم|it's worth noting/i.test(fs.readFileSync(f,"utf8")));
+assert.deepEqual(listed.map(f=>path.basename(f)),["humanizer-patterns.ts"],"stock-phrase lists live in one file");
+assert.equal(tools.filter(t=>t.name==="content.humanize").length,1);
 console.log(`no-duplicates: ${tools.length} tools, ${routes.size} routes, agent grants and settings docs consistent`);
 process.exit(0);
