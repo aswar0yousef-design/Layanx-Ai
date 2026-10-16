@@ -61,7 +61,7 @@ assert.equal((read("../src/remote/companion.ts").match(/approvals\.approve\(/g)?
 // 8. One QR encoder, one certificate maker.
 for(const f of ["../src/local/setup-routes.ts","../src/local/setup-page.ts"])assert.ok(!/function qr|qrcode/i.test(read(f).replace(/qrSvg|pair-qr|qr-note|\.qr\{|"qr"/g,"")),f+" uses src/platform/qr.ts");
 // 9. One humanizer: every path that writes for people uses src/business/humanizer.ts, not its own cleaner or word list.
-for(const f of ["../src/business/manager.ts","../src/creator/engine.ts","../src/business/humanizer-tool.ts","../src/api-server.ts"])
+for(const f of ["../src/business/manager.ts","../src/business/ads.ts","../src/creator/engine.ts","../src/business/humanizer-tool.ts","../src/api-server.ts"])
   assert.match(read(f),/from "\.{1,2}\/(business\/)?humanizer\.js"/,f+" uses the shared humanizer");
 const walk=(dir:string):string[]=>fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(path.join(dir,e.name)):e.name.endsWith(".ts")?[path.join(dir,e.name)]:[]);
 const listed=walk(fileURLToPath(new URL("../src",import.meta.url))).filter(f=>/في عالم اليوم|it's worth noting/i.test(fs.readFileSync(f,"utf8")));

@@ -46,6 +46,10 @@ const HUMAN_AR="وصلتنا حبوب إثيوبية جديدة يوم الثل�
   assert.equal(cleanText("بالتأكيد! إليك منشوراً جذاباً لمتجرك:\nخصم 20٪ على كل العطور حتى الجمعة.\nهل تريد أن أكتب نسخة أخرى؟").text,"خصم 20٪ على كل العطور حتى الجمعة.");
   // …but a human first line that only starts the same way stays
   assert.equal(cleanText("Sure, we deliver on Fridays too.\nOrder by 5pm.").text,"Sure, we deliver on Fridays too.\nOrder by 5pm.");
+  assert.equal(cleanText("Here is the menu for Friday:\nShawarma 1 OMR").text,"Here is the menu for Friday:\nShawarma 1 OMR");
+  assert.equal(cleanText("إليكم عروض اليوم:\nخصم 20٪").text,"إليكم عروض اليوم:\nخصم 20٪");
+  assert.equal(cleanText("Certainly! Here are three ideas:\nFresh bread at 7.").text,"Fresh bread at 7.");
+  assert.equal(cleanText("بالطبع! إليك ثلاث أفكار:\nخبز طازج الساعة 7.").text,"خبز طازج الساعة 7.");
   assert.equal(cleanText("Feel free to drop by after 6.").text,"Feel free to drop by after 6.","a one-line post is never emptied");
   assert.equal(cleanText("Free coffee today.\nFeel free to bring a friend!").text,"Free coffee today.\nFeel free to bring a friend!","an ordinary closing line stays");
 }
@@ -92,6 +96,7 @@ const HUMAN_AR="وصلتنا حبوب إثيوبية جديدة يوم الثل�
   assert.equal(check(scanText("Buy #now",{platform:"web",kind:"cta"}),"platform").status,"warn","no hashtags on a button");
   assert.equal(check(scanText("a ".repeat(600),{platform:"telegram"}),"platform").status,"warn","Telegram media captions stop at 1024");
   assert.equal(platformRule("youtube","title").max,100);
+  assert.equal(check(scanText("Hojari frankincense from Dhofar, green grade",{platform:"ads",kind:"title"}),"platform").status,"warn","ad headlines: about 30");
   assert.equal(scanText("hello",{platform:"nope" as any,kind:"weird" as any}).platform,"generic");
 }
 

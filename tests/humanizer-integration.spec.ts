@@ -55,6 +55,11 @@ const HUMAN="Hojari frankincense from Dhofar, the green grade. One piece on a co
   assert.equal(typed.title,"Eid");assert.equal(typed.body,"Eid offer today");
   const edited=b.updateContent(typed.id,{body:"New"+ZWSP+" text"});
   assert.equal(edited.body,"New text");
+  // ad copy is cleaned the same way
+  const {AdsManager}=await import("../src/business/ads.js");
+  const ads=new AdsManager(b.store);
+  const creative=ads.createCreative({name:"c",headline:"**Hojari**"+ZWSP,body:"Green grade"+ZWSP+" from Dhofar",mediaIds:[],metadata:{}});
+  assert.equal(creative.headline,"Hojari");assert.equal(creative.body,"Green grade from Dhofar");
   // the model failing never blocks the draft
   const down=new BusinessManager(undefined,async()=>JSON.stringify({title:"Hojari",body:AI,hashtags:["oman"]}),async()=>{throw new Error("model offline");});
   const s2=down.createStore({name:"D",platform:"generic",baseUrl:"https://example.invalid",enabled:true});

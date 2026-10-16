@@ -598,8 +598,8 @@ async function quickWithApproval(tool,payload){
 }
 /** replaceChildren that skips null/undefined/false (replaceChildren would print them as text). */
 // ---------- Humanizer (content.humanize): check / clean / improve any text, and the owner's voice ----------
-const HZ_PLATFORMS=["instagram","facebook","tiktok","youtube","x","linkedin","snapchat","pinterest","threads","telegram","whatsapp","bluesky","google_business","email","web","app","generic"];
-const HZ_LABEL={instagram:"Instagram",facebook:"Facebook",tiktok:"TikTok",youtube:"YouTube",x:"X",linkedin:"LinkedIn",snapchat:"Snapchat",pinterest:"Pinterest",threads:"Threads",telegram:"Telegram",whatsapp:"WhatsApp",bluesky:"Bluesky",google_business:"Google Business",email:"E-mail",web:"Website",app:"App",generic:"—"};
+const HZ_PLATFORMS=["instagram","facebook","tiktok","youtube","x","linkedin","snapchat","pinterest","threads","telegram","whatsapp","bluesky","google_business","ads","email","web","app","generic"];
+const HZ_LABEL={instagram:"Instagram",facebook:"Facebook",tiktok:"TikTok",youtube:"YouTube",x:"X",linkedin:"LinkedIn",snapchat:"Snapchat",pinterest:"Pinterest",threads:"Threads",telegram:"Telegram",whatsapp:"WhatsApp",bluesky:"Bluesky",google_business:"Google Business",ads:"Ads · إعلانات",email:"E-mail",web:"Website",app:"App",generic:"—"};
 const HZ_KINDS=["post","title","meta","cta","script","subject","push","ui","store_title","store_short","store_description"];
 function humanizerCard(){
  const remember=k=>{try{return localStorage.getItem("lx.hz."+k)||"";}catch{return"";}},keep=(k,v)=>{try{localStorage.setItem("lx.hz."+k,v);}catch{}};
