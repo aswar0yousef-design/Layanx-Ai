@@ -57,20 +57,21 @@ const HUMAN_AR="وصلتنا حبوب إثيوبية جديدة يوم الثل�
   assert.ok(human.humanScore-ai.humanScore>=30,`${human.humanScore} vs ${ai.humanScore}`);
   assert.equal(check(ai,"slop").status,"fail");assert.equal(check(ai,"burstiness").status,"fail");assert.equal(check(ai,"specificity").status,"fail");
   assert.deepEqual(ai.checks.map((c:any)=>c.label),["BURSTINESS","SPECIFICITY","SLOP DENSITY","FINGERPRINT","VOICE","PLATFORM"]);
-  assert.ok(ai.findings.some((f:any)=>f.text==="delve"||f.text==="seamless"));
+  assert.ok(ai.findings.some((f:any)=>f.pattern==="seamless"&&f.text==="seamlessly"),"the finding shows the words as written");
   const aiAr=scanText(AI_AR,{platform:"instagram"}),humanAr=scanText(HUMAN_AR,{platform:"instagram"});
   assert.equal(aiAr.lang,"ar");assert.equal(aiAr.verdict,"fail");assert.equal(humanAr.verdict,"pass");
-  const found=aiAr.findings.filter((f:any)=>f.check==="slop").map((f:any)=>f.text);
+  const found=aiAr.findings.filter((f:any)=>f.check==="slop").map((f:any)=>f.pattern);
+  assert.ok(aiAr.findings.some((f:any)=>f.text==="تلعب دوراً محورياً"),"Arabic findings keep the owner's spelling: "+aiAr.findings.map((f:any)=>f.text).join(" | "));
   for(const phrase of ["في عالم اليوم","لا شك ان","تجدر الاشاره","يلعب دورا محوريا","في الختام","تجربه فريده من نوعها","ليس فقط … بل"])assert.ok(found.includes(phrase),phrase+" found in "+found.join(","));
-  assert.ok(aiAr.findings.some((f:any)=>f.check==="specificity"&&f.text==="مختلف"),"vague words match with Arabic endings (المختلفة)");
+  assert.ok(aiAr.findings.some((f:any)=>f.check==="specificity"&&f.pattern==="مختلف"&&f.text==="المختلفة"),"vague words match with Arabic endings (المختلفة)");
   // diacritics and alef forms do not hide a phrase
-  assert.ok(scanText("ولا شكَّ أنَّ هذا المنتج رائع",{}).findings.some((f:any)=>f.text==="لا شك ان"));
-  assert.ok(scanText("ارتقِ بتجربتك الآن",{}).findings.some((f:any)=>f.text==="ارتق ب"));
+  assert.ok(scanText("ولا شكَّ أنَّ هذا المنتج رائع",{}).findings.some((f:any)=>f.pattern==="لا شك ان"&&f.text==="ولا شكَّ أنَّ"));
+  assert.ok(scanText("ارتقِ بتجربتك الآن",{}).findings.some((f:any)=>f.pattern==="ارتق ب"));
   // hidden characters are a FINGERPRINT failure
   assert.equal(check(scanText("Hello"+ZWSP+" world",{}),"fingerprint").status,"fail");
   // HTML: the visible text is checked
   const page=scanText("<html><head><style>.x{color:red}</style></head><body><h1>Unlock the power of seamless design</h1><p>We leverage cutting-edge tools.</p><script>var delve=1</script></body></html>",{platform:"web",format:"html"});
-  assert.ok(page.findings.some((f:any)=>f.text==="leverage"));assert.ok(!page.findings.some((f:any)=>f.text==="delve"),"script is not copy");
+  assert.ok(page.findings.some((f:any)=>f.pattern==="leverage"));assert.ok(!page.findings.some((f:any)=>f.pattern==="delve"),"script is not copy");
 }
 
 // ---------- 3. platform rules ----------
@@ -124,7 +125,7 @@ const HUMAN_AR="وصلتنا حبوب إثيوبية جديدة يوم الثل�
   assert.equal(r.text,good,"chatbot leftovers around the answer are cleaned too");
   assert.equal(r.attempts,2);
   assert.ok(prompts[1]!.includes("4.50"),"the second prompt says what was lost");
-  assert.match(prompts[0]!,/Remove the stock phrase "in today's fast-paced"/);
+  assert.match(prompts[0]!,/Remove the stock phrase "In today's fast-paced"/,"the prompt quotes the text as written");
   assert.match(prompts[0]!,/Instagram/);assert.match(prompts[0]!,/Stay under 2200/);
   assert.equal(r.before.verdict,"fail");assert.equal(r.after.verdict,"pass");
   // a model that keeps losing facts never replaces the text

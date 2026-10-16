@@ -22,6 +22,19 @@ export function fold(text:string):string{
     .replace(/[‘’ʼ]/g,"'");
 }
 
+/** fold() plus, for every folded character, the index of the original character it came from. */
+export function foldWithMap(text:string):{folded:string;map:number[]}{
+  let folded="";const map:number[]=[];
+  for(let i=0;i<text.length;){
+    const cp=text.codePointAt(i)!;const ch=String.fromCodePoint(cp);
+    const f=fold(ch);
+    for(let k=0;k<f.length;k++)map.push(i);
+    folded+=f;i+=ch.length;
+  }
+  map.push(text.length);
+  return{folded,map};
+}
+
 const esc=(s:string)=>s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
 const L="[\\p{L}\\p{N}]";
 /** A phrase as a regex on folded text. "…" stands for a short gap inside one sentence. */

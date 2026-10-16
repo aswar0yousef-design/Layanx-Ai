@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {writeFileAtomic} from "../platform/paths.js";
 import type {ContentQuality,SocialPlatform} from "./types.js";
-import {DISCLOSURE_RE,HOMOGLYPHS,META_RE,PATTERNS,fold,type TextPattern} from "./humanizer-patterns.js";
+import {DISCLOSURE_RE,HOMOGLYPHS,META_RE,PATTERNS,fold,foldWithMap,type TextPattern} from "./humanizer-patterns.js";
 
 /**
  * The humanizer: makes text that LayanX writes for people (posts on every social
@@ -31,7 +31,8 @@ export type TextFormat="text"|"markdown"|"html";
 export type CheckId="burstiness"|"specificity"|"slop"|"fingerprint"|"voice"|"platform";
 export type CheckStatus="pass"|"warn"|"fail";
 export interface HumanizeCheck{id:CheckId;label:string;status:CheckStatus;score:number;value:string;detail:string}
-export interface HumanizeFinding{check:CheckId;kind:string;text:string;count:number;fix?:string}
+/** `text` is what was found, as written in the text; `pattern` is the list entry that matched it. */
+export interface HumanizeFinding{check:CheckId;kind:string;text:string;count:number;fix?:string;pattern?:string}
 export interface HumanizeReport{
   verdict:"pass"|"review"|"fail";
   /** 0-100, higher reads more like a person. */
@@ -224,10 +225,17 @@ export function scanText(input:string,options:HumanizeOptions={}):HumanizeReport
   const checks:HumanizeCheck[]=[];
   const add=(id:CheckId,status:CheckStatus,score:number,value:string,detail:string)=>checks.push({id,label:LABELS[id],status,score:Math.round(clamp(score)),value,detail});
   const prose=proseOf(text);
-  const folded=fold(prose);
+  const {folded,map}=foldWithMap(prose);
   const wordCount=words(prose).length;
   const r=rhythmStats(text);
-  const hits=(k:TextPattern["kind"])=>PATTERNS.filter(p=>p.kind===k).map(p=>({p,count:countPattern(folded,p)})).filter(x=>x.count>0);
+  // Each hit carries the words as the owner wrote them (diacritics, hamza and all), not the folded pattern.
+  const hits=(k:TextPattern["kind"])=>PATTERNS.filter(p=>p.kind===k).map(p=>{
+    p.re.lastIndex=0;const m=p.re.exec(folded);
+    let end=m?map[m.index+m[0].length]!:0;
+    while(m&&end<prose.length&&/[\p{L}\p{M}]/u.test(prose[end]!))end++; // "ارتقِ ب" → "ارتقِ بتجربتك": show the whole word
+    const found=m?prose.slice(map[m.index]!,end).trim():p.label;
+    return{p,count:countPattern(folded,p),found};
+  }).filter(x=>x.count>0);
 
   // BURSTINESS: people mix short and long sentences; models keep them even.
   if(r.lens.length<4)add("burstiness","pass",100,"—","Too short to measure sentence rhythm.");
@@ -253,7 +261,7 @@ export function scanText(input:string,options:HumanizeOptions={}):HumanizeReport
     for(const k of options.keep??[])if(k.trim()&&folded.includes(fold(k.trim())))concrete++;
     const vague=hits("vague");
     const vagueCount=vague.reduce((a,x)=>a+x.count,0);
-    for(const v of vague)findings.push({check:"specificity",kind:"vague",text:v.p.label,count:v.count,fix:"Name it, count it, or cut it."});
+    for(const v of vague)findings.push({check:"specificity",kind:"vague",text:v.found,pattern:v.p.label,count:v.count,fix:"Name it, count it, or cut it."});
     const sentences=Math.max(1,r.sentences.length);
     const ratio=(concrete-0.7*vagueCount)/sentences;
     if(wordCount<15)add("specificity","pass",100,`${concrete} details`,"Short text.");
@@ -268,7 +276,7 @@ export function scanText(input:string,options:HumanizeOptions={}):HumanizeReport
     const slop=hits("slop");
     const weighted=slop.reduce((a,x)=>a+x.p.weight*x.count,0);
     const density=wordCount?weighted/wordCount*100:0;
-    for(const s of slop)findings.push({check:"slop",kind:s.p.weight>=1?"stock_phrase":"overused_word",text:s.p.label,count:s.count,...(s.p.fix?{fix:s.p.fix}:{})});
+    for(const s of slop)findings.push({check:"slop",kind:s.p.weight>=1?"stock_phrase":"overused_word",text:s.found,pattern:s.p.label,count:s.count,...(s.p.fix?{fix:s.p.fix}:{})});
     const status:CheckStatus=weighted===0?"pass":weighted>=2&&density>=2.5?"fail":"warn";
     add("slop",status,100-density*25,`${round(density)} / 100 words`,weighted?`${slop.length} stock phrase${slop.length===1?"":"s"} found.`:"No stock phrases.");
   }
@@ -294,8 +302,8 @@ export function scanText(input:string,options:HumanizeOptions={}):HumanizeReport
   {
     const hedges=hits("hedge"),tells=hits("voice");
     const hedgeCount=hedges.reduce((a,x)=>a+x.count,0),tellCount=tells.reduce((a,x)=>a+x.count,0);
-    for(const h of hedges)findings.push({check:"voice",kind:"hedge",text:h.p.label,count:h.count,fix:"Say it plainly."});
-    for(const t of tells)findings.push({check:"voice",kind:"stock_rhetoric",text:t.p.label,count:t.count,fix:"Start with the point."});
+    for(const h of hedges)findings.push({check:"voice",kind:"hedge",text:h.found,pattern:h.p.label,count:h.count,fix:"Say it plainly."});
+    for(const t of tells)findings.push({check:"voice",kind:"stock_rhetoric",text:t.found,pattern:t.p.label,count:t.count,fix:"Start with the point."});
     const sentences=Math.max(1,r.sentences.length);
     const rate=(hedgeCount*0.5+tellCount)/sentences;
     let drift=0,banned=0;
