@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import {writeFileAtomic} from "../platform/paths.js";
-import type {SocialPlatform} from "./types.js";
+import type {ContentQuality,SocialPlatform} from "./types.js";
 import {DISCLOSURE_RE,HOMOGLYPHS,META_RE,PATTERNS,fold,type TextPattern} from "./humanizer-patterns.js";
 
 /**
@@ -510,4 +510,18 @@ export async function humanizeText(input:string,options:HumanizeOptions={},gener
   }
   if(!rewritten&&!note)note=lastLost.length?"rewrite_lost_facts":"rewrite_not_better";
   return result({rewritten,attempts,lost:rewritten?[]:lastLost,...(note?{note}:{})});
+}
+
+// ---------------------------------------------------------------- helpers for the content paths
+/** One text for several platforms is written for the strictest of them (the shortest limit). */
+export function strictestPlatform(platforms:readonly string[]):HumanizePlatform{
+  const known=platforms.filter((p):p is HumanizePlatform=>Object.hasOwn(PLATFORM_RULES,p)&&p!=="generic");
+  return known.sort((a,b)=>(PLATFORM_RULES[a].max??Infinity)-(PLATFORM_RULES[b].max??Infinity))[0]??"generic";
+}
+/** The hashtags a draft may carry: the platform's hard limit (Instagram: 5), never more. */
+export function hashtagLimit(platforms:readonly string[]):number{
+  return Math.min(...platforms.map(p=>Object.hasOwn(PLATFORM_RULES,p)?PLATFORM_RULES[p as HumanizePlatform].hashtagsMax??Infinity:Infinity),Infinity);
+}
+export function qualityOf(report:HumanizeReport,rewritten=false,note?:string):ContentQuality{
+  return{verdict:report.verdict,humanScore:report.humanScore,rewritten,platform:report.platform,checks:report.checks.map(c=>({id:c.id,status:c.status})),...(note?{note}:{}),checkedAt:new Date().toISOString()};
 }

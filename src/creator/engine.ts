@@ -3,6 +3,7 @@ import {join,resolve} from "node:path";
 import {randomUUID} from "node:crypto";
 import {spawn} from "node:child_process";
 import type {CreatorDoctorReport,CreatorEngineOptions,CreatorPlanInput,CreatorProject,CreatorScene} from "./types.js";
+import {cleanText,humanizeText,humanizerMode,loadVoice,qualityOf,scanText} from "../business/humanizer.js";
 const now=()=>new Date().toISOString();
 const clamp=(n:number,min:number,max:number)=>Math.min(Math.max(n,min),max);
 function safeName(value:string){return value.normalize("NFKC").replace(/[^a-zA-Z0-9_-]+/g,"-").replace(/^-+|-+$/g,"").slice(0,80)||"project";}
@@ -18,9 +19,18 @@ export class CreatorEngine{
   const duration=clamp(Math.round(input.durationSec??45),15,600);const platform=input.platform??"both";const language=input.language??"ar";const style=input.style??"documentary_short";
   const fallback={title:input.title??topic,hook:"هل تعرف الحقيقة وراء "+topic+"؟",script:"مقدمة: "+topic+".\nسنشرح الفكرة باختصار ونذكر أهم الحقائق الموثوقة.\nالخاتمة: تابعنا للمزيد."};let generated=fallback;
   if(this.options.generateText){const raw=await this.options.generateText("Create a factual short-video package about: "+topic+". Language: "+language+". Style: "+style+". Duration: "+duration+"s. Return JSON with keys title,hook,script. Do not invent facts.");try{const parsed=JSON.parse(raw) as Partial<typeof fallback>;generated={title:String(parsed.title||fallback.title),hook:String(parsed.hook||fallback.hook),script:String(parsed.script||fallback.script)};}catch{}}
+  // The narration is spoken to people: it goes through the humanizer like every post (content.humanize).
+  let quality:CreatorProject["quality"];
+  const mode=humanizerMode();
+  if(mode!=="off"){
+   const target=platform==="youtube"?"youtube" as const:"tiktok" as const;
+   generated={...generated,title:cleanText(generated.title,{platform:target,kind:"title"}).text,hook:cleanText(generated.hook,{platform:target,kind:"script"}).text};
+   if(mode==="rewrite"&&this.options.writer){const r=await humanizeText(generated.script,{platform:target,kind:"script",keep:[topic],voice:loadVoice()},this.options.writer);generated.script=r.text;quality=qualityOf(r.after,r.rewritten,r.note);}
+   else{generated.script=cleanText(generated.script,{platform:target,kind:"script"}).text;quality=qualityOf(scanText(generated.script,{platform:target,kind:"script",voice:loadVoice()}));}
+  }
   const sentences=splitScript(generated.script);const count=Math.max(1,Math.min(sentences.length,12));const per=duration/count;
   const scenes:CreatorScene[]=sentences.slice(0,12).map((narration,index)=>({id:"scene_"+(index+1),index:index+1,narration,visualPrompt:"cinematic documentary visual for: "+narration,durationSec:Number(per.toFixed(2))}));
-  const project:CreatorProject={id:"creator_"+randomUUID(),title:generated.title,topic,platform,aspectRatio:platform==="youtube"?"16:9":"9:16",language,hook:generated.hook,script:generated.script,scenes,createdAt:now()};this.save(project);return project;
+  const project:CreatorProject={id:"creator_"+randomUUID(),title:generated.title,topic,platform,aspectRatio:platform==="youtube"?"16:9":"9:16",language,hook:generated.hook,script:generated.script,scenes,...(quality?{quality}:{}),createdAt:now()};this.save(project);return project;
  }
  save(project:CreatorProject){const dir=join(this.root,safeName(project.id));mkdirSync(dir,{recursive:true});writeFileSync(join(dir,"project.json"),JSON.stringify(project,null,2),"utf8");writeFileSync(join(dir,"script.txt"),project.script,"utf8");return dir;}
  load(id:string){const path=join(this.root,safeName(id),"project.json");if(!existsSync(path))throw new Error("creator_project_not_found");return JSON.parse(readFileSync(path,"utf8")) as CreatorProject;}
