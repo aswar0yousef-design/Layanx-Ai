@@ -22,6 +22,8 @@ import {FreeCapacityProvider} from "./providers/free-capacity.js";
 import {CreatorEngine} from "./creator/engine.js";
 import {registerCreatorTools} from "./creator/tools.js";
 import {modelWriter,registerHumanizerTool} from "./business/humanizer-tool.js";
+import {registerVercelTools,VERCEL_TOOLS} from "./platforms/vercel.js";
+import {registerPlatformTools} from "./platforms/connect.js";
 import type {GenerateText} from "./business/humanizer.js";
 import {registerGoogleWorkspaceTools} from "./google-tools.js";
 import {GoogleInvoiceAgent,registerGoogleInvoiceTool} from "./google-invoice-agent.js";
@@ -55,6 +57,8 @@ export function createRuntime(options:RuntimeOptions={}){
  registerBuiltinTools(core);
  registerHttpReadTool(core);
  if(capabilityEnabled("coding"))registerGitHubReadTools(core,{token:process.env.GITHUB_TOKEN});
+ // Website platforms (src/platforms): Vercel through its REST API; the others are official MCP servers (Integrations -> Platforms).
+ if(capabilityEnabled("coding"))registerVercelTools(core);
  registerToolFabric(core);
  registerHumanizerTool(core,writer);
  registerAutonomyTools(core,{coding:capabilityEnabled("coding")});
@@ -77,9 +81,11 @@ export function createRuntime(options:RuntimeOptions={}){
  }
  registerSkillLearningTools(core);
  // MCP tool servers the owner approved (and the agent's way to request new ones).
- const mcp=new McpManager(core,McpManager.defaultFile(),{agents:["core"]});
+ // The coding agent uses MCP tools too (GitHub Actions, Netlify, Supabase, Context7...): dangerous ones still wait for the owner.
+ const mcp=new McpManager(core,McpManager.defaultFile(),{agents:["core","coder"]});
  setMcpManager(mcp);
  registerMcpTools(core,mcp);
+ registerPlatformTools(core,()=>({mcp,toolNames:()=>core.tools.list().map(t=>t.name)}));
  process.once("exit",()=>mcp.killAll());
  void mcp.start().catch(()=>undefined);
  if(capabilityEnabled("research"))registerAgentReachTools(core);
@@ -97,7 +103,7 @@ export function createRuntime(options:RuntimeOptions={}){
    "trading.account","trading.quote","trading.order.place","trading.position.close",
    ...MT5_TOOLS,
    "google.sheets.read","google.drive.file.organize",
-   "project.run","browser.test","agent.external","project.knowledge","project.knowledge.record","project.code_map","project.references","apis.search","mcp.registry.search","mcp.servers.list","mcp.server.request","project.security","git.merge","git.publish_pr","learning.search","learning.record"],
+   "project.run","browser.test","agent.external","platforms.list",...VERCEL_TOOLS,"project.knowledge","project.knowledge.record","project.code_map","project.references","apis.search","mcp.registry.search","mcp.servers.list","mcp.server.request","project.security","git.merge","git.publish_pr","learning.search","learning.record"],
   forbiddenResources:["secrets","security-controls"],
   requiredPermission:"L4_EXECUTE",
   maxToolCalls:100,

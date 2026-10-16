@@ -9,14 +9,16 @@ import path from "node:path";
  *                build, dev server, local commits/branches, browser tests, local coding agents)
  *   full       : trusted + desktop control (mouse/keyboard) and cloud coding agents
  *
- * NEVER automatic at any level: git push, publishing, sending email, ads, trading, payments,
- * installing tools on the machine. Those always wait for the owner.
+ * NEVER automatic at any level: git push, publishing to production, sending email, ads, trading,
+ * payments, installing tools on the machine. Those always wait for the owner.
+ * A Vercel PREVIEW deploy (vercel.deploy) is trusted work: it never touches the live site; making it
+ * the production version (vercel.promote) always waits.
  */
 export type TrustLevel="supervised"|"trusted"|"full";
 export const TRUST_LEVELS:TrustLevel[]=["supervised","trusted","full"];
 
 const TRUSTED=new Set(["files.write","project.run","project.verify","project.bootstrap","browser.test","terminal.exec",
-  "git.add","git.commit","git.branch","git.rollback","git.checkpoint","agent.external.local"]);
+  "git.add","git.commit","git.branch","git.rollback","git.checkpoint","agent.external.local","vercel.deploy"]);
 const FULL=new Set([...TRUSTED,"git.merge","desktop.mouse.move","desktop.mouse.click","desktop.mouse.scroll","desktop.keyboard.type","desktop.keyboard.press","desktop.ui.click","desktop.ui.set_text","desktop.window.focus","agent.external"]);
 
 let cache:{file:string;mtime:number;map:Record<string,TrustLevel>}|null=null;
