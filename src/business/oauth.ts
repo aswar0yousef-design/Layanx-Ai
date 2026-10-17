@@ -74,7 +74,7 @@ export class OAuthConnectionCenter{
   const headers:Record<string,string>={"content-type":"application/x-www-form-urlencoded"};if(p.provider==="pinterest"&&c.clientSecret)headers.Authorization=`Basic ${Buffer.from(`${c.clientId}:${c.clientSecret}`).toString("base64")}`;
   let response:Response;
   if(p.provider==="meta"){
-   const u=new URL(c.token);for(const [k,v] of form)u.searchParams.set(k,v);
+   const u=new URL(c.token);form.forEach((v,k)=>u.searchParams.set(k,v));
    response=await fetch(u,{method:"GET",signal:AbortSignal.timeout(15_000)});
   }else response=await fetch(c.token,{method:"POST",headers,body:form,signal:AbortSignal.timeout(15_000)});
   const raw=await response.text();let d:any={};try{d=JSON.parse(raw);}catch{d={raw};}if(!response.ok)throw new Error(`oauth_token_exchange_${response.status}`);
