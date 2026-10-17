@@ -10,12 +10,13 @@ import {runtimeHealth,runtimeStatus} from "./runtime.js";
 import {providerSummary} from "./config/providers.js";
 import {McpGateway} from "./mcp-gateway.js";
 import {ControlCenter} from "./control-center.js";
-import {createHash,randomUUID} from "node:crypto";
+import {createHash,randomBytes,randomUUID} from "node:crypto";
 import {VoiceService} from "./voice/service.js";
 import {BusinessManager} from "./business/manager.js";
 import {voiceUiHtml} from "./voice/ui.js";
 import {AdsManager} from "./business/ads.js";
-import {OAuthConnectionCenter} from "./business/oauth.js";
+import {APP_PROVIDERS,OAuthConnectionCenter,oauthDonePage} from "./business/oauth.js";
+import {forgetStoreKeys,hasOwnKeys,saveStoreKeys,verifyStore} from "./business/store-accounts.js";
 import {MediaManager} from "./business/media.js";
 import {GrowthEngine} from "./business/growth-engine.js";
 import {MessagingChannels} from "./channels/service.js";
@@ -474,6 +475,44 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     json(response,422,{ok:false,error:error instanceof Error?error.message:"approval operation failed"});return;
    }
   }
+  // ---- Connected accounts page: the owner's developer apps, signed-in accounts and stores (keys stay in the local vault) ----
+  if(request.url?.split("?")[0]?.startsWith("/v1/accounts")){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const path=request.url.split("?")[0]!;const part=path.split("/").filter(Boolean);
+   try{
+    if(request.method==="GET"&&path==="/v1/accounts"){
+     const snap=business.snapshot();
+     json(response,200,{ok:true,apps:APP_PROVIDERS.map(p=>oauth.appStatus(p)),connections:oauth.list(),social:snap.socialAccounts,
+      stores:snap.stores.map(st=>({...st,ownKeys:hasOwnKeys(st),products:snap.products.filter(x=>x.storeId===st.id).length}))});return;
+    }
+    if(request.method!=="POST"){json(response,404,{ok:false,error:"not_found"});return;}
+    const input=await body(request,max);
+    const str=(k:string)=>typeof input[k]==="string"?String(input[k]):"";
+    // /v1/accounts/apps/:provider  {clientId, clientSecret}
+    if(part[2]==="apps"&&part[3]&&part.length===4){json(response,200,{ok:true,app:oauth.setApp(part[3] as import("./business/types.js").OAuthProvider,str("clientId"),str("clientSecret"))});return;}
+    // /v1/accounts/token/:provider  {token}: a token pasted from the platform's own tools
+    if(part[2]==="token"&&part[3]&&part.length===4){const c=await oauth.importToken(part[3] as import("./business/types.js").OAuthProvider,str("token"));json(response,201,{ok:true,connection:oauth.status(c)});return;}
+    // /v1/accounts/social/:id/(enable|disable|remove)
+    if(part[2]==="social"&&part[3]&&["enable","disable","remove"].includes(part[4]??"")){
+     const id=decodeURIComponent(part[3]);
+     if(part[4]==="remove"){const a=business.removeSocialAccount(id);if(a.externalId)oauth.forgetAccountToken(a.platform,a.externalId);json(response,200,{ok:true,removed:a.id});return;}
+     json(response,200,{ok:true,account:business.setSocialAccountEnabled(id,part[4]==="enable")});return;
+    }
+    // /v1/accounts/stores  {platform, name?, address, token | consumerKey+consumerSecret}: checked with the store first
+    if(part[2]==="stores"&&part.length===3){
+     const platform=str("platform");if(platform!=="shopify"&&platform!=="woocommerce"){json(response,400,{ok:false,error:"store_platform_unsupported"});return;}
+     const v=await verifyStore({platform,name:str("name"),address:str("address"),token:str("token"),consumerKey:str("consumerKey"),consumerSecret:str("consumerSecret")});
+     const existing=business.snapshot().stores.find(st=>st.platform===v.platform&&st.baseUrl===v.baseUrl);
+     const store=existing??business.createStore({name:v.name,platform:v.platform,baseUrl:v.baseUrl,enabled:true});
+     saveStoreKeys(store.id,v,oauth.secrets());
+     json(response,existing?200:201,{ok:true,store:{...store,ownKeys:true},renewed:!!existing});return;
+    }
+    // /v1/accounts/stores/:id/remove: removed with its keys (a store with products is turned off, its products stay)
+    if(part[2]==="stores"&&part[3]&&part[4]==="remove"){const r=business.removeStore(decodeURIComponent(part[3]));forgetStoreKeys(r.store.id,oauth.secrets());json(response,200,{ok:true,...r});return;}
+    json(response,404,{ok:false,error:"not_found"});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"accounts request failed"});}
+   return;
+  }
   if(request.method==="GET"&&request.url==="/v1/oauth/connections"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    json(response,200,{ok:true,connections:oauth.list()});return;
@@ -483,7 +522,20 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    try{const input=await body(request,max);const provider=String(input.provider) as import("./business/types.js").OAuthProvider;const accountId=typeof input.accountId==="string"&&input.accountId.trim()?input.accountId.trim():"default";const result=oauth.begin(provider,accountId);json(response,200,{ok:true,...result});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_begin_failed"});}return;
   }
   if(request.method==="GET"&&request.url?.startsWith("/v1/oauth/callback")){
-   try{const u=new URL(request.url,"http://localhost");const state=u.searchParams.get("state")??"";const code=u.searchParams.get("code")??"";if(!state||!code){json(response,400,{ok:false,error:"state_and_code_required"});return;}const connection=await oauth.callback(state,code);json(response,200,{ok:true,connection:oauth.status(connection)});}catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"oauth_callback_failed"});}return;
+   // The platform sends the owner's browser here after sign-in: an HTML page (it closes itself), not JSON.
+   const page=(ok:boolean,detail:string,code=200)=>{const nonce=randomBytes(16).toString("base64");
+    response.writeHead(code,{"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff","referrer-policy":"no-referrer",
+     "content-security-policy":`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`});
+    response.end(oauthDonePage(ok,detail,nonce));};
+   try{
+    const u=new URL(request.url,"http://localhost");const state=u.searchParams.get("state")??"";const code=u.searchParams.get("code")??"";
+    const denied=u.searchParams.get("error_description")??u.searchParams.get("error");
+    if(denied){page(false,denied.slice(0,300),400);return;}
+    if(!state||!code){page(false,"state_and_code_required",400);return;}
+    const connection=await oauth.callback(state,code);
+    page(true,connection.accountName??connection.provider);
+   }catch(error){page(false,error instanceof Error?error.message:"oauth_callback_failed",422);}
+   return;
   }
   if(request.method==="GET"&&request.url?.split("?")[0]?.match(/^\/v1\/oauth\/[^/]+\/discover-ads$/)){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
