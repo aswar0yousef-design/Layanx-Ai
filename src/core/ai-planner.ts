@@ -330,23 +330,8 @@ export class AiMissionPlanner{
     const steps=Array.isArray(v.steps)?v.steps.filter(x=>x&&typeof x==="object"&&typeof (x as Record<string,unknown>).description==="string").map(x=>({description:String((x as Record<string,unknown>).description)})):[];
     const successCriteria=Array.isArray(v.successCriteria)?v.successCriteria.filter(x=>typeof x==="string").map(String):[];
     if(!steps.length||!successCriteria.length||typeof v.stopCondition!=="string"||!v.stopCondition.trim())throw new Error("Incomplete mission plan.");
-    const permissionLevels:PermissionLevel[]=["L1_READ","L2_ANALYZE","L3_MODIFY","L4_EXECUTE","L5_CRITICAL"];
-    const rank=(permission:PermissionLevel)=>permissionLevels.indexOf(permission);
-    const declaredPermission=v.requiredPermission as PermissionLevel;
-    const selected=Array.isArray(v.tools)?v.tools:[];
-    const highestSelected=selected.reduce((highest,item)=>{
-      if(!item||typeof item!=="object")return highest;
-      const name=(item as Record<string,unknown>).tool;
-      const registered=typeof name==="string"?catalog.find(tool=>tool.name===name):undefined;
-      return registered?Math.max(highest,rank(registered.permission)):highest;
-    },rank(declaredPermission));
-    const effectivePermission=permissionLevels[Math.max(rank(declaredPermission),highestSelected)];
-    const tools=this.parseTools(selected,catalog,effectivePermission);
-    const minimumRisk:Record<PermissionLevel,PlannedMission["risk"]>={L1_READ:"low",L2_ANALYZE:"medium",L3_MODIFY:"medium",L4_EXECUTE:"high",L5_CRITICAL:"critical"};
-    const riskRank:Record<PlannedMission["risk"],number>={low:0,medium:1,high:2,critical:3};
-    const modelRisk=v.risk as PlannedMission["risk"];
-    const risk=riskRank[modelRisk]>=riskRank[minimumRisk[effectivePermission]]?modelRisk:minimumRisk[effectivePermission];
-    return{risk,requiredPermission:effectivePermission,steps,successCriteria,stopCondition:String(v.stopCondition),tools};
+    const tools=this.parseTools(v.tools,catalog,v.requiredPermission as PermissionLevel);
+    return{risk:v.risk as PlannedMission["risk"],requiredPermission:v.requiredPermission as PermissionLevel,steps,successCriteria,stopCondition:String(v.stopCondition),tools};
   }
   private parseTools(value:unknown,catalog:ToolCatalogEntry[],missionPermission:PermissionLevel):PlannedTool[]{
     if(!Array.isArray(value))return[];

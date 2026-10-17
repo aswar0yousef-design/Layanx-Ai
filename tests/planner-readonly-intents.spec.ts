@@ -47,9 +47,11 @@ const stop=await planner.nextTool({goal:"Read the LayanX runtime status",result:
 assert.equal(stop,null,"do not repeat a completed one-step read-only task");
 assert.equal(modelCalls,0,"deterministic common intents should avoid fragile small-model JSON for clear requests");
 
-const promotionPlanner=new AiMissionPlanner({async execute(){return{output:JSON.stringify({risk:"low",requiredPermission:"L1_READ",steps:[{description:"Type the requested text."}],successCriteria:["done"],stopCondition:"Stop on failure.",tools:[{tool:"desktop.keyboard.type",action:"desktop type",permission:"L4_EXECUTE",reason:"explicit test"}]})};}} as any);
-const promoted=await promotionPlanner.plan("Perform the registered operation",catalog.filter((t:any)=>t.name==="desktop.keyboard.type"));
-assert.equal(promoted.requiredPermission,"L4_EXECUTE","mission scope must be raised to the selected tool's registered permission");
-assert.equal(promoted.risk,"high","execution permission must carry a high-risk classification");
+let scopePrompt="";
+const scopePlanner=new AiMissionPlanner({async execute(request:any){scopePrompt=String(request.input);return{output:"null"};}} as any);
+const next=await scopePlanner.nextTool({goal:"Check the available status",result:{},tools:catalog,requiredPermission:"L1_READ" as any,completedTools:[]});
+assert.equal(next,null);
+assert.ok(!scopePrompt.includes("desktop.keyboard.type"),"adaptive planner must not see tools above the mission permission");
+assert.ok(!scopePrompt.includes("desktop.window.focus"),"adaptive planner must not see dangerous tools above the mission permission");
 
 console.log("planner-intents: Arabic runtime, Gmail, calendar, security, screen, research, MCP, memory, Notepad approval scope and stop-when-done passed");
