@@ -197,7 +197,10 @@ export class Supervisor{
   start(){
     for(const job of this.jobs.values()){
       if(!ACTIVE.includes(job.status))continue;
-      if(this.discardStaleDesktopOpenPlan(job))this.set(job,"planning","Recovered an unfinished desktop-open request after restart");
+      if(this.discardStaleDesktopOpenPlan(job)){
+        job.deadline=new Date(Date.now()+(job.budgetMinutes??120)*60_000).toISOString();
+        this.set(job,"planning","Recovered an unfinished desktop-open request after restart");
+      }
       void this.drive(job.id);
     }
   }
