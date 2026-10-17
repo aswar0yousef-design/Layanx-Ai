@@ -77,7 +77,7 @@ assert.equal(result.status,"completed",result.log.map(line=>line.msg).join("\n")
 assert.equal(result.milestones.length,2,"the unnecessary research milestone must not return");
 assert.ok(result.milestones.every(milestone=>milestone.kind==="desktop"));
 assert.deepEqual(calls.map(call=>call.agent),["operator","operator"]);
-assert.ok(calls[0]!.goal.includes("Current milestone (1/2): افـ")||calls[0]!.goal.includes("Current milestone (1/2): افتح Notepad"));
+assert.ok(calls[0]!.goal.includes("Current milestone (1/2): افتح Notepad"));
 assert.ok(calls[1]!.goal.includes("Current milestone (2/2): التحقق من النافذة"));
 assert.equal(planningCalls,0,"the direct local app-open plan should not call a model planner");
 assert.ok(result.log.some(line=>line.msg.includes("Replanning the unfinished desktop-open request")));
