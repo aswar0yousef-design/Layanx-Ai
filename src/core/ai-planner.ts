@@ -202,7 +202,7 @@ export class AiMissionPlanner{
       return this.parse(repair.output,scopedTools);
     }
   }
-  async nextTool(input:{goal:string;result:unknown;tools:ToolCatalogEntry[];requiredPermission:PermissionLevel;completedTools:string[];memory?:Array<{kind:string;summary:string;content:unknown;tags:string[]}>;projectContext?:unknown;routing?:ModelRoutingOptions;visualContext?:{mimeType:string;base64:string}}):Promise<PlannedTool|null>{
+  async nextTool(input:{goal:string;result:unknown;tools:ToolCatalogEntry[];requiredPermission:PermissionLevel;completedTools:string[];successCriteria?:string[];memory?:Array<{kind:string;summary:string;content:unknown;tags:string[]}>;projectContext?:unknown;routing?:ModelRoutingOptions;visualContext?:{mimeType:string;base64:string}}):Promise<PlannedTool|null>{
     if(!input.goal.trim())throw new Error("Mission goal is empty.");
     const scopedTools=filterCatalogForGoal(input.goal,input.tools);
     const catalog=scopedTools.map(tool=>({name:tool.name,description:tool.description,permission:tool.permission,dangerous:tool.dangerous,actions:tool.actions,tags:tool.tags}));
@@ -218,6 +218,8 @@ export class AiMissionPlanner{
       "Choose exactly one tool from the supplied catalog.",
       "The selected permission must exactly match the catalog tool permission and must not exceed the mission permission.",
       "Do not invent tools or actions. Do not request secrets or bypass security controls.",
+      "Evaluate the success criteria against the latest result first. If the criteria are already satisfied, return null and do not call another tool. Choose a tool only when more work is needed. Never repeat a completed tool unless the result clearly shows it failed.",
+      "Success criteria: "+JSON.stringify(input.successCriteria??[]),
       "Prefer a tool that advances the goal using the latest result.",
       "Completed tools: "+JSON.stringify(input.completedTools),
       "Available tool catalog: "+JSON.stringify(catalog),
@@ -235,11 +237,44 @@ export class AiMissionPlanner{
       input:modelInput,
       responseSchema:nextToolSchema(scopedTools)
     });
-    let value:unknown;
-    value=parseModelJson(response.output,"Adaptive planner");
-    if(value===null)return null;
-    if(!value||typeof value!=="object")throw new Error("Adaptive planner returned an invalid tool.");
-    return this.parseTools([value],scopedTools,input.requiredPermission)[0]??null;
+    const parseNextTool=(raw:string):PlannedTool|null=>{
+      const value=parseModelJson(raw,"Adaptive planner");
+      if(value===null)return null;
+      if(!value||typeof value!=="object")throw new Error("Adaptive planner returned an invalid tool.");
+      return this.parseTools([value],scopedTools,input.requiredPermission)[0]??null;
+    };
+    try{
+      return parseNextTool(response.output);
+    }catch(firstError){
+      // Small local models can ignore a constrained schema once. Re-prompt against the exact same
+      // catalog and permission ceiling; never execute the first, untrusted tool suggestion.
+      const reason=firstError instanceof Error?firstError.message:"invalid tool response";
+      const repair=await this.models.execute({
+        capability:input.visualContext?"vision":"reasoning",
+        routing:input.routing,
+        input:[
+          "Repair this invalid adaptive tool selection for LayanX.",
+          "Return ONLY JSON: null if all success criteria are met, otherwise exactly one tool/action/permission/reason object.",
+          "Your previous output was rejected: "+reason,
+          "Do not invent or rename tools or actions. Choose an exact tool/action/permission triple from the supplied catalog.",
+          "The permission must match the catalog and remain within the mission permission ceiling.",
+          "If the latest result already satisfies the success criteria, return null. Do not repeat completed tools without evidence they failed.",
+          "Success criteria: "+JSON.stringify(input.successCriteria??[]),
+          "Mission goal: "+input.goal,
+          "Completed tools: "+JSON.stringify(input.completedTools),
+          "Available tool catalog: "+JSON.stringify(catalog),
+          "Latest tool result: "+boundedResult,
+          "Rejected output: "+response.output.slice(0,4000)
+        ].join("\n"),
+        responseSchema:nextToolSchema(scopedTools)
+      });
+      try{
+        return parseNextTool(repair.output);
+      }catch(secondError){
+        const detail=secondError instanceof Error?secondError.message:"invalid repaired tool response";
+        throw new Error("Adaptive planner returned an invalid tool after one constrained repair attempt: "+detail);
+      }
+    }
   }
 
   private parse(raw:string,catalog:ToolCatalogEntry[]):PlannedMission{
@@ -264,7 +299,7 @@ export class AiMissionPlanner{
       const tool=typeof entry.tool==="string"?byName.get(entry.tool):undefined;
       const action=typeof entry.action==="string"?entry.action.trim():"";
       const permission=typeof entry.permission==="string"?entry.permission as PermissionLevel:undefined;
-      if(!tool||!action||!permission)throw new Error("Planner selected a tool outside the allowed catalog.");
+      if(!tool||!action||!permission)throw new Error("Planner selected a tool outside the allowed catalog (tool="+String(entry.tool??"<missing>").slice(0,100)+", action="+String(entry.action??"<missing>").slice(0,100)+", permission="+String(entry.permission??"<missing>").slice(0,40)+").");
       if(!tool.actions.map(x=>x.toLowerCase()).includes(action.toLowerCase()))throw new Error("Planner selected an unsupported tool action.");
       const levels:PermissionLevel[]=["L1_READ","L2_ANALYZE","L3_MODIFY","L4_EXECUTE","L5_CRITICAL"];
       if(!levels.includes(permission))throw new Error("Planner returned an invalid tool permission.");
