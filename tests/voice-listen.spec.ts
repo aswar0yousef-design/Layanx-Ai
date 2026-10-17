@@ -16,12 +16,13 @@ import {FAKE_MIC,durationOf,launchBrowser,leadingQuiet,until,voiceWav,voicedSeco
  *  3. interrupting a spoken reply (local speech-to-text): it stops talking, and the command is heard from
  *     its first syllable;
  *  4. interrupting a spoken reply (browser recognizer, listening all the time): it stops and listens;
- *  5. its own voice coming back through the microphone (echo) does not interrupt it.
+ *  5. its own voice coming back through the microphone (echo) does not interrupt it, even with loud speakers.
  */
 const tmp=fs.mkdtempSync(path.join(os.tmpdir(),"lx-listen-"));
 const micFile=(name:string,parts:Array<[number,boolean,number?]>)=>{const f=path.join(tmp,name+".wav");fs.writeFileSync(f,voiceWav(parts));return f;};
 const REPLY="حسناً، هذا تقرير اليوم";
-const LONG_REPLY=voiceWav([[8,true]],16000).fill(0,44); // 8 s of (silent) speech audio: long enough to be interrupted
+// An 8 s spoken reply that starts quietly (0.3 s), like Piper's: long enough to be interrupted.
+const LONG_REPLY=voiceWav([[0.3,false],[7.7,true]],16000);
 
 function serve(o:{localStt:boolean;transcribe?:(clip:Buffer,n:number)=>string}){
   const seen={assistant:[] as string[],clips:[] as Buffer[],speak:0,earlyPause:0};
@@ -40,6 +41,18 @@ function serve(o:{localStt:boolean;transcribe?:(clip:Buffer,n:number)=>string}){
 const SPY=`var _pause=HTMLMediaElement.prototype.pause;HTMLMediaElement.prototype.pause=function(){var early=this.duration>0&&this.currentTime<this.duration-0.3&&!this.ended;
  if(early)fetch("/__paused?early=true",{method:"POST"});return _pause.call(this)};`;
 const QUIET=`try{localStorage.setItem("lx.speak","0")}catch(e){}`;
+/**
+ * A real echo: whatever the page plays comes back into its microphone at this loudness, at the same
+ * moment (0.15 = what is left after the browser's echo cancellation, 0.5 = loud speakers).
+ */
+const echo=(gain:number)=>`(function(){
+ // Chromium gives sound only to an element's first captureStream(): the page and this echo share one.
+ var cs=HTMLMediaElement.prototype.captureStream;HTMLMediaElement.prototype.captureStream=function(){return this.__cs||(this.__cs=cs.call(this))};
+ var gum=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+ navigator.mediaDevices.getUserMedia=function(c){return gum(c).then(function(real){var ctx=new AudioContext(),dst=ctx.createMediaStreamDestination();ctx.createMediaStreamSource(real).connect(dst);
+  var play=HTMLMediaElement.prototype.play;HTMLMediaElement.prototype.play=function(){var el=this,p=play.call(el);
+   p.then(function(){try{var g=ctx.createGain();g.gain.value=${gain};ctx.createMediaStreamSource(el.captureStream()).connect(g);g.connect(dst)}catch(e){}},function(){});return p};
+  return dst.stream})}})();`;
 /** A stand-in for the browser recognizer: session n says what script[n] lists, at the given times (ms). */
 const fakeSR=(script:Record<number,Array<[string,number,boolean]>>)=>`window.__sr=${JSON.stringify(script)};window.__srN=0;
  function FakeSR(){this.dead=false;this.timers=[]}
@@ -101,7 +114,7 @@ await scenario("browser recognizer: after a tap, the whole request is heard, not
 // 3. Local speech-to-text: the request, the reply starts, the owner talks over it.
 {
   const f=micFile("barge-local",[[2.5,false],[1.4,true],[2.8,false],[1.5,true],[12,false]]);
-  await scenario("interrupting with local speech-to-text: stops talking and hears the command from its start",{localStt:true,args:[...FAKE_MIC,`--use-file-for-fake-audio-capture=${f}`],init:"",path:"/voice?listen=1",
+  await scenario("interrupting with local speech-to-text: stops talking and hears the command from its start (with echo)",{localStt:true,args:[...FAKE_MIC,`--use-file-for-fake-audio-capture=${f}`],init:echo(0.15),path:"/voice?listen=1",
     transcribe:(clip,n)=>n===1?"ليان أعطني تقرير اليوم":voicedSeconds(clip)>=1.35?"اعرض الطقس بدلاً من ذلك":"الطقس",
     check:async seen=>{await until(()=>seen.assistant.length>1,20000);
       assert.deepEqual(seen.assistant.slice(0,2),["أعطني تقرير اليوم","اعرض الطقس بدلاً من ذلك"],JSON.stringify(seen.clips.map(c=>voicedSeconds(c))));
@@ -111,16 +124,17 @@ await scenario("browser recognizer: after a tap, the whole request is heard, not
 // 4. Browser recognizer, listening all the time: the owner talks over the reply.
 {
   const f=micFile("barge-browser",[[4.5,false],[1.5,true],[14,false]]);
-  await scenario("interrupting with the browser recognizer: stops talking and listens",{localStt:false,args:[...FAKE_MIC,`--use-file-for-fake-audio-capture=${f}`],path:"/voice?listen=1",
-    init:fakeSR({1:[["ليان أعطني تقرير اليوم",400,true]],2:[["اعرض الطقس بدلاً من ذلك",500,true]]}),
+  await scenario("interrupting with the browser recognizer: stops talking and listens (with echo)",{localStt:false,args:[...FAKE_MIC,`--use-file-for-fake-audio-capture=${f}`],path:"/voice?listen=1",
+    init:echo(0.15)+fakeSR({1:[["ليان أعطني تقرير اليوم",400,true]],2:[["اعرض الطقس بدلاً من ذلك",500,true]]}),
     check:async seen=>{await until(()=>seen.assistant.length>1,15000);
       assert.deepEqual(seen.assistant.slice(0,2),["أعطني تقرير اليوم","اعرض الطقس بدلاً من ذلك"]);
       assert.ok(seen.earlyPause>=1,"the reply stopped before its end");}});
 }
-// 5. The reply's own voice comes back through the microphone, as loud as speech can be at a 0.3 level: not an interruption.
-{
-  const f=micFile("echo",[[2.5,false],[1.4,true],[1.5,false],[7.5,true,0.3],[12,false]]);
-  await scenario("its own voice in the microphone (echo) does not interrupt the reply",{localStt:true,args:[...FAKE_MIC,`--use-file-for-fake-audio-capture=${f}`],init:"",path:"/voice?listen=1",
+// 5. Its own voice comes back through the microphone (after echo cancellation, and with loud speakers):
+//    the reply is not interrupted by it, also though the reply starts quietly.
+for(const gain of [0.15,0.5]){
+  const f=micFile("echo"+gain,[[2.5,false],[1.4,true],[14,false]]);
+  await scenario(`its own voice in the microphone (echo ${gain}) does not interrupt the reply`,{localStt:true,args:[...FAKE_MIC,`--use-file-for-fake-audio-capture=${f}`],init:echo(gain),path:"/voice?listen=1",
     transcribe:(_clip,n)=>n===1?"ليان أعطني تقرير اليوم":"",
     check:async seen=>{await until(()=>seen.speak>0,15000);await new Promise(r=>setTimeout(r,9000));
       assert.equal(seen.earlyPause,0,"the reply was not cut by its own echo");

@@ -246,11 +246,11 @@ function sayNow(text,lang){
  if(!localTts)return sayBrowser(text,lang);
  return new Promise(function(done){
   speaking=true;setState("speak");startBargeIn();
-  var finished=false;var finish=function(){if(finished)return;finished=true;speaking=false;stopBargeIn();if(player){try{player.pause()}catch(e){}player=null}sayDone=null;done()};
+  var finished=false;var finish=function(){if(finished)return;finished=true;speaking=false;stopBargeIn();unwatchReply();if(player){try{player.pause()}catch(e){}player=null}sayDone=null;done()};
   sayDone=finish;
   fetch("/v1/voice/speak",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify({text:text,format:"wav",lang:lang||S.lang})})
    .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.blob()})
-   .then(function(blob){if(finished)return;var url=URL.createObjectURL(blob);player=new Audio(url);
+   .then(function(blob){if(finished)return;var url=URL.createObjectURL(blob);player=new Audio(url);var p=player;p.onplaying=function(){if(p===player)watchReply(p)};
     player.onended=function(){URL.revokeObjectURL(url);finish()};player.onerror=function(){URL.revokeObjectURL(url);finish()};
     return player.play()})
    .catch(function(e){if(finished)return;finished=true;speaking=false;stopBargeIn();sayDone=null;
@@ -260,15 +260,34 @@ function sayNow(text,lang){
  })}
 /**
  * Interrupting (barge-in): while LayanX speaks, the microphone keeps listening for the owner. Its own
- * voice reaches the microphone too (echo), so the first 0.4 s of a reply learn how loud that echo is;
- * a voice clearly louder than it for 0.3 s is the owner: LayanX stops talking and listens. With local
- * speech-to-text the command keeps its first syllable (the last 0.8 s of audio are kept); with the
- * browser's recognizer (while listening all the time) the recognizer starts at once.
+ * voice reaches the microphone too (echo); loudness alone cannot tell a late echo from the owner
+ * starting to talk, so:
+ *  - Piper's reply is read as it plays (captureStream): the echo follows it. The first 0.4 s in which the
+ *    reply is audible learn how much of it reaches the microphone; then a voice 2.5x louder than the
+ *    expected echo for 0.35 s is the owner. In the reply's silent moments any voice is the owner.
+ *  - The browser's own voice cannot be read: the start of each reply (0.4 s, and until 0.25 s of sound
+ *    was heard, at most 1.5 s) learns the echo level, which then follows the reply.
+ * Then LayanX stops talking and listens. With local speech-to-text the command keeps its first syllable
+ * (the last 0.8 s of audio are kept); with the browser's recognizer (while listening all the time) the
+ * recognizer starts at once.
  */
-var barge={on:false,ms:0,echo:0,voiced:0,frames:[]},tap=null;
+var barge={on:false,ms:0,heard:0,echo:0,voiced:0,frames:[],ref:0,refMs:0,k:0},tap=null,replyRef={ctx:null,src:null,an:null,buf:null};
+/** Read Piper's reply as it plays (the speakers still play it; nothing is recorded or sent). */
+function watchReply(el){
+ unwatchReply();
+ try{if(!el.captureStream)return;var st=el.captureStream();if(!st.getAudioTracks().length)return;
+  if(!replyRef.ctx){var Ctx=window.AudioContext||window.webkitAudioContext;replyRef.ctx=new Ctx()}
+  if(replyRef.ctx.state==="suspended")replyRef.ctx.resume().catch(function(){});
+  // The analyser hangs off a silent output, so the browser keeps processing it.
+  var an=replyRef.ctx.createAnalyser();an.fftSize=1024;var src=replyRef.ctx.createMediaStreamSource(st),mute=replyRef.ctx.createGain();mute.gain.value=0;
+  src.connect(an);an.connect(mute);mute.connect(replyRef.ctx.destination);
+  replyRef.src=src;replyRef.an=an;replyRef.buf=new Float32Array(an.fftSize)}catch(e){unwatchReply()}}
+function unwatchReply(){if(replyRef.src){try{replyRef.src.disconnect()}catch(e){}}replyRef.src=null;replyRef.an=null}
+/** How loud the reply is right now, or null when it cannot be read (the browser's voice). */
+function replyLevel(){if(!replyRef.an)return null;replyRef.an.getFloatTimeDomainData(replyRef.buf);var b=replyRef.buf,s=0;for(var i=0;i<b.length;i++)s+=b[i]*b[i];return Math.sqrt(s/b.length)}
 function startBargeIn(){
  if(!S.barge||blocked||realtime)return;
- barge={on:true,ms:0,echo:0,voiced:0,frames:[]};
+ barge={on:true,ms:0,heard:0,echo:0,voiced:0,frames:[],ref:0,refMs:0,k:0};
  if(useLocal()){if(mic.ctx){mic.mode="barge";mic.buf=[];mic.voiced=0;mic.silence=0;mic.active=true}}
  else tapHold()}
 function stopBargeIn(){barge.on=false;if(mic.mode==="barge"){mic.mode=null;mic.active=false}}
@@ -278,10 +297,21 @@ function bargeFrame(data,rate){
  var sum=0;for(var i=0;i<data.length;i++)sum+=data[i]*data[i];
  var rms=Math.sqrt(sum/data.length),ms=data.length/rate*1000;
  barge.ms+=ms;barge.frames.push(new Float32Array(data));while(barge.frames.length>1&&barge.frames.length*ms>800)barge.frames.shift();
- if(barge.ms<400){barge.echo=Math.max(barge.echo,rms);return false}
- var level=Math.max(0.03,barge.echo*2.2,mic.noise*6);
- if(rms>level)barge.voiced+=ms;else{barge.voiced=Math.max(0,barge.voiced-ms/2);barge.echo=Math.max(barge.echo*0.995,rms)}
- return barge.voiced>=300}
+ var ref=replyLevel(),level;
+ if(ref!==null){
+  // Held for a moment: the echo arrives a little later and rings on.
+  barge.ref=Math.max(ref,barge.ref*0.8);
+  if(barge.ref>0.01){barge.refMs+=ms;if(barge.refMs<=400){barge.k=Math.min(4,Math.max(barge.k,rms/barge.ref));return false}}
+  level=Math.max(0.035,barge.k*barge.ref*2.5,mic.noise*6);
+ }else{
+  if(rms>Math.max(0.012,mic.noise*3))barge.heard+=ms;
+  if(barge.ms<400||(barge.heard<250&&barge.ms<1500)){barge.echo=Math.max(barge.echo,rms);return false}
+  level=Math.max(0.035,barge.echo*2.5,mic.noise*6);
+ }
+ if(rms>level)barge.voiced+=ms;
+ // Below the level: the echo estimate follows slowly (at most +5% a frame), so a voice that starts softly cannot drag it up.
+ else{barge.voiced=Math.max(0,barge.voiced-ms/2);if(ref===null)barge.echo=Math.max(barge.echo*0.995,Math.min(Math.max(barge.echo,0.005)*1.05,rms));else if(barge.ref>0.02)barge.k=Math.max(barge.k*0.998,Math.min(4,barge.k*1.05,rms/barge.ref))}
+ return barge.voiced>=350}
 /** Stop the reply because the owner is talking. */
 function interruptReply(){interrupted=true;barge.on=false;if("speechSynthesis" in window)speechSynthesis.cancel();if(sayDone)sayDone()}
 /** Browser recognizer: listen to the held microphone (the one that keeps sound allowed) during replies. */
