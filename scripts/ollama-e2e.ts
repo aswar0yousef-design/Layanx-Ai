@@ -15,7 +15,7 @@ try{
   process.exitCode=2;
  }else{
   const result=await runtime.core.runAgentGateway(
-   "Read the LayanX runtime status using the runtime.status tool and return the observed runtime status.",
+   "Use the runtime.status tool to read the raw status object. Check the returned flat ready field is true (success criterion: result.ready === true), and return the observed system, ready, providers, and models fields.",
    "ollama-e2e",
    5,
    {},
