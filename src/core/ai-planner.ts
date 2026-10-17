@@ -166,6 +166,7 @@ export class AiMissionPlanner{
       "Return ONLY valid JSON with keys: risk, requiredPermission, steps, successCriteria, stopCondition, tools.",
       "Every required key must be present. steps and successCriteria must each contain at least one item.",
       "Prefer checkable successCriteria about the final tool result: \"done\", \"result.exitCode === 0\", \"result.<field> contains \\\"text\\\"\", \"result.<field> === <value>\", \"result.length > 0\". Plain sentences are accepted only when the final result reports no failure.",
+      "Verification receives the raw data returned by the last tool, not an automatically nested wrapper. Never invent result properties or wrapper paths. Use only fields documented by the selected tool; for runtime.status, result has flat system and ready fields, so use result.ready === true or result.system contains \"LayanX AI\". Nested result paths are supported only when the tool actually returns nested data.",
       "Include at least one step that performs the work (for example \"Execute ...\", \"Write ...\", \"تنفيذ ...\").",
       "risk must be low|medium|high|critical.",
       "requiredPermission must be L1_READ|L2_ANALYZE|L3_MODIFY|L4_EXECUTE|L5_CRITICAL.",
