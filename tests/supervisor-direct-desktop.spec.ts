@@ -91,6 +91,7 @@ const startupJob:SupervisorJob={
   id:"startup-stale-desktop-job",
   status:"running",
   updatedAt:now,
+  deadline:new Date(Date.now()-60_000).toISOString(),
   log:[{at:now,msg:"Simulated restart while the old research milestone was running"}],
   milestones:oldJob.milestones.map(m=>({...m,missions:[...m.missions]}))
 };
@@ -109,6 +110,7 @@ const untilStartup=async(f:()=>boolean,ms=8000)=>{
 await untilStartup(()=>["completed","failed"].includes(startupSupervisor.get(startupJob.id)!.status));
 const recovered=startupSupervisor.get(startupJob.id)!;
 assert.equal(recovered.status,"completed",recovered.log.map(line=>line.msg).join("\\n"));
+assert.ok(Date.parse(recovered.deadline)>Date.now(),"startup recovery must renew an expired job deadline");
 assert.equal(recovered.milestones.length,2);
 assert.ok(recovered.milestones.every(m=>m.kind==="desktop"));
 assert.deepEqual(calls.map(call=>call.agent),["operator","operator"]);
