@@ -1,4 +1,4 @@
-import {EXECUTION_STEP} from "./verification.js";
+import {EXECUTION_STEP,hasExplicitSuccessCriteria} from "./verification.js";
 import {cloudPolicy,cloudRoutingForGoal} from "../config/providers.js";
 import {setLifecycle} from "./lifecycle.js";
 import {MissionPlanner} from "./mission.js";
@@ -676,7 +676,7 @@ export class LayanXCore{
         // A successful final tool result should not depend on a second model call to decide to stop.
         // Verify it deterministically first; this also prevents a small model inventing another tool
         // after the mission's explicit success criteria have already been satisfied.
-        if(this.verifier.verify(current,latest,completionCriteria).verified){
+        if(hasExplicitSuccessCriteria(completionCriteria)&&this.verifier.verify(current,latest,completionCriteria).verified){
           const executionStep=current.steps.find(step=>EXECUTION_STEP.test(step.description));
           if(executionStep)executionStep.status="completed";
           const verificationStep=current.steps.find(step=>/verif|confirm|validate|check/i.test(step.description));
