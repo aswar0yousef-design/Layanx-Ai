@@ -72,7 +72,43 @@ function deterministicReadOnlyPlan(goal:string,catalog:ToolCatalogEntry[]):Plann
   const t=find("desktop.ui.tree",["desktop ui tree"]);
   if(t)return mission(t,"Inspect open windows and visible UI elements.","done",{scope:"windows"});
  }
+ if(has(/\b(research on the internet|research internet|internet research|search the internet|search online|look up online)\b|ابحث في الانترنت|ابحث عبر الانترنت|البحث في الانترنت|بحث شامل في الانترنت/)){
+  const t=find("research.internet",["research internet","deep research internet","search across internet","بحث شامل في الإنترنت","بحث شامل"]);
+  if(t)return mission(t,"Research the requested topic using available read-only internet sources and summarize the findings.","done",{query:goal,limit:5});
+ }
+ if(has(/\bmcp\b.*\b(servers?|tools?|installed|configured)\b|خوادم mcp|خوادم الادوات/)){
+  const t=find("mcp.servers.list",["list mcp servers","قائمة خوادم MCP"]);
+  if(t)return mission(t,"List the configured MCP servers and their approval/connection status.");
+ }
+ if(has(/\b(memory|remember|what did we decide|check your memory)\b|ذاكرتي|ذاكرة|استرجاع الذاكرة|ابحث في الذاكرة/)){
+  const t=find("memory.recall",["search memory","recall memory","read memory","بحث في الذاكرة","استرجاع الذاكرة"]);
+  if(t)return mission(t,"Search stored memory for the user's prior decision and report the matching evidence.","done",{query:goal,limit:10});
+ }
  return undefined;
+}
+
+function deterministicDesktopWritePlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
+ const g=normalizeArabic(goal);
+ const explicitNotepad=/\b(notepad|text editor)\b.*\b(write|type|enter)\b|\b(write|type|enter)\b.*\b(notepad|text editor)\b|اكتب.*(المفكره|نوت باد|نوتباد)/.test(g);
+ if(!explicitNotepad)return undefined;
+ const match=g.match(/\b(?:write|type|enter)\s+(.+?)\s+(?:in|into)\s+(?:it|notepad|the notepad window)\b/);
+ const textToType=(match?.[1]??(/\bhello\b/.test(g)?"hello":"")).trim();
+ if(!textToType)return undefined;
+ const find=(name:string,action:string):PlannedTool|undefined=>{
+  const entry=catalog.find(item=>item.name===name&&item.permission==="L4_EXECUTE"&&item.dangerous);
+  if(!entry||!entry.actions.some(a=>a.toLowerCase()===action.toLowerCase()))return undefined;
+  return{tool:entry.name,action,permission:"L4_EXECUTE",reason:"Explicit owner request; execution remains approval-gated."};
+ };
+ const focus=find("desktop.window.focus","desktop focus window");
+ const type=find("desktop.keyboard.type","desktop type");
+ if(!focus||!type)return undefined;
+ return{
+  risk:"high",requiredPermission:"L4_EXECUTE",
+  steps:[{description:"Focus the already-open Notepad window, then type exactly the requested text."}],
+  successCriteria:["done"],
+  stopCondition:"Stop if Notepad is not already open or the focus action fails; do not open or modify another application.",
+  tools:[{...focus,payload:{title:"Notepad"}},{...type,payload:{text:textToType}}]
+ };
 }
 
 function deterministicDevelopmentPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
@@ -190,6 +226,8 @@ export class AiMissionPlanner{
     if(!goal.trim())throw new Error("Mission goal is empty.");
     const readOnly=deterministicReadOnlyPlan(goal,tools);
     if(readOnly)return readOnly;
+    const desktopWrite=deterministicDesktopWritePlan(goal,tools);
+    if(desktopWrite)return desktopWrite;
     const scopedTools=filterCatalogForGoal(goal,tools);
     const deterministic=deterministicDevelopmentPlan(goal,scopedTools);
     if(deterministic)return deterministic;
@@ -239,7 +277,12 @@ export class AiMissionPlanner{
   }
   async nextTool(input:{goal:string;result:unknown;tools:ToolCatalogEntry[];requiredPermission:PermissionLevel;completedTools:string[];memory?:Array<{kind:string;summary:string;content:unknown;tags:string[]}>;projectContext?:unknown;routing?:ModelRoutingOptions;visualContext?:{mimeType:string;base64:string}}):Promise<PlannedTool|null>{
     if(!input.goal.trim())throw new Error("Mission goal is empty.");
-    const scopedTools=filterCatalogForGoal(input.goal,input.tools);
+    const permissionLevels:PermissionLevel[]=["L1_READ","L2_ANALYZE","L3_MODIFY","L4_EXECUTE","L5_CRITICAL"];
+    const permissionRank=(permission:PermissionLevel)=>permissionLevels.indexOf(permission);
+    const allowedTools=input.tools.filter(tool=>permissionRank(tool.permission)<=permissionRank(input.requiredPermission));
+    const completedReadOnly=deterministicReadOnlyPlan(input.goal,allowedTools);
+    if(completedReadOnly&&completedReadOnly.tools.length>0&&completedReadOnly.tools.every(tool=>input.completedTools.includes(tool.tool)))return null;
+    const scopedTools=filterCatalogForGoal(input.goal,allowedTools);
     const catalog=scopedTools.map(tool=>({name:tool.name,description:tool.description,permission:tool.permission,dangerous:tool.dangerous,actions:tool.actions,tags:tool.tags}));
     const fixed=2200+JSON.stringify(catalog).length+input.goal.length+JSON.stringify(input.completedTools).length;
     const [boundedResult,boundedMemory,boundedProject]=fitSections(fixed,[
@@ -287,8 +330,23 @@ export class AiMissionPlanner{
     const steps=Array.isArray(v.steps)?v.steps.filter(x=>x&&typeof x==="object"&&typeof (x as Record<string,unknown>).description==="string").map(x=>({description:String((x as Record<string,unknown>).description)})):[];
     const successCriteria=Array.isArray(v.successCriteria)?v.successCriteria.filter(x=>typeof x==="string").map(String):[];
     if(!steps.length||!successCriteria.length||typeof v.stopCondition!=="string"||!v.stopCondition.trim())throw new Error("Incomplete mission plan.");
-    const tools=this.parseTools(v.tools,catalog,v.requiredPermission as PermissionLevel);
-    return{risk:v.risk as PlannedMission["risk"],requiredPermission:v.requiredPermission as PermissionLevel,steps,successCriteria,stopCondition:String(v.stopCondition),tools};
+    const permissionLevels:PermissionLevel[]=["L1_READ","L2_ANALYZE","L3_MODIFY","L4_EXECUTE","L5_CRITICAL"];
+    const rank=(permission:PermissionLevel)=>permissionLevels.indexOf(permission);
+    const declaredPermission=v.requiredPermission as PermissionLevel;
+    const selected=Array.isArray(v.tools)?v.tools:[];
+    const highestSelected=selected.reduce((highest,item)=>{
+      if(!item||typeof item!=="object")return highest;
+      const name=(item as Record<string,unknown>).tool;
+      const registered=typeof name==="string"?catalog.find(tool=>tool.name===name):undefined;
+      return registered?Math.max(highest,rank(registered.permission)):highest;
+    },rank(declaredPermission));
+    const effectivePermission=permissionLevels[Math.max(rank(declaredPermission),highestSelected)];
+    const tools=this.parseTools(selected,catalog,effectivePermission);
+    const minimumRisk:Record<PermissionLevel,PlannedMission["risk"]>={L1_READ:"low",L2_ANALYZE:"medium",L3_MODIFY:"medium",L4_EXECUTE:"high",L5_CRITICAL:"critical"};
+    const riskRank:Record<PlannedMission["risk"],number>={low:0,medium:1,high:2,critical:3};
+    const modelRisk=v.risk as PlannedMission["risk"];
+    const risk=riskRank[modelRisk]>=riskRank[minimumRisk[effectivePermission]]?modelRisk:minimumRisk[effectivePermission];
+    return{risk,requiredPermission:effectivePermission,steps,successCriteria,stopCondition:String(v.stopCondition),tools};
   }
   private parseTools(value:unknown,catalog:ToolCatalogEntry[],missionPermission:PermissionLevel):PlannedTool[]{
     if(!Array.isArray(value))return[];
