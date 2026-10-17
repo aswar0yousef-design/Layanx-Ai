@@ -44,7 +44,7 @@ const verifyGoal=[
   "Acceptance criteria: Notepad is open and its window is visible.",
   "Current milestone (2/2): تحقق من أن نافذة Notepad ظاهرة على سطح مكتب Windows",
   "Rules: use only the approved desktop tools."
-].join("\\n");
+].join("\n");
 const verifyMission=await core.planMission(verifyGoal);
 assert.equal(verifyMission.tools?.length,1);
 assert.equal(verifyMission.tools?.[0]?.tool,"desktop.window.focus");
