@@ -57,6 +57,7 @@ export class OAuthConnectionCenter{
   if(extra&&Object.keys(extra).some(k=>reserved.has(k.toLowerCase())))throw new Error(`oauth_${provider}_extra_overrides_reserved_parameter`);
   return {authorize,token,clientId,clientSecret,redirectUri,scopes,usePkce:provider==="tiktok"||env(p,"USE_PKCE")==="true",extra};
  }
+ cancel(state:string){return this.pending.delete(state);}
  begin(provider:OAuthProvider,accountId="default"){
   const c=this.config(provider),state=randomBytes(32).toString("base64url");for(const [key,p] of this.pending)if(Date.now()-p.createdAt>10*60_000)this.pending.delete(key);const pending:Pending={provider,state,accountId,createdAt:Date.now(),redirectUri:c.redirectUri};
   if(c.usePkce){const verifier=randomBytes(48).toString("base64url");pending.codeVerifier=verifier;}
