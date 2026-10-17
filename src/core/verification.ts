@@ -10,6 +10,27 @@ type Comparable=string|number|boolean|null;
  */
 export const EXECUTION_STEP=/\b(execute|run|perform|action|write|create|build|fix|implement|update|modify|edit|install|apply|generate|send|publish|deploy|delete|commit|push|open|click|type|search|collect|research|analy[sz]e|inspect|test|check|schedule|post|upload|download|take|capture)|تنفيذ|نفذ|نفّذ|شغل|شغّل|تشغيل|إجراء|اجراء|اكتب|كتابة|أنشئ|انشئ|إنشاء|انشاء|عدّل|عدل|تعديل|أصلح|اصلح|إصلاح|اصلاح|ابن|بناء|ثبّت|ثبت|تثبيت|أرسل|ارسل|إرسال|ارسال|انشر|نشر|افتح|فتح|ابحث|بحث|حلل|حلّل|تحليل|افحص|فحص|اختبر|اختبار|التقط|جدول|ارفع|رفع/i;
 
+
+/**
+ * Early loop completion must only use explicit, machine-checkable result criteria.
+ * Descriptive criteria ("finished") and presence-only aliases ("done"/"echo") are too
+ * broad for an early stop because any intermediate read/inspection tool returns a result.
+ */
+export function hasExplicitSuccessCriteria(criteria:string[]):boolean {
+  if(!criteria.length)return false;
+  let hasResultAssertion=false;
+  for(const criterion of criteria){
+    const text=criterion.trim();
+    if(!text)return false;
+    const normalized=text.toLowerCase();
+    if(["mission exists","mission has goal","mission has execution plan"].includes(normalized))continue;
+    if(/^approved$/i.test(text)){hasResultAssertion=true;continue;}
+    if(/^result(?:\.|\s)/i.test(text)){hasResultAssertion=true;continue;}
+    return false;
+  }
+  return hasResultAssertion;
+}
+
 export class VerificationEngine {
   verify(mission:Mission,result?:unknown,successCriteria:string[]=[]):VerificationResult {
     const failures:string[]=[];
