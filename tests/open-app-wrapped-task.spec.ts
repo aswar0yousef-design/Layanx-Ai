@@ -49,6 +49,7 @@ const verifyMission=await core.planMission(verifyGoal);
 assert.equal(verifyMission.tools?.length,1);
 assert.equal(verifyMission.tools?.[0]?.tool,"desktop.window.focus");
 assert.equal(verifyMission.tools?.[0]?.action,"desktop focus window");
+assert.notEqual(verifyMission.tools?.[0]?.final,true,"window verification must run its explicit success criteria");
 assert.deepEqual(verifyMission.tools?.[0]?.payload,{title:"Notepad"});
 assert.deepEqual(verifyMission.successCriteria,["result.focused === true",'result.title contains "Notepad"']);
 

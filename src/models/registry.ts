@@ -15,7 +15,11 @@ export class ModelRegistry{
   });
   if(!candidates.length)throw new Error("No enabled model matches routing constraints.");
   const tags=new Set(request.tags??[]);
-  return[...candidates].sort((a,b)=>this.score(b,request,tags)-this.score(a,request,tags)||a.priority-b.priority);
+  return[...candidates].sort((a,b)=>{
+   const localPreference=request.preferLocal===true?Number(b.local)-Number(a.local)
+     :request.preferLocal===false?Number(a.local)-Number(b.local):0;
+   return localPreference||this.score(b,request,tags)-this.score(a,request,tags)||a.priority-b.priority;
+  });
  }
  private score(model:ModelDefinition,request:ModelSelectionRequest,tags:Set<string>){
   let score=100-model.priority;

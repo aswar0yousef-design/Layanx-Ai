@@ -90,7 +90,7 @@ export class LayanXCore{
   readonly models=new ModelRegistry();
   readonly modelRouter=new ModelRouter(this.models);
   readonly providers=new ModelProviderRegistry();
-  readonly modelExecution=new ModelExecutionRouter(this.models,this.providers,{preferFree:process.env.LAYANX_AI_PREFER_FREE==="true"});
+  readonly modelExecution=new ModelExecutionRouter(this.models,this.providers,{preferLocal:true,preferFree:process.env.LAYANX_AI_PREFER_FREE==="true"});
   readonly aiPlanner=new AiMissionPlanner(this.modelExecution);
   readonly routingMemory=RoutingMemory.forStore();
   readonly missionCompiler=new MissionCompiler();

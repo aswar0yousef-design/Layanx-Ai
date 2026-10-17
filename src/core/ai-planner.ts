@@ -47,7 +47,7 @@ function deterministicDesktopWindowCheck(goal:string,catalog:ToolCatalogEntry[])
   steps:[{description:"Execute: focus the visible Notepad window to verify that it is open."}],
   successCriteria:["result.focused === true",'result.title contains "Notepad"'],
   stopCondition:"Stop and report the window-verification error if no Notepad window is open.",
-  tools:[{tool:tool.name,action:"desktop focus window",permission:tool.permission,reason:"The owner asked to confirm that the Notepad window is open.",payload:{title:"Notepad"},final:true}]
+  tools:[{tool:tool.name,action:"desktop focus window",permission:tool.permission,reason:"The owner asked to confirm that the Notepad window is open.",payload:{title:"Notepad"}}]
  };
 }
 

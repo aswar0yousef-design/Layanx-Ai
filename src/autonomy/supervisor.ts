@@ -95,8 +95,8 @@ function directDesktopOpenGoal(text:string):{app?:string;url?:string;label:strin
     .replace(/[،,;؛.!؟?]+$/u,"")
     .trim();
   const request=openRequest(command);
-  if(!request)return undefined;
-  return{...request,command:request.app?("افتح "+request.app):("افتح "+request.url)};
+  if(!request||!request.app||request.label.toLowerCase()!=="notepad")return undefined;
+  return{...request,command:"افتح Notepad"};
 }
 
 const MAX_ATTEMPTS=4;
