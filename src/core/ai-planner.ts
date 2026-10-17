@@ -40,11 +40,11 @@ function deterministicReadOnlyPlan(goal:string,catalog:ToolCatalogEntry[]):Plann
  });
  if(has(/\b(runtime status|runtime health|system status|is everything running|check system health)\b|حاله النظام|فحص التشغيل|هل كل شيء يعمل/)){
   const t=find("runtime.status",["read runtime status","inspect runtime","runtime status","قراءة حالة النظام","فحص التشغيل"]);
-  if(t)return mission(t,"Read the runtime status and report provider/model availability.");
+  if(t)return mission(t,"Inspect the runtime status and report provider/model availability.");
  }
  if(has(/\b(upcoming calendar|calendar events|calendar appointments|my appointments|upcoming events)\b|مواعيدي|مواعيد|التقويم|الاحداث القادمه/)){
   const t=find("google.calendar.upcoming",["calendar upcoming","read upcoming Google Calendar events"]);
-  if(t)return mission(t,"Read upcoming calendar events and summarize them.","done",{limit:20});
+  if(t)return mission(t,"Check upcoming calendar events and summarize them.","done",{limit:20});
  }
  if(has(/\b(gmail|email|emails|inbox|mailbox)\b|بريدي|البريد|ايميل|رسائل البريد/)&&has(/\b(search|find|look for|invoice|invoices|receipt|receipts)\b|ابحث|بحث|فواتير|فاتوره/)){
   const t=find("google.gmail.search",["search emails"]);
@@ -70,7 +70,7 @@ function deterministicReadOnlyPlan(goal:string,catalog:ToolCatalogEntry[]):Plann
    if(t)return mission(t,"Capture the screen for inspection.");
   }
   const t=find("desktop.ui.tree",["desktop ui tree"]);
-  if(t)return mission(t,"List open windows and visible UI elements.","done",{scope:"windows"});
+  if(t)return mission(t,"Inspect open windows and visible UI elements.","done",{scope:"windows"});
  }
  return undefined;
 }
