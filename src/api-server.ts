@@ -53,11 +53,11 @@ export function startRuntimeApi(options:RuntimeApiOptions){
  const mcp=new McpGateway(options.core);
  const control=new ControlCenter(options.core);
  const voice=new VoiceService();
- const assistant=new VoiceAssistant(coreAssistantDeps(options.core));
- const briefing=process.env.LAYANX_BRIEFING_TIME?.trim()?new DailyBriefing(assistant,{time:process.env.LAYANX_BRIEFING_TIME.trim(),projectId:process.env.LAYANX_BRIEFING_PROJECT?.trim()||"default"}):undefined;
- briefing?.start();
  // Autonomous supervisor: finishes goals end to end; resumes unfinished jobs after a restart.
  const supervisor=new Supervisor(coreSupervisorDeps(options.core),{file:joinPath(process.env.LAYANX_STORE_DIR?.trim()||".layanx","supervisor-jobs.json")});
+ const assistant=new VoiceAssistant({...coreAssistantDeps(options.core),busyWith:()=>supervisor.list().find(j=>["planning","running","verifying"].includes(j.status))?.goal.split("\n")[0]});
+ const briefing=process.env.LAYANX_BRIEFING_TIME?.trim()?new DailyBriefing(assistant,{time:process.env.LAYANX_BRIEFING_TIME.trim(),projectId:process.env.LAYANX_BRIEFING_PROJECT?.trim()||"default"}):undefined;
+ briefing?.start();
  supervisor.start();
  const oauth=new OAuthConnectionCenter();
  const business=options.business??new BusinessManager(); const ads=options.ads??new AdsManager(business.store); const media=options.media??new MediaManager(); const growth=options.growth;
