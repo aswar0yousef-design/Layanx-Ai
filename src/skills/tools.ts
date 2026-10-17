@@ -6,6 +6,7 @@ function str(v:unknown,name:string){if(typeof v!=="string"||!v.trim())throw new 
 
 export function registerSkillLearningTools(core:LayanXCore){
  const defs=[
+  ["skill.recommend","find enabled local skills relevant to a task goal; returns ranked matches only and never installs or enables code","L1_READ",false],
   ["skill.learn","stage a reusable skill from a successful mission trace; never enable it automatically","L3_MODIFY",false],
   ["skill.pending","list staged learned skills awaiting review","L1_READ",false],
   ["skill.approve","approve a staged learned skill after security review","L3_MODIFY",false],
@@ -23,6 +24,7 @@ export function registerSkillLearningTools(core:LayanXCore){
     return core.learnSkill({missionId:str(p.missionId,"missionId"),projectId:str(p.projectId,"projectId"),goal:str(p.goal,"goal"),steps,outcome:p.outcome==="success"?"success":"failure",lesson:typeof p.lesson==="string"?p.lesson:undefined});
    }
    if(name==="skill.pending")return core.skillLearning.list().map(item=>({id:item.id,name:item.manifest.name,description:item.manifest.description,sourceMissionId:item.sourceMissionId,createdAt:item.createdAt,safe:item.findings.safe,findings:item.findings.findings}));
+   if(name==="skill.recommend")return core.skills.recommend(str(p.goal,"goal"),typeof p.limit==="number"?p.limit:5);
    const id=str(p.id,"id");
    if(name==="skill.approve")return core.approveLearnedSkill(id);
    if(name==="skill.enable")return core.enableLearnedSkill(id);
