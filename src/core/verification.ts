@@ -41,7 +41,9 @@ export class VerificationEngine {
       const actual=this.readPath(result,equality[1]??"");
       const expected=this.parseLiteral(equality[3]??"");
       if(!expected.supported)return{supported:false,matched:false,reason:`Unsupported success criterion: ${text}`};
-      // Match JavaScript-style nullish comparison for == null / != null, but keep strict operators strict.\n      const looseNull=(equality[2]==="=="||equality[2]==="!=")&&expected.value===null;\n      const equal=looseNull?(actual===null||actual===undefined):this.same(actual,expected.value);
+      // Match JavaScript-style nullish comparison for == null / != null, but keep strict operators strict.
+      const looseNull=(equality[2]==="=="||equality[2]==="!=")&&expected.value===null;
+      const equal=looseNull?(actual===null||actual===undefined):this.same(actual,expected.value);
       const matched=equality[2]==="==="||equality[2]==="=="?equal:!equal;
       return{supported:true,matched,reason:matched?"":`Success criterion failed: ${text} (actual=${JSON.stringify(actual)})`};
     }
