@@ -227,7 +227,7 @@ export class VoiceAssistant{
   }
 
   private prompt(text:string,lang:AssistantLang,history:AssistantHistoryItem[]):string{
-    const recent=history.slice(-6).map(h=>`${h.role==="user"?"Owner":"LayanX"}: ${clean(h.text,300)}`).join("\n");
+    const recent=history.slice(-2).map(h=>`${h.role==="user"?"Owner":"LayanX"}: ${clean(h.text,180)}`).join("\n");
     return [
       "You are LayanX, a personal assistant like Jarvis that runs on the owner's own Windows computer.",
       "You can talk, and you can run real work through the LayanX agent: coding, files, git, browser, desktop, email, social media posts, ads, the online store and scheduling.",
@@ -247,7 +247,7 @@ export class VoiceAssistant{
 export function coreAssistantDeps(core:LayanXCore):AssistantDeps{
   return{
     // latencySensitive: spoken replies go to the small "fast" model when one is installed.
-    decide:async prompt=>(await core.modelExecution.execute({capability:"reasoning",input:prompt,maxOutputTokens:400,routing:{preferLocal:true,latencySensitive:true}})).output,
+    decide:async prompt=>{const configured=Number(process.env.LAYANX_ASSISTANT_MAX_OUTPUT_TOKENS);const maxOutputTokens=Number.isInteger(configured)?Math.min(256,Math.max(80,configured)):180;return(await core.modelExecution.execute({capability:"reasoning",input:prompt,maxOutputTokens,routing:{preferLocal:true,latencySensitive:true}})).output;},
     runTask:async(goal,projectId)=>await core.runAgentGateway(goal,projectId,10) as unknown as Record<string,unknown>,
     snapshot:projectId=>{
       const missions=core.missions.list().map(m=>({id:m.id,goal:m.goal,status:m.status,createdAt:m.createdAt,...(m.projectId?{projectId:m.projectId}:{})}));
