@@ -204,52 +204,6 @@ const safe=async(p,fb)=>{try{return await p;}catch{return fb;}};
 // ---------- Platforms (src/platforms): GitHub, Vercel, Hostinger, Cloudflare, Netlify, Supabase, Context7, Claude ----------
 // OAuth connections for social publishing and advertising. OAuth app credentials are
 // configured locally; this UI never asks for or displays access-token values.
-async function oauthConnectionsPanel(){
- const box=el("section",{class:"card",style:"margin-top:1rem"});
- const providers=[
-  {id:"meta",label:"Meta · Facebook / Instagram",vars:"LAYANX_META_OAUTH_CLIENT_ID, LAYANX_META_OAUTH_CLIENT_SECRET, LAYANX_META_OAUTH_REDIRECT_URI",url:"https://developers.facebook.com/apps/"},
-  {id:"tiktok",label:"TikTok",vars:"LAYANX_TIKTOK_OAUTH_CLIENT_ID, LAYANX_TIKTOK_OAUTH_CLIENT_SECRET, LAYANX_TIKTOK_OAUTH_REDIRECT_URI",url:"https://developers.tiktok.com/"},
-  {id:"google",label:"Google Ads",vars:"LAYANX_GOOGLE_OAUTH_CLIENT_ID, LAYANX_GOOGLE_OAUTH_CLIENT_SECRET, LAYANX_GOOGLE_OAUTH_REDIRECT_URI",url:"https://console.cloud.google.com/apis/credentials"},
-  {id:"youtube",label:"YouTube",vars:"LAYANX_YOUTUBE_OAUTH_CLIENT_ID, LAYANX_YOUTUBE_OAUTH_CLIENT_SECRET, LAYANX_YOUTUBE_OAUTH_REDIRECT_URI",url:"https://console.cloud.google.com/apis/credentials"},
-  {id:"linkedin",label:"LinkedIn",vars:"LAYANX_LINKEDIN_OAUTH_CLIENT_ID, LAYANX_LINKEDIN_OAUTH_CLIENT_SECRET, LAYANX_LINKEDIN_OAUTH_REDIRECT_URI",url:"https://www.linkedin.com/developers/apps"},
-  {id:"pinterest",label:"Pinterest",vars:"LAYANX_PINTEREST_OAUTH_CLIENT_ID, LAYANX_PINTEREST_OAUTH_CLIENT_SECRET, LAYANX_PINTEREST_OAUTH_REDIRECT_URI",url:"https://developers.pinterest.com/"},
- ];
- const render=async()=>{
-  const data=await safe(api("/v1/oauth/connections"),{connections:[]});
-  S.oauth=data;
-  const connected=Array.isArray(data.connections)?data.connections:[];
-  const accountRows=connected.length?connected.map(c=>el("div",{class:"integ"},
-   el("span",{class:"dot on"}),
-   el("div",{style:"flex:1;min-width:0"},el("b",{text:c.provider}),el("small",{class:"mono",text:(c.accountName||c.accountId||"default")+" · "+(c.scopes||[]).join(", ")})),
-   el("button",{class:"btn small",text:LANG==="ar"?"إلغاء الربط":"Revoke",onclick:async()=>{
-    if(!confirm(LANG==="ar"?"هل تريد إلغاء هذا الاتصال؟":"Revoke this connection?"))return;
-    try{await api("/v1/oauth/"+encodeURIComponent(c.id)+"/revoke",{method:"POST",body:{}});toast(LANG==="ar"?"تم إلغاء الاتصال":"Connection revoked");await render();}
-    catch(e){toast(e.message);}
-   }}))):[el("p",{class:"muted",text:LANG==="ar"?"لا توجد حسابات OAuth مربوطة حتى الآن.":"No OAuth accounts connected yet."})];
-  const cards=providers.map(p=>{
-   const form=el("div",{style:"display:grid;gap:.45rem;margin-top:.5rem"});
-   const account=el("input",{class:"text",dir:"ltr",placeholder:"account ID (optional)"});
-   const status=el("small",{class:"muted",text:LANG==="ar"?"يحتاج بيانات تطبيق OAuth محلية قبل بدء الربط.":"Requires locally configured OAuth app credentials."});
-   const begin=el("button",{class:"btn primary",text:LANG==="ar"?"إنشاء رابط الربط":"Prepare connection",onclick:async()=>{
-    begin.disabled=true;
-    try{
-     const result=await api("/v1/oauth/connect",{method:"POST",body:{provider:p.id,accountId:account.value.trim()||"default"}});
-     const link=el("a",{class:"btn",href:result.authorizationUrl,target:"_blank",rel:"noopener noreferrer",text:LANG==="ar"?"فتح صفحة موافقة المزود":"Open provider consent"});
-     status.replaceChildren(document.createTextNode(LANG==="ar"?"تم إنشاء الرابط. افتحه وأكمل موافقة المزود، ثم حدّث الحالة. ":"Authorization URL ready. Open it, approve access, then refresh. "),link);
-    }catch(e){
-     const message=String(e.message||e);
-     status.textContent=(LANG==="ar"?"تعذر بدء الربط: ":"Could not start OAuth: ")+message+". "+(LANG==="ar"?"تحقق من إعدادات التطبيق ومفتاح العميل وعنوان العودة في الإعدادات المحلية.":"Check the local app credentials and redirect URI in local settings.");
-    }finally{begin.disabled=false;}
-   }});
-   form.append(el("small",{class:"muted",text:(LANG==="ar"?"إعدادات مطلوبة: ":"Required local settings: ")+p.vars}),account,begin,status,
-    el("a",{href:p.url,target:"_blank",rel:"noopener noreferrer",text:(LANG==="ar"?"إعداد تطبيق OAuth لدى المزود ↗":"Configure OAuth app with provider ↗")}));
-   return el("div",{class:"integ",style:"display:block"},el("b",{text:p.label}),form);
-  });
-  box.replaceChildren(el("h3",{text:LANG==="ar"?"ربط الحسابات الاجتماعية والإعلانية عبر OAuth":"Social and ads accounts via OAuth"}),el("p",{class:"muted",text:LANG==="ar"?"هذه الواجهة تبدأ تدفق OAuth فقط عند ضبط بيانات التطبيق وعنوان العودة لدى المزود. بعض المنصات تتطلب مراجعة التطبيق أو صلاحيات إضافية قبل النشر أو إدارة الإعلانات.":"This UI starts OAuth only after app credentials and a matching redirect URI are configured. Some platforms require app review or additional scopes before publishing or ads management."}),el("div",{class:"rows"},accountRows),el("h4",{text:LANG==="ar"?"إضافة اتصال":"Add connection"}),el("div",{class:"grid2",style:"margin-top:.6rem"},cards));
- };
- await render();
- return box;
-}
 
 async function platformsPanel(){
  const box=el("section",{class:"card",style:"margin-top:1rem"});
@@ -717,7 +671,7 @@ async function refreshDashboard(light){
  if(sig!==refreshDashboard.sig){refreshDashboard.sig=sig;drawAgent();}
 }
 async function renderDashboard(v){
- await Promise.all([loadJobs(),loadSetup(),loadMissions(),loadApprovals(),safe(api("/v1/tools"),null).then(x=>{if(x)S.tools=x.tools||[];}),safe(api("/v1/channels/status"),null).then(x=>S.channels=x),safe(api("/v1/oauth/connections"),null).then(x=>S.oauth=x),safe(api("/v1/business"),null).then(x=>S.biz=x?.business||null),safe(api("/v1/ads"),null).then(x=>S.ads=x),safe(api("/v1/computer/live/status"),null).then(x=>S.live=x),safe(api("/v1/trading/overview"),null).then(x=>S.trading=x)]);
+ await Promise.all([loadJobs(),loadSetup(),loadMissions(),loadApprovals(),safe(api("/v1/tools"),null).then(x=>{if(x)S.tools=x.tools||[];}),safe(api("/v1/channels/status"),null).then(x=>S.channels=x),safe(api("/v1/business"),null).then(x=>S.biz=x?.business||null),safe(api("/v1/ads"),null).then(x=>S.ads=x),safe(api("/v1/computer/live/status"),null).then(x=>S.live=x),safe(api("/v1/trading/overview"),null).then(x=>S.trading=x)]);
  await Promise.all(S.missions.slice(0,5).map(m=>missionDetail(m.id)));
  v.replaceChildren(kpiCards(),
   el("div",{class:"dash"},el("div",{class:"col"},agentCard(false)),el("div",{class:"col"},currentMissionCard(),activitiesCard()),el("div",{class:"col"},systemCard(),computerCard(false),terminalCard(false),quickCard())),
@@ -1056,7 +1010,7 @@ const VIEWS={
     el("section",{class:"card"},el("h3",{text:t("gitAsk")}),goalChips(t("shopGoals")),el("h3",{style:"margin-top:1rem",text:t("orders")}),el("div",{class:"rows"},(b.orders||[]).slice(-8).reverse().map(o=>el("div",{class:"row"},el("div",{class:"t mono",text:o.externalId||o.id.slice(0,8)}),el("div",{class:"s",text:(o.total??"")+" "+(o.currency||"")+" · "+(o.status||"")}))),(b.orders||[]).length?null:el("div",{class:"empty",text:"—"})))));
  },
  async social(v){
-  const [b,oc]=await Promise.all([safe(api("/v1/business"),{}).then(x=>x.business||{}),safe(api("/v1/oauth/connections"),{connections:[]})]);
+  const [b,oc]=await Promise.all([safe(api("/v1/business"),{}).then(x=>x.business||{}),Promise.resolve({connections:[]})]);
   const content=b.content||[];
   fill(v,head(t("social"),"Instagram · Facebook · TikTok · YouTube · X · LinkedIn · Pinterest"),
    stats([[t("accounts"),(b.socialAccounts||[]).length+(oc.connections||[]).length],[t("content"),content.length],[t("published"),content.filter(c=>c.status==="published").length],[t("scheduled"),content.filter(c=>c.status==="scheduled").length]]),
@@ -1103,8 +1057,8 @@ const VIEWS={
    el("section",{class:"card",style:"margin-top:1rem"},el("h3",{text:"Growth"}),stats([[t("experiments"),gd.experiments],[t("st_run"),gd.runningExperiments],[t("openActions"),gd.openActions],[t("completed"),gd.completedExperiments]])));
  },
  async integrations(v){
-  await Promise.all([loadSetup(true),safe(api("/v1/channels/status"),null).then(x=>S.channels=x),safe(api("/v1/oauth/connections"),null).then(x=>S.oauth=x)]);
-  fill(v,head(t("integrations"),"",el("a",{class:"btn",href:"/setup",text:t("setup")})),el("div",{class:"grid3"},integrationStatus().map(([n,st,d])=>el("div",{class:"integ"},el("span",{class:"dot "+(st==="on"?"on":st==="part"?"part":"")}),el("div",{},el("b",{text:n}),el("small",{class:"mono",text:d}))))),await oauthConnectionsPanel(),await platformsPanel(),await mcpPanel());
+  await Promise.all([loadSetup(true),safe(api("/v1/channels/status"),null).then(x=>S.channels=x),]);
+  fill(v,head(t("integrations"),"",el("a",{class:"btn",href:"/setup",text:t("setup")})),el("div",{class:"grid3"},integrationStatus().map(([n,st,d])=>el("div",{class:"integ"},el("span",{class:"dot "+(st==="on"?"on":st==="part"?"part":"")}),el("div",{},el("b",{text:n}),el("small",{class:"mono",text:d}))))),await platformsPanel(),await mcpPanel());
  },
  async team(v){
   const s=await loadSetup(true);const caps=s?.capabilities||{};
