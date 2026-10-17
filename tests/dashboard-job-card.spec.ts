@@ -52,15 +52,17 @@ async function dashboard(world:World){
   const card=await page.$eval("#curMission",(e:HTMLElement)=>e.innerText);
   const active=await page.$eval("#kpis .kpi b",(e:HTMLElement)=>e.innerText);
   const openSite=await page.$$eval("#curMission button",(bs:HTMLElement[])=>bs.some(b=>b.innerText.includes("افتح الموقع")));
+  const canDelete=await page.$$eval("#curMission button",(bs:HTMLElement[])=>bs.some(b=>b.innerText.trim()==="حذف"));
   await page.close();srv.close();
   assert.deepEqual(errors,[]);
-  return{card,active,openSite};
+  return{card,active,openSite,canDelete};
 }
 
 try{
   // 1. The job has finished; one stage's mission was left "running" (its model answer was not JSON), and is not even listed in the job.
   {
-    const {card,active,openSite}=await dashboard({jobs:[job("completed",["m-done"])],missions:[stage("m-stale","running",16),stage("m-done","completed",30)]});
+    const {card,active,openSite,canDelete}=await dashboard({jobs:[job("completed",["m-done"])],missions:[stage("m-stale","running",16),stage("m-done","completed",30)]});
+    assert.ok(canDelete,"a job made by mistake can be deleted from its card");
     assert.ok(card.includes(GOAL),card);
     assert.ok(!card.includes("Overall goal"),"never the internal stage text: "+card);
     assert.ok(card.includes("اكتملت"),"the job's real state: "+card);

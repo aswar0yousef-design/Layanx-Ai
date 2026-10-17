@@ -24,12 +24,19 @@ type Cmd={command:string;args:string[];label:string};
 const MAX_OUT=64*1024;
 const TIMEOUTS:Record<string,number>={install:15*60_000,test:10*60_000,build:10*60_000,lint:5*60_000,typecheck:5*60_000,script:10*60_000};
 
+const NO_TEST=/no test specified.*exit 1/i;
+/** True when package.json's test script is the placeholder `npm init` writes (it only fails). */
+export function placeholderTest(dir:string):boolean{
+  try{const v=(JSON.parse(fs.readFileSync(path.join(dir,"package.json"),"utf8")) as {scripts?:Record<string,unknown>}).scripts?.test;return typeof v==="string"&&NO_TEST.test(v);}catch{return false;}
+}
 export function detectProject(dir:string):ProjectInfo{
   const has=(f:string)=>fs.existsSync(path.join(dir,f));
   let stack:Stack="unknown",scripts:string[]=[],pm:ProjectInfo["packageManager"];
   if(has("package.json")){
     stack="node";
-    try{const pkg=JSON.parse(fs.readFileSync(path.join(dir,"package.json"),"utf8")) as {scripts?:Record<string,unknown>};scripts=Object.keys(pkg.scripts??{}).filter(k=>typeof pkg.scripts?.[k]==="string");}catch{}
+    // `npm init` writes a test script that only fails ("Error: no test specified"): it is not a test, and
+    // as a check it stopped every autonomous job at its first milestone.
+    try{const pkg=JSON.parse(fs.readFileSync(path.join(dir,"package.json"),"utf8")) as {scripts?:Record<string,unknown>};scripts=Object.keys(pkg.scripts??{}).filter(k=>typeof pkg.scripts?.[k]==="string"&&!(k==="test"&&NO_TEST.test(String(pkg.scripts[k]))));}catch{}
     pm=has("pnpm-lock.yaml")?"pnpm":has("yarn.lock")?"yarn":"npm";
   }else if(has("pubspec.yaml"))stack="flutter";
   else if(has("pyproject.toml")||has("requirements.txt")||has("setup.py"))stack="python";

@@ -602,11 +602,36 @@ export class LayanXCore{
    */
   async executeAgentLoop(missionId:string,projectId:string,maxSteps=10,approvalIds:Record<number,string>={},agentId="core",routing?:ModelRoutingOptions){
     let result:Awaited<ReturnType<LayanXCore["runAgentLoop"]>>;
-    try{result=await this.runAgentLoop(missionId,projectId,maxSteps,approvalIds,agentId,routing);}
-    catch(error){await this.stopUnfinishedMission(missionId,projectId,error instanceof Error?error.message:String(error));throw error;}
-    if(!result.completed&&!("paused" in result&&result.paused)&&await this.stopUnfinishedMission(missionId,projectId,"reason" in result&&typeof result.reason==="string"?result.reason:"The agent stopped before finishing."))
-      return{...result,status:"failed" as const};
-    return result;
+    this.loops.add(missionId);
+    try{
+      try{result=await this.runAgentLoop(missionId,projectId,maxSteps,approvalIds,agentId,routing);}
+      catch(error){await this.stopUnfinishedMission(missionId,projectId,error instanceof Error?error.message:String(error));throw error;}
+      if(!result.completed&&!("paused" in result&&result.paused)&&await this.stopUnfinishedMission(missionId,projectId,"reason" in result&&typeof result.reason==="string"?result.reason:"The agent stopped before finishing."))
+        return{...result,status:"failed" as const};
+      return result;
+    }finally{
+      this.loops.delete(missionId);
+      // Deleted while it ran: a step that finished afterwards may have saved it again.
+      if(this.deletedWhileRunning.delete(missionId)){this.missions.delete(missionId);await this.persistence?.remove(missionId).catch(()=>undefined);}
+    }
+  }
+  private readonly loops=new Set<string>();
+  private readonly deletedWhileRunning=new Set<string>();
+  /**
+   * The owner deletes a mission made by mistake: it leaves the list, its pending approvals and its saved
+   * snapshot go too (so it does not return after a restart). A mission that is running stops at its next
+   * step (it is no longer found). The audit log keeps a "mission.deleted" line.
+   */
+  async deleteMission(missionId:string,projectId:string):Promise<boolean>{
+    const mission=this.missions.get(missionId);
+    if(!mission)return false;
+    this.projectIsolation.assertMissionProject(projectId,mission.projectId);
+    if(this.loops.has(missionId))this.deletedWhileRunning.add(missionId);
+    this.executionRuntime.approvals.forgetMission(missionId);
+    this.missions.delete(missionId);
+    await this.persistence?.remove(missionId);
+    this.audit.append({timestamp:new Date().toISOString(),actor:"owner",action:"mission.deleted",resource:missionId,result:"success",metadata:{missionId,projectId,goal:mission.goal.split("\n")[0]!.slice(0,120)}});
+    return true;
   }
   private async stopUnfinishedMission(missionId:string,projectId:string,reason:string):Promise<boolean>{
     const mission=this.missions.get(missionId);

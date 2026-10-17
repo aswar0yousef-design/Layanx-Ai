@@ -95,6 +95,13 @@ export class RuntimePersistence{
       await tx.set("runtime:snapshots",next);
     });
   }
+  /** A mission the owner deleted: its snapshot goes too, so it does not come back after a restart. */
+  async remove(missionId:string):Promise<void>{
+    await this.storage.transaction(async tx=>{
+      const current=(await tx.get<RuntimeSnapshot[]>("runtime:snapshots"))??[];
+      if(current.some(x=>x.mission.id===missionId))await tx.set("runtime:snapshots",current.filter(x=>x.mission.id!==missionId));
+    });
+  }
   async health():Promise<{healthy:boolean;writable:boolean;reason:string}>{
     try{
       const probeKey="runtime:health:probe";

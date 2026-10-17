@@ -4,6 +4,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import {voiceUiHtml} from "../src/voice/ui.js";
+import {FAKE_MIC,durationOf,launchBrowser as launch,until,voiceWav as wav,voicedSeconds} from "./helpers/voice-page.js";
 
 /**
  * "Layan … <pause> … command": the command after the name must reach the assistant.
@@ -12,31 +13,6 @@ import {voiceUiHtml} from "../src/voice/ui.js";
  *  2. Browser speech recognition: hearing the name alone does not stop the recognizer; the next
  *     thing said is the command.
  */
-function wav(seconds:Array<[number,boolean]>,rate=16000):Buffer{
-  const total=seconds.reduce((a,[s])=>a+Math.round(s*rate),0);const out=Buffer.alloc(44+total*2);let i=0;
-  out.write("RIFF",0,"ascii");out.writeUInt32LE(36+total*2,4);out.write("WAVE",8,"ascii");out.write("fmt ",12,"ascii");out.writeUInt32LE(16,16);out.writeUInt16LE(1,20);out.writeUInt16LE(1,22);
-  out.writeUInt32LE(rate,24);out.writeUInt32LE(rate*2,28);out.writeUInt16LE(2,32);out.writeUInt16LE(16,34);out.write("data",36,"ascii");out.writeUInt32LE(total*2,40);
-  for(const [s,voiced] of seconds)for(let k=0;k<Math.round(s*rate);k++,i++){
-    const t=i/rate;const v=voiced?(0.3*Math.sin(2*Math.PI*140*t)+0.2*Math.sin(2*Math.PI*280*t)+0.1*Math.sin(2*Math.PI*420*t))*(0.6+0.4*Math.abs(Math.sin(2*Math.PI*3*t))):0;
-    out.writeInt16LE(Math.round(v*32767),44+i*2);
-  }
-  return out;
-}
-const durationOf=(w:Buffer)=>(w.length-44)/2/w.readUInt32LE(24);
-/** Seconds of sound in a clip (50 ms windows above the noise). */
-function voicedSeconds(w:Buffer):number{
-  const rate=w.readUInt32LE(24),win=Math.round(rate*0.05);let loud=0;
-  for(let o=44;o+win*2<=w.length;o+=win*2){let sum=0;for(let i=0;i<win;i++){const v=w.readInt16LE(o+i*2)/32768;sum+=v*v;}if(Math.sqrt(sum/win)>0.02)loud+=0.05;}
-  return loud;
-}
-
-let pw:any;try{pw=await import("playwright-core");}catch{pw=null;}
-const launch=async(args:string[])=>{
-  const chromium=pw?.chromium??pw?.default?.chromium;if(!chromium)return null;
-  for(const a of [...(process.env.LAYANX_BROWSER_PATH?[{executablePath:process.env.LAYANX_BROWSER_PATH}]:[]),{channel:"msedge"},{channel:"chrome"}]){try{return await chromium.launch({headless:true,args,...a});}catch{}}
-  return null;
-};
-
 function server(opts:{localStt:boolean;transcribe:(voiced:number,n:number)=>Promise<string>}){
   const seen={transcribe:[] as number[],assistant:[] as string[]};
   const s=http.createServer((req,res)=>{const chunks:Buffer[]=[];req.on("data",c=>chunks.push(c));req.on("end",async()=>{
@@ -50,7 +26,6 @@ function server(opts:{localStt:boolean;transcribe:(voiced:number,n:number)=>Prom
   return{s,seen};
 }
 const listen=async(s:http.Server)=>{await new Promise<void>(r=>s.listen(0,"127.0.0.1",()=>r()));return(s.address() as {port:number}).port;};
-const until=async(f:()=>boolean,ms:number)=>{const end=Date.now()+ms;while(!f()&&Date.now()<end)await new Promise(r=>setTimeout(r,100));};
 
 // ---------- 1. local speech-to-text: the name, a pause, then the command while the name is still being transcribed ----------
 {
@@ -63,7 +38,7 @@ const until=async(f:()=>boolean,ms:number)=>{const end=Date.now()+ms;while(!f()&
     // A clip holding only the end of the command is heard as its last word, as a real model would.
     return voiced>=1.1?"أعطني تقرير اليوم":"اليوم";}});
   const port=await listen(s);
-  const browser=await launch(["--use-fake-ui-for-media-stream","--use-fake-device-for-media-stream",`--use-file-for-fake-audio-capture=${audioFile}`,"--autoplay-policy=no-user-gesture-required"]);
+  const browser=await launch([...FAKE_MIC,`--use-file-for-fake-audio-capture=${audioFile}`,"--autoplay-policy=no-user-gesture-required"]);
   if(!browser)console.log("voice-wake: local test skipped (no browser)");
   else try{
     const tab=await browser.newPage();
@@ -105,7 +80,10 @@ const until=async(f:()=>boolean,ms:number)=>{const end=Date.now()+ms;while(!f()&
     assert.deepEqual(seen.assistant,["افتح المتصفح"],"the command after the name reached the assistant: "+JSON.stringify(seen)+" "+JSON.stringify(await tab.evaluate(()=>(window as any).__sr)));
     // The command is passed on exactly as heard: hamza, punctuation, numbers and links intact.
     const cases:Array<[string,string|null]>=[["ليان، افتح google.com","افتح google.com"],["يا ليان أعطني تقرير اليوم","أعطني تقرير اليوم"],["ليانْ","" ],["جارفيس: اضبط منبه 7:30","اضبط منبه 7:30"],
-      ["لايان اكس شغّل الموسيقى","شغّل الموسيقى"],["LAYAN open the site","open the site"],["مرحبا كيف حالك",null]];
+      ["لايان اكس شغّل الموسيقى","شغّل الموسيقى"],["LAYAN open the site","open the site"],["مرحبا كيف حالك",null],
+      // How speech-to-text spells a lone name: one letter off is still the name (first two words only).
+      ["اليان، افتح الملف","افتح الملف"],["ليانا شغّل الموسيقى","شغّل الموسيقى"],["لايان","" ],["يا لييان كيف حالك","كيف حالك"],
+      ["بيانات المبيعات جاهزة",null],["لبنان بلد جميل",null],["قلت لهم إن ليانا ستأتي غداً",null]];
     const got=await tab.evaluate((list:Array<[string,string|null]>)=>list.map(([x])=>(window as any).__layanx.afterWake(x)),cases);
     assert.deepEqual(got,cases.map(([,y])=>y));
     console.log("voice-wake: browser recognition kept the session open after the name and took the next sentence as the command");

@@ -35,6 +35,11 @@ assert.equal(info.stack,"node");assert.deepEqual(info.tasks.sort(),["build","dev
 assert.throws(()=>commandFor(info,"script","evil;rm"),/Invalid script name/,"script names cannot carry shell syntax");
 assert.throws(()=>commandFor(info,"lint"),/no "lint" script/);
 assert.deepEqual(commandFor({...info,hasLockfile:true},"install").args.slice(-3),["ci","--no-audit","--no-fund"]);
+// The placeholder test script `npm init` writes is not a test (it only fails): no "test" task.
+const fresh=path.join(dir,"fresh");fs.mkdirSync(fresh);
+fs.writeFileSync(path.join(fresh,"package.json"),JSON.stringify({name:"fresh",scripts:{test:"echo \"Error: no test specified\" && exit 1",build:"next build",dev:"next dev"}}));
+assert.deepEqual(detectProject(fresh).tasks.sort(),["build","dev:start","install"].sort());
+assert.throws(()=>commandFor(detectProject(fresh),"test"),/no "test" script/);
 const py=path.join(dir,"api");fs.mkdirSync(py);fs.writeFileSync(path.join(py,"requirements.txt"),"flask\n");
 assert.equal(detectProject(py).stack,"python");assert.match(commandFor(detectProject(py),"test").label,/pytest/);
 assert.throws(()=>commandFor(detectProject(path.join(dir,"empty-x")),"test"),/No supported project/);

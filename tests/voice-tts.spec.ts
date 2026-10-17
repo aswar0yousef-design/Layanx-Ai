@@ -4,6 +4,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import {voiceUiHtml} from "../src/voice/ui.js";
+import {FAKE_MIC,launchBrowser,until,voiceWav} from "./helpers/voice-page.js";
 
 /**
  * The assistant's reply is spoken. Browsers play sound only after a click on the page or while the
@@ -17,18 +18,8 @@ import {voiceUiHtml} from "../src/voice/ui.js";
  */
 const wav=(()=>{const n=8000,b=Buffer.alloc(44+n*2);b.write("RIFF",0,"ascii");b.writeUInt32LE(36+n*2,4);b.write("WAVE",8,"ascii");b.write("fmt ",12,"ascii");b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(1,22);b.writeUInt32LE(16000,24);b.writeUInt32LE(32000,28);b.writeUInt16LE(2,32);b.writeUInt16LE(16,34);b.write("data",36,"ascii");b.writeUInt32LE(n*2,40);return b;})();
 const REPLY="حسناً، هذا تقرير اليوم";
-/** A fake microphone file: silence, then 1.4 s of voice-like sound (the request), then silence. */
-function micWav(parts:Array<[number,boolean]>,rate=48000):Buffer{
-  const total=parts.reduce((a,[sec])=>a+Math.round(sec*rate),0);const out=Buffer.alloc(44+total*2);let i=0;
-  out.write("RIFF",0,"ascii");out.writeUInt32LE(36+total*2,4);out.write("WAVE",8,"ascii");out.write("fmt ",12,"ascii");out.writeUInt32LE(16,16);out.writeUInt16LE(1,20);out.writeUInt16LE(1,22);
-  out.writeUInt32LE(rate,24);out.writeUInt32LE(rate*2,28);out.writeUInt16LE(2,32);out.writeUInt16LE(16,34);out.write("data",36,"ascii");out.writeUInt32LE(total*2,40);
-  for(const [sec,voiced] of parts)for(let k=0;k<Math.round(sec*rate);k++,i++){const t=i/rate;
-    const v=voiced?(0.3*Math.sin(2*Math.PI*140*t)+0.2*Math.sin(2*Math.PI*280*t)+0.1*Math.sin(2*Math.PI*420*t))*(0.6+0.4*Math.abs(Math.sin(2*Math.PI*3*t))):0;
-    out.writeInt16LE(Math.round(v*32767),44+i*2);}
-  return out;
-}
 const micFile=path.join(os.tmpdir(),`lx-tts-mic-${process.pid}.wav`);
-fs.writeFileSync(micFile,micWav([[2.5,false],[1.4,true],[8,false]]));
+fs.writeFileSync(micFile,voiceWav([[2.5,false],[1.4,true],[8,false]]));
 function serve(localStt:boolean){
   const seen={speak:[] as string[],assistant:[] as string[],played:0,blocked:0,activeAtPlay:[] as boolean[]};
   const s=http.createServer((req,res)=>{const c:Buffer[]=[];req.on("data",x=>c.push(x));req.on("end",()=>{const body=Buffer.concat(c);const send=(d:unknown)=>{res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify(d));};
@@ -52,18 +43,10 @@ const FAKE_SR=`function FakeSR(){this.dead=false}FakeSR.prototype.start=function
  FakeSR.prototype.abort=function(){var self=this;this.dead=true;setTimeout(function(){self.onend&&self.onend()},5)};FakeSR.prototype.stop=FakeSR.prototype.abort;
  window.SpeechRecognition=FakeSR;window.webkitSpeechRecognition=FakeSR;`;
 
-let pw:any;try{pw=await import("playwright-core");}catch{pw=null;}
-const launch=async(args:string[])=>{
-  const chromium=pw?.chromium??pw?.default?.chromium;if(!chromium)return null;
-  for(const a of [...(process.env.LAYANX_BROWSER_PATH?[{executablePath:process.env.LAYANX_BROWSER_PATH}]:[]),{channel:"msedge"},{channel:"chrome"}]){try{return await chromium.launch({headless:true,args,...a});}catch{}}
-  return null;
-};
-const until=async(f:()=>Promise<boolean>|boolean,ms:number)=>{const end=Date.now()+ms;while(!(await f())&&Date.now()<end)await new Promise(r=>setTimeout(r,100));};
-const MIC=["--use-fake-ui-for-media-stream","--use-fake-device-for-media-stream"];
 
 async function scenario(name:string,o:{localStt:boolean;args:string[];init:string;path:string;act?:(tab:any)=>Promise<void>;check:(seen:any,tab:any)=>Promise<void>}){
   const {s,seen}=serve(o.localStt);await new Promise<void>(r=>s.listen(0,"127.0.0.1",()=>r()));
-  const browser=await launch(o.args);
+  const browser=await launchBrowser(o.args);
   if(!browser){console.log("voice-tts: "+name+" skipped (no browser)");s.close();return;}
   try{
     const tab=await browser.newPage();const errors:string[]=[];tab.on("pageerror",(e:any)=>errors.push(String(e)));
@@ -80,12 +63,12 @@ await scenario("typed request: Piper voice played",{localStt:false,args:[],init:
   act:async tab=>{await tab.fill("#sayInput","أعطني تقرير اليوم");await tab.click("#sendBtn");},
   check:async seen=>{await until(()=>seen.played>0,8000);assert.deepEqual(seen.speak,[REPLY]);assert.equal(seen.played,1);}});
 
-await scenario("local speech-to-text, no click: played",{localStt:true,args:[...MIC,`--use-file-for-fake-audio-capture=${micFile}`],init:"",path:"/voice?listen=1",
+await scenario("local speech-to-text, no click: played",{localStt:true,args:[...FAKE_MIC,`--use-file-for-fake-audio-capture=${micFile}`],init:"",path:"/voice?listen=1",
   check:async seen=>{await until(()=>seen.played>0||seen.blocked>0,15000);
     assert.deepEqual(seen.assistant.slice(0,1),["أعطني تقرير اليوم"]);assert.ok(seen.speak.includes(REPLY));
     assert.equal(seen.blocked,0);assert.equal(seen.played,1);assert.deepEqual(seen.activeAtPlay,[false],"played with no click at all");}});
 
-await scenario("browser recognition, always listening, no click: the held microphone lets the reply play",{localStt:false,args:MIC,init:FAKE_SR,path:"/voice?listen=1",
+await scenario("browser recognition, always listening, no click: the held microphone lets the reply play",{localStt:false,args:FAKE_MIC,init:FAKE_SR,path:"/voice?listen=1",
   check:async(seen,tab)=>{await until(()=>seen.played>0||seen.blocked>0,10000);
     assert.deepEqual(seen.assistant,["أعطني تقرير اليوم"]);assert.deepEqual(seen.speak,[REPLY]);
     assert.equal(seen.blocked,0);assert.equal(seen.played,1);assert.deepEqual(seen.activeAtPlay,[false],"played with no click at all");
@@ -94,7 +77,7 @@ await scenario("browser recognition, always listening, no click: the held microp
 
 // A slow PC: the microphone takes 1.5 s to open and the reply comes before that. It waits, then plays.
 const SLOW_MIC=`(function(){var g=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);navigator.mediaDevices.getUserMedia=function(c){return new Promise(function(r){setTimeout(r,1500)}).then(function(){return g(c)})}})();`;
-await scenario("slow microphone, fast reply: the reply waits for it and plays",{localStt:false,args:MIC,init:FAKE_SR.replace("},1500)","},200)")+SLOW_MIC,path:"/voice?listen=1",
+await scenario("slow microphone, fast reply: the reply waits for it and plays",{localStt:false,args:FAKE_MIC,init:FAKE_SR.replace("},1500)","},200)")+SLOW_MIC,path:"/voice?listen=1",
   check:async seen=>{await until(()=>seen.played>0||seen.blocked>0,10000);
     assert.deepEqual(seen.speak,[REPLY]);assert.equal(seen.blocked,0,"not blocked");assert.equal(seen.played,1);assert.deepEqual(seen.activeAtPlay,[false]);}});
 
