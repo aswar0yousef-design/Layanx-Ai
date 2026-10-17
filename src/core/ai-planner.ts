@@ -24,7 +24,7 @@ function filterCatalogForGoal(goal:string,catalog:ToolCatalogEntry[]):ToolCatalo
 }
 
 function deterministicReadOnlyPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
- const g=normalizeArabic(goal).replace(/[\\u064B-\\u065F\\u0670\\u0640]/g," ").toLowerCase();
+ const g=normalizeArabic(goal).replace(/[\u064B-\u065F\u0670\u0640]/g," ").toLowerCase();
  const has=(pattern:RegExp)=>pattern.test(g);
  const find=(name:string,actions:string[]):PlannedTool|undefined=>{
   const entry=catalog.find(item=>item.name===name);
@@ -38,19 +38,19 @@ function deterministicReadOnlyPlan(goal:string,catalog:ToolCatalogEntry[]):Plann
   steps:[{description}],successCriteria:[criteria],stopCondition:"Stop if the selected read-only tool is unavailable or returns an error.",
   tools:[{...tool,...(payload?{payload}:{})}]
  });
- if(has(/\\b(runtime status|runtime health|system status|is everything running|check system health)\\b|حاله النظام|فحص التشغيل|هل كل شيء يعمل/)){
+ if(has(/\b(runtime status|runtime health|system status|is everything running|check system health)\b|حاله النظام|فحص التشغيل|هل كل شيء يعمل/)){
   const t=find("runtime.status",["read runtime status","inspect runtime","runtime status","قراءة حالة النظام","فحص التشغيل"]);
   if(t)return mission(t,"Read the runtime status and report provider/model availability.");
  }
- if(has(/\\b(upcoming calendar|calendar events|calendar appointments|my appointments|upcoming events)\\b|مواعيدي|مواعيد|التقويم|الاحداث القادمه/)){
+ if(has(/\b(upcoming calendar|calendar events|calendar appointments|my appointments|upcoming events)\b|مواعيدي|مواعيد|التقويم|الاحداث القادمه/)){
   const t=find("google.calendar.upcoming",["calendar upcoming","read upcoming Google Calendar events"]);
   if(t)return mission(t,"Read upcoming calendar events and summarize them.","done",{limit:20});
  }
- if(has(/\\b(gmail|email|emails|inbox|mailbox)\\b|بريدي|البريد|ايميل|رسائل البريد/)&&has(/\\b(search|find|look for|invoice|invoices|receipt|receipts)\\b|ابحث|بحث|فواتير|فاتوره/)){
+ if(has(/\b(gmail|email|emails|inbox|mailbox)\b|بريدي|البريد|ايميل|رسائل البريد/)&&has(/\b(search|find|look for|invoice|invoices|receipt|receipts)\b|ابحث|بحث|فواتير|فاتوره/)){
   const t=find("google.gmail.search",["search emails"]);
   if(t){
    let query="";
-   if(has(/\\b(last month|previous month)\\b|الشهر الماضي/)){
+   if(has(/\b(last month|previous month)\b|الشهر الماضي/)){
     const now=new Date(),firstThis=new Date(now.getFullYear(),now.getMonth(),1),lastPrevious=new Date(firstThis.getTime()-86400000),fmt=(d:Date)=>String(d.getFullYear())+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+String(d.getDate()).padStart(2,"0");
     query="after:"+fmt(lastPrevious)+" before:"+fmt(firstThis)+" ";
    }
@@ -60,12 +60,12 @@ function deterministicReadOnlyPlan(goal:string,catalog:ToolCatalogEntry[]):Plann
    return mission(t,"Search Gmail for the requested messages and report matching results.","done",{query,limit:20});
   }
  }
- if(has(/\\b(security scan|scan project security|security audit|vulnerability scan)\\b|فحص امان المشروع|فحص امن المشروع|افحص امان|افحص امن|فحص امني/)){
+ if(has(/\b(security scan|scan project security|security audit|vulnerability scan)\b|فحص امان المشروع|فحص امن المشروع|افحص امان|افحص امن|فحص امني/)){
   const t=find("project.security",["security scan","scan project security","فحص أمني","فحص أمان المشروع"]);
   if(t)return mission(t,"Run the project's security scan and summarize findings.");
  }
- if(has(/\\b(open windows|which windows are open|look at my screen|inspect the screen|screen contents)\\b|النوافذ المفتوحه|النوافذ|ما النوافذ|انظر الى الشاشه|الشاشه/)){
-  if(has(/\\b(screenshot|capture the screen)\\b|لقطه شاشه/)){
+ if(has(/\b(open windows|which windows are open|look at my screen|inspect the screen|screen contents)\b|النوافذ المفتوحه|النوافذ|ما النوافذ|انظر الى الشاشه|الشاشه/)){
+  if(has(/\b(screenshot|capture the screen)\b|لقطه شاشه/)){
    const t=find("desktop.screenshot",["desktop screenshot"]);
    if(t)return mission(t,"Capture the screen for inspection.");
   }
