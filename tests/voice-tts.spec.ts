@@ -92,6 +92,12 @@ await scenario("browser recognition, always listening, no click: the held microp
     assert.equal(await tab.evaluate(()=>(window as any).__layanx.holdingMic()),true);
     assert.equal(await tab.isHidden("#soundBtn"),true);}});
 
+// A slow PC: the microphone takes 1.5 s to open and the reply comes before that. It waits, then plays.
+const SLOW_MIC=`(function(){var g=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);navigator.mediaDevices.getUserMedia=function(c){return new Promise(function(r){setTimeout(r,1500)}).then(function(){return g(c)})}})();`;
+await scenario("slow microphone, fast reply: the reply waits for it and plays",{localStt:false,args:MIC,init:FAKE_SR.replace("},1500)","},200)")+SLOW_MIC,path:"/voice?listen=1",
+  check:async seen=>{await until(()=>seen.played>0||seen.blocked>0,10000);
+    assert.deepEqual(seen.speak,[REPLY]);assert.equal(seen.blocked,0,"not blocked");assert.equal(seen.played,1);assert.deepEqual(seen.activeAtPlay,[false]);}});
+
 const NO_MIC=`navigator.mediaDevices.getUserMedia=function(){return Promise.reject(new DOMException("no microphone","NotFoundError"))};`;
 await scenario("sound blocked (no microphone): one click plays the missed reply",{localStt:false,args:[],init:FAKE_SR+NO_MIC,path:"/voice?listen=1",
   check:async(seen,tab)=>{await until(()=>seen.blocked>0,10000);

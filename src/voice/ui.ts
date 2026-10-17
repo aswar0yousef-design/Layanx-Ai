@@ -209,6 +209,8 @@ var localTts=false,player=null,sayDone=null,interrupted=false;
 /** Piper on this computer when it runs (natural Arabic voice); otherwise the browser's own voices. */
 function say(text,lang){
  if(!S.speak||!text)return Promise.resolve();
+ return soundReady().then(function(){return sayNow(text,lang)})}
+function sayNow(text,lang){
  if(!localTts)return sayBrowser(text,lang);
  return new Promise(function(done){
   speaking=true;setState("speak");startBargeIn();
@@ -244,11 +246,13 @@ function sayBrowser(text,lang){return new Promise(function(done){
  * already has permission for (nothing is recorded or sent), and if sound is still blocked a single
  * "click once" button appears and plays the reply that was missed.
  */
-var holdStream=null,missed=null;
+var holdStream=null,holdPending=null,missed=null;
 function holdMic(on){
  if(!on){if(holdStream){holdStream.getTracks().forEach(function(x){x.stop()});holdStream=null}return}
- if(holdStream||useLocal()||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return;
- navigator.mediaDevices.getUserMedia({audio:true}).then(function(s){if(!S.always){s.getTracks().forEach(function(x){x.stop()});return}holdStream=s}).catch(function(){})}
+ if(holdStream||holdPending||useLocal()||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return;
+ holdPending=navigator.mediaDevices.getUserMedia({audio:true}).then(function(s){holdPending=null;if(!S.always){s.getTracks().forEach(function(x){x.stop()});return}holdStream=s},function(){holdPending=null})}
+/** A reply that comes while the microphone is still opening (a slow PC) waits for it (at most 3 s), so its sound is allowed. */
+function soundReady(){return holdPending?Promise.race([holdPending,new Promise(function(r){setTimeout(r,3000)})]):Promise.resolve()}
 function needSound(text,lang){missed={text:text,lang:lang};var b=$("soundBtn");b.textContent=t("soundBtn");b.hidden=false}
 function soundUnlocked(){var b=$("soundBtn");if(b.hidden)return;b.hidden=true;var m=missed;missed=null;if(m&&!busy)say(m.text,m.lang).then(function(){if(!busy)resumeListening()})}
 function stopSpeaking(){if("speechSynthesis" in window)speechSynthesis.cancel();if(sayDone)sayDone();speaking=false;if(!busy)resumeListening()}
