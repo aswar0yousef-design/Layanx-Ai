@@ -45,6 +45,6 @@ planned.tools=[{tool:"test.tool",action:"read",permission:"L1_READ",reason:"init
 core.missions.save(planned);
 const adaptive=await core.executeMissionAdaptive(planned.id,"project",2);
 if(adaptive.completed||!String(adaptive.reason).includes("Adaptive planner returned invalid JSON."))throw new Error("Planner failure was not surfaced by adaptive execution.");
-if(calls.planner!==1)throw new Error("Planner failure test did not invoke the provider exactly once.");
+if(calls.planner!==2)throw new Error("Planner failure test did not stop after the initial call and exactly one constrained repair attempt.");
 
 console.log("Verification integration hardening passed.");

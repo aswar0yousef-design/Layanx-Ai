@@ -52,7 +52,7 @@ export class TaskRouter{
 
  private selectModel(task:DecomposedTask,agent:AgentContract):ModelDefinition{
   const profile=agent.profile;
-  return this.models.select(task.capability,{tags:[task.capability,...(profile?.preferredCapabilities??[]),profile?.role??"general"],latencySensitive:task.capability==="chat"||task.capability==="audio",preferLocal:profile?.role==="developer"||profile?.role==="analyst"});
+  return this.models.select(task.capability,{tags:[task.capability,...(profile?.preferredCapabilities??[]),profile?.role??"general"],latencySensitive:task.capability==="chat"||task.capability==="audio",preferLocal:true});
  }
 
  private inferRole(capability:DecomposedTask["capability"]):AgentRole{

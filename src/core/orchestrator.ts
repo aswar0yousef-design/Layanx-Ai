@@ -1,4 +1,4 @@
-import {EXECUTION_STEP} from "./verification.js";
+import {EXECUTION_STEP,hasExplicitSuccessCriteria} from "./verification.js";
 import {cloudPolicy,cloudRoutingForGoal} from "../config/providers.js";
 import {setLifecycle} from "./lifecycle.js";
 import {MissionPlanner} from "./mission.js";
@@ -90,7 +90,7 @@ export class LayanXCore{
   readonly models=new ModelRegistry();
   readonly modelRouter=new ModelRouter(this.models);
   readonly providers=new ModelProviderRegistry();
-  readonly modelExecution=new ModelExecutionRouter(this.models,this.providers,{preferFree:process.env.LAYANX_AI_PREFER_FREE==="true"});
+  readonly modelExecution=new ModelExecutionRouter(this.models,this.providers,{preferLocal:true,preferFree:process.env.LAYANX_AI_PREFER_FREE==="true"});
   readonly aiPlanner=new AiMissionPlanner(this.modelExecution);
   readonly routingMemory=RoutingMemory.forStore();
   readonly missionCompiler=new MissionCompiler();
@@ -380,7 +380,7 @@ export class LayanXCore{
       try{
         next=await this.aiPlanner.nextTool({
           goal:mission.goal,result:latest,tools:catalog,
-          requiredPermission:mission.requiredPermission,completedTools,memory:missionMemory,
+          requiredPermission:mission.requiredPermission,completedTools,successCriteria:mission.successCriteria?.length?mission.successCriteria:this.agents.get(agentId).successCriteria,memory:missionMemory,
           projectContext:await this.projectIntelligence.scan(projectId).then(intelligence=>({summary:intelligence.summary,markers:intelligence.markers,package:intelligence.package,files:intelligence.files.slice(0,80).map(file=>file.path)})).catch(error=>({unavailable:true,reason:error instanceof Error?error.message:"project intelligence unavailable"}))
         });
       }catch(error){
@@ -525,6 +525,7 @@ export class LayanXCore{
           result:{failure:activeFailure.error,previousResult:latest,attempt},
           tools:catalog,
           requiredPermission:current.requiredPermission,
+          successCriteria:current.successCriteria?.length?current.successCriteria:this.agents.get(agentId).successCriteria,
           completedTools:results.filter(item=>item.ok&&item.tool).map(item=>item.tool as string),
           memory:(await this.contextFabric.buildAsync({projectId,mission:current,query:current.goal,limit:12,maxChars:8000})).memories.map(entry=>({kind:entry.kind,summary:entry.summary,content:entry.content,tags:entry.tags})),
           projectContext:context
@@ -575,20 +576,25 @@ export class LayanXCore{
   async runAgentGateway(goal:string,projectId="default",maxSteps=10,approvalIds:Record<number,string>={},agentId="core",routing?:ModelRoutingOptions){
     // Cloud escalation: a goal that names Claude/GPT/Gemini, or a complex goal under the "complex" policy,
     // is planned by that cloud model; a local planning failure is retried once on the cloud (no tool has run yet).
-    let hint=routing?undefined:cloudRoutingForGoal(goal,this.models);
+    const modelPinned=Boolean(routing?.modelId);
+    let hint=modelPinned?undefined:cloudRoutingForGoal(goal,this.models);
     const cloudReady=this.models.list().some(m=>!m.local&&m.enabled);
     // Learned routing: goals like this one keep failing locally -> plan them on the cloud directly.
     if(!routing&&!hint&&cloudReady&&cloudPolicy()!=="off"&&this.routingMemory.suggestCloud(goal))hint={preferLocal:false,reason:"learned"};
-    const toRouting=(h:typeof hint):ModelRoutingOptions|undefined=>h?{preferLocal:h.preferLocal,...(h.tags?{tags:h.tags}:{})}:routing;
+    const toRouting=(h:typeof hint):ModelRoutingOptions=>{
+      const tags=[...new Set([...(routing?.tags??[]),...(h?.tags??[])])];
+      return{...(routing??{}),preferLocal:h?.preferLocal??routing?.preferLocal??true,...(tags.length?{tags}:{})};
+    };
     let mission:Awaited<ReturnType<LayanXCore["planAndStartMission"]>>;
-    try{mission=await this.planAndStartMission(goal,projectId,toRouting(hint));
+    try{mission=await this.planAndStartMission(goal,projectId,toRouting(hint),agentId);
       if(!routing)this.routingMemory.record(goal,hint&&!hint.preferLocal?"cloud_ok":"local_ok");}
     catch(error){
       if(!routing&&!hint)this.routingMemory.record(goal,"local_failed");
-      if(routing||hint||!cloudReady||cloudPolicy()==="off")throw error;
+      const cloudWasExplicitlyPreferred=hint?.preferLocal===false||routing?.preferLocal===false;
+      if(modelPinned||cloudWasExplicitlyPreferred||!cloudReady||cloudPolicy()==="off")throw error;
       hint={preferLocal:false,reason:"fallback"};
       this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"model.escalate",resource:"planner",result:"success",metadata:{reason:"local planning failed",error:error instanceof Error?error.message.slice(0,200):"unknown"}});
-      mission=await this.planAndStartMission(goal,projectId,toRouting(hint));
+      mission=await this.planAndStartMission(goal,projectId,toRouting(hint),agentId);
       this.routingMemory.record(goal,"cloud_ok");
     }
     const result=await this.executeAgentLoop(mission.id,projectId,maxSteps,approvalIds,agentId,toRouting(hint));
@@ -670,10 +676,28 @@ export class LayanXCore{
         if(frame)visualContext={mimeType:frame.mimeType,base64:frame.base64};
       }
       if(!plan){
+        const completionContract=this.agents.get(agentId);
+        const completionCriteria=current.successCriteria?.length?current.successCriteria:completionContract.successCriteria;
+        // A successful final tool result should not depend on a second model call to decide to stop.
+        // Verify it deterministically first; this also prevents a small model inventing another tool
+        // after the mission's explicit success criteria have already been satisfied.
+        if(hasExplicitSuccessCriteria(completionCriteria)&&this.verifier.verify(current,latest,completionCriteria).verified){
+          const executionStep=current.steps.find(step=>EXECUTION_STEP.test(step.description));
+          if(executionStep)executionStep.status="completed";
+          const verificationStep=current.steps.find(step=>/verif|confirm|validate|check/i.test(step.description));
+          if(verificationStep)verificationStep.status="completed";
+          setLifecycle(current,this.executionStates,"completed",false);
+          this.missions.save(current);
+          await this.executionRuntime.persist(current);
+          this.memory.remember({missionId:current.id,projectId:current.projectId,kind:"success",summary:"Mission completed and verified",content:{result:latest},confidence:1,tags:["mission","success","verified"]});
+          cleanupLiveScreen();
+          return{missionId,completed:true,status:"completed",steps,results,final:{data:latest}};
+        }
         const catalog=this.toolCatalog.list(this.agents.get(agentId),current.requiredPermission);
         const context=await this.projectIntelligence.scan(projectId).then(i=>({summary:i.summary,markers:i.markers,package:i.package,files:i.files.slice(0,80).map(f=>f.path)})).catch(error=>({unavailable:true,reason:error instanceof Error?error.message:"project intelligence unavailable"}));
         plan=await this.aiPlanner.nextTool({
           goal:current.goal,result:latest,tools:catalog,requiredPermission:current.requiredPermission,
+          successCriteria:current.successCriteria?.length?current.successCriteria:this.agents.get(agentId).successCriteria,
           routing,
           completedTools:plans.slice(0,index<0?plans.length:index).map(item=>item.tool),
           memory:(await this.contextFabric.buildAsync({projectId,mission:current,query:current.goal,limit:8,maxChars:6000})).memories.map(e=>({kind:e.kind,summary:e.summary,content:e.content,tags:e.tags})),
@@ -765,7 +789,7 @@ export class LayanXCore{
         }
         const repair=this.aiPlanner.nextTool({
           goal:current.goal,result:{failure:result.error,latest},tools:this.toolCatalog.list(this.agents.get(agentId),current.requiredPermission),
-          requiredPermission:current.requiredPermission,routing,completedTools:results.map(item=>(item as {tool?:string}).tool??""),
+          requiredPermission:current.requiredPermission,successCriteria:current.successCriteria?.length?current.successCriteria:this.agents.get(agentId).successCriteria,routing,completedTools:results.map(item=>(item as {tool?:string}).tool??""),
           projectContext:{repairAfterFailure:true}
         });
         const recoveryPlan=await repair;
@@ -869,8 +893,8 @@ export class LayanXCore{
     return{missionId,results,completed:results.length===plans.length&&results.every(result=>result.ok)};
   }
 
-  async planMission(goal:string,projectId="default",routing?:ModelRoutingOptions){
-    const contract=this.agents.get("core");
+  async planMission(goal:string,projectId="default",routing?:ModelRoutingOptions,agentId="core"){
+    const contract=this.agents.get(agentId);
     const tools=this.toolCatalog.list(contract,contract.requiredPermission);
     let projectContext:unknown=null;
     try{
@@ -883,9 +907,9 @@ export class LayanXCore{
     return this.missionCompiler.compile(plan,goal);
   }
 
-  async planAndStartMission(goal:string,projectId="default",routing?:ModelRoutingOptions){
+  async planAndStartMission(goal:string,projectId="default",routing?:ModelRoutingOptions,agentId="core"){
     const normalizedProjectId=this.projectIsolation.normalize(projectId);
-    const m=await this.planMission(goal,normalizedProjectId,routing);
+    const m=await this.planMission(goal,normalizedProjectId,routing,agentId);
     m.projectId=normalizedProjectId;
     this.executionStates.start(m.id);
     this.ledger.append({id:crypto.randomUUID(),missionId:m.id,agentId:"core",action:"mission.create",status:"started",timestamp:new Date().toISOString(),detail:goal});

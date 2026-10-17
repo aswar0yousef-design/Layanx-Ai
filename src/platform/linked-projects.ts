@@ -46,9 +46,16 @@ export function assertLinkableFolder(folder:string):string{
   const lower=(p:string)=>process.platform==="win32"?p.toLowerCase():p;
   const r=lower(resolved);
   if(path.parse(resolved).root===resolved)throw new Error("A whole drive cannot be a project.");
+  const tempDir=lower(path.resolve(os.tmpdir()));
+  if(r===tempDir)throw new Error("The temporary root itself cannot be a project.");
+  const insideTemp=(r+path.sep).startsWith(tempDir+path.sep);
   const blocked=[os.homedir(),process.env.SystemRoot,process.env.ProgramFiles,process.env["ProgramFiles(x86)"],process.env.ProgramData,process.env.LOCALAPPDATA,process.env.APPDATA,"/etc","/usr","/bin","/System","/Library"].filter(Boolean).map(p=>lower(path.resolve(p!)));
   for(const b of blocked){
     if(r===b)throw new Error("This folder is too broad to be a project.");
+    // On Windows, os.tmpdir() commonly lives below LOCALAPPDATA. Permit only
+    // project subfolders under that temp directory, not LOCALAPPDATA itself.
+    const tempIsInsideBlocked=(tempDir+path.sep).startsWith(b+path.sep);
+    if(insideTemp&&tempIsInsideBlocked)continue;
     if(b!==lower(os.homedir())&&(r+path.sep).startsWith(b+path.sep))throw new Error("System folders cannot be projects.");
   }
   if(/[\\/]\.ssh([\\/]|$)|[\\/]\.gnupg([\\/]|$)/i.test(resolved))throw new Error("Credential folders cannot be projects.");

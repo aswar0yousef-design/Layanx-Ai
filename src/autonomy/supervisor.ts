@@ -7,6 +7,7 @@ import {trustLevel} from "./trust.js";
 import {knowledgeSummary,recordIssue,refreshKnowledge,updateHealth} from "./knowledge.js";
 import {buildRepoMap} from "./repo-map.js";
 import {isLocalPreview} from "../platform/open-url.js";
+import {openRequest} from "../tools/open-app.js";
 import {errorSignature,findLessons,guidanceText,listLessons,listPlaybooks,markLessons,matchPlaybooks,recordLesson,recordPlaybookOutcome,savePlaybookCandidate,trustProjectPlaybook} from "./learning.js";
 
 /**
@@ -52,7 +53,7 @@ export interface SupervisorJob{
   budgetMinutes?:number;
   resumed?:number;
 }
-export interface AgentRun{completed?:boolean;paused?:boolean;missionId?:string;nextToolIndex?:number;approvalId?:string;reason?:string;status?:string;results?:unknown[]}
+export interface AgentRun{completed?:boolean;paused?:boolean;missionId?:string;nextToolIndex?:number;approvalId?:string;reason?:string;status?:string;final?:{ok?:boolean;error?:string;verified?:boolean};results?:unknown[]}
 export interface ToolRun{ok?:boolean;missionId?:string;approvalId?:string;data?:any;error?:string}
 export interface SupervisorDeps{
   think(prompt:string,opts?:{cloud?:boolean;images?:Array<{mimeType:string;base64:string}>}):Promise<string>;
@@ -78,6 +79,25 @@ const DONE_WORD="fini?sh|done|complete|انته|تنته|ينته|تخلص|يخ�
 const OPEN_WHEN_DONE=new RegExp(`(${OPEN_WORD})[\\s\\S]{0,60}(${DONE_WORD})|(${DONE_WORD})[\\s\\S]{0,60}(${OPEN_WORD})`,"i");
 /** "When you finish, open it" / "افتحه عند الانتهاء": the owner wants to see the result in the browser. */
 export function wantsOpenWhenDone(text:string):boolean{return OPEN_WHEN_DONE.test(text);}
+
+/**
+ * Recognise a simple, explicit app-opening request so the supervisor does not invent a research
+ * milestone for a local Windows action. Only known apps/URLs accepted by openRequest are fast-pathed.
+ */
+function directDesktopOpenGoal(text:string):{app?:string;url?:string;label:string;command:string}|undefined{
+  if(text.length>240||text.includes("\n"))return undefined;
+  let command=text.trim()
+    .replace(/(?:[،,;؛.]?\s*)(?:وتأكد(?:\s+من)?|وتحقق(?:\s+من)?|وتاكد(?:\s+من)?|وتثبت(?:\s+من)?|تأكد من نجاح|تحقق من نجاح|and\s+(?:verify|confirm|check|make sure)|then\s+(?:verify|confirm|check)|make sure(?:\s+that)?|verify(?:\s+that)?|confirm(?:\s+that)?)[\s\S]*$/iu,"")
+    .replace(/\s+(?:على|في)\s+(?:جهازي|جهاز الكمبيوتر|هذا الجهاز|الكمبيوتر|الحاسوب|سطح المكتب)(?:\s+.*)?$/iu,"")
+    .replace(/\s+(?:on|in)\s+(?:my|this|the)\s+(?:computer|pc|device|desktop)(?:\s+.*)?$/iu,"")
+    // People often write both the Arabic and English name of the same program.
+    .replace(/المفكر[هة]\s+notepad$/iu,"Notepad")
+    .replace(/[،,;؛.!؟?]+$/u,"")
+    .trim();
+  const request=openRequest(command);
+  if(!request||!request.app||request.label.toLowerCase()!=="notepad")return undefined;
+  return{...request,command:"افتح Notepad"};
+}
 
 const MAX_ATTEMPTS=4;
 
@@ -125,9 +145,21 @@ export class Supervisor{
    * Continue a job that stopped (failed, cancelled, out of time or rounds) from where it stopped: finished
    * milestones stay finished, the stopped one gets fresh attempts, and the time and round budgets start again.
    */
+  private discardStaleDesktopOpenPlan(job:SupervisorJob):boolean{
+    // A previous planner sometimes turned "open Notepad" into a research task. If nothing actually
+    // finished, clear that invalid plan so the direct desktop workflow can replace it.
+    if(!directDesktopOpenGoal(job.goal)||job.current!==0||job.milestones.length===0
+      ||job.milestones.some(m=>m.status==="done")||job.milestones[0]?.kind==="desktop")return false;
+    job.milestones=[];job.checks=null;job.specChecks=undefined;job.acceptance=[];
+    job.baseline=undefined;job.lastChecks=undefined;job.current=0;job.waiting=undefined;
+    job.result=undefined;job.rounds=0;job.finalRepairs=0;
+    this.log(job,"Replanning the unfinished desktop-open request with the direct desktop workflow");
+    return true;
+  }
   resume(id:string):SupervisorJob{
     const job=this.jobs.get(id);if(!job)throw new Error("job_not_found");
     if(!["failed","cancelled","budget_exhausted"].includes(job.status))throw new Error("job_not_stopped");
+    this.discardStaleDesktopOpenPlan(job);
     job.deadline=new Date(Date.now()+(job.budgetMinutes??120)*60_000).toISOString();
     job.rounds=0;job.finalRepairs=0;job.result=undefined;job.waiting=undefined;job.resumed=(job.resumed??0)+1;
     const m=job.milestones[job.current];
@@ -162,7 +194,16 @@ export class Supervisor{
     try{this.deps.openUrl(job.preview);this.log(job,"Opened "+job.preview+" in the browser");}catch(e){this.log(job,"Could not open the browser: "+(e as Error).message,"warn");}
   }
   /** Resume jobs that were running when LayanX stopped. */
-  start(){for(const j of this.jobs.values())if(ACTIVE.includes(j.status))void this.drive(j.id);}
+  start(){
+    for(const job of this.jobs.values()){
+      if(!ACTIVE.includes(job.status))continue;
+      if(this.discardStaleDesktopOpenPlan(job)){
+        job.deadline=new Date(Date.now()+(job.budgetMinutes??120)*60_000).toISOString();
+        this.set(job,"planning","Recovered an unfinished desktop-open request after restart");
+      }
+      void this.drive(job.id);
+    }
+  }
   stop(){this.stopped=true;}
 
   // ------------------------------------------------------------ persistence
@@ -243,9 +284,22 @@ export class Supervisor{
       `Goal: ${job.goal}`
     ].filter(Boolean).join("\n");
     let spec:any=null;
-    try{spec=extractJson(await this.deps.think(prompt));}catch(e){this.log(job,"Local planner failed: "+(e as Error).message,"warn");}
-    if(!spec?.milestones?.length&&this.deps.cloudAvailable()){
-      try{spec=extractJson(await this.deps.think(prompt,{cloud:true}));if(spec){job.cloudUsed=true;this.log(job,"Planned with a cloud model (the local one could not)");}}catch{}
+    const directOpen=directDesktopOpenGoal(job.goal);
+    if(directOpen){
+      spec={
+        acceptance:[`تم فتح ${directOpen.label} بنجاح`,`نافذة ${directOpen.label} ظاهرة على سطح المكتب`],
+        milestones:[
+          {title:`فتح ${directOpen.label}`,goal:directOpen.command,kind:"desktop"},
+          {title:"التحقق من النافذة",goal:`تحقق من أن نافذة ${directOpen.label} ظاهرة على سطح مكتب Windows باستخدام أدوات قراءة النوافذ أو شجرة الواجهة، ولا تغلق التطبيق.`,kind:"desktop"}
+        ],
+        checks:{install:false,test:false,build:false,typecheck:false,lint:false,security:false,browser:null}
+      };
+      this.log(job,"Recognised a direct desktop-open request; skipped research and planned opening plus window verification");
+    }else{
+      try{spec=extractJson(await this.deps.think(prompt));}catch(e){this.log(job,"Local planner failed: "+(e as Error).message,"warn");}
+      if(!spec?.milestones?.length&&this.deps.cloudAvailable()){
+        try{spec=extractJson(await this.deps.think(prompt,{cloud:true}));if(spec){job.cloudUsed=true;this.log(job,"Planned with a cloud model (the local one could not)");}}catch{}
+      }
     }
     const kinds:MilestoneKind[]=["code","test","research","desktop","business","general"];
     const milestones:Milestone[]=(Array.isArray(spec?.milestones)?spec.milestones:[]).slice(0,6)
@@ -299,7 +353,7 @@ export class Supervisor{
         job.waiting={approvalId:run.approvalId,missionId:run.missionId,index:run.nextToolIndex??0,kind:"agent",agentId:m.agent,milestone:job.current};
         this.set(job,"waiting_approval","Waiting for your approval to continue");return;
       }
-      if(!run.completed){await this.afterWork(job,m,run.reason??run.status??"unknown");return;}
+      if(!run.completed){await this.afterWork(job,m,run.reason??run.final?.error??run.status??"unknown");return;}
     }
     await this.afterWork(job,m);
   }
@@ -376,7 +430,7 @@ export class Supervisor{
     if(w.kind==="agent"&&m){
       const run=await this.deps.resumeAgent(w.missionId,job.projectId,w.agentId??m.agent,{[w.index]:w.approvalId});
       if(run.paused&&run.approvalId){job.waiting={approvalId:run.approvalId,missionId:w.missionId,index:run.nextToolIndex??0,kind:"agent",agentId:w.agentId,milestone:w.milestone};this.set(job,"waiting_approval","Waiting for another approval");return;}
-      await this.afterWork(job,m,run.completed?undefined:run.reason??run.status??"unknown");return;
+      await this.afterWork(job,m,run.completed?undefined:run.reason??run.final?.error??run.status??"unknown");return;
     }
     if(w.kind==="tool"){
       await this.deps.runTool(job.projectId,w.tool!,w.payload??{},{missionId:w.missionId,approvalId:w.approvalId});

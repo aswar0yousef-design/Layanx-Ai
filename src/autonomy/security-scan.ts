@@ -88,6 +88,21 @@ export function scanCode(dir:string):{findings:SecurityFinding[];scanned:number}
   return{findings,scanned:files.length};
 }
 
+/** External scanners can report a reviewed line even when the built-in scanner skips it. Apply the same
+ * explicit, line-scoped opt-out consistently to every scanner result, while keeping all other lines scanned.
+ */
+function isReviewedLine(dir:string,finding:SecurityFinding):boolean{
+  if(!finding.file||!Number.isInteger(finding.line)||finding.line!<1)return false;
+  const root=path.resolve(dir);
+  const target=path.resolve(root,finding.file);
+  const relative=path.relative(root,target);
+  if(!relative||relative===".."||relative.startsWith(`..${path.sep}`)||path.isAbsolute(relative))return false;
+  try{
+    const line=fs.readFileSync(target,"utf8").split(/\r?\n/)[finding.line!-1];
+    return Boolean(line?.includes("layanx-ignore-security"));
+  }catch{return false;}
+}
+
 async function auditDependencies(dir:string):Promise<{findings:SecurityFinding[];ran:boolean;note?:string}>{
   const info=detectProject(dir);
   if(info.stack!=="node")return{findings:[],ran:false,note:"dependency audit available for Node projects"};
@@ -118,7 +133,7 @@ export async function securityReport(dir:string,opts:{audit?:boolean;url?:string
   // npm audit and osv-scanner both report vulnerable npm packages: keep one finding per package.
   const seen=new Set(audit.findings.map(f=>f.message.replace(/^Vulnerable dependency: /,"").split(" ")[0]));
   const extra=external.flatMap(r=>r.findings).filter(f=>f.rule!=="deps.vulnerable"||!seen.has(f.message.replace(/^Vulnerable dependency: /,"").split(" ")[0]));
-  const findings=[...code.findings,...audit.findings,...extra,...(web?.findings??[])];
+  const findings=[...code.findings,...audit.findings,...extra,...(web?.findings??[])].filter(f=>!isReviewedLine(dir,f));
   const counts:Record<Severity,number>={critical:0,high:0,medium:0,low:0,info:0};
   for(const f of findings)counts[f.severity]++;
   const score=Math.max(0,100-counts.critical*30-counts.high*15-counts.medium*5-counts.low);

@@ -27,8 +27,33 @@ function filterCatalogForGoal(goal:string,catalog:ToolCatalogEntry[]):ToolCatalo
 }
 
 /** "Open Chrome" / «افتح واتساب» / "open youtube.com": one step, no model (it used to invent a tool that does not exist). */
+function currentMilestoneGoal(goal:string):string{
+ const milestone=goal.split(/\r?\n/).find(line=>/^Current milestone \(\d+\/\d+\):\s*/i.test(line));
+ return milestone?milestone.replace(/^Current milestone \(\d+\/\d+\):\s*/i,"").trim():goal;
+}
+
+/** A window-presence check is deterministic too: ask Windows to focus that exact window title. */
+function deterministicDesktopWindowCheck(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
+ const step=currentMilestoneGoal(goal);
+ const mentionsNotepad=/(?:notepad|المفكرة|المفكره)/iu.test(step);
+ const isCheck=/(?:تحقق|تأكد|افحص|verify|confirm|check)/iu.test(step);
+ const isWindow=/(?:نافذة|window)/iu.test(step);
+ if(!mentionsNotepad||!isCheck||!isWindow)return undefined;
+ const tool=catalog.find(item=>item.name==="desktop.window.focus"&&item.actions.some(action=>action.toLowerCase()==="desktop focus window"));
+ if(!tool)return undefined;
+ return{
+  risk:"low",
+  requiredPermission:tool.permission,
+  steps:[{description:"Execute: focus the visible Notepad window to verify that it is open."}],
+  successCriteria:["result.focused === true",'result.title contains "Notepad"'],
+  stopCondition:"Stop and report the window-verification error if no Notepad window is open.",
+  tools:[{tool:tool.name,action:"desktop focus window",permission:tool.permission,reason:"The owner asked to confirm that the Notepad window is open.",payload:{title:"Notepad"}}]
+ };
+}
+
 function deterministicOpenPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
- const request=openRequest(goal);
+ // Supervisor tasks wrap the actionable step in a larger goal; use the named current milestone.
+ const request=openRequest(currentMilestoneGoal(goal));
  const tool=catalog.find(t=>t.name==="desktop.app.open");
  if(!request||!tool)return undefined;
  return{risk:"low",requiredPermission:tool.permission,
@@ -152,6 +177,8 @@ export class AiMissionPlanner{
   constructor(private readonly models:ModelExecutionRouter){}
   async plan(goal:string,tools:ToolCatalogEntry[]=[],projectContext?:unknown,routing?:ModelRoutingOptions):Promise<PlannedMission>{
     if(!goal.trim())throw new Error("Mission goal is empty.");
+    const windowCheck=deterministicDesktopWindowCheck(goal,tools);
+    if(windowCheck)return windowCheck;
     const opening=deterministicOpenPlan(goal,tools);
     if(opening)return opening;
     const scopedTools=filterCatalogForGoal(goal,tools);
@@ -166,6 +193,7 @@ export class AiMissionPlanner{
       "Return ONLY valid JSON with keys: risk, requiredPermission, steps, successCriteria, stopCondition, tools.",
       "Every required key must be present. steps and successCriteria must each contain at least one item.",
       "Prefer checkable successCriteria about the final tool result: \"done\", \"result.exitCode === 0\", \"result.<field> contains \\\"text\\\"\", \"result.<field> === <value>\", \"result.length > 0\". Plain sentences are accepted only when the final result reports no failure.",
+      "Verification receives the raw data returned by the last tool, not an automatically nested wrapper. Never invent result properties or wrapper paths. Use only fields documented by the selected tool; for runtime.status, result has flat system and ready fields, so use result.ready === true or result.system contains \"LayanX AI\". Nested result paths are supported only when the tool actually returns nested data.",
       "Include at least one step that performs the work (for example \"Execute ...\", \"Write ...\", \"تنفيذ ...\").",
       "risk must be low|medium|high|critical.",
       "requiredPermission must be L1_READ|L2_ANALYZE|L3_MODIFY|L4_EXECUTE|L5_CRITICAL.",
@@ -201,7 +229,7 @@ export class AiMissionPlanner{
       return this.parse(repair.output,scopedTools);
     }
   }
-  async nextTool(input:{goal:string;result:unknown;tools:ToolCatalogEntry[];requiredPermission:PermissionLevel;completedTools:string[];memory?:Array<{kind:string;summary:string;content:unknown;tags:string[]}>;projectContext?:unknown;routing?:ModelRoutingOptions;visualContext?:{mimeType:string;base64:string}}):Promise<PlannedTool|null>{
+  async nextTool(input:{goal:string;result:unknown;tools:ToolCatalogEntry[];requiredPermission:PermissionLevel;completedTools:string[];successCriteria?:string[];memory?:Array<{kind:string;summary:string;content:unknown;tags:string[]}>;projectContext?:unknown;routing?:ModelRoutingOptions;visualContext?:{mimeType:string;base64:string}}):Promise<PlannedTool|null>{
     if(!input.goal.trim())throw new Error("Mission goal is empty.");
     const scopedTools=filterCatalogForGoal(input.goal,input.tools);
     const catalog=scopedTools.map(tool=>({name:tool.name,description:tool.description,permission:tool.permission,dangerous:tool.dangerous,actions:tool.actions,tags:tool.tags}));
@@ -217,6 +245,8 @@ export class AiMissionPlanner{
       "Choose exactly one tool from the supplied catalog.",
       "The selected permission must exactly match the catalog tool permission and must not exceed the mission permission.",
       "Do not invent tools or actions. Do not request secrets or bypass security controls.",
+      "Evaluate the success criteria against the latest result first. If the criteria are already satisfied, return null and do not call another tool. Choose a tool only when more work is needed. Never repeat a completed tool unless the result clearly shows it failed.",
+      "Success criteria: "+JSON.stringify(input.successCriteria??[]),
       "Prefer a tool that advances the goal using the latest result.",
       "Completed tools: "+JSON.stringify(input.completedTools),
       "Available tool catalog: "+JSON.stringify(catalog),
@@ -234,11 +264,44 @@ export class AiMissionPlanner{
       input:modelInput,
       responseSchema:nextToolSchema(scopedTools)
     });
-    let value:unknown;
-    value=parseModelJson(response.output,"Adaptive planner");
-    if(value===null)return null;
-    if(!value||typeof value!=="object")throw new Error("Adaptive planner returned an invalid tool.");
-    return this.parseTools([value],scopedTools,input.requiredPermission)[0]??null;
+    const parseNextTool=(raw:string):PlannedTool|null=>{
+      const value=parseModelJson(raw,"Adaptive planner");
+      if(value===null)return null;
+      if(!value||typeof value!=="object")throw new Error("Adaptive planner returned an invalid tool.");
+      return this.parseTools([value],scopedTools,input.requiredPermission)[0]??null;
+    };
+    try{
+      return parseNextTool(response.output);
+    }catch(firstError){
+      // Small local models can ignore a constrained schema once. Re-prompt against the exact same
+      // catalog and permission ceiling; never execute the first, untrusted tool suggestion.
+      const reason=firstError instanceof Error?firstError.message:"invalid tool response";
+      const repair=await this.models.execute({
+        capability:input.visualContext?"vision":"reasoning",
+        routing:input.routing,
+        input:[
+          "Repair this invalid adaptive tool selection for LayanX.",
+          "Return ONLY JSON: null if all success criteria are met, otherwise exactly one tool/action/permission/reason object.",
+          "Your previous output was rejected: "+reason,
+          "Do not invent or rename tools or actions. Choose an exact tool/action/permission triple from the supplied catalog.",
+          "The permission must match the catalog and remain within the mission permission ceiling.",
+          "If the latest result already satisfies the success criteria, return null. Do not repeat completed tools without evidence they failed.",
+          "Success criteria: "+JSON.stringify(input.successCriteria??[]),
+          "Mission goal: "+input.goal,
+          "Completed tools: "+JSON.stringify(input.completedTools),
+          "Available tool catalog: "+JSON.stringify(catalog),
+          "Latest tool result: "+boundedResult,
+          "Rejected output: "+response.output.slice(0,4000)
+        ].join("\n"),
+        responseSchema:nextToolSchema(scopedTools)
+      });
+      try{
+        return parseNextTool(repair.output);
+      }catch(secondError){
+        const detail=secondError instanceof Error?secondError.message:"invalid repaired tool response";
+        throw new Error("Adaptive planner returned an invalid tool after one constrained repair attempt: "+detail);
+      }
+    }
   }
 
   private parse(raw:string,catalog:ToolCatalogEntry[]):PlannedMission{
@@ -263,7 +326,7 @@ export class AiMissionPlanner{
       const tool=typeof entry.tool==="string"?byName.get(entry.tool):undefined;
       const action=typeof entry.action==="string"?entry.action.trim():"";
       const permission=typeof entry.permission==="string"?entry.permission as PermissionLevel:undefined;
-      if(!tool||!action||!permission)throw new Error("Planner selected a tool outside the allowed catalog.");
+      if(!tool||!action||!permission)throw new Error("Planner selected a tool outside the allowed catalog (tool="+String(entry.tool??"<missing>").slice(0,100)+", action="+String(entry.action??"<missing>").slice(0,100)+", permission="+String(entry.permission??"<missing>").slice(0,40)+").");
       if(!tool.actions.map(x=>x.toLowerCase()).includes(action.toLowerCase()))throw new Error("Planner selected an unsupported tool action.");
       const levels:PermissionLevel[]=["L1_READ","L2_ANALYZE","L3_MODIFY","L4_EXECUTE","L5_CRITICAL"];
       if(!levels.includes(permission))throw new Error("Planner returned an invalid tool permission.");

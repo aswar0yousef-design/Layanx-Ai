@@ -1,6 +1,6 @@
 export type ModelCapability="chat"|"reasoning"|"coding"|"vision"|"embedding"|"audio";
 export interface ModelDefinition{id:string;provider:string;providerModelId?:string;capabilities:ModelCapability[];local:boolean;enabled:boolean;priority:number;qualityScore?:number;costPer1kInputUsd?:number;costPer1kOutputUsd?:number;latencyClass?:"fast"|"balanced"|"slow";tags?:string[];}
-export interface ModelSelectionRequest{capability:ModelCapability;modelId?:string;preferLocal?:boolean;preferFree?:boolean;latencySensitive?:boolean;maxCostUsd?:number;minQualityScore?:number;tags?:string[];}
+export interface ModelSelectionRequest{capability:ModelCapability;modelId?:string;preferredModelId?:string;preferLocal?:boolean;preferFree?:boolean;latencySensitive?:boolean;maxCostUsd?:number;minQualityScore?:number;tags?:string[];}
 export class ModelRegistry{
  private readonly models=new Map<string,ModelDefinition>();
  register(model:ModelDefinition){if(this.models.has(model.id))throw new Error("Model already registered.");this.models.set(model.id,model);}
@@ -15,10 +15,15 @@ export class ModelRegistry{
   });
   if(!candidates.length)throw new Error("No enabled model matches routing constraints.");
   const tags=new Set(request.tags??[]);
-  return[...candidates].sort((a,b)=>this.score(b,request,tags)-this.score(a,request,tags)||a.priority-b.priority);
+  return[...candidates].sort((a,b)=>{
+   const localPreference=request.preferLocal===true?Number(b.local)-Number(a.local)
+     :request.preferLocal===false?Number(a.local)-Number(b.local):0;
+   return localPreference||this.score(b,request,tags)-this.score(a,request,tags)||a.priority-b.priority;
+  });
  }
  private score(model:ModelDefinition,request:ModelSelectionRequest,tags:Set<string>){
   let score=100-model.priority;
+  if(model.id===request.preferredModelId)score+=1000;
   if(request.preferLocal===true&&model.local)score+=25;
   if(request.preferLocal===false&&!model.local)score+=10;if(request.preferFree===true&&model.tags?.includes("free"))score+=25;if(request.preferFree===false&&!model.tags?.includes("free"))score+=5;
   if(request.latencySensitive){if(model.latencyClass==="fast")score+=20;if(model.latencyClass==="slow")score-=10;}

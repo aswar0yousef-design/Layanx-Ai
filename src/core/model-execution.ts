@@ -21,7 +21,12 @@ export class ModelExecutionRouter{
    if(!this.budget.allow(model)){attempts.push({modelId:model.id,provider:model.provider,ok:false,error:"Monthly cloud budget reached; staying on local models."});continue;}
    let provider:ModelProviderAdapter;
    try{provider=this.providers.get(model.provider);}catch(error){attempts.push({modelId:model.id,provider:model.provider,ok:false,error:error instanceof Error?error.message:"Provider unavailable"});continue;}
-   const health=await provider.health();
+   let health:Awaited<ReturnType<ModelProviderAdapter["health"]>>;
+   try{health=await provider.health();}
+   catch(error){
+    attempts.push({modelId:model.id,provider:model.provider,ok:false,error:"Provider health check failed: "+(error instanceof Error?error.message:"unknown error")});
+    continue;
+   }
    if(health.provider!==provider.name){attempts.push({modelId:model.id,provider:model.provider,ok:false,error:"Provider health identity mismatch."});continue;}
    if(!health.available){attempts.push({modelId:model.id,provider:model.provider,ok:false,error:health.reason??"Provider unavailable"});continue;}
    try{

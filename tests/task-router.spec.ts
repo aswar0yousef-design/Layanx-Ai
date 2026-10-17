@@ -10,6 +10,7 @@ agents.register({agentId:"developer",purpose:"development",allowedTools:[],forbi
 const models=new ModelRegistry();
 models.register({id:"local-code",provider:"ollama",capabilities:["coding"],local:true,enabled:true,priority:1,qualityScore:75,tags:["coding","developer"]});
 models.register({id:"cloud-reasoning",provider:"openai",capabilities:["reasoning"],local:false,enabled:true,priority:1,qualityScore:90,tags:["reasoning","orchestrator"]});
+models.register({id:"cloud-embedding",provider:"openai",capabilities:["embedding"],local:false,enabled:true,priority:0,qualityScore:100,tags:["embedding","researcher"]});
 models.register({id:"local-embedding",provider:"ollama",capabilities:["embedding"],local:true,enabled:true,priority:1,tags:["embedding","researcher"]});
 
 const router=new TaskRouter(agents,new ModelRouter(models));

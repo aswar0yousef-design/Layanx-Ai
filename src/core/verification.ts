@@ -10,6 +10,27 @@ type Comparable=string|number|boolean|null;
  */
 export const EXECUTION_STEP=/\b(execute|run|perform|action|write|create|build|fix|implement|update|modify|edit|install|apply|generate|send|publish|deploy|delete|commit|push|open|click|type|search|collect|research|analy[sz]e|inspect|test|check|schedule|post|upload|download|take|capture)|تنفيذ|نفذ|نفّذ|شغل|شغّل|تشغيل|إجراء|اجراء|اكتب|كتابة|أنشئ|انشئ|إنشاء|انشاء|عدّل|عدل|تعديل|أصلح|اصلح|إصلاح|اصلاح|ابن|بناء|ثبّت|ثبت|تثبيت|أرسل|ارسل|إرسال|ارسال|انشر|نشر|افتح|فتح|ابحث|بحث|حلل|حلّل|تحليل|افحص|فحص|اختبر|اختبار|التقط|جدول|ارفع|رفع/i;
 
+
+/**
+ * Early loop completion must only use explicit, machine-checkable result criteria.
+ * Descriptive criteria ("finished") and presence-only aliases ("done"/"echo") are too
+ * broad for an early stop because any intermediate read/inspection tool returns a result.
+ */
+export function hasExplicitSuccessCriteria(criteria:string[]):boolean {
+  if(!criteria.length)return false;
+  let hasResultAssertion=false;
+  for(const criterion of criteria){
+    const text=criterion.trim();
+    if(!text)return false;
+    const normalized=text.toLowerCase();
+    if(["mission exists","mission has goal","mission has execution plan"].includes(normalized))continue;
+    if(/^approved$/i.test(text)){hasResultAssertion=true;continue;}
+    if(/^result(?:\.|\s)/i.test(text)){hasResultAssertion=true;continue;}
+    return false;
+  }
+  return hasResultAssertion;
+}
+
 export class VerificationEngine {
   verify(mission:Mission,result?:unknown,successCriteria:string[]=[]):VerificationResult {
     const failures:string[]=[];
@@ -36,16 +57,27 @@ export class VerificationEngine {
     const text=criteria.trim();
     if(text==="done"||text==="echo")return{supported:true,matched:result!==null&&result!==undefined,reason:result!==null&&result!==undefined?"":`Success criterion failed: ${text}`};
     if(text==="approved"){const actual=this.readPath(result,"approved");return{supported:true,matched:actual===true,reason:actual===true?"":"Success criterion failed: approved"};}
-    const equality=/^result(?:\.([A-Za-z_$][\w$]*))?\s*(===|==|!==|!=)\s*(.+)$/i.exec(text);
+    // A bare result path is an existence assertion, not a free-form phrase.
+    // This supports planner criteria such as result.system / result.providers while keeping
+    // missing or null fields a hard verification failure.
+    const pathOnly=/^result\.([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)$/i.exec(text);
+    if(pathOnly){
+      const actual=this.readPath(result,pathOnly[1]);
+      const matched=actual!==null&&actual!==undefined;
+      return{supported:true,matched,reason:matched?"":`Success criterion failed: ${text} (value is missing or null)`};
+    }
+    const equality=/^result(?:\.([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*))?\s*(===|==|!==|!=)\s*(.+)$/i.exec(text);
     if(equality){
       const actual=this.readPath(result,equality[1]??"");
       const expected=this.parseLiteral(equality[3]??"");
       if(!expected.supported)return{supported:false,matched:false,reason:`Unsupported success criterion: ${text}`};
-      const equal=this.same(actual,expected.value);
+      // Match JavaScript-style nullish comparison for == null / != null, but keep strict operators strict.
+      const looseNull=(equality[2]==="=="||equality[2]==="!=")&&expected.value===null;
+      const equal=looseNull?(actual===null||actual===undefined):this.same(actual,expected.value);
       const matched=equality[2]==="==="||equality[2]==="=="?equal:!equal;
       return{supported:true,matched,reason:matched?"":`Success criterion failed: ${text} (actual=${JSON.stringify(actual)})`};
     }
-    const comparison=/^result(?:\.([A-Za-z_$][\w$]*))?\s*(>=|<=|>|<)\s*(-?(?:\d+\.?\d*|\.\d+))$/i.exec(text);
+    const comparison=/^result(?:\.([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*))?\s*(>=|<=|>|<)\s*(-?(?:\d+\.?\d*|\.\d+))$/i.exec(text);
     if(comparison){
       const actual=this.readPath(result,comparison[1]??"");
       const expected=Number(comparison[3]);
@@ -54,7 +86,7 @@ export class VerificationEngine {
       const matched=op===">"?actual>expected:op===">="?actual>=expected:op==="<"?actual<expected:actual<=expected;
       return{supported:true,matched,reason:matched?"":`Success criterion failed: ${text} (actual=${actual})`};
     }
-    const contains=/^result(?:\.([A-Za-z_$][\w$]*))?\s+contains\s+(.+)$/i.exec(text);
+    const contains=/^result(?:\.([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*))?\s+contains\s+(.+)$/i.exec(text);
     if(contains){
       const actual=this.readPath(result,contains[1]??"");
       const expected=this.parseLiteral(contains[2]??"");
@@ -62,7 +94,7 @@ export class VerificationEngine {
       const matched=typeof actual==="string"&&typeof expected.value==="string"?actual.includes(expected.value):Array.isArray(actual)?actual.some(item=>this.same(item,expected.value)):false;
       return{supported:true,matched,reason:matched?"":`Success criterion failed: ${text}`};
     }
-    const length=/^result(?:\.([A-Za-z_$][\w$]*))?\.(?:length|count)\s*(===|==|!==|!=|>=|<=|>|<)\s*(\d+)$/i.exec(text);
+    const length=/^result(?:\.([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*))?\.(?:length|count)\s*(===|==|!==|!=|>=|<=|>|<)\s*(\d+)$/i.exec(text);
     if(length){
       const actual=this.readPath(result,length[1]??"");
       const size=typeof actual==="string"||Array.isArray(actual)?actual.length:undefined;
@@ -72,7 +104,7 @@ export class VerificationEngine {
       const matched=op==="=="||op==="==="?size===expected:op==="!="||op==="!=="?size!==expected:op===">"?size>expected:op===">="?size>=expected:op==="<"?size<expected:size<=expected;
       return{supported:true,matched,reason:matched?"":`Success criterion failed: ${text} (actual=${size})`};
     }
-    const exists=/^result(?:\.([A-Za-z_$][\w$]*))?\s+(exists|is present|is not empty)$/i.exec(text);
+    const exists=/^result(?:\.([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*))?\s+(exists|is present|is not empty)$/i.exec(text);
     if(exists){
       const actual=this.readPath(result,exists[1]??"");
       const present=actual!==null&&actual!==undefined&&!(exists[2]!.toLowerCase()==="is not empty"&&(actual===""||(Array.isArray(actual)&&!actual.length)));
