@@ -7,6 +7,7 @@ import {trustLevel} from "./trust.js";
 import {knowledgeSummary,recordIssue,refreshKnowledge,updateHealth} from "./knowledge.js";
 import {buildRepoMap} from "./repo-map.js";
 import {isLocalPreview} from "../platform/open-url.js";
+import {openRequest} from "../tools/open-app.js";
 import {errorSignature,findLessons,guidanceText,listLessons,listPlaybooks,markLessons,matchPlaybooks,recordLesson,recordPlaybookOutcome,savePlaybookCandidate,trustProjectPlaybook} from "./learning.js";
 
 /**
@@ -79,6 +80,25 @@ const OPEN_WHEN_DONE=new RegExp(`(${OPEN_WORD})[\\s\\S]{0,60}(${DONE_WORD})|(${D
 /** "When you finish, open it" / "افتحه عند الانتهاء": the owner wants to see the result in the browser. */
 export function wantsOpenWhenDone(text:string):boolean{return OPEN_WHEN_DONE.test(text);}
 
+/**
+ * Recognise a simple, explicit app-opening request so the supervisor does not invent a research
+ * milestone for a local Windows action. Only known apps/URLs accepted by openRequest are fast-pathed.
+ */
+function directDesktopOpenGoal(text:string):{app?:string;url?:string;label:string;command:string}|undefined{
+  if(text.length>240||text.includes("\\n"))return undefined;
+  let command=text.trim()
+    .replace(/(?:[،,;؛.]?\\s*)(?:وتأكد(?:\\s+من)?|وتحقق(?:\\s+من)?|وتاكد(?:\\s+من)?|وتثبت(?:\\s+من)?|تأكد من نجاح|تحقق من نجاح|and\\s+(?:verify|confirm|check|make sure)|then\\s+(?:verify|confirm|check)|make sure(?:\\s+that)?|verify(?:\\s+that)?|confirm(?:\\s+that)?)[\\s\\S]*$/iu,"")
+    .replace(/\\s+(?:على|في)\\s+(?:جهازي|جهاز الكمبيوتر|هذا الجهاز|الكمبيوتر|الحاسوب|سطح المكتب)(?:\\s+.*)?$/iu,"")
+    .replace(/\\s+(?:on|in)\\s+(?:my|this|the)\\s+(?:computer|pc|device|desktop)(?:\\s+.*)?$/iu,"")
+    // People often write both the Arabic and English name of the same program.
+    .replace(/المفكر[هة]\\s+notepad$/iu,"Notepad")
+    .replace(/[،,;؛.!؟?]+$/u,"")
+    .trim();
+  const request=openRequest(command);
+  if(!request)return undefined;
+  return{...request,command:request.app?("افتح "+request.app):("افتح "+request.url)};
+}
+
 const MAX_ATTEMPTS=4;
 
 function now(){return new Date().toISOString();}
@@ -128,6 +148,14 @@ export class Supervisor{
   resume(id:string):SupervisorJob{
     const job=this.jobs.get(id);if(!job)throw new Error("job_not_found");
     if(!["failed","cancelled","budget_exhausted"].includes(job.status))throw new Error("job_not_stopped");
+    // A previous planner sometimes turned "open Notepad" into a research task. If nothing
+    // actually finished, rebuild that stale plan instead of resuming the same invalid first milestone.
+    if(directDesktopOpenGoal(job.goal)&&job.current===0&&job.milestones.length>0
+      &&job.milestones.every(m=>m.status!=="done")&&job.milestones[0]?.kind!=="desktop"){
+      job.milestones=[];job.checks=null;job.specChecks=undefined;job.acceptance=[];
+      job.baseline=undefined;job.lastChecks=undefined;job.current=0;
+      this.log(job,"Replanning the unfinished desktop-open request with the direct desktop workflow");
+    }
     job.deadline=new Date(Date.now()+(job.budgetMinutes??120)*60_000).toISOString();
     job.rounds=0;job.finalRepairs=0;job.result=undefined;job.waiting=undefined;job.resumed=(job.resumed??0)+1;
     const m=job.milestones[job.current];
@@ -243,9 +271,22 @@ export class Supervisor{
       `Goal: ${job.goal}`
     ].filter(Boolean).join("\n");
     let spec:any=null;
-    try{spec=extractJson(await this.deps.think(prompt));}catch(e){this.log(job,"Local planner failed: "+(e as Error).message,"warn");}
-    if(!spec?.milestones?.length&&this.deps.cloudAvailable()){
-      try{spec=extractJson(await this.deps.think(prompt,{cloud:true}));if(spec){job.cloudUsed=true;this.log(job,"Planned with a cloud model (the local one could not)");}}catch{}
+    const directOpen=directDesktopOpenGoal(job.goal);
+    if(directOpen){
+      spec={
+        acceptance:[`تم فتح ${directOpen.label} بنجاح`,`نافذة ${directOpen.label} ظاهرة على سطح المكتب`],
+        milestones:[
+          {title:`فتح ${directOpen.label}`,goal:directOpen.command,kind:"desktop"},
+          {title:"التحقق من النافذة",goal:`تحقق من أن نافذة ${directOpen.label} ظاهرة على سطح مكتب Windows باستخدام أدوات قراءة النوافذ أو شجرة الواجهة، ولا تغلق التطبيق.`,kind:"desktop"}
+        ],
+        checks:{install:false,test:false,build:false,typecheck:false,lint:false,security:false,browser:null}
+      };
+      this.log(job,"Recognised a direct desktop-open request; skipped research and planned opening plus window verification");
+    }else{
+      try{spec=extractJson(await this.deps.think(prompt));}catch(e){this.log(job,"Local planner failed: "+(e as Error).message,"warn");}
+      if(!spec?.milestones?.length&&this.deps.cloudAvailable()){
+        try{spec=extractJson(await this.deps.think(prompt,{cloud:true}));if(spec){job.cloudUsed=true;this.log(job,"Planned with a cloud model (the local one could not)");}}catch{}
+      }
     }
     const kinds:MilestoneKind[]=["code","test","research","desktop","business","general"];
     const milestones:Milestone[]=(Array.isArray(spec?.milestones)?spec.milestones:[]).slice(0,6)
