@@ -106,6 +106,8 @@ details input,details select{width:100%;font:inherit;padding:.5rem .7rem;border-
     <button class="act primary" id="briefPlay" type="button">اسمع التقرير</button>
   </div>
 
+  <button class="act primary" id="soundBtn" type="button" style="width:100%;margin:.6rem 0" hidden>🔊 اضغط مرة واحدة ليتحدث المساعد بصوته</button>
+
   <ul class="log" id="log" aria-live="polite"></ul>
 
   <form class="say" id="sayForm" autocomplete="off">
@@ -145,7 +147,7 @@ var L={
   engineFree:"التعرف على الكلام من المتصفح (مجاني؛ يعالجه Microsoft أو Google). العقل: النموذج المحلي في LayanX.",
   realtime:"محادثة مباشرة (OpenAI)",realtimeStop:"إنهاء المحادثة المباشرة",auto:"تلقائي",
   engineLocal:"التعرف على الكلام محلي على جهازك عبر Whisper؛ لا يخرج صوتك من الجهاز. العقل: النموذج المحلي في LayanX.",
-  engineL:"التعرف على الكلام",engAuto:"تلقائي",engLocal:"محلي على جهازي (Whisper)",engBrowser:"المتصفح",noLocal:"Whisper المحلي غير مشغّل؛ أستخدم المتصفح.",transcribing:"أحوّل كلامك إلى نص…",sayIt:"نعم؟ أستمع…",heard:"سمعت:"},
+  engineL:"التعرف على الكلام",engAuto:"تلقائي",engLocal:"محلي على جهازي (Whisper)",engBrowser:"المتصفح",noLocal:"Whisper المحلي غير مشغّل؛ أستخدم المتصفح.",transcribing:"أحوّل كلامك إلى نص…",sayIt:"نعم؟ أستمع…",heard:"سمعت:",soundBtn:"🔊 اضغط مرة واحدة ليتحدث المساعد بصوته"},
  en:{idle:"Ready",ready:"Ready",off:"Assistant is off",wake:"Waiting for my name…",listen:"Listening…",think:"Thinking…",speak:"Speaking…",
   hintWake:"Say \"Jarvis\" or \"Layan\" followed by your request, e.g. Jarvis, give me today's report",hintTap:"Tap the circle and speak, or type below",
   noSR:"This browser can't recognise speech. Use Microsoft Edge or Google Chrome, or type your request.",
@@ -157,7 +159,7 @@ var L={
   engineFree:"Speech recognition by the browser (free; processed by Microsoft or Google). Brain: the local LayanX model.",
   realtime:"Live conversation (OpenAI)",realtimeStop:"End live conversation",auto:"Automatic",
   engineLocal:"Speech recognition runs on this computer with Whisper; your voice never leaves it. Brain: the local LayanX model.",
-  engineL:"Speech recognition",engAuto:"Automatic",engLocal:"On this computer (Whisper)",engBrowser:"Browser",noLocal:"Local Whisper is not running; using the browser.",transcribing:"Transcribing…",sayIt:"Yes? I'm listening…",heard:"Heard:"}
+  engineL:"Speech recognition",engAuto:"Automatic",engLocal:"On this computer (Whisper)",engBrowser:"Browser",noLocal:"Local Whisper is not running; using the browser.",transcribing:"Transcribing…",sayIt:"Yes? I'm listening…",heard:"Heard:",soundBtn:"🔊 Click once so the assistant can speak"}
 };
 var DEFAULT_WAKE="جارفيس, جارفس, ليان, ليين, ليانكس, لايان اكس, jarvis, layan, layanx, lion x";
 var S={engine:localStorage.getItem("lx.engine")||"auto",lang:localStorage.getItem("lx.lang")||"ar",always:localStorage.getItem("lx.always")==="1",speak:localStorage.getItem("lx.speak")!=="0",
@@ -217,7 +219,10 @@ function say(text,lang){
    .then(function(blob){if(finished)return;var url=URL.createObjectURL(blob);player=new Audio(url);
     player.onended=function(){URL.revokeObjectURL(url);finish()};player.onerror=function(){URL.revokeObjectURL(url);finish()};
     return player.play()})
-   .catch(function(){if(finished)return;finished=true;speaking=false;stopBargeIn();sayDone=null;localTts=false;sayBrowser(text,lang).then(done)});
+   .catch(function(e){if(finished)return;finished=true;speaking=false;stopBargeIn();sayDone=null;
+    // The browser blocked sound (no click yet on this page): ask for one click and say it then.
+    if(e&&e.name==="NotAllowedError"){needSound(text,lang);done();return}
+    localTts=false;sayBrowser(text,lang).then(done)});
  })}
 /** Interrupt (barge-in): the user started talking while LayanX was speaking. */
 function startBargeIn(){if(!useLocal()||!mic.ctx||blocked)return;mic.mode="barge";mic.buf=[];mic.voiced=0;mic.silence=0;mic.active=true}
@@ -228,10 +233,24 @@ function sayBrowser(text,lang){return new Promise(function(done){
  var u=new SpeechSynthesisUtterance(text);u.lang=lang==="en"?"en-US":"ar-SA";var v=pickVoice(lang==="en"?"en":"ar");if(v)u.voice=v;u.rate=1.02;
  speaking=true;setState("speak");var finished=false;
  var finish=function(){if(finished)return;finished=true;speaking=false;done()};
- u.onend=finish;u.onerror=finish;
+ u.onend=finish;u.onerror=function(e){if(e&&e.error==="not-allowed")needSound(text,lang);finish()};
  speechSynthesis.speak(u);
  setTimeout(function(){if(!speechSynthesis.speaking)finish()},Math.max(5000,text.length*130));
 })}
+/**
+ * Browsers play sound only after the user clicked the page, or while the page is using the microphone.
+ * Opened by LayanX (?listen=1) and spoken to without a click, the replies were silent with the
+ * browser's speech recognition. So: while listening all the time, the page holds the microphone it
+ * already has permission for (nothing is recorded or sent), and if sound is still blocked a single
+ * "click once" button appears and plays the reply that was missed.
+ */
+var holdStream=null,missed=null;
+function holdMic(on){
+ if(!on){if(holdStream){holdStream.getTracks().forEach(function(x){x.stop()});holdStream=null}return}
+ if(holdStream||useLocal()||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return;
+ navigator.mediaDevices.getUserMedia({audio:true}).then(function(s){if(!S.always){s.getTracks().forEach(function(x){x.stop()});return}holdStream=s}).catch(function(){})}
+function needSound(text,lang){missed={text:text,lang:lang};var b=$("soundBtn");b.textContent=t("soundBtn");b.hidden=false}
+function soundUnlocked(){var b=$("soundBtn");if(b.hidden)return;b.hidden=true;var m=missed;missed=null;if(m&&!busy)say(m.text,m.lang).then(function(){if(!busy)resumeListening()})}
 function stopSpeaking(){if("speechSynthesis" in window)speechSynthesis.cancel();if(sayDone)sayDone();speaking=false;if(!busy)resumeListening()}
 function chime(){try{var c=new (window.AudioContext||window.webkitAudioContext)();var o=c.createOscillator(),g=c.createGain();o.frequency.value=880;g.gain.value=0.06;o.connect(g);g.connect(c.destination);o.start();o.frequency.linearRampToValueAtTime(1320,c.currentTime+0.12);o.stop(c.currentTime+0.15)}catch(e){}}
 
@@ -278,7 +297,7 @@ function startRec(mode){
 function stopRec(){mic.active=false;mic.buf=[];mic.voiced=0;mic.silence=0;if(rec){var r=rec;rec=null;recMode=null;try{r.abort()}catch(e){}}}
 function scheduleResume(ms){clearTimeout(restartTimer);restartTimer=setTimeout(resumeListening,ms)}
 function pauseListening(){clearTimeout(restartTimer);stopRec()}
-function resumeListening(){if(busy||speaking||realtime)return;if(interrupted&&mic.mode==="command"&&mic.active)return;if(S.always&&canListen()&&!blocked)startRec("wake");else setState(canListen()?"idle":"off",canListen()?t("ready"):t("noSR"))}
+function resumeListening(){if(busy||speaking||realtime)return;if(interrupted&&mic.mode==="command"&&mic.active)return;holdMic(S.always&&!blocked);if(S.always&&canListen()&&!blocked)startRec("wake");else setState(canListen()?"idle":"off",canListen()?t("ready"):t("noSR"))}
 
 // ---------------------------------------------------------------- local speech-to-text (Whisper on this PC)
 var localStt=false;
@@ -296,7 +315,7 @@ function startLocal(mode){
   var src=ctx.createMediaStreamSource(stream),node=ctx.createScriptProcessor(4096,1,1);
   node.onaudioprocess=function(e){if(mic.active)onFrame(e.inputBuffer.getChannelData(0))};
   src.connect(node);node.connect(ctx.destination);
-  mic.ctx=ctx;mic.stream=stream;mic.node=node;mic.rate=ctx.sampleRate;mic.active=true;setState(mode==="wake"?"wake":"listen");
+  mic.ctx=ctx;mic.stream=stream;mic.node=node;mic.rate=ctx.sampleRate;mic.active=true;setState(mode==="wake"?"wake":"listen");holdMic(false);
  }).catch(function(){blocked=true;setState("off",t("denied"))})}
 /**
  * Energy-based voice detection: one utterance = speech followed by ~0.7 s of silence (max 15 s).
@@ -406,7 +425,7 @@ function setLang(lang){S.lang=lang;save();document.documentElement.lang=lang;doc
 
 document.querySelectorAll(".seg button").forEach(function(b){b.onclick=function(){setLang(b.dataset.lang)}});
 $("orb").onclick=function(){if(speaking){stopSpeaking();return}if(!canListen()){$("sayInput").focus();setState("off",t("noSR"));return}blocked=false;pauseListening();startRec("command")};
-$("always").checked=S.always;$("always").onchange=function(e){S.always=e.target.checked;blocked=false;save();$("hint").textContent=S.always?t("hintWake"):t("hintTap");pauseListening();resumeListening()};
+$("always").checked=S.always;$("always").onchange=function(e){S.always=e.target.checked;blocked=false;save();$("hint").textContent=S.always?t("hintWake"):t("hintTap");if(!S.always)holdMic(false);pauseListening();resumeListening()};
 $("speakOn").checked=S.speak;$("speakOn").onchange=function(e){S.speak=e.target.checked;save();if(!S.speak)stopSpeaking()};
 $("tasksOn").checked=S.tasks;$("tasksOn").onchange=function(e){S.tasks=e.target.checked;save()};
 $("wakeWords").value=S.wake;$("wakeWords").onchange=function(e){S.wake=e.target.value.trim()||DEFAULT_WAKE;e.target.value=S.wake;save()};
@@ -415,6 +434,9 @@ $("voiceSel").onchange=function(e){S.voice=e.target.value;save()};
 $("engineSel").value=S.engine;$("engineSel").onchange=function(e){S.engine=e.target.value;save();pauseListening();setLang(S.lang);resumeListening()};
 $("reportBtn").onclick=function(){handle(S.lang==="en"?"give me a status report":"أعطني تقرير اليوم")};
 $("stopBtn").onclick=stopSpeaking;
+$("soundBtn").onclick=soundUnlocked;
+document.addEventListener("pointerdown",function(e){if(e.target&&e.target.id!=="soundBtn")setTimeout(soundUnlocked,0)},true);
+document.addEventListener("keydown",function(){setTimeout(soundUnlocked,0)},true);
 $("realtimeBtn").onclick=function(){if(realtime)stopRealtime();else startRealtime()};
 $("sayForm").onsubmit=function(e){e.preventDefault();var v=$("sayInput").value;$("sayInput").value="";handle(v)};
 $("briefPlay").onclick=function(){say($("briefText").textContent,S.lang)};
@@ -429,7 +451,7 @@ api("/v1/assistant/briefing").then(function(d){var b=d.briefing;if(!b||!b.report
  $("briefText").textContent=b.report.text[S.lang]||b.report.text.ar;$("briefing").hidden=false}).catch(function(){});
 setLang(S.lang);
 resumeListening();
-window.__layanx={afterWake:afterWake,norm:norm,handle:handle,encodeWav:encodeWav,useLocal:function(){return useLocal()}};
+window.__layanx={afterWake:afterWake,norm:norm,handle:handle,encodeWav:encodeWav,useLocal:function(){return useLocal()},holdingMic:function(){return!!holdStream}};
 </script>
 </body></html>`;
 }
