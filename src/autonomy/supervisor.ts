@@ -145,17 +145,21 @@ export class Supervisor{
    * Continue a job that stopped (failed, cancelled, out of time or rounds) from where it stopped: finished
    * milestones stay finished, the stopped one gets fresh attempts, and the time and round budgets start again.
    */
+  private discardStaleDesktopOpenPlan(job:SupervisorJob):boolean{
+    // A previous planner sometimes turned "open Notepad" into a research task. If nothing actually
+    // finished, clear that invalid plan so the direct desktop workflow can replace it.
+    if(!directDesktopOpenGoal(job.goal)||job.current!==0||job.milestones.length===0
+      ||job.milestones.some(m=>m.status==="done")||job.milestones[0]?.kind==="desktop")return false;
+    job.milestones=[];job.checks=null;job.specChecks=undefined;job.acceptance=[];
+    job.baseline=undefined;job.lastChecks=undefined;job.current=0;job.waiting=undefined;
+    job.result=undefined;job.rounds=0;job.finalRepairs=0;
+    this.log(job,"Replanning the unfinished desktop-open request with the direct desktop workflow");
+    return true;
+  }
   resume(id:string):SupervisorJob{
     const job=this.jobs.get(id);if(!job)throw new Error("job_not_found");
     if(!["failed","cancelled","budget_exhausted"].includes(job.status))throw new Error("job_not_stopped");
-    // A previous planner sometimes turned "open Notepad" into a research task. If nothing
-    // actually finished, rebuild that stale plan instead of resuming the same invalid first milestone.
-    if(directDesktopOpenGoal(job.goal)&&job.current===0&&job.milestones.length>0
-      &&job.milestones.every(m=>m.status!=="done")&&job.milestones[0]?.kind!=="desktop"){
-      job.milestones=[];job.checks=null;job.specChecks=undefined;job.acceptance=[];
-      job.baseline=undefined;job.lastChecks=undefined;job.current=0;
-      this.log(job,"Replanning the unfinished desktop-open request with the direct desktop workflow");
-    }
+    this.discardStaleDesktopOpenPlan(job);
     job.deadline=new Date(Date.now()+(job.budgetMinutes??120)*60_000).toISOString();
     job.rounds=0;job.finalRepairs=0;job.result=undefined;job.waiting=undefined;job.resumed=(job.resumed??0)+1;
     const m=job.milestones[job.current];
@@ -190,7 +194,13 @@ export class Supervisor{
     try{this.deps.openUrl(job.preview);this.log(job,"Opened "+job.preview+" in the browser");}catch(e){this.log(job,"Could not open the browser: "+(e as Error).message,"warn");}
   }
   /** Resume jobs that were running when LayanX stopped. */
-  start(){for(const j of this.jobs.values())if(ACTIVE.includes(j.status))void this.drive(j.id);}
+  start(){
+    for(const job of this.jobs.values()){
+      if(!ACTIVE.includes(job.status))continue;
+      if(this.discardStaleDesktopOpenPlan(job))this.set(job,"planning","Recovered an unfinished desktop-open request after restart");
+      void this.drive(job.id);
+    }
+  }
   stop(){this.stopped=true;}
 
   // ------------------------------------------------------------ persistence
