@@ -1,4 +1,4 @@
-import {VerificationEngine} from "../src/core/verification.js";
+import {VerificationEngine,hasExplicitSuccessCriteria} from "../src/core/verification.js";
 import type {Mission} from "../src/core/types.js";
 
 function mission(overrides:Partial<Mission>={}):Mission{
@@ -18,6 +18,11 @@ function mission(overrides:Partial<Mission>={}):Mission{
 }
 
 const verifier=new VerificationEngine();
+
+if(!hasExplicitSuccessCriteria(["result.ready === true"]))throw new Error("Explicit result criteria should allow deterministic completion.");
+if(hasExplicitSuccessCriteria(["done"]))throw new Error("Generic done criterion must not trigger early deterministic completion.");
+if(hasExplicitSuccessCriteria(["finished"]))throw new Error("Descriptive criteria must not trigger early deterministic completion.");
+if(hasExplicitSuccessCriteria(["result.ready === true","finished"]))throw new Error("Mixed explicit and descriptive criteria must not trigger early deterministic completion.");
 
 const undefinedResult=verifier.verify(mission(),undefined,[]);
 if(undefinedResult.verified||!undefinedResult.failures.includes("Execution returned no result."))throw new Error("Undefined execution result was accepted.");
