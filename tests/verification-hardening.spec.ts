@@ -31,4 +31,18 @@ if(failedExecution.verified||!failedExecution.failures.includes("Execution step 
 const emptyCriterion=verifier.verify(mission(),{ok:true},[""]);
 if(emptyCriterion.verified||!emptyCriterion.failures.includes("Success criteria contains an empty item."))throw new Error("Empty success criterion was accepted.");
 
+const nestedPresent=verifier.verify(mission(),{runtime:{status:{state:"ready"}}},["result.runtime.status.state === \"ready\""]);
+if(!nestedPresent.verified)throw new Error("Nested result paths were not evaluated: "+nestedPresent.failures.join("; "));
+
+const nestedMissing=verifier.verify(mission(),{ready:true},["result.runtime.status != null"]);
+if(nestedMissing.verified)throw new Error("A missing nested result path incorrectly satisfied != null.");
+if(!nestedMissing.failures.some(f=>f.includes("Success criterion failed")))throw new Error("Missing nested path did not produce a precise verification failure.");
+
+const nullishAbsent=verifier.verify(mission(),{runtime:{}},["result.runtime.status != null"]);
+if(nullishAbsent.verified)throw new Error("undefined != null must fail under nullish comparison semantics.");
+
+const runtimeStatus=verifier.verify(mission(),{system:"LayanX AI",ready:true},["result.ready === true"]);
+if(!runtimeStatus.verified)throw new Error("A valid flat runtime.status field was rejected: "+runtimeStatus.failures.join("; "));
+
+
 console.log("Verification hardening passed.");
