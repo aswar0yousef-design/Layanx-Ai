@@ -380,7 +380,7 @@ export class LayanXCore{
       try{
         next=await this.aiPlanner.nextTool({
           goal:mission.goal,result:latest,tools:catalog,
-          requiredPermission:mission.requiredPermission,completedTools,memory:missionMemory,
+          requiredPermission:mission.requiredPermission,completedTools,successCriteria:mission.successCriteria?.length?mission.successCriteria:this.agents.get(agentId).successCriteria,memory:missionMemory,
           projectContext:await this.projectIntelligence.scan(projectId).then(intelligence=>({summary:intelligence.summary,markers:intelligence.markers,package:intelligence.package,files:intelligence.files.slice(0,80).map(file=>file.path)})).catch(error=>({unavailable:true,reason:error instanceof Error?error.message:"project intelligence unavailable"}))
         });
       }catch(error){
@@ -525,6 +525,7 @@ export class LayanXCore{
           result:{failure:activeFailure.error,previousResult:latest,attempt},
           tools:catalog,
           requiredPermission:current.requiredPermission,
+          successCriteria:current.successCriteria?.length?current.successCriteria:this.agents.get(agentId).successCriteria,
           completedTools:results.filter(item=>item.ok&&item.tool).map(item=>item.tool as string),
           memory:(await this.contextFabric.buildAsync({projectId,mission:current,query:current.goal,limit:12,maxChars:8000})).memories.map(entry=>({kind:entry.kind,summary:entry.summary,content:entry.content,tags:entry.tags})),
           projectContext:context
@@ -674,6 +675,7 @@ export class LayanXCore{
         const context=await this.projectIntelligence.scan(projectId).then(i=>({summary:i.summary,markers:i.markers,package:i.package,files:i.files.slice(0,80).map(f=>f.path)})).catch(error=>({unavailable:true,reason:error instanceof Error?error.message:"project intelligence unavailable"}));
         plan=await this.aiPlanner.nextTool({
           goal:current.goal,result:latest,tools:catalog,requiredPermission:current.requiredPermission,
+          successCriteria:current.successCriteria?.length?current.successCriteria:this.agents.get(agentId).successCriteria,
           routing,
           completedTools:plans.slice(0,index<0?plans.length:index).map(item=>item.tool),
           memory:(await this.contextFabric.buildAsync({projectId,mission:current,query:current.goal,limit:8,maxChars:6000})).memories.map(e=>({kind:e.kind,summary:e.summary,content:e.content,tags:e.tags})),
@@ -765,7 +767,7 @@ export class LayanXCore{
         }
         const repair=this.aiPlanner.nextTool({
           goal:current.goal,result:{failure:result.error,latest},tools:this.toolCatalog.list(this.agents.get(agentId),current.requiredPermission),
-          requiredPermission:current.requiredPermission,routing,completedTools:results.map(item=>(item as {tool?:string}).tool??""),
+          requiredPermission:current.requiredPermission,successCriteria:current.successCriteria?.length?current.successCriteria:this.agents.get(agentId).successCriteria,routing,completedTools:results.map(item=>(item as {tool?:string}).tool??""),
           projectContext:{repairAfterFailure:true}
         });
         const recoveryPlan=await repair;
