@@ -83,6 +83,40 @@ assert.equal(planningCalls,0,"the direct local app-open plan should not call a m
 assert.ok(result.log.some(line=>line.msg.includes("Replanning the unfinished desktop-open request")));
 assert.ok(result.log.some(line=>line.msg.includes("skipped research and planned opening plus window verification")));
 supervisor.stop();
+
+// A Windows restart can reload this same bad plan while the job is still marked "running".
+// Startup recovery must replan it too, without requiring the owner to wait for another failure.
+const startupJob:SupervisorJob={
+  ...oldJob,
+  id:"startup-stale-desktop-job",
+  status:"running",
+  updatedAt:now,
+  log:[{at:now,msg:"Simulated restart while the old research milestone was running"}],
+  milestones:oldJob.milestones.map(m=>({...m,missions:[...m.missions]}))
+};
+const startupFile=path.join(store,"startup-jobs.json");
+fs.writeFileSync(startupFile,JSON.stringify([startupJob]),"utf8");
+calls.length=0;
+const startupSupervisor=new Supervisor(deps,{file:startupFile,pollMs:5});
+startupSupervisor.start();
+const untilStartup=async(f:()=>boolean,ms=8000)=>{
+  const end=Date.now()+ms;
+  while(!f()){
+    if(Date.now()>end)throw new Error("startup recovery timeout: "+JSON.stringify(startupSupervisor.get(startupJob.id)?.log.slice(-8)));
+    await new Promise(resolve=>setTimeout(resolve,10));
+  }
+};
+await untilStartup(()=>["completed","failed"].includes(startupSupervisor.get(startupJob.id)!.status));
+const recovered=startupSupervisor.get(startupJob.id)!;
+assert.equal(recovered.status,"completed",recovered.log.map(line=>line.msg).join("\\n"));
+assert.equal(recovered.milestones.length,2);
+assert.ok(recovered.milestones.every(m=>m.kind==="desktop"));
+assert.deepEqual(calls.map(call=>call.agent),["operator","operator"]);
+assert.ok(recovered.log.some(line=>line.msg.includes("Recovered an unfinished desktop-open request after restart")));
+assert.ok(recovered.log.some(line=>line.msg.includes("Replanning the unfinished desktop-open request")));
+assert.equal(planningCalls,0,"startup recovery should not call an LLM planner for a known app-open command");
+startupSupervisor.stop();
+
 fs.rmSync(store,{recursive:true,force:true});
 fs.rmSync(workspace,{recursive:true,force:true});
-console.log("supervisor-direct-desktop: stale research plan is replaced by open-app and window-verification milestones");
+console.log("supervisor-direct-desktop: resume and startup both replace stale research plans with open-app and window-verification milestones");
