@@ -62,7 +62,7 @@ export class OAuthConnectionCenter{
   const c=this.config(provider),state=randomBytes(32).toString("base64url");for(const [key,p] of this.pending)if(Date.now()-p.createdAt>10*60_000)this.pending.delete(key);const pending:Pending={provider,state,accountId,createdAt:Date.now(),redirectUri:c.redirectUri};
   if(c.usePkce){const verifier=randomBytes(48).toString("base64url");pending.codeVerifier=verifier;}
   this.pending.set(state,pending);
-  const u=new URL(c.authorize);u.searchParams.set(provider==="tiktok"?"client_key":"client_id",c.clientId);u.searchParams.set("response_type","code");u.searchParams.set("redirect_uri",c.redirectUri);u.searchParams.set("scope",c.scopes.join(provider==="pinterest"?",":" "));u.searchParams.set("state",state);
+  const u=new URL(c.authorize);u.searchParams.set(provider==="tiktok"?"client_key":"client_id",c.clientId);u.searchParams.set("response_type","code");u.searchParams.set("redirect_uri",c.redirectUri);u.searchParams.set("scope",c.scopes.join(provider==="pinterest"||provider==="tiktok"?",":" "));u.searchParams.set("state",state);
   if(provider==="google"||provider==="youtube"){u.searchParams.set("access_type","offline");u.searchParams.set("prompt","consent");}
   if(pending.codeVerifier){u.searchParams.set("code_challenge",createHash("sha256").update(pending.codeVerifier).digest("base64url"));u.searchParams.set("code_challenge_method","S256");}
   for(const [k,v] of Object.entries(c.extra??{}))u.searchParams.set(k,v);
