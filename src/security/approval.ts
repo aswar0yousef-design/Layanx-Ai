@@ -70,6 +70,10 @@ export class ApprovalEngine{
  revokeMission(missionId:string){
   for(const [id,r] of this.requests)if(r.missionId===missionId)this.approved.delete(id);
  }
+ /** A deleted mission: its requests leave the approvals list (none of them can be approved any more). */
+ forgetMission(missionId:string){
+  for(const [id,r] of this.requests)if(r.missionId===missionId){this.requests.delete(id);this.approved.delete(id);this.rejected.delete(id);}
+ }
 
  list():ApprovalRequest[]{return[...this.requests.values()].map(request=>structuredClone(request));}
 

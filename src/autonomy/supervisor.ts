@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import {randomUUID} from "node:crypto";
-import {detectProject,type ProjectInfo} from "./project-runner.js";
+import {detectProject,placeholderTest,type ProjectInfo} from "./project-runner.js";
 import {projectDir} from "./project-dir.js";
 import {trustLevel} from "./trust.js";
 import {knowledgeSummary,recordIssue,refreshKnowledge,updateHealth} from "./knowledge.js";
@@ -115,6 +115,12 @@ export class Supervisor{
   list(projectId?:string){return[...this.jobs.values()].filter(j=>!projectId||j.projectId===projectId).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
   get(id:string){return this.jobs.get(id);}
   cancel(id:string){const j=this.jobs.get(id);if(!j)return false;if(ACTIVE.includes(j.status)){j.status="cancelled";j.result="Cancelled by the owner.";this.log(j,"Cancelled");this.save();}return true;}
+  /** The owner deletes a job made by mistake (stopping it first if it runs). Returns the missions its milestones ran. The project's files stay. */
+  remove(id:string):string[]{
+    const j=this.jobs.get(id);if(!j)throw new Error("job_not_found");
+    this.cancel(id);this.jobs.delete(id);this.save();
+    return j.milestones.flatMap(m=>m.missions);
+  }
   /**
    * Continue a job that stopped (failed, cancelled, out of time or rounds) from where it stopped: finished
    * milestones stay finished, the stopped one gets fresh attempts, and the time and round budgets start again.
@@ -420,6 +426,8 @@ export class Supervisor{
     const out:CheckResult[]=[];
     for(const name of ["typecheck","lint","test","build"] as const){
       if(!c[name])continue;
+      // A job planned before LayanX ignored the `npm init` placeholder still lists "test": it is not a test.
+      if(name==="test"&&placeholderTest(projectDir(job.projectId))){out.push({name,ok:true,skipped:true,summary:"no tests yet (npm init placeholder)"});continue;}
       const r=await this.tool(job,"project.run",{task:name});
       if(r==="waiting")return undefined;
       const d=r.data??{};

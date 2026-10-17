@@ -253,6 +253,15 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     if(!job){json(response,404,{ok:false,error:"job_not_found"});return;}
     if(request.method==="GET"&&parts.length===4){json(response,200,{ok:true,job});return;}
     if(request.method==="POST"&&parts[4]==="cancel"){supervisor.cancel(job.id);json(response,200,{ok:true,job});return;}
+    // Delete a job made by mistake, with the missions its milestones ran (recorded, or left by an attempt
+    // whose model failed before it could report one). Other jobs' missions and the project's files stay.
+    if(request.method==="POST"&&parts[4]==="delete"){
+     const others=new Set(supervisor.list().filter(j=>j.id!==job.id).flatMap(j=>j.milestones.flatMap(m=>m.missions)));
+     const prefix="Overall goal: "+job.goal+"\n";
+     const ids=new Set([...supervisor.remove(job.id),...options.core.missions.list().filter(m=>m.projectId===job.projectId&&m.goal.startsWith(prefix)).map(m=>m.id)]);
+     let missions=0;for(const id of ids)if(!others.has(id)&&await options.core.deleteMission(id,job.projectId).catch(()=>false))missions++;
+     json(response,200,{ok:true,deleted:job.id,missions});return;
+    }
     // Continue a stopped job from where it stopped.
     if(request.method==="POST"&&parts[4]==="resume"){json(response,200,{ok:true,job:supervisor.resume(job.id)});return;}
     // An instruction for a job that is running (or done): "when you finish, open it".
@@ -520,6 +529,18 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     const sessions=options.persistence?await Promise.all(missions.map(m=>options.core.getDevelopmentSessionState(m.id,projectId))):[];
     json(response,200,{ok:true,projectId,missions:missions.map(m=>({id:m.id,goal:m.goal,status:m.status})),sessions});
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"remote session state failed"});}
+   return;
+  }
+  if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/control-center\/missions\/[^/]+\/delete$/)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const id=request.url.split("/")[4] as string;
+   try{
+    const input=await body(request,max);
+    const projectId=typeof input.projectId==="string"?input.projectId.trim():"";
+    if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
+    if(!await options.core.deleteMission(id,projectId)){json(response,404,{ok:false,error:"mission_not_found"});return;}
+    json(response,200,{ok:true,deleted:id});
+   }catch(error){json(response,403,{ok:false,error:error instanceof Error?error.message:"mission deletion failed"});}
    return;
   }
   if(request.method==="POST"&&request.url?.split("?")[0]?.match(/^\/v1\/control-center\/missions\/[^/]+\/cancel$/)){
