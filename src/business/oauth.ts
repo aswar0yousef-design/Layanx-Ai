@@ -27,6 +27,7 @@ const PROVIDER_DEFAULTS:Partial<Record<OAuthProvider,Partial<OAuthConfig>>>={
  tiktok:{authorize:"https://www.tiktok.com/v2/auth/authorize/",token:"https://open.tiktokapis.com/v2/oauth/token/",usePkce:true},
  google:{authorize:"https://accounts.google.com/o/oauth2/v2/auth",token:"https://oauth2.googleapis.com/token"},
  youtube:{authorize:"https://accounts.google.com/o/oauth2/v2/auth",token:"https://oauth2.googleapis.com/token"},
+ x:{authorize:"https://x.com/i/oauth2/authorize",token:"https://api.x.com/2/oauth2/token",usePkce:true},
  linkedin:{authorize:"https://www.linkedin.com/oauth/v2/authorization",token:"https://www.linkedin.com/oauth/v2/accessToken"},
  pinterest:{authorize:"https://www.pinterest.com/oauth/",token:"https://api.pinterest.com/v5/oauth/token"} ,
 };
@@ -55,7 +56,7 @@ export class OAuthConnectionCenter{
   try{extra=env(p,"EXTRA_JSON")?JSON.parse(env(p,"EXTRA_JSON")!):undefined;}catch{throw new Error(`oauth_${provider}_extra_json_invalid`);}
   const reserved=new Set(["client_id","client_key","response_type","redirect_uri","scope","state","code_challenge","code_challenge_method"]);
   if(extra&&Object.keys(extra).some(k=>reserved.has(k.toLowerCase())))throw new Error(`oauth_${provider}_extra_overrides_reserved_parameter`);
-  return {authorize,token,clientId,clientSecret,redirectUri,scopes,usePkce:provider==="tiktok"||env(p,"USE_PKCE")==="true",extra};
+  return {authorize,token,clientId,clientSecret,redirectUri,scopes,usePkce:provider==="tiktok"||provider==="x"||d.usePkce===true||env(p,"USE_PKCE")==="true",extra};
  }
  cancel(state:string){return this.pending.delete(state);}
  begin(provider:OAuthProvider,accountId="default"){
@@ -72,7 +73,7 @@ export class OAuthConnectionCenter{
   const p=this.pending.get(state);if(!p||Date.now()-p.createdAt>10*60_000){this.pending.delete(state);throw new Error("oauth_state_invalid_or_expired");}
   this.pending.delete(state);const c=this.config(p.provider);
   const form=new URLSearchParams({[p.provider==="tiktok"?"client_key":"client_id"]:c.clientId,code,grant_type:"authorization_code",redirect_uri:p.redirectUri});if(c.clientSecret&&p.provider!=="pinterest")form.set("client_secret",c.clientSecret);if(p.codeVerifier)form.set("code_verifier",p.codeVerifier);
-  const headers:Record<string,string>={"content-type":"application/x-www-form-urlencoded"};if(p.provider==="pinterest"&&c.clientSecret)headers.Authorization=`Basic ${Buffer.from(`${c.clientId}:${c.clientSecret}`).toString("base64")}`;
+  const headers:Record<string,string>={"content-type":"application/x-www-form-urlencoded"};if((p.provider==="pinterest"||p.provider==="x")&&c.clientSecret){headers.Authorization=`Basic ${Buffer.from(`${c.clientId}:${c.clientSecret}`).toString("base64")}`;if(p.provider==="x"){form.delete("client_id");form.delete("client_secret");}}
   let response:Response;
   if(p.provider==="meta"){
    const u=new URL(c.token);form.forEach((v,k)=>u.searchParams.set(k,v));
@@ -93,7 +94,7 @@ export class OAuthConnectionCenter{
   if(value&&(!connection.expiresAt||Date.parse(connection.expiresAt)>Date.now()+60_000))return value;
   if(!connection.refreshTokenSecret)throw new Error("oauth_access_token_expired");
   const refresh=this.getVault().get(connection.refreshTokenSecret);if(!refresh)throw new Error("oauth_refresh_token_missing");
-  const c=this.config(connection.provider);const form=new URLSearchParams({[connection.provider==="tiktok"?"client_key":"client_id"]:c.clientId,refresh_token:refresh,grant_type:"refresh_token"});if(c.clientSecret&&c.clientId&&connection.provider!=="pinterest")form.set("client_secret",c.clientSecret);const headers:Record<string,string>={"content-type":"application/x-www-form-urlencoded"};if(connection.provider==="pinterest"&&c.clientSecret)headers.Authorization=`Basic ${Buffer.from(`${c.clientId}:${c.clientSecret}`).toString("base64")}`;
+  const c=this.config(connection.provider);const form=new URLSearchParams({[connection.provider==="tiktok"?"client_key":"client_id"]:c.clientId,refresh_token:refresh,grant_type:"refresh_token"});if(c.clientSecret&&c.clientId&&connection.provider!=="pinterest")form.set("client_secret",c.clientSecret);const headers:Record<string,string>={"content-type":"application/x-www-form-urlencoded"};if((connection.provider==="pinterest"||connection.provider==="x")&&c.clientSecret){headers.Authorization=`Basic ${Buffer.from(`${c.clientId}:${c.clientSecret}`).toString("base64")}`;if(connection.provider==="x"){form.delete("client_id");form.delete("client_secret");}}
   const response=await fetch(c.token,{method:"POST",headers,body:form,signal:AbortSignal.timeout(15_000)});const raw=await response.text();let d:any={};try{d=JSON.parse(raw);}catch{d={raw}}if(!response.ok)throw new Error(`oauth_refresh_${response.status}`);
   const payload=tokenPayload(d);if(d?.error||payload?.error)throw new Error("oauth_refresh_rejected");
   const access=String(payload.access_token??"");if(!access)throw new Error("oauth_access_token_missing");
@@ -157,7 +158,12 @@ export class OAuthConnectionCenter{
   const get=async(url:string,extra:Record<string,string>={})=>{const r=await fetch(url,{headers:{...headers,...extra}});const t=await r.text();let d:any={};try{d=t?JSON.parse(t):{}}catch{d={raw:t}}if(!r.ok)throw new Error(`oauth_ads_discovery_http_${r.status}`);return d;};
   switch(connection.provider){
    case "google":{
-    const d=await get("https://googleads.googleapis.com/v25/customers:listAccessibleCustomers");
+    const developerToken=localSecret("google.ads.developer_token",process.env.LAYANX_GOOGLE_ADS_DEVELOPER_TOKEN);
+    if(!developerToken)throw new Error("google_ads_developer_token_required");
+    const extra:Record<string,string>={"developer-token":developerToken};
+    const loginCustomerId=process.env.LAYANX_GOOGLE_ADS_LOGIN_CUSTOMER_ID?.replace(/\D/g,"");
+    if(loginCustomerId)extra["login-customer-id"]=loginCustomerId;
+    const d=await get("https://googleads.googleapis.com/v25/customers:listAccessibleCustomers",extra);
     return {provider:"google",accounts:(d.resourceNames??[]).map((x:string)=>({platform:"google",externalId:x.split("/").pop()??x,name:x}))};
    }
    case "linkedin":{
