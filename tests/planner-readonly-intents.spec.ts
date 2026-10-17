@@ -15,7 +15,8 @@ const runtime=await planner.plan("اقرأ حالة النظام وأخبرني 
 assert.equal(runtime.tools[0]?.tool,"runtime.status");
 const gmail=await planner.plan("ابحث في بريدي في Gmail عن فواتير الشهر الماضي",catalog);
 assert.equal(gmail.tools[0]?.tool,"google.gmail.search");
-assert.match(String(gmail.tools[0]?.payload?.query),/after:\d{4}\/\d{2}\/\d{2} before:\d{4}\/\d{2}\/\d{2}/);
+const now=new Date(),firstThis=new Date(now.getFullYear(),now.getMonth(),1),firstPrevious=new Date(now.getFullYear(),now.getMonth()-1,1),fmt=(d:Date)=>String(d.getFullYear())+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+String(d.getDate()).padStart(2,"0");
+assert.ok(String(gmail.tools[0]?.payload?.query).includes("after:"+fmt(firstPrevious)+" before:"+fmt(firstThis)),"Gmail query should cover exactly the previous calendar month");
 assert.match(String(gmail.tools[0]?.payload?.query),/invoice.*فاتورة|invoice OR invoices OR فاتورة/);
 const calendar=await planner.plan("ما هي مواعيدي القادمة في التقويم؟",catalog);
 assert.equal(calendar.tools[0]?.tool,"google.calendar.upcoming");
