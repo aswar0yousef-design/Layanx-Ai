@@ -51,7 +51,7 @@ export function registerTradingTools(core:LayanXCore,engine:PaperTradingEngine,s
 export function registerBuiltinTools(core:LayanXCore):void {
   core.tools.register({
     name:"runtime.status",
-    description:"read runtime status, configured providers, and registered models",
+    description:"read runtime status, configured providers, and registered models; returns a raw object with flat system:string and ready:boolean fields plus agents, providers, models, and tools arrays (status is not nested under runtime)",
     permission:"L1_READ",
     dangerous:false,
     actions:["read runtime status","inspect runtime","runtime status","قراءة حالة النظام","فحص التشغيل"],
