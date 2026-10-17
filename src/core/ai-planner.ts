@@ -28,7 +28,11 @@ function filterCatalogForGoal(goal:string,catalog:ToolCatalogEntry[]):ToolCatalo
 
 /** "Open Chrome" / «افتح واتساب» / "open youtube.com": one step, no model (it used to invent a tool that does not exist). */
 function deterministicOpenPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
- const request=openRequest(goal);
+ // Supervisor tasks include an overall goal and acceptance context. Use the explicit current milestone
+ // when one exists, so a wrapped "open Notepad" request still follows the deterministic open path.
+ const milestone=goal.split(/\\r?\\n/).find(line=>/^Current milestone \\(\\d+\\/\\d+\\):\\s*/i.test(line));
+ const openGoal=milestone?milestone.replace(/^Current milestone \\(\\d+\\/\\d+\\):\\s*/i,"").trim():goal;
+ const request=openRequest(openGoal);
  const tool=catalog.find(t=>t.name==="desktop.app.open");
  if(!request||!tool)return undefined;
  return{risk:"low",requiredPermission:tool.permission,
