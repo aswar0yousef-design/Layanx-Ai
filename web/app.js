@@ -14,7 +14,7 @@ const T={
   activeMissions:"المهام النشطة",successRate:"نسبة النجاح",tasksCompleted:"المهام المكتملة",connectedApps:"التطبيقات المتصلة",running:"قيد التنفيذ",queued:"في الانتظار",last30:"آخر 30 يوماً",thisWeek:"هذا الأسبوع",
   agentTitle:"وكيل LayanX الذكي",agentSub:"مساعدك الذكي للتطوير والأعمال والأتمتة",askAgent:"اطلب من LayanX تنفيذ أي شيء…",received:"تم استلام المهمة، جارٍ التنفيذ…",pausedApproval:"توقفت المهمة بأمان: خطوة تحتاج موافقتك.",completedVerified:"اكتملت المهمة وتم التحقق منها",notCompleted:"لم تكتمل المهمة",
   stop:"إيقاف",viewLogs:"السجلات",openFiles:"فتح الملفات",createPR:"إنشاء PR",approve:"موافقة",reject:"رفض",approveRun:"موافقة وتشغيل",
-  currentMission:"المهمة الحالية",noMission:"لا توجد مهمة الآن. اطلب شيئاً من لوحة الوكيل.",stepsDone:"{a}/{b} خطوات مكتملة",recentActivities:"آخر الأنشطة",viewAll:"عرض الكل",noActivity:"لا يوجد نشاط بعد.",
+  currentMission:"المهمة الحالية",noMission:"لا توجد مهمة الآن. اطلب شيئاً من لوحة الوكيل.",stepsDone:"{a}/{b} خطوات مكتملة",stepsSoFar:"{a} خطوات منجزة، ويختار الخطوة التالية",recentActivities:"آخر الأنشطة",viewAll:"عرض الكل",noActivity:"لا يوجد نشاط بعد.",
   st_done:"مكتملة",st_run:"قيد التنفيذ",st_pend:"معلّقة",st_wait:"بانتظار موافقة",st_fail:"فشلت",
   computerControl:"التحكم بالكمبيوتر",live:"مباشر",screenOff:"البث متوقف. اضغط «لقطة» أو ابدأ البث.",screenshot:"لقطة",mouse:"الفأرة",keyboard:"لوحة المفاتيح",apps:"التطبيقات",startLive:"بدء البث",stopLive:"إيقاف البث",
   terminalTitle:"الطرفية",restricted:"(مقيّدة)",termEmpty:"شغّل أمراً مسموحاً. الأوامر التي تنفّذ شيئاً تطلب موافقتك.",quickActions:"إجراءات سريعة",openVSCode:"فتح في VS Code",runTests:"تشغيل الاختبارات",buildProject:"بناء المشروع",createBranch:"إنشاء فرع",branchName:"اسم الفرع الجديد (مثال: feature/login)",
@@ -73,7 +73,7 @@ const T={
   activeMissions:"Active Missions",successRate:"Success Rate",tasksCompleted:"Tasks Completed",connectedApps:"Connected Apps",running:"running",queued:"queued",last30:"Last 30 days",thisWeek:"this week",
   agentTitle:"LayanX AI Agent",agentSub:"Your intelligent assistant for development, business and automation",askAgent:"Ask LayanX to do anything…",received:"Mission received, working on it…",pausedApproval:"Paused safely: a step needs your approval.",completedVerified:"Mission completed and verified",notCompleted:"Mission not completed",
   stop:"Stop",viewLogs:"View Logs",openFiles:"Open Files",createPR:"Create PR",approve:"Approve",reject:"Reject",approveRun:"Approve and run",
-  currentMission:"Current Mission",noMission:"No mission right now. Ask the agent for something.",stepsDone:"{a}/{b} steps completed",recentActivities:"Recent Activities",viewAll:"View all",noActivity:"No activity yet.",
+  currentMission:"Current Mission",noMission:"No mission right now. Ask the agent for something.",stepsDone:"{a}/{b} steps completed",stepsSoFar:"{a} steps done, choosing the next one",recentActivities:"Recent Activities",viewAll:"View all",noActivity:"No activity yet.",
   st_done:"Completed",st_run:"Running",st_pend:"Pending",st_wait:"Awaiting approval",st_fail:"Failed",
   computerControl:"Computer Control",live:"Live",screenOff:"Live view is off. Take a screenshot or start the stream.",screenshot:"Screenshot",mouse:"Mouse",keyboard:"Keyboard",apps:"Apps",startLive:"Start live",stopLive:"Stop live",
   terminalTitle:"Terminal",restricted:"(Restricted)",termEmpty:"Run an allowed command. Anything that executes asks for your approval.",quickActions:"Quick Actions",openVSCode:"Open VS Code",runTests:"Run Tests",buildProject:"Build Project",createBranch:"Create Branch",branchName:"New branch name (e.g. feature/login)",
@@ -233,10 +233,14 @@ const STATUS_CLASS={done:"s-done",run:"s-run",pend:"s-pend",wait:"s-wait",fail:"
 const missionState=s=>s==="completed"?"done":["running","verifying","planned"].includes(s)?"run":s==="awaiting_approval"?"wait":["failed","blocked","cancelled"].includes(s)?"fail":"pend";
 const isQuick=m=>(m.tools||[]).length===1&&m.tools[0].reason==="owner quick action";
 const agentMissions=()=>S.missions.filter(m=>!isQuick(m));
+/** A mission an autonomous job ran for one of its milestones: it belongs to that job and is shown inside it, never alone. */
+const JOB_TASK=/^Overall goal: /;
+const jobMissionIds=()=>new Set(S.jobs.flatMap(j=>(j.milestones||[]).flatMap(m=>m.missions||[])));
+const ownMissions=()=>{const ids=jobMissionIds();return agentMissions().filter(m=>!ids.has(m.id)&&!JOB_TASK.test(m.goal||""));};
 const isPending=a=>a.pending??!a.approved;
 const waitingFor=id=>S.approvals.some(a=>isPending(a)&&a.missionId===id);
 const stateOf=m=>waitingFor(m.id)?"wait":missionState(m.status);
-const goalText=m=>isQuick(m)?(m.tools[0].payload&&m.tools[0].payload.command?"> "+m.tools[0].payload.command:m.tools[0].tool):(m.goal||m.id).split("\n")[0];
+const goalText=m=>isQuick(m)?(m.tools[0].payload&&m.tools[0].payload.command?"> "+m.tools[0].payload.command:m.tools[0].tool):(m.goal||m.id).split("\n")[0].replace(JOB_TASK,"");
 const pill=(state,text)=>el("span",{class:"status "+(STATUS_CLASS[state]||"s-pend"),text:text||t("st_"+state)});
 const TOOL_LABEL={"apis.search":"tl_apis","files.write":"tl_files_write","files.read":"tl_files_read","terminal.exec":"tl_terminal","git.commit":"tl_git_commit","git.push":"tl_git_push","git.status":"tl_git_status","desktop.screenshot":"tl_shot","desktop.mouse.click":"tl_click","desktop.keyboard.type":"tl_type","project.verify":"tl_verify","research.internet":"tl_research",
   "trading.mt5.account":"tl_mt5_read","trading.mt5.positions":"tl_mt5_read","trading.mt5.quote":"tl_mt5_read","trading.mt5.candles":"tl_mt5_read","trading.mt5.history":"tl_mt5_read",
@@ -283,12 +287,12 @@ function integrationStatus(){
   ["VS Code / Phone",(s.devices||[]).length?"on":"off",(s.devices||[]).length+" devices"]
  ];
 }
-function projectPath(){
+function projectPath(name=project()){
  const w=S.setup?.workspace;if(!w)return"";
- const id=project().toLowerCase();const linked=(w.linked||[]).find(l=>l.projectId.toLowerCase()===id);
- if(linked)return linked.path;const sep=(w.root||"").includes("\\")?"\\":"/";return(w.root||"")+sep+project();
+ const id=name.toLowerCase();const linked=(w.linked||[]).find(l=>l.projectId.toLowerCase()===id);
+ if(linked)return linked.path;const sep=(w.root||"").includes("\\")?"\\":"/";return(w.root||"")+sep+name;
 }
-const vscodeUrl=()=>{const p=projectPath();return p?"vscode://file/"+encodeURI(p.replace(/\\/g,"/")):"#";};
+const vscodeUrl=(name)=>{const p=projectPath(name);return p?"vscode://file/"+encodeURI(p.replace(/\\/g,"/")):"#";};
 
 // ------------------------------------------------------------------ approvals
 async function decideApproval(a,action,onResult){
@@ -347,6 +351,9 @@ function jobView(j,full){
  const approve=j.status==="waiting_approval"&&j.waiting?el("button",{class:"btn warn small",onclick:async e=>{e.target.disabled=true;try{await api("/v1/approvals/"+encodeURIComponent(j.waiting.approvalId)+"/approve?projectId="+encodeURIComponent(j.projectId),{method:"POST",body:{}});toast(t("approved"));}catch(err){toast(err.message);}}},t("approve")):null;
  const stopped=JOB_STOPPED.includes(j.status);const stuck=j.milestones[Math.min(j.current,Math.max(total-1,0))];
  const summary=j.status==="completed"?el("div",{class:"job-sum ok",text:"✓ "+t("jobDoneSummary",{a:done,b:total})}):stopped&&stuck?el("div",{class:"job-sum bad",dir:"auto",text:t("jobStoppedAt",{n:Math.min(j.current+1,total),title:stuck.title})}):null;
+ // Where the job's files are (the site itself opens with "Open the site").
+ const where=projectPath(j.projectId);
+ const files=where?el("div",{class:"small muted",style:"margin-top:.3rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap"},el("span",{text:t("folderPath")+":"}),el("span",{class:"mono",dir:"ltr",text:where}),el("a",{class:"link",href:vscodeUrl(j.projectId),text:t("openVSCode")})):null;
  const notes=(j.notes||[]).length||j.openWhenDone?el("div",{class:"small muted",dir:"auto",style:"margin-top:.3rem"},(j.notes||[]).length?t("ownerNotesL")+": "+j.notes.slice(-3).join(" · "):"",j.openWhenDone&&JOB_ACTIVE.includes(j.status)?((j.notes||[]).length?" — ":"")+t("willOpenL"):""):null;
  return el("section",{class:"card",style:"margin-bottom:1rem"},
   el("div",{class:"card-head"},el("h3",{dir:"auto",text:j.goal.split("\n")[0].slice(0,140)}),el("div",{style:"display:flex;gap:.4rem;align-items:center;flex-wrap:wrap"},pill(jobState(j),t("j_"+j.status)),approve,
@@ -356,7 +363,7 @@ function jobView(j,full){
    el("button",{class:"btn small",text:t("logL"),onclick:()=>{box.hidden=!box.hidden;}}))),
   el("div",{class:"small muted",style:"display:flex;justify-content:space-between"},el("span",{text:t("stepsDone",{a:done,b:total||"—"})+" · "+t("trustL")+": "+t("t_"+j.trust).split(":")[0]+(j.cloudUsed?" · "+t("cloudUsedL"):"")+(j.externalUsed&&j.externalUsed.length?" · "+j.externalUsed.join(", "):"")}),el("span",{text:pct+"%"})),
   el("div",{class:"progress"},el("i",{style:"width:"+pct+"%"})),
-  summary,notes,
+  summary,files,notes,
   el("ul",{class:"steps"},j.milestones.map((m,i)=>el("li",{class:i===j.current&&JOB_ACTIVE.includes(j.status)?"current":""},el("span",{class:"tick "+(m.status==="done"?"done":m.status==="failed"?"fail":i===j.current&&j.status==="waiting_approval"?"wait":i===j.current&&JOB_ACTIVE.includes(j.status)?"run":"pend"),text:m.status==="done"?"✓":m.status==="failed"?"!":""}),
    el("span",{class:"t",dir:"auto",text:m.title}),el("span",{class:"status s-pend",text:t("ag_"+m.agent)}),m.attempts>1?el("span",{class:"status s-wait",text:"×"+m.attempts}):null))),
   j.lastChecks&&j.lastChecks.length?el("div",{class:"chips"},j.lastChecks.map(c=>el("span",{class:"status "+(c.ok?"s-done":"s-fail"),text:c.name}))):null,
@@ -523,7 +530,9 @@ function systemCard(){
 }
 async function refreshSystem(){await loadSystem();if(current!=="dashboard")return;const o=document.getElementById("sysLoad");if(o)o.replaceWith(systemCard());}
 function kpiCards(){
- const ms=agentMissions();const now=Date.now();
+ // A task is a mission of its own or an autonomous job (the missions a job runs for its milestones count in the job).
+ const jobStatus=j=>j.status==="completed"?"completed":j.status==="queued"?"planned":JOB_ACTIVE.includes(j.status)?"running":j.status==="cancelled"?"cancelled":"failed";
+ const ms=[...ownMissions(),...S.jobs.map(j=>({status:jobStatus(j),createdAt:j.createdAt}))];const now=Date.now();
  const active=ms.filter(m=>["running","verifying","planned"].includes(m.status));const runningN=active.filter(m=>m.status!=="planned").length;
  const recent=ms.filter(m=>now-Date.parse(m.createdAt||0)<30*864e5);const done=recent.filter(m=>m.status==="completed").length;const finished=recent.filter(m=>["completed","failed","blocked"].includes(m.status)).length;
  const completed=ms.filter(m=>m.status==="completed");const week=completed.filter(m=>now-Date.parse(m.createdAt||0)<7*864e5).length;
@@ -536,16 +545,26 @@ function kpiCards(){
   k("c-purple","nodes",t("connectedApps"),String(on.length),on.slice(0,3).map(x=>x[0]).join(LANG==="ar"?"، ":", ")||"—"));
 }
 function currentMissionCard(){
+ const asCard=j=>{const v=jobView(j,false);v.id="curMission";return v;};
  const job=S.jobs.find(j=>JOB_ACTIVE.includes(j.status));
- if(job){const v=jobView(job,false);v.id="curMission";return v;}
- const am=agentMissions();const m=am.find(x=>["running","verifying","planned"].includes(x.status)||waitingFor(x.id))||am[0];
+ if(job)return asCard(job);
+ const am=ownMissions();let m=am.find(x=>["running","verifying","planned"].includes(x.status)||waitingFor(x.id));
+ if(!m){
+  // Nothing running: the newest of the last job and the last mission, so a finished website shows with its "open the site" button.
+  const last=S.jobs.slice().sort((a,b)=>Date.parse(b.updatedAt||b.createdAt||0)-Date.parse(a.updatedAt||a.createdAt||0))[0];
+  if(last&&(!am[0]||Date.parse(last.updatedAt||last.createdAt||0)>=Date.parse(am[0].createdAt||0)))return asCard(last);
+  m=am[0];
+ }
  if(!m)return el("section",{class:"card",id:"curMission"},el("div",{class:"card-head"},el("h3",{text:t("currentMission")})),el("div",{class:"empty",text:t("noMission")}));
- const steps=deriveSteps(S.details.get(m.id));const done=steps.filter(s=>s.state==="done").length;const pct=steps.length?Math.round(done/steps.length*100):(m.status==="completed"?100:0);
- const curIdx=steps.findIndex(s=>s.state==="run"||s.state==="wait");
+ const steps=deriveSteps(S.details.get(m.id));const done=steps.filter(s=>s.state==="done").length;
  const st=stateOf(m);
+ // The agent picks its next step as it goes: while it works, the steps so far are not the whole job (never 100%).
+ const open=st==="run"&&steps.length>0&&done===steps.length;
+ const pct=open?Math.round(done/(done+1)*100):steps.length?Math.round(done/steps.length*100):(m.status==="completed"?100:0);
+ const curIdx=steps.findIndex(s=>s.state==="run"||s.state==="wait");
  return el("section",{class:"card",id:"curMission"},el("div",{class:"card-head"},el("h3",{text:t("currentMission")}),pill(st)),
   el("div",{class:"mission-goal",dir:"auto",text:goalText(m).slice(0,140)}),
-  el("div",{class:"small muted",style:"display:flex;justify-content:space-between"},el("span",{text:t("stepsDone",{a:done,b:steps.length||"—"})}),el("span",{text:pct+"%"})),
+  el("div",{class:"small muted",style:"display:flex;justify-content:space-between"},el("span",{text:open?t("stepsSoFar",{a:done}):t("stepsDone",{a:done,b:steps.length||"—"})}),el("span",{text:open?"…":pct+"%"})),
   el("div",{class:"progress"},el("i",{style:"width:"+pct+"%"})),
   el("ul",{class:"steps"},steps.slice(0,8).map((s,i)=>el("li",{class:i===curIdx?"current":""},el("span",{class:"tick "+s.state,text:s.state==="done"?"✓":s.state==="fail"?"!":""}),el("span",{class:"t",dir:"auto",text:s.label}),pill(s.state)))));
 }

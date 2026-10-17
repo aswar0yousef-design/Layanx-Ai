@@ -595,7 +595,29 @@ export class LayanXCore{
     return{goal:mission.goal,projectId,agentId,...result,missionId:mission.id,...(hint?{modelRouting:{cloud:!hint.preferLocal,reason:hint.reason,...(hint.tags?{provider:hint.tags[0]}:{})}}:{})};
   }
 
+  /**
+   * The agent loop, plus one guarantee: a mission the loop leaves without finishing (the model returned
+   * invalid JSON, timed out, or nothing ran) is marked failed, so it never shows as "running" forever.
+   * A mission paused for an approval, cancelled, or of another project is left as it is.
+   */
   async executeAgentLoop(missionId:string,projectId:string,maxSteps=10,approvalIds:Record<number,string>={},agentId="core",routing?:ModelRoutingOptions){
+    let result:Awaited<ReturnType<LayanXCore["runAgentLoop"]>>;
+    try{result=await this.runAgentLoop(missionId,projectId,maxSteps,approvalIds,agentId,routing);}
+    catch(error){await this.stopUnfinishedMission(missionId,projectId,error instanceof Error?error.message:String(error));throw error;}
+    if(!result.completed&&!("paused" in result&&result.paused)&&await this.stopUnfinishedMission(missionId,projectId,"reason" in result&&typeof result.reason==="string"?result.reason:"The agent stopped before finishing."))
+      return{...result,status:"failed" as const};
+    return result;
+  }
+  private async stopUnfinishedMission(missionId:string,projectId:string,reason:string):Promise<boolean>{
+    const mission=this.missions.get(missionId);
+    if(!mission||mission.projectId!==projectId||!["planned","running","verifying"].includes(mission.status))return false;
+    setLifecycle(mission,this.executionStates,"failed",true);
+    this.missions.save(mission);
+    try{await this.executionRuntime.persist(mission);}catch{}
+    this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"mission.stopped",resource:missionId,result:"failure",metadata:{missionId,reason:reason.slice(0,300)}});
+    return true;
+  }
+  private async runAgentLoop(missionId:string,projectId:string,maxSteps:number,approvalIds:Record<number,string>,agentId:string,routing?:ModelRoutingOptions){
     const mission=this.missions.get(missionId);
     if(!mission)throw new Error("Mission not found.");
     this.projectIsolation.assertMissionProject(projectId,mission.projectId);
