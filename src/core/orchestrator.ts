@@ -671,6 +671,23 @@ export class LayanXCore{
         if(frame)visualContext={mimeType:frame.mimeType,base64:frame.base64};
       }
       if(!plan){
+        const completionContract=this.agents.get(agentId);
+        const completionCriteria=current.successCriteria?.length?current.successCriteria:completionContract.successCriteria;
+        // A successful final tool result should not depend on a second model call to decide to stop.
+        // Verify it deterministically first; this also prevents a small model inventing another tool
+        // after the mission's explicit success criteria have already been satisfied.
+        if(this.verifier.verify(current,latest,completionCriteria).verified){
+          const executionStep=current.steps.find(step=>EXECUTION_STEP.test(step.description));
+          if(executionStep)executionStep.status="completed";
+          const verificationStep=current.steps.find(step=>/verif|confirm|validate|check/i.test(step.description));
+          if(verificationStep)verificationStep.status="completed";
+          setLifecycle(current,this.executionStates,"completed",false);
+          this.missions.save(current);
+          await this.executionRuntime.persist(current);
+          this.memory.remember({missionId:current.id,projectId:current.projectId,kind:"success",summary:"Mission completed and verified",content:{result:latest},confidence:1,tags:["mission","success","verified"]});
+          cleanupLiveScreen();
+          return{missionId,completed:true,status:"completed",steps,results,final:{data:latest}};
+        }
         const catalog=this.toolCatalog.list(this.agents.get(agentId),current.requiredPermission);
         const context=await this.projectIntelligence.scan(projectId).then(i=>({summary:i.summary,markers:i.markers,package:i.package,files:i.files.slice(0,80).map(f=>f.path)})).catch(error=>({unavailable:true,reason:error instanceof Error?error.message:"project intelligence unavailable"}));
         plan=await this.aiPlanner.nextTool({
