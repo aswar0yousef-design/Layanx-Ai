@@ -213,6 +213,7 @@ async function oauthConnectionsPanel(){
   {id:"google",label:"Google Ads",vars:"LAYANX_GOOGLE_OAUTH_CLIENT_ID, LAYANX_GOOGLE_OAUTH_CLIENT_SECRET, LAYANX_GOOGLE_OAUTH_REDIRECT_URI",url:"https://console.cloud.google.com/apis/credentials"},
   {id:"youtube",label:"YouTube",vars:"LAYANX_YOUTUBE_OAUTH_CLIENT_ID, LAYANX_YOUTUBE_OAUTH_CLIENT_SECRET, LAYANX_YOUTUBE_OAUTH_REDIRECT_URI",url:"https://console.cloud.google.com/apis/credentials"},
   {id:"linkedin",label:"LinkedIn",vars:"LAYANX_LINKEDIN_OAUTH_CLIENT_ID, LAYANX_LINKEDIN_OAUTH_CLIENT_SECRET, LAYANX_LINKEDIN_OAUTH_REDIRECT_URI",url:"https://www.linkedin.com/developers/apps"},
+  {id:"x",label:"X",vars:"LAYANX_X_OAUTH_CLIENT_ID, LAYANX_X_OAUTH_CLIENT_SECRET, LAYANX_X_OAUTH_REDIRECT_URI",url:"https://developer.x.com/en/portal/dashboard"},
   {id:"pinterest",label:"Pinterest",vars:"LAYANX_PINTEREST_OAUTH_CLIENT_ID, LAYANX_PINTEREST_OAUTH_CLIENT_SECRET, LAYANX_PINTEREST_OAUTH_REDIRECT_URI",url:"https://developers.pinterest.com/"},
  ];
  const render=async()=>{
