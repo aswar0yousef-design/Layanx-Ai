@@ -87,4 +87,30 @@ assert.equal(brief.tick(),true);
 assert.equal(brief.tick(),false,"only once per day");
 assert.equal(brief.latest()?.report.counts.total,2);
 
+// Greetings are answered at once, without the model (the owner's "Layan, how are you?" waited minutes
+// behind a website job): only when the whole sentence is a greeting.
+{
+  const before=prompts.length;
+  const cases:Array<[string,RegExp]>=[["كيف الحال؟",/بخير/],["ليان، كيف حالك؟",/بخير/],["السلام عليكم ورحمة الله",/وعليكم السلام/],["مرحباً",/أهلاً/],
+    ["يا ليان صباح الخير",/صباح النور/],["شكراً جزيلاً",/العفو/],["مرحبا كيف حالك",/بخير/],["Hey, how are you?",/I'm well/],["thank you",/welcome/i]];
+  for(const [text,re] of cases){const r=await jarvis.turn({text});assert.equal(r.intent,"answer",text);assert.match(r.reply,re,text);}
+  assert.equal(prompts.length,before,"no model call for a greeting");
+  for(const text of ["كيف حال الطقس اليوم في مسقط؟","مرحبا افتح المتصفح","hello, write a post about our sale","شكرا ارسل الفاتورة"]){
+    await jarvis.turn({text});
+  }
+  assert.equal(prompts.length,before+4,"a greeting with a request still goes to the model");
+}
+
+// A model that does not answer in time (busy with a job): LayanX says why, instead of thinking forever.
+{
+  process.env.LAYANX_ASSISTANT_TIMEOUT_MS="150";
+  const slow=new VoiceAssistant({...deps,decide:()=>new Promise<string>(()=>{}),busyWith:()=>"اريد منك عمل موقع احترافي لمحل بيع كمبيوترات"});
+  const started=Date.now();const r=await slow.turn({text:"ما أفضل لغة برمجة للمواقع؟"});
+  assert.ok(Date.now()-started<2000);assert.equal(r.intent,"busy");assert.equal(r.ok,true);
+  assert.match(r.reply,/مشغول الآن بمهمة «اريد منك عمل موقع احترافي/);
+  const idle=await new VoiceAssistant({...deps,decide:()=>new Promise<string>(()=>{})}).turn({text:"explain recursion"});
+  assert.match(idle.reply,/Ollama/);
+  delete process.env.LAYANX_ASSISTANT_TIMEOUT_MS;
+}
+
 console.log("assistant: all assertions passed");

@@ -16,7 +16,7 @@ import {normalizeArabic,tokenize} from "../providers/tool-selection.js";
  * owner in the Control Center.
  */
 export type AssistantLang="ar"|"en";
-export type AssistantIntent="answer"|"task"|"report"|"time"|"error";
+export type AssistantIntent="answer"|"task"|"report"|"time"|"busy"|"error";
 
 export interface AssistantHistoryItem{role:"user"|"assistant";text:string}
 export interface AssistantTurnInput{
@@ -61,6 +61,8 @@ export interface AssistantDeps{
   runTask(goal:string,projectId:string):Promise<Record<string,unknown>>;
   snapshot(projectId:string):AssistantSnapshot;
   now?():Date;
+  /** What keeps the local model busy right now (a running autonomous job), so a slow reply can say why. */
+  busyWith?():string|undefined;
 }
 
 const ARABIC=/[\u0600-\u06FF]/;
@@ -72,6 +74,32 @@ const REPORT_PHRASES=/وضع المهام|حاله المهام|ما الجدي�
 const CREATE_WORDS=new Set(["اكتب","أنشئ","ارسل","جهز","حضر","اعد","صمم","انشر","write","create","send","draft","prepare","generate","email","publish","make"].map(normalizeArabic));
 const TIME_AR=/كم الساعه|ما الوقت|كم الوقت|ما التاريخ|تاريخ اليوم|اي يوم اليوم/;
 const TIME_EN=/\bwhat(?:'s| is) the (?:time|date)\b|\bwhat time is it\b|\btoday'?s date\b|\bwhat day is (?:it|today)\b/i;
+
+/**
+ * Greetings and "how are you" are answered at once, without the model: they are the first thing anyone
+ * says to a voice assistant, and the model may be busy with a long job (the reply then took minutes).
+ * Only when the whole sentence is a greeting (the assistant's name and "يا" may be in it).
+ */
+type Greeting="howAreYou"|"salam"|"hello"|"morning"|"evening"|"thanks";
+const GREETINGS:Array<[Greeting,RegExp]>=[
+  ["howAreYou",/كيف (?:الحال|حالك|حالكم|اصبحت|امسيت)|شلونك|شخبارك|كيفك|اخبارك|عامل ايه|كيف انت|\bhow are you(?: doing)?\b|\bhow'?s it going\b/g],
+  ["salam",/السلام عليكم(?: ورحمه الله(?: وبركاته)?)?/g],
+  ["morning",/صباح الخير|\bgood morning\b/g],
+  ["evening",/مساء الخير|\bgood (?:evening|afternoon)\b/g],
+  ["thanks",/شكرا(?: لك| جزيلا)?|مشكور|يعطيك العافيه|\bthank(?:s| you)(?: so much| very much)?\b/g],
+  ["hello",/مرحبا|اهلا(?: وسهلا)?|هلا|هاي|\b(?:hi|hello|hey)\b/g]
+];
+const GREETING_FILLER=/^(?:يا|ليان|جارفيس|انت|اليوم|حبيبي|layan|jarvis|there|friend)$/;
+export function greetingOf(text:string):Greeting|null{
+  let rest=normalizeArabic(text).toLowerCase().replace(/[^\p{L}\p{N}\s']/gu," ").replace(/\s+/g," ").trim();
+  if(!rest||rest.split(" ").length>8)return null;
+  const found:Greeting[]=[];
+  for(const [kind,re] of GREETINGS){if(re.test(rest)){found.push(kind);rest=rest.replace(re," ");}re.lastIndex=0;}
+  if(!found.length||rest.split(/\s+/).filter(Boolean).some(w=>!GREETING_FILLER.test(w)))return null;
+  return found[0]!;
+}
+/** How long a spoken request waits for the model before LayanX says why it is slow (ms). */
+const DECIDE_TIMEOUT_MS=()=>Math.min(Math.max(Number(process.env.LAYANX_ASSISTANT_TIMEOUT_MS)||30_000,100),300_000);
 
 function clean(text:string,max:number):string{
   return text.replace(/[*#`_>|]+/g," ").replace(/\s+/g," ").trim().slice(0,max);
@@ -96,6 +124,9 @@ const T={
     paused:"المهمة تحتاج موافقتك قبل أن أكمل. افتح الموافقات في لوحة التحكم.",
     failed:(r:string)=>`لم أستطع إكمال المهمة. ${r}`,
     tasksOff:(g:string)=>`هذا يحتاج تنفيذ مهمة: ${g}. فعّل تنفيذ المهام في المساعد إن أردت ذلك.`,
+    greet:{howAreYou:"بخير والحمد لله، شكراً لسؤالك. كيف أقدر أساعدك؟",salam:"وعليكم السلام ورحمة الله. كيف أقدر أساعدك؟",hello:"أهلاً بك! كيف أقدر أساعدك؟",
+      morning:"صباح النور! كيف أقدر أساعدك؟",evening:"مساء النور! كيف أقدر أساعدك؟",thanks:"العفو! أنا هنا متى احتجتني."} as Record<Greeting,string>,
+    busy:(job?:string)=>job?`ما زلت أفكر، لأن النموذج المحلي مشغول الآن بمهمة «${job}». سأكون أسرع عندما تنتهي، أو اسألني بعد قليل.`:"النموذج المحلي يتأخر في الرد. تأكد أن Ollama يعمل، ثم اسألني مرة أخرى.",
     time:(d:Date)=>`الساعة الآن ${d.toLocaleTimeString("ar",{hour:"numeric",minute:"2-digit"})}، ${d.toLocaleDateString("ar",{weekday:"long",day:"numeric",month:"long"})}.`
   },
   en:{
@@ -105,6 +136,9 @@ const T={
     paused:"This task needs your approval before I continue. Open Approvals in the Control Center.",
     failed:(r:string)=>`I couldn't finish the task. ${r}`,
     tasksOff:(g:string)=>`That needs a task: ${g}. Turn on task execution in the assistant if you want me to do it.`,
+    greet:{howAreYou:"I'm well, thank you for asking. How can I help?",salam:"Wa alaikum assalam. How can I help?",hello:"Hello! How can I help?",
+      morning:"Good morning! How can I help?",evening:"Good evening! How can I help?",thanks:"You're welcome! I'm here whenever you need me."} as Record<Greeting,string>,
+    busy:(job?:string)=>job?`I'm still thinking: the local model is busy with the job "${job}". I'll be faster when it finishes, or ask me again in a little while.`:"The local model is slow to answer. Check that Ollama is running, then ask me again.",
     time:(d:Date)=>`It's ${d.toLocaleTimeString("en",{hour:"numeric",minute:"2-digit"})}, ${d.toLocaleDateString("en",{weekday:"long",day:"numeric",month:"long"})}.`
   }
 };
@@ -152,6 +186,8 @@ export class VoiceAssistant{
 
     const normalized=normalizeArabic(text);
     if(TIME_AR.test(normalized)||TIME_EN.test(text))return{ok:true,lang,intent:"time",reply:t.time(this.now())};
+    const greeting=greetingOf(text);
+    if(greeting)return{ok:true,lang,intent:"answer",reply:t.greet[greeting]};
     const tokens=tokenize(text);
     const wordCount=normalized.split(/\s+/).filter(Boolean).length;
     const wantsReport=(REPORT_PHRASES.test(normalized)||tokens.some(w=>REPORT_WORDS.has(w)))&&wordCount<=6&&!tokens.some(w=>CREATE_WORDS.has(w));
@@ -161,8 +197,15 @@ export class VoiceAssistant{
     }
 
     let decision:Record<string,unknown>|null=null;
-    try{decision=extractObject(await this.deps.decide(this.prompt(text,lang,input.history??[])));}
+    let timer:NodeJS.Timeout|undefined;
+    const late=new Promise<"late">(resolve=>{timer=setTimeout(()=>resolve("late"),DECIDE_TIMEOUT_MS());});
+    try{
+      const answer=await Promise.race([this.deps.decide(this.prompt(text,lang,input.history??[])),late]);
+      if(answer==="late"){const job=clean(this.deps.busyWith?.()??"",80);return{ok:true,lang,intent:"busy",reply:t.busy(job||undefined)};}
+      decision=extractObject(answer);
+    }
     catch{return{ok:false,lang,intent:"error",reply:t.noModel};}
+    finally{clearTimeout(timer);}
 
     const reply=clean(typeof decision?.reply==="string"?decision.reply:"",500);
     const goal=clean(typeof decision?.goal==="string"?decision.goal:"",1000);

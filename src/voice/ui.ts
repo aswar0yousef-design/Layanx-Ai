@@ -153,7 +153,7 @@ var L={
   realtime:"محادثة مباشرة (OpenAI)",realtimeStop:"إنهاء المحادثة المباشرة",auto:"تلقائي",
   engineLocal:"التعرف على الكلام محلي على جهازك عبر Whisper؛ لا يخرج صوتك من الجهاز. العقل: النموذج المحلي في LayanX.",
   engineL:"التعرف على الكلام",engAuto:"تلقائي",engLocal:"محلي على جهازي (Whisper)",engBrowser:"المتصفح",noLocal:"Whisper المحلي غير مشغّل؛ أستخدم المتصفح.",transcribing:"أحوّل كلامك إلى نص…",sayIt:"نعم؟ أستمع…",heard:"سمعت:",soundBtn:"🔊 اضغط مرة واحدة ليتحدث المساعد بصوته",
-  pauseL:"انتظار نهاية كلامك",pShort:"قصير (0.8 ثانية)",pNormal:"عادي (1.2 ثانية)",pLong:"طويل (ثانيتان)",bargeL:"قاطعني عندما أتكلم: يسكت ويستمع لك",
+  pauseL:"انتظار نهاية كلامك",sec:"ث",pShort:"قصير (0.8 ثانية)",pNormal:"عادي (1.2 ثانية)",pLong:"طويل (ثانيتان)",bargeL:"قاطعني عندما أتكلم: يسكت ويستمع لك",
   followL:"تابع المحادثة دون تكرار الاسم (8 ثوانٍ بعد كل رد)",heardNoName:"سمعتك: «{x}». لكي أرد، ابدأ بـ «{name}».",
   welcome:"أنا جاهز وأستمع. قل «{name}» ثم أمرك، مثل: {name}، كيف حالك؟"},
  en:{idle:"Ready",ready:"Ready",off:"Assistant is off",wake:"Waiting for my name…",listen:"Listening…",think:"Thinking…",speak:"Speaking…",
@@ -168,7 +168,7 @@ var L={
   realtime:"Live conversation (OpenAI)",realtimeStop:"End live conversation",auto:"Automatic",
   engineLocal:"Speech recognition runs on this computer with Whisper; your voice never leaves it. Brain: the local LayanX model.",
   engineL:"Speech recognition",engAuto:"Automatic",engLocal:"On this computer (Whisper)",engBrowser:"Browser",noLocal:"Local Whisper is not running; using the browser.",transcribing:"Transcribing…",sayIt:"Yes? I'm listening…",heard:"Heard:",soundBtn:"🔊 Click once so the assistant can speak",
-  pauseL:"Wait for the end of my speech",pShort:"Short (0.8 s)",pNormal:"Normal (1.2 s)",pLong:"Long (2 s)",bargeL:"Interrupt me when I talk: it stops and listens",
+  pauseL:"Wait for the end of my speech",sec:"s",pShort:"Short (0.8 s)",pNormal:"Normal (1.2 s)",pLong:"Long (2 s)",bargeL:"Interrupt me when I talk: it stops and listens",
   followL:"Keep the conversation going without the name (8 s after each reply)",heardNoName:"Heard you: \u201c{x}\u201d. To get a reply, start with \u201c{name}\u201d.",
   welcome:"I'm ready and listening. Say \u201c{name}\u201d then your request, e.g. {name}, how are you?"}
 };
@@ -360,14 +360,16 @@ function localCommand(text){var n=norm(text);
 function handle(text,spoken){text=String(text||"").trim();if(!text||busy)return Promise.resolve();interrupted=false;
  addLog("you",text);if(localCommand(text)){resumeListening();return Promise.resolve()}
  busy=true;pauseListening();setState("think");
- return api("/v1/assistant/turn",{method:"POST",body:{text:text,lang:"auto",projectId:S.project,history:convo,allowTasks:S.tasks}}).then(function(d){
+ // A slow reply (the local model busy with a long job) shows that it is still working.
+ var started=Date.now(),ticker=setInterval(function(){var n=Math.round((Date.now()-started)/1000);if(state==="think"&&n>=3)setState("think",t("think")+" "+n+" "+t("sec"))},1000);
+ return api("/v1/assistant/turn",{method:"POST",body:{text:text,lang:"auto",projectId:S.project,history:convo,allowTasks:S.tasks}}).then(function(d){clearInterval(ticker);
   convo.push({role:"user",text:text});convo.push({role:"assistant",text:d.reply||""});convo=convo.slice(-6);
   var meta=null;
   if(d.task&&d.task.paused)meta={text:t("approvals"),href:"/#approvals"};
   else if(d.missionId)meta={text:t("mission")+" "+d.missionId};
   addLog("me",d.reply||"…",meta,d.ok===false?"err":"");
   busy=false;
-  return say(d.reply,d.lang)}).catch(function(e){if(e.message!=="unauthorized")addLog("me",t("netErr")+e.message,null,"err")}).then(function(){busy=false;resumeListening();
+  return say(d.reply,d.lang)}).catch(function(e){clearInterval(ticker);if(e.message!=="unauthorized")addLog("me",t("netErr")+e.message,null,"err")}).then(function(){busy=false;resumeListening();
    // A conversation: after answering something said aloud, the next sentence (8 s) needs no name.
    if(spoken&&S.follow&&S.always&&!interrupted&&!blocked&&canListen())awaitCommand()})}
 
