@@ -39,3 +39,46 @@ assert.deepEqual(calls,["local","cloud"],"cloud is attempted only after the loca
 assert.deepEqual(fallbackResult.attempts.map(attempt=>attempt.ok),[false,true]);
 
 console.log("core-local-first: local-first routing and fallback to cloud verified");
+
+const fallbackCore=new LayanXCore();
+const plannerCalls:string[]=[];
+fallbackCore.registerAgent({
+  agentId:"core",purpose:"Only read runtime status",allowedTools:["runtime.status"],forbiddenResources:[],
+  requiredPermission:"L1_READ",maxToolCalls:5,maxRuntimeMs:10000,successCriteria:["done"],stopCondition:"stop"
+});
+fallbackCore.tools.register({
+  name:"runtime.status",description:"read runtime status",permission:"L1_READ",dangerous:false,
+  actions:["read runtime status"],tags:["runtime","status"]
+});
+const brokenLocalPlanner:ModelProviderAdapter={
+  name:"broken-local-planner",
+  async health(){return{provider:this.name,available:true,updatedAt:new Date().toISOString()};},
+  async generate(model){plannerCalls.push("local");return{provider:this.name,modelId:model.id,output:"not valid planner JSON"};}
+};
+const cloudPlanner:ModelProviderAdapter={
+  name:"cloud-planner-fallback",
+  async health(){return{provider:this.name,available:true,updatedAt:new Date().toISOString()};},
+  async generate(model){
+    plannerCalls.push("cloud");
+    return{provider:this.name,modelId:model.id,output:JSON.stringify({
+      risk:"low",requiredPermission:"L1_READ",
+      steps:[{description:"Execute: read runtime status"}],
+      successCriteria:["done"],stopCondition:"Stop after reading status.",
+      tools:[{tool:"runtime.status",action:"read runtime status",permission:"L1_READ",reason:"Read status."}]
+    })};
+  }
+};
+fallbackCore.providers.register(brokenLocalPlanner);
+fallbackCore.providers.register(cloudPlanner);
+fallbackCore.models.register({id:"broken-local-model",provider:"broken-local-planner",capabilities:["reasoning"],local:true,enabled:true,priority:999});
+fallbackCore.models.register({id:"cloud-fallback-model",provider:"cloud-planner-fallback",capabilities:["reasoning"],local:false,enabled:true,priority:0});
+(fallbackCore as any).executeAgentLoop=async(missionId:string)=>{
+  const mission=fallbackCore.missions.get(missionId);
+  assert.equal(mission?.tools?.[0]?.tool,"runtime.status");
+  return{missionId,completed:true,status:"completed",steps:0,results:[]};
+};
+const gatewayResult=await fallbackCore.runAgentGateway("Read runtime status","default",5,{},"core",{preferLocal:true,tags:["runtime"]}) as any;
+assert.equal(gatewayResult.completed,true);
+assert.deepEqual(plannerCalls,["local","cloud"],"a local planning failure must fall back to cloud even when a task router supplied local-first tags");
+assert.equal(gatewayResult.modelRouting?.reason,"fallback");
+

@@ -576,17 +576,22 @@ export class LayanXCore{
   async runAgentGateway(goal:string,projectId="default",maxSteps=10,approvalIds:Record<number,string>={},agentId="core",routing?:ModelRoutingOptions){
     // Cloud escalation: a goal that names Claude/GPT/Gemini, or a complex goal under the "complex" policy,
     // is planned by that cloud model; a local planning failure is retried once on the cloud (no tool has run yet).
-    let hint=routing?undefined:cloudRoutingForGoal(goal,this.models);
+    const modelPinned=Boolean(routing?.modelId);
+    let hint=modelPinned?undefined:cloudRoutingForGoal(goal,this.models);
     const cloudReady=this.models.list().some(m=>!m.local&&m.enabled);
     // Learned routing: goals like this one keep failing locally -> plan them on the cloud directly.
     if(!routing&&!hint&&cloudReady&&cloudPolicy()!=="off"&&this.routingMemory.suggestCloud(goal))hint={preferLocal:false,reason:"learned"};
-    const toRouting=(h:typeof hint):ModelRoutingOptions|undefined=>h?{preferLocal:h.preferLocal,...(h.tags?{tags:h.tags}:{})}:routing;
+    const toRouting=(h:typeof hint):ModelRoutingOptions=>{
+      const tags=[...new Set([...(routing?.tags??[]),...(h?.tags??[])])];
+      return{...(routing??{}),preferLocal:h?.preferLocal??routing?.preferLocal??true,...(tags.length?{tags}:{})};
+    };
     let mission:Awaited<ReturnType<LayanXCore["planAndStartMission"]>>;
     try{mission=await this.planAndStartMission(goal,projectId,toRouting(hint),agentId);
       if(!routing)this.routingMemory.record(goal,hint&&!hint.preferLocal?"cloud_ok":"local_ok");}
     catch(error){
       if(!routing&&!hint)this.routingMemory.record(goal,"local_failed");
-      if(routing||hint||!cloudReady||cloudPolicy()==="off")throw error;
+      const cloudWasExplicitlyPreferred=hint?.preferLocal===false||routing?.preferLocal===false;
+      if(modelPinned||cloudWasExplicitlyPreferred||!cloudReady||cloudPolicy()==="off")throw error;
       hint={preferLocal:false,reason:"fallback"};
       this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"model.escalate",resource:"planner",result:"success",metadata:{reason:"local planning failed",error:error instanceof Error?error.message.slice(0,200):"unknown"}});
       mission=await this.planAndStartMission(goal,projectId,toRouting(hint),agentId);
