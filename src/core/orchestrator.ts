@@ -743,7 +743,14 @@ export class LayanXCore{
           visualContext={mimeType:data.mimeType,base64:data.base64};
       }
       if(result.ok&&plan.tool==="desktop.ui.tree")uiTreeFresh=true;
-      else if(result.ok&&/^desktop\.(mouse|keyboard|ui\.click|ui\.set_text|window)/.test(plan.tool))uiTreeFresh=false;
+      else if(result.ok&&/^desktop\.(mouse|keyboard|ui\.click|ui\.set_text|window|app)/.test(plan.tool))uiTreeFresh=false;
+      // A one-step plan made without the model ("open Chrome"): done when its step succeeds, no model call after it.
+      if(result.ok&&plan.final){
+        const done=this.missions.get(missionId);
+        if(done){const step=done.steps.find(s=>EXECUTION_STEP.test(s.description));if(step)step.status="completed";setLifecycle(done,this.executionStates,"completed",false);this.missions.save(done);await this.executionRuntime.persist(done);}
+        cleanupLiveScreen();
+        return{missionId,completed:true,status:"completed",steps,results,final:{data:latest}};
+      }
       if(result.ok&&/^desktop\.(mouse|keyboard)/.test(plan.tool)){
         visualContext=undefined;
         if(this.liveScreen?.isRunning()){

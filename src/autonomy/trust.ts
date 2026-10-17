@@ -8,6 +8,8 @@ import path from "node:path";
  *   trusted    : reversible work inside the project runs alone (edit files, install, test,
  *                build, dev server, local commits/branches, browser tests, local coding agents)
  *   full       : trusted + desktop control (mouse/keyboard) and cloud coding agents
+ * Opening a program or a web page (desktop.app.open) is trusted work: closing it undoes it, and it types or
+ * clicks into nothing.
  *
  * NEVER automatic at any level: git push, publishing to production, sending email, ads, trading,
  * payments, installing tools on the machine. Those always wait for the owner.
@@ -18,7 +20,7 @@ export type TrustLevel="supervised"|"trusted"|"full";
 export const TRUST_LEVELS:TrustLevel[]=["supervised","trusted","full"];
 
 const TRUSTED=new Set(["files.write","project.run","project.verify","project.bootstrap","browser.test","terminal.exec",
-  "git.add","git.commit","git.branch","git.rollback","git.checkpoint","agent.external.local","vercel.deploy"]);
+  "git.add","git.commit","git.branch","git.rollback","git.checkpoint","agent.external.local","vercel.deploy","desktop.app.open"]);
 const FULL=new Set([...TRUSTED,"git.merge","desktop.mouse.move","desktop.mouse.click","desktop.mouse.scroll","desktop.keyboard.type","desktop.keyboard.press","desktop.ui.click","desktop.ui.set_text","desktop.window.focus","agent.external"]);
 
 let cache:{file:string;mtime:number;map:Record<string,TrustLevel>}|null=null;

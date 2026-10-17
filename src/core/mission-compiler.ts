@@ -7,7 +7,7 @@ export class MissionCompiler{
   const boundProject=projectId.trim();if(!boundProject)throw new Error("Project id is required.");
   if(!plan.steps?.length)throw new Error("Mission plan has no steps.");
   const steps:MissionStep[]=plan.steps.map(step=>({id:crypto.randomUUID(),description:step.description,status:"pending"}));
-  const tools:MissionToolPlan[]=(plan.tools??[]).map(tool=>({tool:tool.tool,action:tool.action,permission:tool.permission,reason:tool.reason,payload:tool.payload}));
+  const tools:MissionToolPlan[]=(plan.tools??[]).map(tool=>({tool:tool.tool,action:tool.action,permission:tool.permission,reason:tool.reason,payload:tool.payload,...(tool.final?{final:true}:{})}));
   return{id:crypto.randomUUID(),goal,status:"planned",risk:plan.risk,requiredPermission:plan.requiredPermission,steps,tools,successCriteria:[...plan.successCriteria],createdAt:new Date().toISOString(),projectId:boundProject};
  }
 }
