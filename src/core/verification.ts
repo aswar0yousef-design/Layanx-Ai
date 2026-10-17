@@ -57,6 +57,15 @@ export class VerificationEngine {
     const text=criteria.trim();
     if(text==="done"||text==="echo")return{supported:true,matched:result!==null&&result!==undefined,reason:result!==null&&result!==undefined?"":`Success criterion failed: ${text}`};
     if(text==="approved"){const actual=this.readPath(result,"approved");return{supported:true,matched:actual===true,reason:actual===true?"":"Success criterion failed: approved"};}
+    // A bare result path is an existence assertion, not a free-form phrase.
+    // This supports planner criteria such as result.system / result.providers while keeping
+    // missing or null fields a hard verification failure.
+    const pathOnly=/^result\.([A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*)$/i.exec(text);
+    if(pathOnly){
+      const actual=this.readPath(result,pathOnly[1]);
+      const matched=actual!==null&&actual!==undefined;
+      return{supported:true,matched,reason:matched?"":`Success criterion failed: ${text} (value is missing or null)`};
+    }
     const equality=/^result(?:\.([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*))?\s*(===|==|!==|!=)\s*(.+)$/i.exec(text);
     if(equality){
       const actual=this.readPath(result,equality[1]??"");
