@@ -106,6 +106,19 @@ if(!noUi){
     }finally{spawnSync("taskkill",["/IM","notepad.exe","/F"],{stdio:"ignore"});}
   });
 }
+if(!noUi){
+  await check("desktop.app.open: Notepad by its Arabic name; an unknown program is reported and nothing runs",async()=>{
+    try{
+      const out=await desktop.execute(req("desktop open app",{app:"المفكرة"})) as any;
+      let focused:any;
+      for(let i=0;i<20&&!focused;i++){await new Promise(r=>setTimeout(r,500));focused=await desktop.execute(req("desktop focus window",{title:"Notepad"})).catch(()=>undefined);}
+      assert.ok(focused,"Notepad opened");
+      const missing=await desktop.execute(req("desktop open app",{app:"NoSuchProgram LayanX 7731"})).then(()=>"",(e:Error)=>e.message);
+      assert.match(missing,/not installed/,"an unknown program is reported: "+missing);
+      return "opened "+out.what+" via "+out.via+"; unknown -> "+missing;
+    }finally{spawnSync("taskkill",["/IM","notepad.exe","/F"],{stdio:"ignore"});}
+  });
+}
 await check("PowerShell reads redirected stdin (diagnostic)",async()=>{
   const ps=(extra:string[])=>new Promise<string>(resolve=>{
     const script="$l=[Console]::In.ReadLine();[Console]::Out.Write('got:'+$l)";

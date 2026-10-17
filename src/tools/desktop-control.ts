@@ -6,6 +6,7 @@ import {randomUUID} from "node:crypto";
 import {createInterface} from "node:readline";
 import {readFile,unlink} from "node:fs/promises";
 import type {ToolRequest} from "../core/types.js";
+import {KNOWN_APPS,resolveOpenTarget} from "./open-app.js";
 import type {ToolAdapter} from "./executor.js";
 import {safeChildEnv} from "../platform/safe-env.js";
 
@@ -184,6 +185,18 @@ const WIN_HELPER_PS=[
  "   'uiclick'{Need-Uia;$res=[LxUia]::Click([int]$r.index,[bool]$r.pattern);if($res.StartsWith('mouse|')){$p=$res.Split('|');[LxDesk]::Move([int]$p[1],[int]$p[2]);[LxDesk]::Click([bool]$r.right,[bool]$r.double)};$res}",
  "   'uiset'{Need-Uia;$t=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([string]$r.text));$res=[LxUia]::SetText([int]$r.index,$t);if($res -eq 'focus'){[LxDesk]::Keys('CTRL+A');[LxDesk]::Type($t)};$res}",
  "   'focuswin'{Need-Uia;$res=[LxUia]::Focus([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([string]$r.title)));if($res.StartsWith('retry|')){$p=$res.Split('|');[LxDesk]::Keys('ALT');Start-Sleep -Milliseconds 50;if(-not [LxUia]::Retry([int]$p[1])){throw 'Windows refused to bring that window to the front.'};$res='ok|'+$p[1]+'|'+$p[2]};$res}",
+ // Open a program or a web page. Nothing from the request becomes a command line: a known program is a
+ // fixed command here, anything else is matched by name among the Start menu's installed apps, and a web
+ // page must parse as an http(s) URL.
+ "   'openapp'{$k=[string]$r.kind;$v=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([string]$r.value));$fixed=@{chrome='chrome';msedge='msedge';firefox='firefox';explorer='explorer.exe';notepad='notepad.exe';calc='calc.exe';settings='ms-settings:';paint='mspaint.exe';taskmgr='taskmgr.exe'};"+
+ "if($k -eq 'known'){if(-not $fixed.ContainsKey($v)){throw 'unknown program'};Start-Process $fixed[$v];'ok|'+$v}"+
+ "elseif($k -eq 'url'){$u=$null;if(-not [Uri]::TryCreate($v,[UriKind]::Absolute,[ref]$u) -or ($u.Scheme -ne 'https' -and $u.Scheme -ne 'http')){throw 'not a web address'};$b=[string]$r.browser;if($b){if(-not $fixed.ContainsKey($b)){throw 'unknown browser'};Start-Process $fixed[$b] -ArgumentList @($u.AbsoluteUri)}else{Start-Process $u.AbsoluteUri};'ok|'+$u.AbsoluteUri}"+
+ // Start menu apps (Get-StartApps), or where that cmdlet is missing (Windows Server) the Start menu's shortcuts.
+ "elseif($k -eq 'start'){$e=[Management.Automation.WildcardPattern]::Escape($v);$pick={param($list,$name)@($list|Where-Object{$_.N -eq $v})+@($list|Where-Object{$_.N -like ($e+'*')}|Sort-Object{$_.N.Length})+@($list|Where-Object{$_.N -like ('*'+$e+'*')}|Sort-Object{$_.N.Length})|Select-Object -First 1};"+
+ "$a=$null;if(Get-Command Get-StartApps -ErrorAction SilentlyContinue){$a=& $pick @(Get-StartApps|ForEach-Object{[pscustomobject]@{N=$_.Name;Id=$_.AppID}}) $v};"+
+ "if($a){Start-Process 'explorer.exe' -ArgumentList @('shell:AppsFolder\\'+$a.Id);'ok|'+$a.N}"+
+ "else{$dirs=@((Join-Path $env:ProgramData 'Microsoft\\Windows\\Start Menu\\Programs'),(Join-Path $env:APPDATA 'Microsoft\\Windows\\Start Menu\\Programs'));$l=& $pick @(Get-ChildItem -Path $dirs -Filter '*.lnk' -Recurse -ErrorAction SilentlyContinue|ForEach-Object{[pscustomobject]@{N=$_.BaseName;Id=$_.FullName}}) $v;"+
+ "if(-not $l){throw ('not installed: '+$v)};Invoke-Item -LiteralPath $l.Id;'ok|'+$l.N}}else{throw 'unknown kind'}}",
  "   'ping'{'ok'}",
  "   default{throw 'unknown operation'}",
  "  }",
@@ -315,6 +328,17 @@ export function createDesktopControlToolAdapter(options:{runner?:Runner;windows?
    const index=numberValue(x.index,"index",399);const value=textValue(x.text);
    const method=await win().send({op:"uiset",index,text:Buffer.from(value,"utf8").toString("base64")},20_000);
    return {index,characters:value.length,method};
+  }
+  if(request.action==="desktop open app"){
+   const target=resolveOpenTarget(x);
+   if(process.platform==="win32"){
+    const value=target.kind==="known"?target.app:target.kind==="url"?target.url:target.name;
+    const out=await win().send({op:"openapp",kind:target.kind,value:Buffer.from(value,"utf8").toString("base64"),...(target.kind==="url"&&target.browser?{browser:target.browser}:{})},20_000);
+    return {opened:true,what:out.split("|").slice(1).join("|")||target.label,via:target.kind==="known"?"program":target.kind==="start"?"start menu":"web page"};
+   }
+   if(target.kind==="url"){const r=await run(process.platform==="darwin"?"open":"xdg-open",[target.url]);if(r.code!==0)throw new Error(r.stderr||"Could not open the web page.");return {opened:true,what:target.url,via:"web page"};}
+   if(process.platform==="darwin"){const name=target.kind==="known"?KNOWN_APPS[target.app].label:target.name;const r=await run("open",["-a",name]);if(r.code!==0)throw new Error(r.stderr||"Could not open "+name+".");return {opened:true,what:name,via:"program"};}
+   throw new Error("Opening programs by name is available on Windows and macOS.");
   }
   if(request.action==="desktop focus window"){
    if(process.platform!=="win32")throw new Error("Focusing windows by title is available on Windows only.");

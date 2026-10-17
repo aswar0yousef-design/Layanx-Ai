@@ -2,6 +2,7 @@ import {existsSync,mkdirSync,readFileSync,writeFileSync} from "node:fs";
 import {dirname,join} from "node:path";
 import type {LayanXCore} from "../core/orchestrator.js";
 import {normalizeArabic,tokenize} from "../providers/tool-selection.js";
+import {openRequest} from "../tools/open-app.js";
 
 /**
  * The "Jarvis" layer: one conversational entry point for voice and text.
@@ -121,6 +122,7 @@ const T={
     noModel:"لا يوجد نموذج ذكاء اصطناعي متاح الآن. شغّل Ollama أو أضف مفتاح خدمة من صفحة الإعداد.",
     empty:"لم أسمع شيئاً. أعد المحاولة.",
     done:(g:string)=>`تم. أنهيت المهمة: ${g}.`,
+    opened:(x:string)=>`تم، فتحت ${x}.`,
     paused:"المهمة تحتاج موافقتك قبل أن أكمل. افتح الموافقات في لوحة التحكم.",
     failed:(r:string)=>`لم أستطع إكمال المهمة. ${r}`,
     tasksOff:(g:string)=>`هذا يحتاج تنفيذ مهمة: ${g}. فعّل تنفيذ المهام في المساعد إن أردت ذلك.`,
@@ -133,6 +135,7 @@ const T={
     noModel:"No AI model is available right now. Start Ollama or add a service key on the setup page.",
     empty:"I didn't catch that. Please try again.",
     done:(g:string)=>`Done. I finished: ${g}.`,
+    opened:(x:string)=>`Done, I opened ${x}.`,
     paused:"This task needs your approval before I continue. Open Approvals in the Control Center.",
     failed:(r:string)=>`I couldn't finish the task. ${r}`,
     tasksOff:(g:string)=>`That needs a task: ${g}. Turn on task execution in the assistant if you want me to do it.`,
@@ -188,6 +191,12 @@ export class VoiceAssistant{
     if(TIME_AR.test(normalized)||TIME_EN.test(text))return{ok:true,lang,intent:"time",reply:t.time(this.now())};
     const greeting=greetingOf(text);
     if(greeting)return{ok:true,lang,intent:"answer",reply:t.greet[greeting]};
+    // "Open Chrome" is a task already: no model to ask what it means (and the planner opens it in one step).
+    const opening=openRequest(text);
+    if(opening){
+      if(input.allowTasks===false)return{ok:true,lang,intent:"task",goal:text,reply:t.tasksOff(text)};
+      return this.runGoal(text,projectId,lang,opening.label);
+    }
     const tokens=tokenize(text);
     const wordCount=normalized.split(/\s+/).filter(Boolean).length;
     const wantsReport=(REPORT_PHRASES.test(normalized)||tokens.some(w=>REPORT_WORDS.has(w)))&&wordCount<=6&&!tokens.some(w=>CREATE_WORDS.has(w));
@@ -212,14 +221,19 @@ export class VoiceAssistant{
     if(decision?.intent!=="task"||!goal)
       return{ok:true,lang,intent:"answer",reply:reply||(lang==="ar"?"حسناً.":"Okay.")};
     if(input.allowTasks===false)return{ok:true,lang,intent:"task",goal,reply:t.tasksOff(goal)};
+    return this.runGoal(goal,projectId,lang);
+  }
 
+  /** Run a task through the agent and say how it went (`opened`: what an "open X" request opened). */
+  private async runGoal(goal:string,projectId:string,lang:AssistantLang,opened?:string):Promise<AssistantTurnResult>{
+    const t=T[lang];
     try{
       const result=await this.deps.runTask(goal,projectId);
       const completed=result.completed===true,paused=result.paused===true;
       const status=typeof result.status==="string"?result.status:undefined;
       const reason=clean(typeof result.reason==="string"?result.reason:typeof result.error==="string"?result.error:"",200);
       const missionId=typeof result.missionId==="string"?result.missionId:undefined;
-      const spoken=completed?t.done(goal):paused?t.paused:t.failed(reason);
+      const spoken=completed?(opened?t.opened(opened):t.done(goal)):paused?t.paused:t.failed(reason);
       return{ok:true,lang,intent:"task",goal,...(missionId?{missionId}:{}),task:{completed,paused,...(status?{status}:{}),...(reason?{reason}:{})},reply:spoken};
     }catch(error){
       return{ok:false,lang,intent:"task",goal,task:{completed:false,paused:false,reason:clean((error as Error).message,200)},reply:t.failed(clean((error as Error).message,200))};

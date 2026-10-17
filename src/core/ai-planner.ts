@@ -3,8 +3,11 @@ import type {PermissionLevel} from "./types.js";
 import type {ToolCatalogEntry} from "./tool-catalog.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
 import {isDevelopmentGoal as isDevelopmentIntent,selectToolsForGoal} from "../providers/tool-selection.js";
+import {openRequest} from "../tools/open-app.js";
 
 export interface PlannedTool{
+  /** As MissionToolPlan.final: the mission is done once this step succeeds. */
+  final?:boolean;
   tool:string;
   action:string;
   permission:PermissionLevel;
@@ -21,6 +24,19 @@ function filterCatalogForGoal(goal:string,catalog:ToolCatalogEntry[]):ToolCatalo
  if(!isDevelopmentGoal(goal))return PLANNER_TOOL_BUDGET>0?selectToolsForGoal(goal,catalog,PLANNER_TOOL_BUDGET):catalog;
  const allowedPrefixes=["project.","terminal.","files.","git.","development.","runtime.","mission.","memory.","browser.read","github.repo.read","github.issues.list","github.prs.list"];
  return catalog.filter(tool=>allowedPrefixes.some(prefix=>tool.name===prefix||tool.name.startsWith(prefix)));
+}
+
+/** "Open Chrome" / «افتح واتساب» / "open youtube.com": one step, no model (it used to invent a tool that does not exist). */
+function deterministicOpenPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
+ const request=openRequest(goal);
+ const tool=catalog.find(t=>t.name==="desktop.app.open");
+ if(!request||!tool)return undefined;
+ return{risk:"low",requiredPermission:tool.permission,
+  steps:[{description:"Execute: open "+request.label+" on this computer."}],
+  successCriteria:["The program or web page was opened."],
+  stopCondition:"Stop if the program is not installed or the web address is not valid.",
+  tools:[{tool:tool.name,action:tool.actions[0]!,permission:tool.permission,reason:"The owner asked to open "+request.label+".",
+   payload:{...(request.app?{app:request.app}:{}),...(request.url?{url:request.url}:{})},final:true}]};
 }
 
 function deterministicDevelopmentPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
@@ -136,6 +152,8 @@ export class AiMissionPlanner{
   constructor(private readonly models:ModelExecutionRouter){}
   async plan(goal:string,tools:ToolCatalogEntry[]=[],projectContext?:unknown,routing?:ModelRoutingOptions):Promise<PlannedMission>{
     if(!goal.trim())throw new Error("Mission goal is empty.");
+    const opening=deterministicOpenPlan(goal,tools);
+    if(opening)return opening;
     const scopedTools=filterCatalogForGoal(goal,tools);
     const deterministic=deterministicDevelopmentPlan(goal,scopedTools);
     if(deterministic)return deterministic;
@@ -157,7 +175,7 @@ export class AiMissionPlanner{
       "For project.verify use payload {script:\"test\"}, {script:\"typecheck\"}, or {script:\"build\"} according to the goal. For terminal.exec include a safe allowlisted command payload.",
       "A new project starts as an empty folder: create its files (files.write) or its package.json and packages (project.bootstrap) before project.run or project.verify, which only run an existing project.",
       "When the goal needs outside data (exchange rates, weather, maps, products, email checks, test data), call apis.search first for a free public API (prefer auth No with HTTPS), then read its documentation with http.read before writing code for it; never invent an API.",
-      "For computer-use goals on Windows, first read the window with desktop.ui.tree and act with desktop.ui.click or desktop.ui.set_text using an element index; use desktop.window.focus to switch apps. Use desktop.screenshot and coordinate-based mouse actions only when the element is missing from the tree or the user supplied exact coordinates.",
+      "To open a program or a website use desktop.app.open (payload.app = the program name as the owner said it, or payload.url). For other computer-use goals on Windows, first read the window with desktop.ui.tree and act with desktop.ui.click or desktop.ui.set_text using an element index; use desktop.window.focus to switch apps. Use desktop.screenshot and coordinate-based mouse actions only when the element is missing from the tree or the user supplied exact coordinates.",
       "Do not request secrets or bypass security controls.",
       "Available tool catalog: "+JSON.stringify(catalog),
       "Project intelligence context: "+fitSections(3500+JSON.stringify(catalog).length+goal.length,[{text:JSON.stringify(projectContext??null),weight:1,max:8000}])[0],
