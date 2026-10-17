@@ -150,13 +150,6 @@ aside h2{margin-bottom:.5rem}
       </section>
 
       <section>
-        <h2>مركز ربط الخدمات</h2>
-        <p class="lead">يعرض هذا المركز المنصات التي يملك LayanX موصلات فعلية لها. احفظ رمز الخدمة في «مفاتيح الخدمات»، ثم اضغط ربط واختبار. لن تظهر قيم المفاتيح هنا.</p>
-        <p class="note" id="platform-note">جارٍ فحص اتصالات المنصات…</p>
-        <div class="roles" id="platform-list"></div>
-      </section>
-
-      <section>
         <h2>المساعد الشخصي</h2>
         <p class="lead">مساعد صوتي بالعربية والإنجليزية: ناده باسمه، اطلب منه مهمة أو تقريراً، ويرد عليك بالصوت. يعمل في Microsoft Edge أو Google Chrome.</p>
         <div class="roles">
@@ -287,66 +280,8 @@ async function boot(){
   try{await load();$("locked").hidden=true;$("app").hidden=false;}catch(e){if(e.message!=="locked")toast(e.message);}
 }
 
-async function load(){state=await api("/v1/setup/status");render();void loadHooks();await loadPlatforms();}
+async function load(){state=await api("/v1/setup/status");render();void loadHooks();}
 
-async function loadPlatforms(){
-  const list=$("platform-list"),note=$("platform-note");
-  try{
-    const data=await api("/v1/platforms");
-    const items=Array.isArray(data.platforms)?data.platforms:[];
-    note.textContent=items.length?"حالة الاتصال من runtime المحلي. المنصات التي تحتاج مفاتيح ستوضح ذلك أدناه.":"لم يرجع runtime أي منصات.";
-    list.replaceChildren(...items.map(p=>{
-      const card=el("div",{class:"fix"});
-      const heading=el("h3",{text:p.label+" — "+({connected:"متصل",available:"جاهز للربط",needs_token:"يحتاج مفتاحاً",error:"خطأ في الاتصال",starting:"جارٍ الاتصال"}[p.state]||p.state)});
-      const about=el("p",{class:"note",text:p.about?.ar||""});
-      card.append(heading,about);
-      if(Array.isArray(p.secrets)&&p.secrets.length){
-        const secretList=el("ul",{class:"urls"});
-        for(const secret of p.secrets){
-          const item=el("li",{});
-          const label=el("code",{class:"mono",text:secret.name});
-          item.append(label,document.createTextNode(secret.set?" — محفوظ":" — غير محفوظ"));
-          if(secret.createUrl){
-            const link=el("a",{href:secret.createUrl,target:"_blank",rel:"noreferrer",text:"إنشاء المفتاح"});
-            item.append(document.createTextNode(" · "),link);
-          }
-          if(secret.scopes?.ar)item.append(el("p",{class:"note",text:secret.scopes.ar}));
-          secretList.append(item);
-        }
-        card.append(secretList);
-      }
-      if(p.docs)card.append(el("p",{},el("a",{href:p.docs,target:"_blank",rel:"noreferrer",text:"التوثيق الرسمي"})));
-      const actions=el("div",{class:"actions"});
-      if(p.state==="connected"){
-        const disconnect=el("button",{text:"فصل المنصة"});
-        disconnect.addEventListener("click",async()=>{
-          if(!confirm("هل تريد فصل "+p.label+"؟ قد يُحذف مفتاحها الخاص من المخزن؛ المفاتيح المشتركة لا تُحذف."))return;
-          disconnect.disabled=true;
-          try{await api("/v1/platforms/"+encodeURIComponent(p.id)+"/disconnect","POST",{});await loadPlatforms();toast("تم فصل "+p.label);}
-          catch(e){toast(e.message);}finally{disconnect.disabled=false;}
-        });
-        actions.append(disconnect);
-      }else{
-        const connect=el("button",{class:"primary",text:p.state==="error"?"إعادة المحاولة":"ربط واختبار"});
-        connect.addEventListener("click",async()=>{
-          connect.disabled=true;
-          try{
-            const result=await api("/v1/platforms/"+encodeURIComponent(p.id)+"/connect","POST",{});
-            await loadPlatforms();
-            const state=result.status?.state||"unknown";
-            toast(state==="connected"?"تم الاتصال بـ "+p.label:"تم إرسال طلب الربط؛ الحالة: "+state);
-          }catch(e){toast(e.message);}finally{connect.disabled=false;}
-        });
-        actions.append(connect);
-      }
-      card.append(actions);
-      return card;
-    }));
-  }catch(error){
-    note.textContent="تعذر تحميل حالة المنصات: "+(error.message||String(error));
-    list.replaceChildren();
-  }
-}
 function render(){
   const s=state,o=s.ollama;
   const ok=o.reachable&&o.models.length>0;
