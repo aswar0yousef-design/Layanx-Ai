@@ -206,6 +206,7 @@ const safe=async(p,fb)=>{try{return await p;}catch{return fb;}};
 // configured locally; this UI never asks for or displays access-token values.
 
 async function oauthConnectionsPanel(){
+ const callbackUrl=new URL("/v1/oauth/callback",window.location.origin).href;
  const box=el("section",{class:"card",style:"margin-top:1rem"});
  const providers=[
   {id:"meta",label:"Meta · Facebook / Instagram",vars:"LAYANX_META_OAUTH_CLIENT_ID, LAYANX_META_OAUTH_CLIENT_SECRET, LAYANX_META_OAUTH_REDIRECT_URI",url:"https://developers.facebook.com/apps/"},
@@ -247,7 +248,7 @@ async function oauthConnectionsPanel(){
     el("a",{href:p.url,target:"_blank",rel:"noopener noreferrer",text:(LANG==="ar"?"إعداد تطبيق OAuth لدى المزود ↗":"Configure OAuth app with provider ↗")}));
    return el("div",{class:"integ",style:"display:block"},el("b",{text:p.label}),form);
   });
-  box.replaceChildren(el("h3",{text:LANG==="ar"?"ربط الحسابات الاجتماعية والإعلانية عبر OAuth":"Social and ads accounts via OAuth"}),el("p",{class:"muted",text:LANG==="ar"?"هذه الواجهة تبدأ تدفق OAuth فقط عند ضبط بيانات التطبيق وعنوان العودة لدى المزود. بعض المنصات تتطلب مراجعة التطبيق أو صلاحيات إضافية قبل النشر أو إدارة الإعلانات.":"This UI starts OAuth only after app credentials and a matching redirect URI are configured. Some platforms require app review or additional scopes before publishing or ads management."}),el("div",{class:"rows"},accountRows),el("h4",{text:LANG==="ar"?"إضافة اتصال":"Add connection"}),el("div",{class:"grid2",style:"margin-top:.6rem"},cards));
+  box.replaceChildren(el("h3",{text:LANG==="ar"?"ربط الحسابات الاجتماعية والإعلانية عبر OAuth":"Social and ads accounts via OAuth"}),el("p",{class:"muted",text:(LANG==="ar"?"سجّل عنوان العودة هذا حرفيًا في إعدادات كل تطبيق OAuth، واستخدمه في متغير REDIRECT_URI الخاص بالمزود: ":"Register this exact callback URL in each OAuth app and use it for that provider’s REDIRECT_URI: ")+callbackUrl+". "+(LANG==="ar"?"قد تتطلب المنصات مراجعة التطبيق وصلاحيات إضافية.":"Provider app review and additional scopes may be required.")}),el("div",{class:"rows"},accountRows),el("h4",{text:LANG==="ar"?"إضافة اتصال":"Add connection"}),el("div",{class:"grid2",style:"margin-top:.6rem"},cards));
  };
  await render();
  return box;
