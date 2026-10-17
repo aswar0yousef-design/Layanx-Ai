@@ -60,7 +60,7 @@ export class VerificationEngine {
     // A bare result path is an existence assertion, not a free-form phrase.
     // This supports planner criteria such as result.system / result.providers while keeping
     // missing or null fields a hard verification failure.
-    const pathOnly=/^result\.([A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*)$/i.exec(text);
+    const pathOnly=/^result\.([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)$/i.exec(text);
     if(pathOnly){
       const actual=this.readPath(result,pathOnly[1]);
       const matched=actual!==null&&actual!==undefined;
