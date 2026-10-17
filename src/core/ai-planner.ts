@@ -2,7 +2,7 @@ import type {ModelExecutionRouter} from "./model-execution.js";
 import type {PermissionLevel} from "./types.js";
 import type {ToolCatalogEntry} from "./tool-catalog.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
-import {isDevelopmentGoal as isDevelopmentIntent,selectToolsForGoal} from "../providers/tool-selection.js";
+import {isDevelopmentGoal as isDevelopmentIntent,normalizeArabic,selectToolsForGoal} from "../providers/tool-selection.js";
 
 export interface PlannedTool{
   tool:string;
@@ -21,6 +21,58 @@ function filterCatalogForGoal(goal:string,catalog:ToolCatalogEntry[]):ToolCatalo
  if(!isDevelopmentGoal(goal))return PLANNER_TOOL_BUDGET>0?selectToolsForGoal(goal,catalog,PLANNER_TOOL_BUDGET):catalog;
  const allowedPrefixes=["project.","terminal.","files.","git.","development.","runtime.","mission.","memory.","browser.read","github.repo.read","github.issues.list","github.prs.list"];
  return catalog.filter(tool=>allowedPrefixes.some(prefix=>tool.name===prefix||tool.name.startsWith(prefix)));
+}
+
+function deterministicReadOnlyPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
+ const g=normalizeArabic(goal).replace(/[\\u064B-\\u065F\\u0670\\u0640]/g," ").toLowerCase();
+ const has=(pattern:RegExp)=>pattern.test(g);
+ const find=(name:string,actions:string[]):PlannedTool|undefined=>{
+  const entry=catalog.find(item=>item.name===name);
+  if(!entry||!["L1_READ","L2_ANALYZE"].includes(entry.permission))return undefined;
+  const action=entry.actions.find(a=>actions.some(w=>a.toLowerCase()===w.toLowerCase()));
+  if(!action)return undefined;
+  return{tool:entry.name,action,permission:entry.permission,reason:"High-confidence read-only intent route."};
+ };
+ const mission=(tool:PlannedTool,description:string,criteria="done",payload?:Record<string,unknown>):PlannedMission=>({
+  risk:tool.permission==="L1_READ"?"low":"medium",requiredPermission:tool.permission,
+  steps:[{description}],successCriteria:[criteria],stopCondition:"Stop if the selected read-only tool is unavailable or returns an error.",
+  tools:[{...tool,...(payload?{payload}:{})}]
+ });
+ if(has(/\\b(runtime status|runtime health|system status|is everything running|check system health)\\b|حاله النظام|فحص التشغيل|هل كل شيء يعمل/)){
+  const t=find("runtime.status",["read runtime status","inspect runtime","runtime status","قراءة حالة النظام","فحص التشغيل"]);
+  if(t)return mission(t,"Read the runtime status and report provider/model availability.");
+ }
+ if(has(/\\b(upcoming calendar|calendar events|calendar appointments|my appointments|upcoming events)\\b|مواعيدي|مواعيد|التقويم|الاحداث القادمه/)){
+  const t=find("google.calendar.upcoming",["calendar upcoming","read upcoming Google Calendar events"]);
+  if(t)return mission(t,"Read upcoming calendar events and summarize them.","done",{limit:20});
+ }
+ if(has(/\\b(gmail|email|emails|inbox|mailbox)\\b|بريدي|البريد|ايميل|رسائل البريد/)&&has(/\\b(search|find|look for|invoice|invoices|receipt|receipts)\\b|ابحث|بحث|فواتير|فاتوره/)){
+  const t=find("google.gmail.search",["search emails"]);
+  if(t){
+   let query="";
+   if(has(/\\b(last month|previous month)\\b|الشهر الماضي/)){
+    const now=new Date(),firstThis=new Date(now.getFullYear(),now.getMonth(),1),lastPrevious=new Date(firstThis.getTime()-86400000),fmt=(d:Date)=>String(d.getFullYear())+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+String(d.getDate()).padStart(2,"0");
+    query="after:"+fmt(lastPrevious)+" before:"+fmt(firstThis)+" ";
+   }
+   if(has(/invoice|invoices|فاتوره|فواتير/))query+="(invoice OR invoices OR فاتورة OR فواتير)";
+   else if(has(/receipt|receipts|ايصال/))query+="(receipt OR receipts OR إيصال)";
+   else query+="newer_than:30d";
+   return mission(t,"Search Gmail for the requested messages and report matching results.","done",{query,limit:20});
+  }
+ }
+ if(has(/\\b(security scan|scan project security|security audit|vulnerability scan)\\b|فحص امان المشروع|فحص امن المشروع|افحص امان|افحص امن|فحص امني/)){
+  const t=find("project.security",["security scan","scan project security","فحص أمني","فحص أمان المشروع"]);
+  if(t)return mission(t,"Run the project's security scan and summarize findings.");
+ }
+ if(has(/\\b(open windows|which windows are open|look at my screen|inspect the screen|screen contents)\\b|النوافذ المفتوحه|النوافذ|ما النوافذ|انظر الى الشاشه|الشاشه/)){
+  if(has(/\\b(screenshot|capture the screen)\\b|لقطه شاشه/)){
+   const t=find("desktop.screenshot",["desktop screenshot"]);
+   if(t)return mission(t,"Capture the screen for inspection.");
+  }
+  const t=find("desktop.ui.tree",["desktop ui tree"]);
+  if(t)return mission(t,"List open windows and visible UI elements.","done",{scope:"windows"});
+ }
+ return undefined;
 }
 
 function deterministicDevelopmentPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
@@ -136,6 +188,8 @@ export class AiMissionPlanner{
   constructor(private readonly models:ModelExecutionRouter){}
   async plan(goal:string,tools:ToolCatalogEntry[]=[],projectContext?:unknown,routing?:ModelRoutingOptions):Promise<PlannedMission>{
     if(!goal.trim())throw new Error("Mission goal is empty.");
+    const readOnly=deterministicReadOnlyPlan(goal,tools);
+    if(readOnly)return readOnly;
     const scopedTools=filterCatalogForGoal(goal,tools);
     const deterministic=deterministicDevelopmentPlan(goal,scopedTools);
     if(deterministic)return deterministic;
