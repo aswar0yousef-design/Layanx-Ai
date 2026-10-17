@@ -18,10 +18,27 @@ assert.deepEqual(schema.required,["risk","requiredPermission","steps","successCr
 const branches=schema.properties.tools.items.anyOf;
 assert.deepEqual(branches.map((b:any)=>b.properties.tool.enum[0]).sort(),["files.write","project.verify"]);
 assert.deepEqual(branches.find((b:any)=>b.properties.tool.enum[0]==="project.verify").properties.permission.enum,["L4_EXECUTE"]);
-const next=await planner.nextTool({goal:"create the landing page file",result:{},tools:catalog,requiredPermission:"L4_EXECUTE",completedTools:[]});
+const next=await planner.nextTool({goal:"read runtime status",result:{ready:true},tools:catalog,requiredPermission:"L4_EXECUTE",completedTools:["runtime.status"],successCriteria:["result.ready === true"]});
 assert.equal(next,null);
 assert.equal(seen[1].responseSchema.anyOf[0].type,"null","adaptive planner may answer null");
+assert.ok(String(seen[1].input).includes('Success criteria: ["result.ready === true"]'),"adaptive planner receives the mission success criteria");
 assert.equal(nextToolSchema([]).anyOf.length,2);
+
+// A small local model may disregard a constrained schema once. It gets one repair attempt,
+ // and only an exact catalog tool/action/permission triple can be returned for execution.
+const repairRequests:any[]=[];
+const repairOutputs=[
+ JSON.stringify({tool:"unknown.tool",action:"execute unknown",permission:"L1_READ",reason:"bad selection"}),
+ JSON.stringify({tool:"files.write",action:"write file",permission:"L3_MODIFY",reason:"write requested file",payload:{path:"index.html",content:"test"}})
+];
+const repairing=new AiMissionPlanner({async execute(request:any){repairRequests.push(request);const output=repairOutputs.shift();if(!output)throw new Error("unexpected extra planner request");return{modelId:"m",provider:"ollama",output,attempts:[]};}} as any);
+const repaired=await repairing.nextTool({goal:"create the landing page file",result:{},tools:catalog,requiredPermission:"L4_EXECUTE",completedTools:[],successCriteria:["result.ok === true"]});
+assert.equal(repaired?.tool,"files.write","invalid tool selection is repaired into a catalog entry");
+assert.equal(repaired?.action,"write file");
+assert.equal(repairRequests.length,2,"invalid adaptive selection triggers one constrained repair attempt");
+assert.ok(String(repairRequests[1].input).includes("Your previous output was rejected"),"repair request explains why the first response was rejected");
+assert.ok(String(repairRequests[1].input).includes('Success criteria: ["result.ok === true"]'),"repair request preserves success criteria");
+assert.ok(repairRequests[1].responseSchema,"repair call remains constrained by the same tool schema");
 assert.equal(missionPlanSchema([]).properties.tools.items.type,"object");
 
 // 2. Ollama receives the schema in `format`; LAYANX_OLLAMA_STRUCTURED=off keeps plain JSON mode.
