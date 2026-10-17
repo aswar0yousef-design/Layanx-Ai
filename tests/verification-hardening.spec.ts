@@ -49,5 +49,11 @@ if(nullishAbsent.verified)throw new Error("undefined != null must fail under nul
 const runtimeStatus=verifier.verify(mission(),{system:"LayanX AI",ready:true},["result.ready === true"]);
 if(!runtimeStatus.verified)throw new Error("A valid flat runtime.status field was rejected: "+runtimeStatus.failures.join("; "));
 
+const resultFields=verifier.verify(mission(),{system:"LayanX AI",ready:true,providers:["ollama"],models:["llama3.2:3b"]},["result.system","result.ready","result.providers","result.models"]);
+if(!resultFields.verified)throw new Error("Existing explicit result paths were not accepted: "+resultFields.failures.join("; "));
+
+const missingResultField=verifier.verify(mission(),{system:"LayanX AI",ready:true},["result.system","result.providers"]);
+if(missingResultField.verified||!missingResultField.failures.some(f=>f.includes("result.providers")))throw new Error("A missing bare result path incorrectly satisfied success criteria.");
+
 
 console.log("Verification hardening passed.");
