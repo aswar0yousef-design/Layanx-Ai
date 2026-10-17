@@ -582,14 +582,14 @@ export class LayanXCore{
     if(!routing&&!hint&&cloudReady&&cloudPolicy()!=="off"&&this.routingMemory.suggestCloud(goal))hint={preferLocal:false,reason:"learned"};
     const toRouting=(h:typeof hint):ModelRoutingOptions|undefined=>h?{preferLocal:h.preferLocal,...(h.tags?{tags:h.tags}:{})}:routing;
     let mission:Awaited<ReturnType<LayanXCore["planAndStartMission"]>>;
-    try{mission=await this.planAndStartMission(goal,projectId,toRouting(hint));
+    try{mission=await this.planAndStartMission(goal,projectId,toRouting(hint),agentId);
       if(!routing)this.routingMemory.record(goal,hint&&!hint.preferLocal?"cloud_ok":"local_ok");}
     catch(error){
       if(!routing&&!hint)this.routingMemory.record(goal,"local_failed");
       if(routing||hint||!cloudReady||cloudPolicy()==="off")throw error;
       hint={preferLocal:false,reason:"fallback"};
       this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"model.escalate",resource:"planner",result:"success",metadata:{reason:"local planning failed",error:error instanceof Error?error.message.slice(0,200):"unknown"}});
-      mission=await this.planAndStartMission(goal,projectId,toRouting(hint));
+      mission=await this.planAndStartMission(goal,projectId,toRouting(hint),agentId);
       this.routingMemory.record(goal,"cloud_ok");
     }
     const result=await this.executeAgentLoop(mission.id,projectId,maxSteps,approvalIds,agentId,toRouting(hint));
@@ -888,8 +888,8 @@ export class LayanXCore{
     return{missionId,results,completed:results.length===plans.length&&results.every(result=>result.ok)};
   }
 
-  async planMission(goal:string,projectId="default",routing?:ModelRoutingOptions){
-    const contract=this.agents.get("core");
+  async planMission(goal:string,projectId="default",routing?:ModelRoutingOptions,agentId="core"){
+    const contract=this.agents.get(agentId);
     const tools=this.toolCatalog.list(contract,contract.requiredPermission);
     let projectContext:unknown=null;
     try{
@@ -902,9 +902,9 @@ export class LayanXCore{
     return this.missionCompiler.compile(plan,goal);
   }
 
-  async planAndStartMission(goal:string,projectId="default",routing?:ModelRoutingOptions){
+  async planAndStartMission(goal:string,projectId="default",routing?:ModelRoutingOptions,agentId="core"){
     const normalizedProjectId=this.projectIsolation.normalize(projectId);
-    const m=await this.planMission(goal,normalizedProjectId,routing);
+    const m=await this.planMission(goal,normalizedProjectId,routing,agentId);
     m.projectId=normalizedProjectId;
     this.executionStates.start(m.id);
     this.ledger.append({id:crypto.randomUUID(),missionId:m.id,agentId:"core",action:"mission.create",status:"started",timestamp:new Date().toISOString(),detail:goal});
