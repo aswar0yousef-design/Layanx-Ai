@@ -64,6 +64,18 @@ if($python){
   if($LASTEXITCODE -eq 0){Add-Result 'MT5 Python package' 'PASS' (($pyCheck|Out-String).Trim())}
   else{Add-Result 'MT5 Python package' 'WARN' 'Package missing from this Python; run python -m pip install MetaTrader5'}
 }else{Add-Result 'Python for MT5 bridge' 'WARN' 'Python not found on PATH'}
+foreach($voiceService in @(@{Name='Local Whisper STT';Port=8178},@{Name='Local Piper TTS';Port=8179},@{Name='Voice Sense VAD';Port=8180})){
+  $client=$null
+  try{
+    $client=New-Object Net.Sockets.TcpClient
+    $connect=$client.BeginConnect('127.0.0.1',[int]$voiceService.Port,$null,$null)
+    if(-not $connect.AsyncWaitHandle.WaitOne(700)){throw 'connection timeout'}
+    $client.EndConnect($connect)
+    Add-Result $voiceService.Name 'PASS' ("listening on 127.0.0.1:"+$voiceService.Port)
+  }catch{
+    Add-Result $voiceService.Name 'WARN' ("not reachable on port "+$voiceService.Port+"; optional local voice component may not be installed or started")
+  }finally{if($client){$client.Close()}}
+}
 try {
   $client=New-Object Net.Sockets.TcpClient; $client.Connect('127.0.0.1',3000); $client.Close()
   Add-Result 'Port 3000' 'WARN' 'already in use; confirm the listener is LayanX'
