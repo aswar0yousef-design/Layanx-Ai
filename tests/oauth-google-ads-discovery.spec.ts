@@ -5,7 +5,7 @@ import {tmpdir} from "node:os";
 import {OAuthConnectionCenter} from "../src/business/oauth.js";
 
 const dir=mkdtempSync(join(tmpdir(),"layanx-google-ads-oauth-"));
-const old={key:process.env.LAYANX_SECRET_VAULT_KEY,path:process.env.LAYANX_SECRET_VAULT_PATH,connections:process.env.LAYANX_OAUTH_CONNECTIONS_PATH,dev:process.env.LAYANX_GOOGLE_ADS_DEVELOPER_TOKEN,client:process.env.LAYANX_GOOGLE_OAUTH_CLIENT_ID,secret:process.env.LAYANX_GOOGLE_OAUTH_CLIENT_SECRET,redirect:process.env.LAYANX_GOOGLE_OAUTH_REDIRECT_URI,token:process.env.LAYANX_GOOGLE_OAUTH_TOKEN_URL,authorize:process.env.LAYANX_GOOGLE_OAUTH_AUTHORIZE_URL};
+const old={key:process.env.LAYANX_SECRET_VAULT_KEY,path:process.env.LAYANX_SECRET_VAULT_PATH,connections:process.env.LAYANX_OAUTH_CONNECTIONS_PATH,dev:process.env.LAYANX_GOOGLE_ADS_DEVELOPER_TOKEN,login:process.env.LAYANX_GOOGLE_ADS_LOGIN_CUSTOMER_ID,client:process.env.LAYANX_GOOGLE_OAUTH_CLIENT_ID,secret:process.env.LAYANX_GOOGLE_OAUTH_CLIENT_SECRET,redirect:process.env.LAYANX_GOOGLE_OAUTH_REDIRECT_URI,token:process.env.LAYANX_GOOGLE_OAUTH_TOKEN_URL,authorize:process.env.LAYANX_GOOGLE_OAUTH_AUTHORIZE_URL};
 process.env.LAYANX_SECRET_VAULT_KEY="google-ads-test-key-32-characters-long";
 process.env.LAYANX_SECRET_VAULT_PATH=join(dir,"vault");
 process.env.LAYANX_OAUTH_CONNECTIONS_PATH=join(dir,"connections.json");
@@ -39,7 +39,7 @@ try{
  assert.deepEqual(found.accounts.map((x:any)=>x.externalId),["123","456"]);
 }finally{
  globalThis.fetch=original;
- for(const [key,value] of Object.entries({LAYANX_SECRET_VAULT_KEY:old.key,LAYANX_SECRET_VAULT_PATH:old.path,LAYANX_OAUTH_CONNECTIONS_PATH:old.connections,LAYANX_GOOGLE_ADS_DEVELOPER_TOKEN:old.dev,LAYANX_GOOGLE_OAUTH_CLIENT_ID:old.client,LAYANX_GOOGLE_OAUTH_CLIENT_SECRET:old.secret,LAYANX_GOOGLE_OAUTH_REDIRECT_URI:old.redirect,LAYANX_GOOGLE_OAUTH_TOKEN_URL:old.token,LAYANX_GOOGLE_OAUTH_AUTHORIZE_URL:old.authorize})){if(value===undefined)delete process.env[key];else process.env[key]=value;}
+ for(const [key,value] of Object.entries({LAYANX_SECRET_VAULT_KEY:old.key,LAYANX_SECRET_VAULT_PATH:old.path,LAYANX_OAUTH_CONNECTIONS_PATH:old.connections,LAYANX_GOOGLE_ADS_DEVELOPER_TOKEN:old.dev,LAYANX_GOOGLE_ADS_LOGIN_CUSTOMER_ID:old.login,LAYANX_GOOGLE_OAUTH_CLIENT_ID:old.client,LAYANX_GOOGLE_OAUTH_CLIENT_SECRET:old.secret,LAYANX_GOOGLE_OAUTH_REDIRECT_URI:old.redirect,LAYANX_GOOGLE_OAUTH_TOKEN_URL:old.token,LAYANX_GOOGLE_OAUTH_AUTHORIZE_URL:old.authorize})){if(value===undefined)delete process.env[key];else process.env[key]=value;}
  rmSync(dir,{recursive:true,force:true});
 }
 console.log("Google Ads OAuth discovery requires developer token and sends required headers: ok");
