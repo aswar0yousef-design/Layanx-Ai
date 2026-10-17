@@ -85,13 +85,13 @@ export function wantsOpenWhenDone(text:string):boolean{return OPEN_WHEN_DONE.tes
  * milestone for a local Windows action. Only known apps/URLs accepted by openRequest are fast-pathed.
  */
 function directDesktopOpenGoal(text:string):{app?:string;url?:string;label:string;command:string}|undefined{
-  if(text.length>240||text.includes("\\n"))return undefined;
+  if(text.length>240||text.includes("\n"))return undefined;
   let command=text.trim()
-    .replace(/(?:[،,;؛.]?\\s*)(?:وتأكد(?:\\s+من)?|وتحقق(?:\\s+من)?|وتاكد(?:\\s+من)?|وتثبت(?:\\s+من)?|تأكد من نجاح|تحقق من نجاح|and\\s+(?:verify|confirm|check|make sure)|then\\s+(?:verify|confirm|check)|make sure(?:\\s+that)?|verify(?:\\s+that)?|confirm(?:\\s+that)?)[\\s\\S]*$/iu,"")
-    .replace(/\\s+(?:على|في)\\s+(?:جهازي|جهاز الكمبيوتر|هذا الجهاز|الكمبيوتر|الحاسوب|سطح المكتب)(?:\\s+.*)?$/iu,"")
-    .replace(/\\s+(?:on|in)\\s+(?:my|this|the)\\s+(?:computer|pc|device|desktop)(?:\\s+.*)?$/iu,"")
+    .replace(/(?:[،,;؛.]?\s*)(?:وتأكد(?:\s+من)?|وتحقق(?:\s+من)?|وتاكد(?:\s+من)?|وتثبت(?:\s+من)?|تأكد من نجاح|تحقق من نجاح|and\s+(?:verify|confirm|check|make sure)|then\s+(?:verify|confirm|check)|make sure(?:\s+that)?|verify(?:\s+that)?|confirm(?:\s+that)?)[\s\S]*$/iu,"")
+    .replace(/\s+(?:على|في)\s+(?:جهازي|جهاز الكمبيوتر|هذا الجهاز|الكمبيوتر|الحاسوب|سطح المكتب)(?:\s+.*)?$/iu,"")
+    .replace(/\s+(?:on|in)\s+(?:my|this|the)\s+(?:computer|pc|device|desktop)(?:\s+.*)?$/iu,"")
     // People often write both the Arabic and English name of the same program.
-    .replace(/المفكر[هة]\\s+notepad$/iu,"Notepad")
+    .replace(/المفكر[هة]\s+notepad$/iu,"Notepad")
     .replace(/[،,;؛.!؟?]+$/u,"")
     .trim();
   const request=openRequest(command);
