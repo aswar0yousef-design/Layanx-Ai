@@ -309,6 +309,38 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
       return true;
     }
 
+    if(path==="/v1/setup/projects/create"&&method==="POST"){
+      // Owner-authenticated setup route; filesystem writes are restricted to loopback.
+      if(!ctx.loopback){ctx.sendJson(403,{error:"local_only"});return true;}
+      const body=await ctx.readJson() as {name?:unknown};
+      if(typeof body.name!=="string"){ctx.sendJson(400,{error:"project_name_required",message:"اكتب اسم المشروع أولاً."});return true;}
+      const name=body.name.normalize("NFC").trim().replace(/\s+/g,"-");
+      if(!name||name.length>64||!/^\p{L}[\p{L}\p{N}._-]{0,63}$/u.test(name)||/[.]$/.test(name)||/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(name)){
+        ctx.sendJson(400,{error:"invalid_project_name",message:"اسم المشروع غير صالح. استخدم الحروف والأرقام والشرطة فقط، وبحد أقصى 64 حرفاً."});return true;
+      }
+      const root=nodePath.resolve(process.env.LAYANX_WORKSPACE_ROOT||host.getSettings().workspaceRoot||nodePath.join(os.homedir(),"LayanX-Projects"));
+      const projectPath=nodePath.resolve(root,name);
+      const rel=nodePath.relative(root,projectPath);
+      if(!rel||rel.startsWith(".."+nodePath.sep)||nodePath.isAbsolute(rel)){
+        ctx.sendJson(400,{error:"invalid_project_path"});return true;
+      }
+      let created=false;
+      try{
+        fs.mkdirSync(root,{recursive:true});
+        // A non-recursive mkdir makes duplicate names fail rather than merge projects.
+        fs.mkdirSync(projectPath,{recursive:false});
+        created=true;
+        const metadata={id:name,name,createdAt:new Date().toISOString(),workspaceRoot:root,status:"new"};
+        fs.writeFileSync(nodePath.join(projectPath,".layanx-project.json"),JSON.stringify(metadata,null,2)+"\n",{flag:"wx"});
+        fs.writeFileSync(nodePath.join(projectPath,"README.md"),"# "+name+"\n\nمشروع أنشأه LayanX.\n\n## الهدف\n\nأضف وصف المشروع ومعايير القبول هنا.\n",{flag:"wx"});
+        ctx.sendJson(201,{ok:true,project:{...metadata,path:projectPath},message:"تم إنشاء مجلد مستقل للمشروع. لم يبدأ التنفيذ بعد."});
+      }catch(error){
+        if(created)try{fs.rmSync(projectPath,{recursive:true,force:true});}catch{}
+        ctx.sendJson(409,{error:"project_create_failed",message:error instanceof Error?error.message:"تعذر إنشاء المشروع."});
+      }
+      return true;
+    }
+
     if(path==="/v1/setup/status"&&method==="GET"){
       const settings=host.getSettings();
       const {discovery,plan,machine}=host.ollama.status();
