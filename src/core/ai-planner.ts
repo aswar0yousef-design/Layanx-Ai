@@ -27,12 +27,33 @@ function filterCatalogForGoal(goal:string,catalog:ToolCatalogEntry[]):ToolCatalo
 }
 
 /** "Open Chrome" / «افتح واتساب» / "open youtube.com": one step, no model (it used to invent a tool that does not exist). */
-function deterministicOpenPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
- // Supervisor tasks include an overall goal and acceptance context. Use the explicit current milestone
- // when one exists, so a wrapped "open Notepad" request still follows the deterministic open path.
+function currentMilestoneGoal(goal:string):string{
  const milestone=goal.split(/\r?\n/).find(line=>/^Current milestone \(\d+\/\d+\):\s*/i.test(line));
- const openGoal=milestone?milestone.replace(/^Current milestone \(\d+\/\d+\):\s*/i,"").trim():goal;
- const request=openRequest(openGoal);
+ return milestone?milestone.replace(/^Current milestone \(\d+\/\d+\):\s*/i,"").trim():goal;
+}
+
+/** A window-presence check is deterministic too: ask Windows to focus that exact window title. */
+function deterministicDesktopWindowCheck(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
+ const step=currentMilestoneGoal(goal);
+ const mentionsNotepad=/(?:notepad|المفكرة|المفكره)/iu.test(step);
+ const isCheck=/(?:تحقق|تأكد|افحص|verify|confirm|check)/iu.test(step);
+ const isWindow=/(?:نافذة|window)/iu.test(step);
+ if(!mentionsNotepad||!isCheck||!isWindow)return undefined;
+ const tool=catalog.find(item=>item.name==="desktop.window.focus"&&item.actions.some(action=>action.toLowerCase()==="desktop focus window"));
+ if(!tool)return undefined;
+ return{
+  risk:"low",
+  requiredPermission:tool.permission,
+  steps:[{description:"Execute: focus the visible Notepad window to verify that it is open."}],
+  successCriteria:["result.focused === true",'result.title contains "Notepad"'],
+  stopCondition:"Stop and report the window-verification error if no Notepad window is open.",
+  tools:[{tool:tool.name,action:"desktop focus window",permission:tool.permission,reason:"The owner asked to confirm that the Notepad window is open.",payload:{title:"Notepad"},final:true}]
+ };
+}
+
+function deterministicOpenPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
+ // Supervisor tasks wrap the actionable step in a larger goal; use the named current milestone.
+ const request=openRequest(currentMilestoneGoal(goal));
  const tool=catalog.find(t=>t.name==="desktop.app.open");
  if(!request||!tool)return undefined;
  return{risk:"low",requiredPermission:tool.permission,
@@ -156,6 +177,8 @@ export class AiMissionPlanner{
   constructor(private readonly models:ModelExecutionRouter){}
   async plan(goal:string,tools:ToolCatalogEntry[]=[],projectContext?:unknown,routing?:ModelRoutingOptions):Promise<PlannedMission>{
     if(!goal.trim())throw new Error("Mission goal is empty.");
+    const windowCheck=deterministicDesktopWindowCheck(goal,tools);
+    if(windowCheck)return windowCheck;
     const opening=deterministicOpenPlan(goal,tools);
     if(opening)return opening;
     const scopedTools=filterCatalogForGoal(goal,tools);
