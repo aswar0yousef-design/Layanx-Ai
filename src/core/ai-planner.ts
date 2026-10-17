@@ -28,7 +28,7 @@ function deterministicReadOnlyPlan(goal:string,catalog:ToolCatalogEntry[]):Plann
  const has=(pattern:RegExp)=>pattern.test(g);
  const find=(name:string,actions:string[]):PlannedTool|undefined=>{
   const entry=catalog.find(item=>item.name===name);
-  if(!entry||!["L1_READ","L2_ANALYZE"].includes(entry.permission))return undefined;
+  if(!entry||entry.dangerous||!["L1_READ","L2_ANALYZE"].includes(entry.permission))return undefined;
   const action=entry.actions.find(a=>actions.some(w=>a.toLowerCase()===w.toLowerCase()));
   if(!action)return undefined;
   return{tool:entry.name,action,permission:entry.permission,reason:"High-confidence read-only intent route."};
