@@ -52,7 +52,7 @@ export interface SupervisorJob{
   budgetMinutes?:number;
   resumed?:number;
 }
-export interface AgentRun{completed?:boolean;paused?:boolean;missionId?:string;nextToolIndex?:number;approvalId?:string;reason?:string;status?:string;results?:unknown[]}
+export interface AgentRun{completed?:boolean;paused?:boolean;missionId?:string;nextToolIndex?:number;approvalId?:string;reason?:string;status?:string;final?:{ok?:boolean;error?:string;verified?:boolean};results?:unknown[]}
 export interface ToolRun{ok?:boolean;missionId?:string;approvalId?:string;data?:any;error?:string}
 export interface SupervisorDeps{
   think(prompt:string,opts?:{cloud?:boolean;images?:Array<{mimeType:string;base64:string}>}):Promise<string>;
@@ -299,7 +299,7 @@ export class Supervisor{
         job.waiting={approvalId:run.approvalId,missionId:run.missionId,index:run.nextToolIndex??0,kind:"agent",agentId:m.agent,milestone:job.current};
         this.set(job,"waiting_approval","Waiting for your approval to continue");return;
       }
-      if(!run.completed){await this.afterWork(job,m,run.reason??run.status??"unknown");return;}
+      if(!run.completed){await this.afterWork(job,m,run.reason??run.final?.error??run.status??"unknown");return;}
     }
     await this.afterWork(job,m);
   }
@@ -376,7 +376,7 @@ export class Supervisor{
     if(w.kind==="agent"&&m){
       const run=await this.deps.resumeAgent(w.missionId,job.projectId,w.agentId??m.agent,{[w.index]:w.approvalId});
       if(run.paused&&run.approvalId){job.waiting={approvalId:run.approvalId,missionId:w.missionId,index:run.nextToolIndex??0,kind:"agent",agentId:w.agentId,milestone:w.milestone};this.set(job,"waiting_approval","Waiting for another approval");return;}
-      await this.afterWork(job,m,run.completed?undefined:run.reason??run.status??"unknown");return;
+      await this.afterWork(job,m,run.completed?undefined:run.reason??run.final?.error??run.status??"unknown");return;
     }
     if(w.kind==="tool"){
       await this.deps.runTool(job.projectId,w.tool!,w.payload??{},{missionId:w.missionId,approvalId:w.approvalId});
