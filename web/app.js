@@ -14,7 +14,24 @@ const T={
   activeMissions:"المهام النشطة",successRate:"نسبة النجاح",tasksCompleted:"المهام المكتملة",connectedApps:"التطبيقات المتصلة",running:"قيد التنفيذ",queued:"في الانتظار",last30:"آخر 30 يوماً",thisWeek:"هذا الأسبوع",
   agentTitle:"وكيل LayanX الذكي",agentSub:"مساعدك الذكي للتطوير والأعمال والأتمتة",askAgent:"اطلب من LayanX تنفيذ أي شيء…",received:"تم استلام المهمة، جارٍ التنفيذ…",pausedApproval:"توقفت المهمة بأمان: خطوة تحتاج موافقتك.",completedVerified:"اكتملت المهمة وتم التحقق منها",notCompleted:"لم تكتمل المهمة",
   stop:"إيقاف",viewLogs:"السجلات",openFiles:"فتح الملفات",createPR:"إنشاء PR",approve:"موافقة",reject:"رفض",approveRun:"موافقة وتشغيل",
-  currentMission:"المهمة الحالية",noMission:"لا توجد مهمة الآن. اطلب شيئاً من لوحة الوكيل.",stepsDone:"{a}/{b} خطوات مكتملة",stepsSoFar:"{a} خطوات منجزة، ويختار الخطوة التالية",deleteL:"حذف",deletedT:"حُذفت المهمة.",
+  currentMission:"المهمة الحالية",noMission:"لا توجد مهمة الآن. اطلب شيئاً من لوحة الوكيل.",stepsDone:"{a}/{b} خطوات مكتملة",stepsSoFar:"{a} خطوات منجزة، ويختار الخطوة التالية",
+  trading:"التداول",tradingLead:"MetaTrader 5 عبر أدوات LayanX. القراءة بلا موافقة، وتشغيل المضارب الآلي وإيقافه واختبار الروبوتات بموافقتك في كل مرة.",
+  trOff:"التداول مطفأ («تحليل التداول»). فعّله من «فريق الوكلاء» أو صفحة الإعداد، ثم أعد تشغيل LayanX.",trConnect:"اتصل بـ MetaTrader 5",
+  trConnectHint:"افتح MetaTrader 5 وسجّل الدخول وفعّل زر Algo Trading، ثم اضغط «اتصل». قد يفتح الاتصال MetaTrader 5 إن كان مغلقاً.",trFailed:"تعذر الاتصال بـ MetaTrader 5:",
+  trRefresh:"تحديث",trAccountType:"نوع الحساب",trDemo:"تجريبي",trReal:"حقيقي",trContest:"مسابقة",trBalance:"الرصيد",trEquity:"حقوق الملكية",trFloating:"الربح العائم",trLeverage:"الرافعة",
+  trAlgo:"Algo Trading",trOnW:"مفعّل",trOffW:"مطفأ",trServer:"الخادم",trRealBlocked:"حساب حقيقي: يرفض LayanX أي أمر عليه حتى تضع MT5_ALLOW_REAL_ACCOUNT=true.",
+  trRealAllowed:"حساب حقيقي، والتداول عليه مسموح (MT5_ALLOW_REAL_ACCOUNT=true). أي صفقة بأموال حقيقية.",trAlgoOffWarn:"زر Algo Trading مطفأ في MetaTrader 5: لن تُنفّذ أي أوامر.",
+  trScalper:"المضارب الآلي",trRunning:"يعمل",trStopped:"متوقف",trStart:"تشغيل",trStop:"إيقاف",trTradesToday:"صفقات اليوم",trDailyPnl:"نتيجة اليوم",trLosses:"خسائر متتالية",
+  trLastAction:"آخر إجراء",trLastError:"آخر خطأ",trLiveOff:"التداول الحي مطفأ (MT5_LIVE_TRADING_ENABLED): لا يُرسل أي أمر.",trAutoOff:"تشغيل المضارب غير مسموح بعد (ضع MT5_AUTO_SCALPING_ENABLED=true).",
+  trStartQ:"تشغيل المضارب الآلي على {sym} في حساب {acct}؟ يرسل أوامر على هذا الحساب ضمن حدود اليوم.",trStopQ:"إيقاف المضارب الآلي؟",trLimits:"حدود اليوم: خسارة {l}% · {t} صفقة · {c} خسائر متتالية",
+  trQuote:"السعر",trBid:"Bid",trAsk:"Ask",trSpread:"الفارق",trSymbol:"الرمز",trLast24:"آخر 24 ساعة (M15)",trShow:"اعرض",
+  trPositions:"الصفقات المفتوحة",trNoPositions:"لا توجد صفقات مفتوحة.",trSide:"الاتجاه",trBuy:"شراء",trSell:"بيع",trVolume:"الحجم",trOpenPrice:"سعر الفتح",trSlTp:"وقف / هدف",trProfit:"الربح",
+  trBy:"فتحها",trByLayanX:"LayanX",trByYou:"أنت",trHistory:"الصفقات المغلقة",trDaysN:"آخر {n} يوم",trNet:"الصافي",trWins:"رابحة",trLossesN:"خاسرة",trNoDeals:"لا توجد صفقات مغلقة في هذه المدة.",trClosedAt:"أُغلقت",
+  trTester:"اختبار الروبوتات (Strategy Tester)",trTesterHint:"يشغّل روبوتاً (.ex5) على نسخة MT5 منفصلة للاختبار (MT5_TESTER_TERMINAL) على بيانات تاريخية. لا يرسل أي أمر، وقد يستغرق حتى 30 دقيقة.",
+  trExpert:"اسم الروبوت (داخل MQL5\\Experts)",trPeriod:"الإطار",trFrom:"من",trTo:"إلى",trModel:"المحاكاة",trDeposit:"الإيداع",trRun:"شغّل الاختبار",trRunQ:"تشغيل اختبار الروبوت «{e}» على {s}؟ لا يرسل أي أمر.",
+  trNoRuns:"لم تشغّل اختبارات من هذه الصفحة بعد.",trTesting:"يعمل…",trTestDone:"اكتمل",trTestFailed:"فشل",trNetProfit:"صافي الربح",trDD:"أقصى تراجع",trTradesN:"الصفقات",trPosMonths:"أشهر رابحة",
+  trAllYears:"كل السنوات رابحة",trYes:"نعم",trNo:"لا",trStarted:"بدأ الاختبار. تابعه هنا.",trNeedExpert:"اكتب اسم الروبوت والرمز.",
+  cap_trade:"التداول",cap_trade_d:"MetaTrader 5: الحساب والصفقات والمضارب الآلي.",cap_trade_1:"الحساب والصفقات المفتوحة",cap_trade_2:"المضارب الآلي بموافقتك",cap_trade_3:"اختبار الروبوتات",deleteL:"حذف",deletedT:"حُذفت المهمة.",
   deleteJobQ:"حذف هذه المهمة المستقلة نهائياً من القائمة؟ إن كانت تعمل فستتوقف. ملفات المشروع لا تُحذف.",deleteMissionQ:"حذف هذه المهمة نهائياً من القائمة؟ إن كانت تعمل فستتوقف، وتُلغى موافقاتها المعلّقة.",recentActivities:"آخر الأنشطة",viewAll:"عرض الكل",noActivity:"لا يوجد نشاط بعد.",
   st_done:"مكتملة",st_run:"قيد التنفيذ",st_pend:"معلّقة",st_wait:"بانتظار موافقة",st_fail:"فشلت",
   computerControl:"التحكم بالكمبيوتر",live:"مباشر",screenOff:"البث متوقف. اضغط «لقطة» أو ابدأ البث.",screenshot:"لقطة",mouse:"الفأرة",keyboard:"لوحة المفاتيح",apps:"التطبيقات",startLive:"بدء البث",stopLive:"إيقاف البث",
@@ -74,7 +91,24 @@ const T={
   activeMissions:"Active Missions",successRate:"Success Rate",tasksCompleted:"Tasks Completed",connectedApps:"Connected Apps",running:"running",queued:"queued",last30:"Last 30 days",thisWeek:"this week",
   agentTitle:"LayanX AI Agent",agentSub:"Your intelligent assistant for development, business and automation",askAgent:"Ask LayanX to do anything…",received:"Mission received, working on it…",pausedApproval:"Paused safely: a step needs your approval.",completedVerified:"Mission completed and verified",notCompleted:"Mission not completed",
   stop:"Stop",viewLogs:"View Logs",openFiles:"Open Files",createPR:"Create PR",approve:"Approve",reject:"Reject",approveRun:"Approve and run",
-  currentMission:"Current Mission",noMission:"No mission right now. Ask the agent for something.",stepsDone:"{a}/{b} steps completed",stepsSoFar:"{a} steps done, choosing the next one",deleteL:"Delete",deletedT:"Deleted.",
+  currentMission:"Current Mission",noMission:"No mission right now. Ask the agent for something.",stepsDone:"{a}/{b} steps completed",stepsSoFar:"{a} steps done, choosing the next one",
+  trading:"Trading",tradingLead:"MetaTrader 5 through LayanX's tools. Reading needs no approval; starting or stopping the auto-scalper and testing robots need your approval every time.",
+  trOff:"Trading is switched off (\"Trading analysis\"). Turn it on in Agent Team or the setup page, then restart LayanX.",trConnect:"Connect to MetaTrader 5",
+  trConnectHint:"Open MetaTrader 5, log in and turn on Algo Trading, then press Connect. Connecting may open MetaTrader 5 if it is closed.",trFailed:"Could not connect to MetaTrader 5:",
+  trRefresh:"Refresh",trAccountType:"Account",trDemo:"Demo",trReal:"Real",trContest:"Contest",trBalance:"Balance",trEquity:"Equity",trFloating:"Floating P/L",trLeverage:"Leverage",
+  trAlgo:"Algo Trading",trOnW:"On",trOffW:"Off",trServer:"Server",trRealBlocked:"Real account: LayanX refuses any order on it until you set MT5_ALLOW_REAL_ACCOUNT=true.",
+  trRealAllowed:"Real account, and trading on it is allowed (MT5_ALLOW_REAL_ACCOUNT=true). Every trade is real money.",trAlgoOffWarn:"Algo Trading is off in MetaTrader 5: no order will be executed.",
+  trScalper:"Auto-scalper",trRunning:"Running",trStopped:"Stopped",trStart:"Start",trStop:"Stop",trTradesToday:"Trades today",trDailyPnl:"Today's result",trLosses:"Losing streak",
+  trLastAction:"Last action",trLastError:"Last error",trLiveOff:"Live trading is off (MT5_LIVE_TRADING_ENABLED): no order is sent.",trAutoOff:"Starting the auto-scalper is not allowed yet (set MT5_AUTO_SCALPING_ENABLED=true).",
+  trStartQ:"Start the auto-scalper on {sym} in the {acct} account? It sends orders on this account within today's limits.",trStopQ:"Stop the auto-scalper?",trLimits:"Daily limits: {l}% loss · {t} trades · {c} losses in a row",
+  trQuote:"Price",trBid:"Bid",trAsk:"Ask",trSpread:"Spread",trSymbol:"Symbol",trLast24:"Last 24 hours (M15)",trShow:"Show",
+  trPositions:"Open positions",trNoPositions:"No open positions.",trSide:"Side",trBuy:"Buy",trSell:"Sell",trVolume:"Volume",trOpenPrice:"Open price",trSlTp:"SL / TP",trProfit:"Profit",
+  trBy:"Opened by",trByLayanX:"LayanX",trByYou:"You",trHistory:"Closed trades",trDaysN:"Last {n} days",trNet:"Net",trWins:"Won",trLossesN:"Lost",trNoDeals:"No closed trades in this period.",trClosedAt:"Closed",
+  trTester:"Robot testing (Strategy Tester)",trTesterHint:"Runs a robot (.ex5) on a separate MT5 copy for testing (MT5_TESTER_TERMINAL) on history. It sends no order and can take up to 30 minutes.",
+  trExpert:"Robot name (inside MQL5\\Experts)",trPeriod:"Timeframe",trFrom:"From",trTo:"To",trModel:"Model",trDeposit:"Deposit",trRun:"Run the test",trRunQ:"Test the robot \"{e}\" on {s}? It sends no order.",
+  trNoRuns:"No tests started from this page yet.",trTesting:"Running…",trTestDone:"Done",trTestFailed:"Failed",trNetProfit:"Net profit",trDD:"Max drawdown",trTradesN:"Trades",trPosMonths:"Winning months",
+  trAllYears:"All years positive",trYes:"Yes",trNo:"No",trStarted:"The test started. Follow it here.",trNeedExpert:"Enter the robot name and the symbol.",
+  cap_trade:"Trading",cap_trade_d:"MetaTrader 5: account, positions and the auto-scalper.",cap_trade_1:"Account and open positions",cap_trade_2:"Auto-scalper with your approval",cap_trade_3:"Robot testing",deleteL:"Delete",deletedT:"Deleted.",
   deleteJobQ:"Delete this autonomous mission from the list for good? If it is running it stops. The project's files are kept.",deleteMissionQ:"Delete this mission from the list for good? If it is running it stops, and its pending approvals are cancelled.",recentActivities:"Recent Activities",viewAll:"View all",noActivity:"No activity yet.",
   st_done:"Completed",st_run:"Running",st_pend:"Pending",st_wait:"Awaiting approval",st_fail:"Failed",
   computerControl:"Computer Control",live:"Live",screenOff:"Live view is off. Take a screenshot or start the stream.",screenshot:"Screenshot",mouse:"Mouse",keyboard:"Keyboard",apps:"Apps",startLive:"Start live",stopLive:"Stop live",
@@ -130,6 +164,7 @@ const t=(k,v)=>{let s=(T[LANG]&&T[LANG][k])??T.en[k]??k;if(v)for(const[a,b]of Ob
 
 // ------------------------------------------------------------------ icons & helpers
 const P={
+ trading:'<path d="M3 17l5-5 4 4 8-8"/><path d="M14 8h6v6"/>',
  dashboard:'<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>',agent:'<rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M9 12h.01M15 12h.01M9 16h6"/>',
  missions:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/>',approvals:'<path d="M12 3l7 3v5c0 5-3.4 8.6-7 10-3.6-1.4-7-5-7-10V6z"/><path d="M9 12l2 2 4-4"/>',
  computer:'<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/>',terminal:'<path d="M4 17l6-5-6-5M12 19h8"/>',projects:'<path d="M8 6l-5 6 5 6M16 6l5 6-5 6"/>',
@@ -604,7 +639,8 @@ function capCards(){
   card("cap-ads","ads","cap_ads",["Google Ads","Meta","TikTok"],adsN?t("connected")+" · "+adsN:t("needsSetup"),"ads"),
   card("cap-pc","computer","cap_pc",["Windows"],caps.desktop&&caps.desktop.enabled===false?t("disabled"):t("enabled"),"computer"),
   card("cap-int","integrations","cap_int",["Gmail","Drive","Sheets","WhatsApp","Telegram"],t("servicesN",{n:on}),"integrations"),
-  card("cap-team","team","cap_team",[],t("activeRoles",{n:roles}),"team"));
+  card("cap-team","team","cap_team",[],t("activeRoles",{n:roles}),"team"),
+  card("cap-trade","trading","cap_trade",["MetaTrader 5"],!S.trading?"—":S.trading.enabled===false?t("disabled"):S.trading.scalper?.ok&&S.trading.scalper.value.running?t("trScalper")+": "+t("trRunning"):t("trScalper")+": "+t("trStopped"),"trading"));
 }
 function archStrip(){
  const s=S.setup;const local=s?.ollama?.models?.length||0;const cloud=(s?.cloud?.providers||[]).filter(p=>p.active).length;const pend=S.approvals.filter(isPending).length;
@@ -632,7 +668,7 @@ async function refreshDashboard(light){
  if(sig!==refreshDashboard.sig){refreshDashboard.sig=sig;drawAgent();}
 }
 async function renderDashboard(v){
- await Promise.all([loadJobs(),loadSetup(),loadMissions(),loadApprovals(),safe(api("/v1/tools"),null).then(x=>{if(x)S.tools=x.tools||[];}),safe(api("/v1/channels/status"),null).then(x=>S.channels=x),safe(api("/v1/oauth/connections"),null).then(x=>S.oauth=x),safe(api("/v1/business"),null).then(x=>S.biz=x?.business||null),safe(api("/v1/ads"),null).then(x=>S.ads=x),safe(api("/v1/computer/live/status"),null).then(x=>S.live=x)]);
+ await Promise.all([loadJobs(),loadSetup(),loadMissions(),loadApprovals(),safe(api("/v1/tools"),null).then(x=>{if(x)S.tools=x.tools||[];}),safe(api("/v1/channels/status"),null).then(x=>S.channels=x),safe(api("/v1/oauth/connections"),null).then(x=>S.oauth=x),safe(api("/v1/business"),null).then(x=>S.biz=x?.business||null),safe(api("/v1/ads"),null).then(x=>S.ads=x),safe(api("/v1/computer/live/status"),null).then(x=>S.live=x),safe(api("/v1/trading/overview"),null).then(x=>S.trading=x)]);
  await Promise.all(S.missions.slice(0,5).map(m=>missionDetail(m.id)));
  v.replaceChildren(kpiCards(),
   el("div",{class:"dash"},el("div",{class:"col"},agentCard(false)),el("div",{class:"col"},currentMissionCard(),activitiesCard()),el("div",{class:"col"},systemCard(),computerCard(false),terminalCard(false),quickCard())),
@@ -736,6 +772,115 @@ function approvalRow(a,after){
   el("div",{class:"s",dir:"auto",text:(a.reason||a.action||"")}),
   el("div",{class:"a"},a.approved?pill("done",t("approved")):[el("button",{class:"btn warn small",onclick:async e=>{e.target.disabled=true;try{await decideApproval(a,"approve");}catch(err){toast(err.message);}after&&after();}},t("approve")),el("button",{class:"btn small",onclick:async()=>{try{await decideApproval(a,"revoke");}catch(err){toast(err.message);}after&&after();}},t("reject"))]));
 }
+// ------------------------------------------------------------------ trading (MetaTrader 5 through LayanX's MT5 tools; src/trading/control.ts)
+const trPref=(k,d)=>{try{return localStorage.getItem("lx.trading."+k)??d;}catch{return d;}};
+const trSetPref=(k,v)=>{try{localStorage.setItem("lx.trading."+k,v);}catch{}};
+// Prices and amounts in Western digits on both languages, as MetaTrader shows them.
+// Kept left-to-right inside Arabic text, so "-12.5" and "4 / 20" do not turn around.
+const trLtr=x=>"\u2066"+x+"\u2069";
+const trNum=(n,digits=2)=>typeof n==="number"&&isFinite(n)?trLtr(n.toLocaleString("en-US",{maximumFractionDigits:digits})):"—";
+const trSigned=n=>typeof n==="number"&&isFinite(n)?el("span",{class:n>0?"tr-pos":n<0?"tr-neg":"",dir:"ltr",text:(n>0?"+":"")+trNum(n)}):"—";
+const trMode=m=>m==="real"?t("trReal"):m==="contest"?t("trContest"):m==="demo"?t("trDemo"):"—";
+async function trOverview(connect){
+ const q=new URLSearchParams({connect:connect?"1":"0",days:trPref("days","7")});const sym=trPref("symbol","");if(sym)q.set("symbol",sym);
+ return api("/v1/trading/overview?"+q.toString());
+}
+/** A trading action: the first request asks for approval, the owner confirms here, then it runs (like any trading tool). */
+async function trAct(path,body,question){
+ let r=await api(path,{method:"POST",body:{projectId:project(),...body},allow:[422]});
+ if(!r.ok&&r.approvalId){
+  if(!confirm(question))return null;
+  await api("/v1/approvals/"+encodeURIComponent(r.approvalId)+"/approve?projectId="+encodeURIComponent(project()),{method:"POST",body:{}});
+  r=await api(path,{method:"POST",body:{projectId:project(),...body,missionId:r.missionId,approvalId:r.approvalId},allow:[422]});
+ }
+ if(r&&r.ok===false)toast(reasonText(r.error||""));
+ return r;
+}
+function trLine(closes){
+ if(!closes||closes.length<2)return el("div",{class:"empty",text:"—"});
+ const min=Math.min(...closes),max=Math.max(...closes),w=300,h=70,span=max-min||1;
+ const d=closes.map((c,i)=>(i?"L":"M")+(i/(closes.length-1)*w).toFixed(1)+" "+(h-4-(c-min)/span*(h-8)).toFixed(1)).join(" ");
+ const s=document.createElementNS("http://www.w3.org/2000/svg","svg");s.setAttribute("viewBox","0 0 "+w+" "+h);s.setAttribute("preserveAspectRatio","none");s.setAttribute("class","tr-line");s.setAttribute("role","img");
+ s.setAttribute("aria-label",t("trLast24")+": "+trNum(closes[0])+" → "+trNum(closes[closes.length-1]));
+ const p=document.createElementNS("http://www.w3.org/2000/svg","path");p.setAttribute("d",d);p.setAttribute("class",closes[closes.length-1]>=closes[0]?"up":"down");s.appendChild(p);return s;
+}
+function trTable(head,rows){return el("div",{class:"tr-wrap"},el("table",{class:"tr-tbl"},el("thead",{},el("tr",{},head.map(h=>el("th",{text:h})))),el("tbody",{},rows)));}
+function trAccountSection(d){
+ const a=d.account?.ok?d.account.value:null;
+ if(!a)return el("div",{id:"trAccount"});
+ const mode=a.tradeMode,real=mode==="real";
+ const banners=[];
+ if(real)banners.push(el("div",{class:"tr-banner "+(d.settings.allowReal?"bad":"warn"),text:d.settings.allowReal?t("trRealAllowed"):t("trRealBlocked")}));
+ if(a.tradeAllowed===false)banners.push(el("div",{class:"tr-banner warn",text:t("trAlgoOffWarn")}));
+ return el("div",{id:"trAccount"},banners,
+  stats([[t("trAccountType"),trMode(mode)],[t("trBalance"),trLtr(trNum(a.balance)+(a.currency?" "+a.currency:""))],[t("trEquity"),trLtr(trNum(a.equity)+(a.currency?" "+a.currency:""))],
+   [t("trFloating"),trNum((a.equity??0)-(a.balance??0))],[t("trLeverage"),a.leverage?trLtr("1:"+a.leverage):"—"],[t("trAlgo"),a.tradeAllowed===false?t("trOffW"):t("trOnW")],[t("trServer"),a.server||"—"]]));
+}
+function trScalperSection(d,reload){
+ const s=d.scalper?.ok?d.scalper.value:null,set=d.settings;const acct=d.account?.ok?trMode(d.account.value.tradeMode):"—";
+ const running=!!s?.running;
+ const act=async start=>{const r=await trAct("/v1/trading/scalper/"+(start?"start":"stop"),{},start?t("trStartQ").replace("{sym}",s?.symbol||"XAUUSD").replace("{acct}",acct):t("trStopQ"));if(r&&r.ok)await reload();};
+ return el("section",{class:"card",id:"trScalper"},
+  el("div",{class:"card-head"},el("h3",{text:t("trScalper")+(s?.symbol?" · "+s.symbol+" "+(s.timeframe||""):"")}),pill(running?"run":"pend",running?t("trRunning"):t("trStopped"))),
+  !set.liveTrading?el("div",{class:"tr-banner warn",text:t("trLiveOff")}):null,
+  !set.autoScalping?el("div",{class:"tr-banner warn",text:t("trAutoOff")}):null,
+  s?stats([[t("trTradesToday"),trLtr((s.tradesToday??0)+" / "+set.maxTradesPerDay)],[t("trDailyPnl"),trNum(s.dailyPnl)],[t("trLosses"),trLtr((s.consecutiveLosses??0)+" / "+set.maxConsecutiveLosses)]]):el("p",{class:"muted",dir:"auto",text:d.scalper?.error||"—"}),
+  el("p",{class:"small muted",style:"margin:.6rem 0 0",text:t("trLimits").replace("{l}",trNum(set.maxDailyLossPct)).replace("{t}",set.maxTradesPerDay).replace("{c}",set.maxConsecutiveLosses)}),
+  s?.lastAction?el("p",{class:"small",dir:"auto",style:"margin:.4rem 0 0"},el("b",{text:t("trLastAction")+": "}),s.lastAction):null,
+  s?.lastError?el("p",{class:"small tr-neg",dir:"auto",style:"margin:.3rem 0 0"},el("b",{text:t("trLastError")+": "}),s.lastError):null,
+  el("div",{style:"display:flex;gap:.5rem;margin-top:.8rem"},
+   running?el("button",{class:"btn warn",onclick:()=>act(false)},icon("stop"),t("trStop")):el("button",{class:"btn primary",disabled:!set.autoScalping||undefined,onclick:()=>act(true)},icon("play"),t("trStart"))));
+}
+function trQuoteSection(d,reload){
+ const q=d.quote?.ok?d.quote.value:null;const sym=el("input",{class:"text",dir:"ltr",value:d.symbol||trPref("symbol","XAUUSD"),style:"max-width:9rem"});
+ const show=async()=>{const v=sym.value.trim().toUpperCase();if(!/^[A-Z0-9._#-]{1,24}$/.test(v))return;trSetPref("symbol",v);await reload();};
+ sym.addEventListener("keydown",e=>{if(e.key==="Enter")show();});
+ return el("section",{class:"card",id:"trQuote"},el("div",{class:"card-head"},el("h3",{text:t("trQuote")}),el("div",{style:"display:flex;gap:.4rem;align-items:center"},sym,el("button",{class:"btn small",onclick:show,text:t("trShow")}))),
+  q?stats([[t("trBid"),trNum(q.bid,5)],[t("trAsk"),trNum(q.ask,5)],[t("trSpread"),trNum(q.spread,5)]]):el("p",{class:"muted",dir:"auto",text:d.quote?.error||"—"}),
+  el("div",{class:"small muted",style:"margin:.7rem 0 .3rem",text:t("trLast24")}),d.series?.ok?trLine(d.series.value.closes):el("p",{class:"muted",dir:"auto",text:d.series?.error||"—"}));
+}
+function trPositionsSection(d){
+ const p=d.positions?.ok?d.positions.value.positions||[]:null;const magic=d.settings.magic;
+ return el("section",{class:"card",id:"trPositions",style:"margin-top:1rem"},el("h3",{text:t("trPositions")+(p?" ("+p.length+")":"")}),
+  !p?el("p",{class:"muted",dir:"auto",text:d.positions?.error||"—"}):!p.length?el("div",{class:"empty",text:t("trNoPositions")}):
+  trTable([t("trSymbol"),t("trSide"),t("trVolume"),t("trOpenPrice"),t("trSlTp"),t("trProfit"),t("trBy")],p.map(x=>el("tr",{},el("td",{class:"mono",text:x.symbol}),el("td",{text:x.side==="buy"?t("trBuy"):t("trSell")}),
+   el("td",{class:"num",text:trNum(x.quantity)}),el("td",{class:"num",text:trNum(x.price,5)}),el("td",{class:"num",text:(x.stopLoss?trNum(x.stopLoss,5):"—")+" / "+(x.takeProfit?trNum(x.takeProfit,5):"—")}),
+   el("td",{class:"num"},trSigned(x.profit)),el("td",{text:x.magic===magic?t("trByLayanX"):t("trByYou")})))));
+}
+function trHistorySection(d,reload){
+ const h=d.history?.ok?d.history.value:null;
+ const days=el("select",{class:"text",style:"max-width:9rem"},["1","7","30","90"].map(n=>el("option",{value:n,selected:n===String(d.days||trPref("days","7"))||undefined,text:t("trDaysN").replace("{n}",n)})));
+ days.addEventListener("change",async()=>{trSetPref("days",days.value);await reload();});
+ return el("section",{class:"card",id:"trHistory",style:"margin-top:1rem"},el("div",{class:"card-head"},el("h3",{text:t("trHistory")}),days),
+  !h?el("p",{class:"muted",dir:"auto",text:d.history?.error||"—"}):el("div",{},
+   stats([[t("trTradesN"),h.count],[t("trNet"),trNum(h.net)],[t("trWins"),h.wins],[t("trLossesN"),h.losses]]),
+   (h.deals||[]).length?el("div",{style:"margin-top:.8rem"},trTable([t("trClosedAt"),t("trSymbol"),t("trVolume"),t("trProfit"),t("trBy")],h.deals.map(x=>el("tr",{},el("td",{class:"mono",text:String(x.closedAt||"").replace("T"," ").slice(0,16)}),
+    el("td",{class:"mono",text:x.symbol}),el("td",{class:"num",text:trNum(x.quantity)}),el("td",{class:"num"},trSigned((x.profit||0)+(x.commission||0)+(x.swap||0))),el("td",{text:x.magic===d.settings.magic?t("trByLayanX"):t("trByYou")}))))):el("div",{class:"empty",text:t("trNoDeals")})));
+}
+function trRunsList(runs){
+ return el("div",{id:"trRuns",style:"margin-top:.8rem"},runs.length?runs.map(r=>{const m=r.result?.metrics||{};
+  return el("div",{class:"row"},el("div",{class:"t",dir:"ltr",text:(r.payload?.expert||"")+" · "+(r.payload?.symbol||"")+" · "+(r.payload?.period||"H1")+" · "+(r.payload?.from||"")+" → "+(r.payload?.to||"")}),
+   el("div",{class:"s",dir:"auto"},r.status==="done"?[t("trNetProfit")+": "+trNum(m.netProfit)+(m.profitPct!=null?" ("+trNum(m.profitPct)+"%)":""),"PF "+trNum(m.profitFactor),t("trDD")+": "+trNum(m.drawdownMaxPct)+"%",t("trTradesN")+": "+trNum(m.totalTrades,0),
+    t("trPosMonths")+": "+(m.pctPositiveMonths!=null?trNum(m.pctPositiveMonths)+"%":"—"),t("trAllYears")+": "+(m.allYearsPositive==null?"—":m.allYearsPositive?t("trYes"):t("trNo"))].join(" · "):r.status==="failed"?String(r.error||""):ago(r.startedAt)),
+   el("div",{class:"a"},pill(r.status==="done"?"done":r.status==="failed"?"fail":"run",r.status==="done"?t("trTestDone"):r.status==="failed"?t("trTestFailed"):t("trTesting"))));}):el("div",{class:"empty",text:t("trNoRuns")}));
+}
+function trTesterSection(runs){
+ const today=new Date(),ago1=new Date(today.getFullYear()-1,today.getMonth(),today.getDate());const iso=x=>x.toISOString().slice(0,10);
+ const f={expert:el("input",{class:"text",dir:"ltr",placeholder:"MyRobot",value:trPref("expert","")}),symbol:el("input",{class:"text",dir:"ltr",value:trPref("symbol","XAUUSD")}),
+  period:el("select",{class:"text"},["M1","M5","M15","M30","H1","H4","D1","W1"].map(p=>el("option",{value:p,selected:p==="H1"||undefined,text:p}))),
+  from:el("input",{class:"text",type:"date",value:iso(ago1)}),to:el("input",{class:"text",type:"date",value:iso(today)}),
+  model:el("select",{class:"text"},[["ohlc_m1","OHLC M1"],["every_tick","Every tick"],["open_prices","Open prices"],["real_ticks","Real ticks"]].map(([v,l])=>el("option",{value:v,text:l}))),
+  deposit:el("input",{class:"text",type:"number",min:"100",value:"10000",dir:"ltr"})};
+ const run=async()=>{const p={expert:f.expert.value.trim(),symbol:f.symbol.value.trim().toUpperCase(),period:f.period.value,from:f.from.value,to:f.to.value,model:f.model.value,deposit:Number(f.deposit.value)||10000};
+  if(!p.expert||!p.symbol){toast(t("trNeedExpert"));return;}trSetPref("expert",p.expert);
+  const r=await trAct("/v1/trading/tester",{payload:p},t("trRunQ").replace("{e}",p.expert).replace("{s}",p.symbol));
+  if(r&&r.started){toast(t("trStarted"));const l=await safe(api("/v1/trading/tester"),null);if(l)document.getElementById("trRuns")?.replaceWith(trRunsList(l.runs||[]));}};
+ return el("section",{class:"card",style:"margin-top:1rem"},el("h3",{text:t("trTester")}),el("p",{class:"small muted",text:t("trTesterHint")}),
+  el("div",{class:"tr-form"},el("label",{class:"f"},t("trExpert"),f.expert),el("label",{class:"f"},t("trSymbol"),f.symbol),el("label",{class:"f"},t("trPeriod"),f.period),el("label",{class:"f"},t("trFrom"),f.from),
+   el("label",{class:"f"},t("trTo"),f.to),el("label",{class:"f"},t("trModel"),f.model),el("label",{class:"f"},t("trDeposit"),f.deposit),el("button",{class:"btn primary",onclick:run},icon("play"),t("trRun"))),
+  trRunsList(runs));
+}
+
 const VIEWS={
  dashboard:renderDashboard,
  async learning(v){
@@ -871,6 +1016,29 @@ const VIEWS={
     el("section",{class:"card"},el("h3",{text:t("gitAsk")}),goalChips(t("socialGoals")),el("h3",{style:"margin-top:1rem",text:t("accounts")}),el("div",{class:"rows"},[...(b.socialAccounts||[]).map(a=>a.platform+" · "+(a.name||a.externalId||"")),...(oc.connections||[]).map(c=>c.provider+" · "+(c.accountName||c.accountId))].map(x=>el("div",{class:"row"},el("div",{class:"t",text:x}))),((b.socialAccounts||[]).length+(oc.connections||[]).length)?null:el("div",{class:"empty",text:t("needsSetup")})))),
    humanizerCard(),await voiceCard());
  },
+ async trading(v){
+  const swap=(id,node)=>{const o=document.getElementById(id);if(o)o.replaceWith(node);};
+  let d=await safe(trOverview(trPref("connect","")==="1"),{ok:false,error:"network"});
+  const runs=(await safe(api("/v1/trading/tester"),{runs:[]})).runs||[];
+  const reload=async()=>{const n=await safe(trOverview(true),null);if(!n||current!=="trading")return;d=n;
+   if(!n.connected){draw();return;}
+   swap("trAccount",trAccountSection(n));swap("trScalper",trScalperSection(n,reload));swap("trQuote",trQuoteSection(n,reload));swap("trPositions",trPositionsSection(n));swap("trHistory",trHistorySection(n,reload));
+   const l=await safe(api("/v1/trading/tester"),null);if(l)swap("trRuns",trRunsList(l.runs||[]));};
+  const connectBtn=el("button",{class:"btn primary",onclick:async()=>{trSetPref("connect","1");connectBtn.disabled=true;d=await safe(trOverview(true),{ok:false,error:"network"});draw();}},icon("bolt"),t("trConnect"));
+  const draw=()=>{
+   if(d.ok===false&&d.error){fill(v,head(t("trading"),t("tradingLead")),el("section",{class:"card"},el("p",{class:"tr-neg",text:reasonText(d.error)})));return;}
+   if(d.enabled===false){fill(v,head(t("trading"),t("tradingLead")),el("section",{class:"card"},el("p",{text:t("trOff")}),el("button",{class:"btn",onclick:()=>go("team"),text:t("team")})));return;}
+   const top=head(t("trading"),t("tradingLead"),d.connected?el("button",{class:"btn",onclick:reload},icon("activity"),t("trRefresh")):null);
+   if(!d.connected){
+    const failed=d.account&&!d.account.ok?el("p",{class:"tr-neg",dir:"auto",style:"margin-top:.6rem"},el("b",{text:t("trFailed")+" "}),d.account.error):null;
+    fill(v,top,el("section",{class:"card",style:"margin-bottom:1rem"},el("p",{text:t("trConnectHint")}),connectBtn,failed),el("div",{class:"grid2"},trScalperSection(d,reload)),trTesterSection(runs));return;
+   }
+   fill(v,top,trAccountSection(d),el("div",{class:"grid2",style:"margin-top:1rem"},trScalperSection(d,reload),trQuoteSection(d,reload)),trPositionsSection(d),trHistorySection(d,reload),trTesterSection(runs));
+  };
+  draw();
+  // Prices and positions move: refresh every 10 s while connected (the forms are kept).
+  timers.push(setInterval(()=>{if(d.connected&&!document.hidden)reload();},10000));
+ },
  async ads(v){
   const d=await safe(api("/v1/ads"),{});const a=d.ads||{};const dash=d.dashboard||{};
   fill(v,head(t("ads"),"Google Ads · Meta · TikTok · X · LinkedIn · Snapchat"),
@@ -937,8 +1105,8 @@ const VIEWS={
 };
 
 // ------------------------------------------------------------------ chrome
-const NAV=["dashboard","agent","autonomous","missions","approvals","computer","terminal","projects","project","git","|","ecommerce","social","ads","analytics","integrations","team","learning","|","schedules","models","tools","activity","settings"];
-const NAV_ICON={dashboard:"dashboard",agent:"agent",autonomous:"spark",missions:"missions",approvals:"approvals",computer:"computer",terminal:"terminal",projects:"projects",project:"flag",git:"git",ecommerce:"ecommerce",social:"social",ads:"ads",analytics:"analytics",integrations:"integrations",team:"team",learning:"spark",schedules:"schedules",models:"models",tools:"tools",activity:"activity",settings:"settings"};
+const NAV=["dashboard","agent","autonomous","missions","approvals","computer","terminal","projects","project","git","|","ecommerce","social","ads","analytics","trading","integrations","team","learning","|","schedules","models","tools","activity","settings"];
+const NAV_ICON={dashboard:"dashboard",agent:"agent",autonomous:"spark",missions:"missions",approvals:"approvals",computer:"computer",terminal:"terminal",projects:"projects",project:"flag",git:"git",ecommerce:"ecommerce",social:"social",ads:"ads",analytics:"analytics",trading:"trading",integrations:"integrations",team:"team",learning:"spark",schedules:"schedules",models:"models",tools:"tools",activity:"activity",settings:"settings"};
 let current="dashboard",timers=[];
 function logo(){const s=document.createElementNS("http://www.w3.org/2000/svg","svg");s.setAttribute("viewBox","0 0 48 48");s.setAttribute("class","logo");s.setAttribute("aria-hidden","true");
  s.innerHTML='<defs><linearGradient id="lxg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#60A5FA"/><stop offset="1" stop-color="#2563EB"/></linearGradient></defs><path d="M6 6h10l8 11 8-11h10L29 24l13 18H32l-8-11-8 11H6l13-18z" fill="url(#lxg)"/>';return s;}

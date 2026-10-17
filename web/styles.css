@@ -163,6 +163,16 @@ svg.i{width:1.15rem;height:1.15rem;flex:none;stroke:currentColor;fill:none;strok
 .cap-pc{background:linear-gradient(160deg,#1E3A8A 0%,#0F1B3D 70%);border-color:#2B4FB3}.cap-pc .ic{background:#2563EB}
 .cap-int{background:linear-gradient(160deg,#0F4C49 0%,#0A2826 70%);border-color:#0F766E}.cap-int .ic{background:#0D9488}
 .cap-team{background:linear-gradient(160deg,#2E1A6B 0%,#151033 70%);border-color:#4C34A8}.cap-team .ic{background:#7C3AED}
+.cap-trade{background:linear-gradient(160deg,#4A3A06 0%,#1F1A08 70%);border-color:#A1830F}.cap-trade .ic{background:#CA8A04}
+/* trading page */
+.tr-pos{color:#86EFAC}.tr-neg{color:#FCA5A5}
+.tr-banner{padding:.55rem .75rem;border-radius:.5rem;border:1px solid;margin-bottom:.8rem;font-size:.88rem}
+.tr-banner.warn{border-color:#78350F;background:#2A1A06;color:#FCD34D}.tr-banner.bad{border-color:#7F1D1D;background:#2A0E12;color:#FCA5A5}
+.tr-wrap{overflow-x:auto}.tr-tbl{width:100%;border-collapse:collapse;font-size:.85rem}
+.tr-tbl th{color:var(--soft);font-weight:600;text-align:start;padding:.4rem .5rem;border-bottom:1px solid var(--line2);white-space:nowrap}
+.tr-tbl td{padding:.45rem .5rem;border-top:1px solid var(--line);white-space:nowrap}.tr-tbl td.num{font-family:var(--mono);direction:ltr;text-align:end}
+.tr-line{width:100%;height:70px;display:block}.tr-line path{fill:none;stroke-width:1.6;vector-effect:non-scaling-stroke}.tr-line path.up{stroke:var(--green)}.tr-line path.down{stroke:var(--red)}
+.tr-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.6rem;align-items:end;margin-top:.6rem}
 
 /* architecture */
 .arch{margin-top:1rem}

@@ -1,4 +1,5 @@
 import {createServer,IncomingMessage,ServerResponse} from "node:http";
+import {TesterRuns,scalperAction,tradingOverview} from "./trading/control.js";
 import {gitSafetyArgs} from "./platform/windows-sandbox.js";
 import {readFile} from "node:fs/promises";
 import {join} from "node:path";
@@ -59,6 +60,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
  const briefing=process.env.LAYANX_BRIEFING_TIME?.trim()?new DailyBriefing(assistant,{time:process.env.LAYANX_BRIEFING_TIME.trim(),projectId:process.env.LAYANX_BRIEFING_PROJECT?.trim()||"default"}):undefined;
  briefing?.start();
  supervisor.start();
+ const testerRuns=new TesterRuns();
  const oauth=new OAuthConnectionCenter();
  const business=options.business??new BusinessManager(); const ads=options.ads??new AdsManager(business.store); const media=options.media??new MediaManager(); const growth=options.growth;
  const server=createServer(async(request,response)=>{
@@ -234,6 +236,31 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   }
 
   // ---- Autonomous jobs (supervisor) ----
+  // ---- Trading page (src/trading/control.ts): reading never creates missions; acting waits for the owner's approval ----
+  if(request.url?.split("?")[0]?.startsWith("/v1/trading/")){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const path=request.url.split("?")[0]!;const params=new URL(request.url,"http://localhost").searchParams;
+   try{
+    if(request.method==="GET"&&path==="/v1/trading/overview"){
+     json(response,200,{ok:true,...await tradingOverview(options.core,{connect:params.get("connect")==="1",symbol:params.get("symbol")??undefined,days:Number(params.get("days")??7)})});return;
+    }
+    if(request.method==="GET"&&path==="/v1/trading/tester"){json(response,200,{ok:true,runs:testerRuns.list()});return;}
+    if(request.method==="POST"&&["/v1/trading/scalper/start","/v1/trading/scalper/stop","/v1/trading/tester"].includes(path)){
+     const input=await body(request,max);
+     const projectId=typeof input.projectId==="string"&&input.projectId.trim()?input.projectId.trim():"default";
+     const resume=typeof input.missionId==="string"&&typeof input.approvalId==="string"?{missionId:input.missionId,approvalId:input.approvalId}:undefined;
+     if(path==="/v1/trading/tester"){
+      // After approval the payload the owner approved is the one that runs (kept with its mission).
+      const asked=input.payload&&typeof input.payload==="object"&&!Array.isArray(input.payload)?input.payload as Record<string,unknown>:{};
+      const approved=resume?options.core.missions.get(resume.missionId)?.tools?.[0]?.payload as Record<string,unknown>|undefined:undefined;
+      json(response,200,await testerRuns.request(options.core,projectId,approved??asked,resume));return;
+     }
+     json(response,200,await scalperAction(options.core,projectId,path.endsWith("/start")?"start":"stop",resume));return;
+    }
+    json(response,404,{ok:false,error:"not_found"});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"trading request failed"});}
+   return;
+  }
   if(request.url?.split("?")[0]?.startsWith("/v1/supervisor/jobs")){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const parts=(request.url.split("?")[0]??"").split("/").filter(Boolean);
