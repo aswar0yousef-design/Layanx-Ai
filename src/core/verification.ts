@@ -36,16 +36,16 @@ export class VerificationEngine {
     const text=criteria.trim();
     if(text==="done"||text==="echo")return{supported:true,matched:result!==null&&result!==undefined,reason:result!==null&&result!==undefined?"":`Success criterion failed: ${text}`};
     if(text==="approved"){const actual=this.readPath(result,"approved");return{supported:true,matched:actual===true,reason:actual===true?"":"Success criterion failed: approved"};}
-    const equality=/^result(?:\.([A-Za-z_$][\w$]*))?\s*(===|==|!==|!=)\s*(.+)$/i.exec(text);
+    const equality=/^result(?:\.([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*))?\s*(===|==|!==|!=)\s*(.+)$/i.exec(text);
     if(equality){
       const actual=this.readPath(result,equality[1]??"");
       const expected=this.parseLiteral(equality[3]??"");
       if(!expected.supported)return{supported:false,matched:false,reason:`Unsupported success criterion: ${text}`};
-      const equal=this.same(actual,expected.value);
+      // Match JavaScript-style nullish comparison for == null / != null, but keep strict operators strict.\n      const looseNull=(equality[2]==="=="||equality[2]==="!=")&&expected.value===null;\n      const equal=looseNull?(actual===null||actual===undefined):this.same(actual,expected.value);
       const matched=equality[2]==="==="||equality[2]==="=="?equal:!equal;
       return{supported:true,matched,reason:matched?"":`Success criterion failed: ${text} (actual=${JSON.stringify(actual)})`};
     }
-    const comparison=/^result(?:\.([A-Za-z_$][\w$]*))?\s*(>=|<=|>|<)\s*(-?(?:\d+\.?\d*|\.\d+))$/i.exec(text);
+    const comparison=/^result(?:\.([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*))?\s*(>=|<=|>|<)\s*(-?(?:\d+\.?\d*|\.\d+))$/i.exec(text);
     if(comparison){
       const actual=this.readPath(result,comparison[1]??"");
       const expected=Number(comparison[3]);
@@ -54,7 +54,7 @@ export class VerificationEngine {
       const matched=op===">"?actual>expected:op===">="?actual>=expected:op==="<"?actual<expected:actual<=expected;
       return{supported:true,matched,reason:matched?"":`Success criterion failed: ${text} (actual=${actual})`};
     }
-    const contains=/^result(?:\.([A-Za-z_$][\w$]*))?\s+contains\s+(.+)$/i.exec(text);
+    const contains=/^result(?:\.([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*))?\s+contains\s+(.+)$/i.exec(text);
     if(contains){
       const actual=this.readPath(result,contains[1]??"");
       const expected=this.parseLiteral(contains[2]??"");
@@ -62,7 +62,7 @@ export class VerificationEngine {
       const matched=typeof actual==="string"&&typeof expected.value==="string"?actual.includes(expected.value):Array.isArray(actual)?actual.some(item=>this.same(item,expected.value)):false;
       return{supported:true,matched,reason:matched?"":`Success criterion failed: ${text}`};
     }
-    const length=/^result(?:\.([A-Za-z_$][\w$]*))?\.(?:length|count)\s*(===|==|!==|!=|>=|<=|>|<)\s*(\d+)$/i.exec(text);
+    const length=/^result(?:\.([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*))?\.(?:length|count)\s*(===|==|!==|!=|>=|<=|>|<)\s*(\d+)$/i.exec(text);
     if(length){
       const actual=this.readPath(result,length[1]??"");
       const size=typeof actual==="string"||Array.isArray(actual)?actual.length:undefined;
@@ -72,7 +72,7 @@ export class VerificationEngine {
       const matched=op==="=="||op==="==="?size===expected:op==="!="||op==="!=="?size!==expected:op===">"?size>expected:op===">="?size>=expected:op==="<"?size<expected:size<=expected;
       return{supported:true,matched,reason:matched?"":`Success criterion failed: ${text} (actual=${size})`};
     }
-    const exists=/^result(?:\.([A-Za-z_$][\w$]*))?\s+(exists|is present|is not empty)$/i.exec(text);
+    const exists=/^result(?:\.([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*))?\s+(exists|is present|is not empty)$/i.exec(text);
     if(exists){
       const actual=this.readPath(result,exists[1]??"");
       const present=actual!==null&&actual!==undefined&&!(exists[2]!.toLowerCase()==="is not empty"&&(actual===""||(Array.isArray(actual)&&!actual.length)));
