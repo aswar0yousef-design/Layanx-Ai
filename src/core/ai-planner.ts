@@ -51,8 +51,8 @@ function deterministicReadOnlyPlan(goal:string,catalog:ToolCatalogEntry[]):Plann
   if(t){
    let query="";
    if(has(/\b(last month|previous month)\b|الشهر الماضي/)){
-    const now=new Date(),firstThis=new Date(now.getFullYear(),now.getMonth(),1),lastPrevious=new Date(firstThis.getTime()-86400000),fmt=(d:Date)=>String(d.getFullYear())+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+String(d.getDate()).padStart(2,"0");
-    query="after:"+fmt(lastPrevious)+" before:"+fmt(firstThis)+" ";
+    const now=new Date(),firstThis=new Date(now.getFullYear(),now.getMonth(),1),firstPrevious=new Date(now.getFullYear(),now.getMonth()-1,1),fmt=(d:Date)=>String(d.getFullYear())+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+String(d.getDate()).padStart(2,"0");
+    query="after:"+fmt(firstPrevious)+" before:"+fmt(firstThis)+" ";
    }
    if(has(/invoice|invoices|فاتوره|فواتير/))query+="(invoice OR invoices OR فاتورة OR فواتير)";
    else if(has(/receipt|receipts|ايصال/))query+="(receipt OR receipts OR إيصال)";
