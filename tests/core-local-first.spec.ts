@@ -40,6 +40,29 @@ assert.deepEqual(fallbackResult.attempts.map(attempt=>attempt.ok),[false,true]);
 
 console.log("core-local-first: local-first routing and fallback to cloud verified");
 
+const healthFallbackCore=new LayanXCore();
+const healthCalls:string[]=[];
+const unhealthyLocal:ModelProviderAdapter={
+  name:"unhealthy-local",
+  async health(){healthCalls.push("health-unhealthy");throw new Error("simulated health endpoint crash");},
+  async generate(model){healthCalls.push("generate-unhealthy");return{provider:this.name,modelId:model.id,output:"must not run"};}
+};
+const backupLocal:ModelProviderAdapter={
+  name:"backup-local",
+  async health(){healthCalls.push("health-backup");return{provider:this.name,available:true,updatedAt:new Date().toISOString()};},
+  async generate(model){healthCalls.push("generate-backup");return{provider:this.name,modelId:model.id,output:"backup local answer"};}
+};
+healthFallbackCore.providers.register(unhealthyLocal);
+healthFallbackCore.providers.register(backupLocal);
+healthFallbackCore.models.register({id:"unhealthy-local-model",provider:"unhealthy-local",capabilities:["reasoning"],local:true,enabled:true,priority:0});
+healthFallbackCore.models.register({id:"backup-local-model",provider:"backup-local",capabilities:["reasoning"],local:true,enabled:true,priority:1});
+const healthResult=await healthFallbackCore.modelExecution.execute({capability:"reasoning",input:"recover from a provider health exception"});
+assert.equal(healthResult.modelId,"backup-local-model");
+assert.deepEqual(healthCalls,["health-unhealthy","health-backup","generate-backup"]);
+assert.equal(healthResult.attempts[0]?.ok,false);
+assert.match(healthResult.attempts[0]?.error??"",/health check failed/i);
+
+
 const fallbackCore=new LayanXCore();
 const plannerCalls:string[]=[];
 fallbackCore.registerAgent({

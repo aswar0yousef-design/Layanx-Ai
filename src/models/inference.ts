@@ -1,5 +1,5 @@
 import type {ModelCapability,ModelDefinition} from "./registry.js";
-export interface ModelRoutingOptions{modelId?:string;preferLocal?:boolean;preferFree?:boolean;latencySensitive?:boolean;maxCostUsd?:number;minQualityScore?:number;tags?:string[];}
+export interface ModelRoutingOptions{modelId?:string;preferredModelId?:string;preferLocal?:boolean;preferFree?:boolean;latencySensitive?:boolean;maxCostUsd?:number;minQualityScore?:number;tags?:string[];}
 export interface ModelImageInput{mimeType:string;base64:string;}
 export type ModelInput=string|Array<{type:"text";text:string}|{type:"image";image:ModelImageInput}>;
 /** responseSchema: a JSON Schema the answer must follow. Ollama enforces it with grammar-constrained decoding (structured outputs); other providers ignore it. */

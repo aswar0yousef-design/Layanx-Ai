@@ -9,6 +9,8 @@ models.register({id:"disabled",provider:"disabled",capabilities:["reasoning"],lo
 
 const router=new ModelRouter(models);
 if(router.select("reasoning",{preferLocal:true}).id!=="local-fast")throw new Error("Local preference routing failed even when a cloud model has a numerically better priority.");
+if(router.select("reasoning",{preferLocal:true,preferredModelId:"cloud-reasoning"}).id!=="local-fast")throw new Error("A preferred cloud model must not bypass local-first routing.");
+if(router.select("reasoning",{preferLocal:true,preferredModelId:"local-fast"}).id!=="local-fast")throw new Error("Preferred local model selection failed.");
 if(router.select("reasoning",{preferLocal:false}).local)throw new Error("Cloud preference routing failed.");
 if(router.select("reasoning",{latencySensitive:true}).id!=="local-fast")throw new Error("Latency-sensitive routing failed.");
 if(router.select("reasoning",{minQualityScore:85}).id!=="cloud-reasoning")throw new Error("Quality constraint routing failed.");
