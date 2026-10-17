@@ -221,14 +221,47 @@ async function oauthConnectionsPanel(){
   const data=await safe(api("/v1/oauth/connections"),{connections:[]});
   S.oauth=data;
   const connected=Array.isArray(data.connections)?data.connections:[];
-  const accountRows=connected.length?connected.map(c=>el("div",{class:"integ"},
-   el("span",{class:"dot on"}),
-   el("div",{style:"flex:1;min-width:0"},el("b",{text:c.provider}),el("small",{class:"mono",text:(c.accountName||c.accountId||"default")+" · "+(c.scopes||[]).join(", ")})),
-   el("button",{class:"btn small",text:LANG==="ar"?"إلغاء الربط":"Revoke",onclick:async()=>{
-    if(!confirm(LANG==="ar"?"هل تريد إلغاء هذا الاتصال؟":"Revoke this connection?"))return;
-    try{await api("/v1/oauth/"+encodeURIComponent(c.id)+"/revoke",{method:"POST",body:{}});toast(LANG==="ar"?"تم إلغاء الاتصال":"Connection revoked");await render();}
-    catch(e){toast(e.message);}
-   }}))):[el("p",{class:"muted",text:LANG==="ar"?"لا توجد حسابات OAuth مربوطة حتى الآن.":"No OAuth accounts connected yet."})];
+  const accountRows=connected.length?connected.map(c=>{
+   const discovery=el("div",{class:"rows",style:"margin-top:.45rem"});
+   const discover=async(kind)=>{
+    discovery.replaceChildren(el("small",{class:"muted",text:LANG==="ar"?"جارٍ البحث عن الحسابات...":"Discovering accounts..."}));
+    try{
+     const result=await api("/v1/oauth/"+encodeURIComponent(c.id)+"/"+kind);
+     const accounts=Array.isArray(result.accounts)?result.accounts:[];
+     if(!accounts.length){discovery.replaceChildren(el("small",{class:"muted",text:LANG==="ar"?"لم يعثر المزود على حسابات متاحة بهذه الصلاحيات.":"No accounts were returned for the granted scopes."}));return;}
+     discovery.replaceChildren(...accounts.map(a=>{
+      const accountName=String(a.name||a.externalId||"");
+      const externalId=String(a.externalId||"");
+      const platform=String(a.platform||"");
+      const canBind=kind==="discover"&&Boolean(externalId&&platform);
+      const bind=canBind?el("button",{class:"btn small",text:LANG==="ar"?"إضافة إلى LayanX":"Add to LayanX",onclick:async()=>{
+       bind.disabled=true;
+       try{await api("/v1/oauth/"+encodeURIComponent(c.id)+"/bind",{method:"POST",body:{platform,externalId,name:accountName}});toast(LANG==="ar"?"تمت إضافة الحساب":"Account added");await render();}
+       catch(e){toast(e.message);bind.disabled=false;}
+      }}):null;
+      return el("div",{class:"row"},el("div",{style:"flex:1;min-width:0"},el("b",{text:accountName}),el("small",{class:"mono",text:platform+" · "+externalId+(a.currency?" · "+a.currency:"")})),bind);
+     }));
+    }catch(e){discovery.replaceChildren(el("small",{class:"muted",text:(LANG==="ar"?"تعذر اكتشاف الحسابات: ":"Account discovery failed: ")+String(e.message||e)}));}
+   };
+   const socialProviders=["meta","tiktok","youtube","linkedin","x","pinterest"];
+   const adsProviders=["meta","tiktok","google","linkedin"];
+   const actions=[];
+   if(socialProviders.includes(c.provider))actions.push(el("button",{class:"btn small",text:LANG==="ar"?"اكتشاف حسابات التواصل":"Discover social accounts",onclick:()=>discover("discover")}));
+   if(adsProviders.includes(c.provider))actions.push(el("button",{class:"btn small",text:LANG==="ar"?"اكتشاف حسابات الإعلانات":"Discover ad accounts",onclick:()=>discover("discover-ads")}));
+   return el("div",{class:"integ",style:"display:block"},
+    el("div",{style:"display:flex;align-items:center;gap:.6rem"},
+     el("span",{class:"dot on"}),
+     el("div",{style:"flex:1;min-width:0"},el("b",{text:c.provider}),el("small",{class:"mono",text:(c.accountName||c.accountId||"default")+" · "+(c.scopes||[]).join(", ")})),
+     el("button",{class:"btn small",text:LANG==="ar"?"إلغاء الربط":"Revoke",onclick:async()=>{
+      if(!confirm(LANG==="ar"?"هل تريد إلغاء هذا الاتصال؟":"Revoke this connection?"))return;
+      try{await api("/v1/oauth/"+encodeURIComponent(c.id)+"/revoke",{method:"POST",body:{}});toast(LANG==="ar"?"تم إلغاء الاتصال":"Connection revoked");await render();}
+      catch(e){toast(e.message);}
+     }})
+    ),
+    actions.length?el("div",{class:"a",style:"margin-top:.5rem"},...actions):null,
+    discovery
+   );
+  }):[el("p",{class:"muted",text:LANG==="ar"?"لا توجد حسابات OAuth مربوطة حتى الآن.":"No OAuth accounts connected yet."})];
   const cards=providers.map(p=>{
    const form=el("div",{style:"display:grid;gap:.45rem;margin-top:.5rem"});
    const account=el("input",{class:"text",dir:"ltr",placeholder:"account ID (optional)"});
