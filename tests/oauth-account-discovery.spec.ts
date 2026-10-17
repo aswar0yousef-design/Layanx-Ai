@@ -17,6 +17,7 @@ const original=globalThis.fetch;
 globalThis.fetch=(async(url,init)=>{
  const u=String(url);
  if(u.includes("/oauth/access_token")){
+  assert.equal(init?.method,"GET");const tokenUrl=new URL(u);assert.equal(tokenUrl.searchParams.get("code"),"auth-code");assert.equal(tokenUrl.searchParams.get("client_id"),"meta-test");
   return new Response(JSON.stringify({access_token:"user-token",expires_in:3600,scope:"pages_show_list instagram_basic"}),{status:200});
  }
  if(u.includes("/me/accounts")){

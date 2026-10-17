@@ -7,6 +7,6 @@ const catalog=core.toolCatalog.list(core.agents.get("core"),"L1_READ");
 const model={async execute(){return {modelId:"fake",provider:"fake",output:JSON.stringify({risk:"low",requiredPermission:"L1_READ",steps:[{description:"Read runtime status"}],successCriteria:["done"],stopCondition:"stop",tools:[{tool:"runtime.status",action:"read runtime status",permission:"L2_ANALYZE",reason:"over-privileged"}]}) ,attempts:[]};}} as never;
 const planner=new AiMissionPlanner(model);
 let rejected=false;
-try{await planner.plan("Read runtime status",catalog);}catch(error){rejected=error instanceof Error&&error.message.includes("must match the tool requirement");}
+try{await planner.plan("Inspect current system health report",catalog);}catch(error){rejected=error instanceof Error&&error.message.includes("must match the tool requirement");}
 if(!rejected)throw new Error("planner accepted elevated tool permission");
 console.log("Planner permission hardening passed.");

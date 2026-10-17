@@ -41,7 +41,7 @@ core.tools.register({
 core.models.register({id:"planner-model",provider:"planner-test",capabilities:["reasoning"],local:true,enabled:true,priority:1});
 core.providers.register(provider);
 
-const mission=await core.planAndStartMission("Read runtime status");
+const mission=await core.planAndStartMission("Inspect current system health report");
 if(mission.tools?.length!==1)throw new Error("planner tool plan was not persisted");
 if(mission.tools?.[0].tool!=="runtime.status")throw new Error("planner selected the wrong tool");
 if(mission.tools?.[0].action!=="read runtime status")throw new Error("planner selected the wrong action");

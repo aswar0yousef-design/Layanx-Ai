@@ -97,7 +97,15 @@ export const KNOWN_SECRETS=[
   "OPENAI_API_KEY","ANTHROPIC_API_KEY","GEMINI_API_KEY","GROQ_API_KEY","OPENROUTER_API_KEY","MISTRAL_API_KEY","COHERE_API_KEY","HF_TOKEN",
   "GITHUB_TOKEN","LAYANX_SHOPIFY_ACCESS_TOKEN","LAYANX_WOOCOMMERCE_CONSUMER_KEY","LAYANX_WOOCOMMERCE_CONSUMER_SECRET","LAYANX_COMMERCE_TOKEN",
   "LAYANX_META_ADS_TOKEN","LAYANX_TIKTOK_ADS_TOKEN","LAYANX_GOOGLE_ADS_TOKEN","LAYANX_X_ADS_TOKEN",
-  "LAYANX_TIKTOK_OAUTH_CLIENT_SECRET","LAYANX_GOOGLE_OAUTH_CLIENT_SECRET","LAYANX_LINKEDIN_OAUTH_CLIENT_SECRET","LAYANX_PINTEREST_OAUTH_CLIENT_SECRET","LAYANX_YOUTUBE_OAUTH_CLIENT_SECRET",
+  "LAYANX_OAUTH_REDIRECT_URI",
+  "LAYANX_META_OAUTH_CLIENT_ID","LAYANX_META_OAUTH_CLIENT_SECRET","LAYANX_META_OAUTH_REDIRECT_URI","LAYANX_META_OAUTH_SCOPES",
+  "LAYANX_TIKTOK_OAUTH_CLIENT_ID","LAYANX_TIKTOK_OAUTH_CLIENT_SECRET","LAYANX_TIKTOK_OAUTH_REDIRECT_URI","LAYANX_TIKTOK_OAUTH_SCOPES",
+  "LAYANX_GOOGLE_OAUTH_CLIENT_ID","LAYANX_GOOGLE_OAUTH_CLIENT_SECRET","LAYANX_GOOGLE_OAUTH_REDIRECT_URI","LAYANX_GOOGLE_OAUTH_SCOPES",
+  "LAYANX_YOUTUBE_OAUTH_CLIENT_ID","LAYANX_YOUTUBE_OAUTH_CLIENT_SECRET","LAYANX_YOUTUBE_OAUTH_REDIRECT_URI","LAYANX_YOUTUBE_OAUTH_SCOPES",
+  "LAYANX_LINKEDIN_OAUTH_CLIENT_ID","LAYANX_LINKEDIN_OAUTH_CLIENT_SECRET","LAYANX_LINKEDIN_OAUTH_REDIRECT_URI","LAYANX_LINKEDIN_OAUTH_SCOPES",
+  "LAYANX_PINTEREST_OAUTH_CLIENT_ID","LAYANX_PINTEREST_OAUTH_CLIENT_SECRET","LAYANX_PINTEREST_OAUTH_REDIRECT_URI","LAYANX_PINTEREST_OAUTH_SCOPES",
+  "LAYANX_X_OAUTH_CLIENT_ID","LAYANX_X_OAUTH_CLIENT_SECRET","LAYANX_X_OAUTH_REDIRECT_URI","LAYANX_X_OAUTH_SCOPES",
+  "LAYANX_GOOGLE_ADS_DEVELOPER_TOKEN","LAYANX_GOOGLE_ADS_LOGIN_CUSTOMER_ID",
   "GOOGLE_CLIENT_SECRET","GOOGLE_REFRESH_TOKEN","YAHOO_APP_PASSWORD","QF_CLIENT_SECRET",
   // Website platforms (src/platforms/catalog.ts); connected from Control Center -> Integrations -> Platforms.
   ...PLATFORM_SECRETS
@@ -306,6 +314,38 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
       const cookie=/(?:^|;\s*)layanx_session=([^;]+)/.exec(String(ctx.req.headers.cookie??""));
       if(cookie?.[1])host.access.endSession(decodeURIComponent(cookie[1]));
       ctx.sendJson(200,{ok:true},{"set-cookie":`${host.sessionCookie}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`});
+      return true;
+    }
+
+    if(path==="/v1/setup/projects/create"&&method==="POST"){
+      // Owner-authenticated setup route; filesystem writes are restricted to loopback.
+      if(!ctx.loopback){ctx.sendJson(403,{error:"local_only"});return true;}
+      const body=await ctx.readJson() as {name?:unknown};
+      if(typeof body.name!=="string"){ctx.sendJson(400,{error:"project_name_required",message:"اكتب اسم المشروع أولاً."});return true;}
+      const name=body.name.normalize("NFC").trim().replace(/\s+/g,"-");
+      if(!name||name.length>64||!/^\p{L}[\p{L}\p{N}._-]{0,63}$/u.test(name)||/[.]$/.test(name)||/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(name)){
+        ctx.sendJson(400,{error:"invalid_project_name",message:"اسم المشروع غير صالح. استخدم الحروف والأرقام والشرطة فقط، وبحد أقصى 64 حرفاً."});return true;
+      }
+      const root=nodePath.resolve(process.env.LAYANX_WORKSPACE_ROOT||host.getSettings().workspaceRoot||nodePath.join(os.homedir(),"LayanX-Projects"));
+      const projectPath=nodePath.resolve(root,name);
+      const rel=nodePath.relative(root,projectPath);
+      if(!rel||rel.startsWith(".."+nodePath.sep)||nodePath.isAbsolute(rel)){
+        ctx.sendJson(400,{error:"invalid_project_path"});return true;
+      }
+      let created=false;
+      try{
+        fs.mkdirSync(root,{recursive:true});
+        // A non-recursive mkdir makes duplicate names fail rather than merge projects.
+        fs.mkdirSync(projectPath,{recursive:false});
+        created=true;
+        const metadata={id:name,name,createdAt:new Date().toISOString(),workspaceRoot:root,status:"new"};
+        fs.writeFileSync(nodePath.join(projectPath,".layanx-project.json"),JSON.stringify(metadata,null,2)+"\n",{flag:"wx"});
+        fs.writeFileSync(nodePath.join(projectPath,"README.md"),"# "+name+"\n\nمشروع أنشأه LayanX.\n\n## الهدف\n\nأضف وصف المشروع ومعايير القبول هنا.\n",{flag:"wx"});
+        ctx.sendJson(201,{ok:true,project:{...metadata,path:projectPath},message:"تم إنشاء مجلد مستقل للمشروع. لم يبدأ التنفيذ بعد."});
+      }catch(error){
+        if(created)try{fs.rmSync(projectPath,{recursive:true,force:true});}catch{}
+        ctx.sendJson(409,{error:"project_create_failed",message:error instanceof Error?error.message:"تعذر إنشاء المشروع."});
+      }
       return true;
     }
 

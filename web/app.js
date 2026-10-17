@@ -202,6 +202,91 @@ async function api(path,opts={}){
 const safe=async(p,fb)=>{try{return await p;}catch{return fb;}};
 /** MCP tool servers: list, owner approval, registry search. */
 // ---------- Platforms (src/platforms): GitHub, Vercel, Hostinger, Cloudflare, Netlify, Supabase, Context7, Claude ----------
+// OAuth connections for social publishing and advertising. OAuth app credentials are
+// configured locally; this UI never asks for or displays access-token values.
+
+async function oauthConnectionsPanel(){
+ const callbackUrl=new URL("/v1/oauth/callback",window.location.origin).href;
+ const box=el("section",{class:"card",style:"margin-top:1rem"});
+ const providers=[
+  {id:"meta",label:"Meta · Facebook / Instagram",vars:"LAYANX_META_OAUTH_CLIENT_ID, LAYANX_META_OAUTH_CLIENT_SECRET, LAYANX_META_OAUTH_REDIRECT_URI",url:"https://developers.facebook.com/apps/"},
+  {id:"tiktok",label:"TikTok",vars:"LAYANX_TIKTOK_OAUTH_CLIENT_ID, LAYANX_TIKTOK_OAUTH_CLIENT_SECRET, LAYANX_TIKTOK_OAUTH_REDIRECT_URI",url:"https://developers.tiktok.com/"},
+  {id:"google",label:"Google Ads",vars:"LAYANX_GOOGLE_OAUTH_CLIENT_ID, LAYANX_GOOGLE_OAUTH_CLIENT_SECRET, LAYANX_GOOGLE_OAUTH_REDIRECT_URI",url:"https://console.cloud.google.com/apis/credentials"},
+  {id:"youtube",label:"YouTube",vars:"LAYANX_YOUTUBE_OAUTH_CLIENT_ID, LAYANX_YOUTUBE_OAUTH_CLIENT_SECRET, LAYANX_YOUTUBE_OAUTH_REDIRECT_URI",url:"https://console.cloud.google.com/apis/credentials"},
+  {id:"linkedin",label:"LinkedIn",vars:"LAYANX_LINKEDIN_OAUTH_CLIENT_ID, LAYANX_LINKEDIN_OAUTH_CLIENT_SECRET, LAYANX_LINKEDIN_OAUTH_REDIRECT_URI",url:"https://www.linkedin.com/developers/apps"},
+  {id:"x",label:"X",vars:"LAYANX_X_OAUTH_CLIENT_ID, LAYANX_X_OAUTH_CLIENT_SECRET, LAYANX_X_OAUTH_REDIRECT_URI",url:"https://developer.x.com/en/portal/dashboard"},
+  {id:"pinterest",label:"Pinterest",vars:"LAYANX_PINTEREST_OAUTH_CLIENT_ID, LAYANX_PINTEREST_OAUTH_CLIENT_SECRET, LAYANX_PINTEREST_OAUTH_REDIRECT_URI",url:"https://developers.pinterest.com/"},
+ ];
+ const render=async()=>{
+  const data=await safe(api("/v1/oauth/connections"),{connections:[]});
+  S.oauth=data;
+  const connected=Array.isArray(data.connections)?data.connections:[];
+  const accountRows=connected.length?connected.map(c=>{
+   const discovery=el("div",{class:"rows",style:"margin-top:.45rem"});
+   const discover=async(kind)=>{
+    discovery.replaceChildren(el("small",{class:"muted",text:LANG==="ar"?"جارٍ البحث عن الحسابات...":"Discovering accounts..."}));
+    try{
+     const result=await api("/v1/oauth/"+encodeURIComponent(c.id)+"/"+kind);
+     const accounts=Array.isArray(result.accounts)?result.accounts:[];
+     if(!accounts.length){discovery.replaceChildren(el("small",{class:"muted",text:LANG==="ar"?"لم يعثر المزود على حسابات متاحة بهذه الصلاحيات.":"No accounts were returned for the granted scopes."}));return;}
+     discovery.replaceChildren(...accounts.map(a=>{
+      const accountName=String(a.name||a.externalId||"");
+      const externalId=String(a.externalId||"");
+      const platform=String(a.platform||"");
+      const canBind=kind==="discover"&&Boolean(externalId&&platform);
+      const bind=canBind?el("button",{class:"btn small",text:LANG==="ar"?"إضافة إلى LayanX":"Add to LayanX",onclick:async()=>{
+       bind.disabled=true;
+       try{await api("/v1/oauth/"+encodeURIComponent(c.id)+"/bind",{method:"POST",body:{platform,externalId,name:accountName}});toast(LANG==="ar"?"تمت إضافة الحساب":"Account added");await render();}
+       catch(e){toast(e.message);bind.disabled=false;}
+      }}):null;
+      return el("div",{class:"row"},el("div",{style:"flex:1;min-width:0"},el("b",{text:accountName}),el("small",{class:"mono",text:platform+" · "+externalId+(a.currency?" · "+a.currency:"")})),bind);
+     }));
+    }catch(e){discovery.replaceChildren(el("small",{class:"muted",text:(LANG==="ar"?"تعذر اكتشاف الحسابات: ":"Account discovery failed: ")+String(e.message||e)}));}
+   };
+   const socialProviders=["meta","tiktok","youtube","linkedin","x","pinterest"];
+   const adsProviders=["meta","tiktok","google","linkedin"];
+   const actions=[];
+   if(socialProviders.includes(c.provider))actions.push(el("button",{class:"btn small",text:LANG==="ar"?"اكتشاف حسابات التواصل":"Discover social accounts",onclick:()=>discover("discover")}));
+   if(adsProviders.includes(c.provider))actions.push(el("button",{class:"btn small",text:LANG==="ar"?"اكتشاف حسابات الإعلانات":"Discover ad accounts",onclick:()=>discover("discover-ads")}));
+   return el("div",{class:"integ",style:"display:block"},
+    el("div",{style:"display:flex;align-items:center;gap:.6rem"},
+     el("span",{class:"dot on"}),
+     el("div",{style:"flex:1;min-width:0"},el("b",{text:c.provider}),el("small",{class:"mono",text:(c.accountName||c.accountId||"default")+" · "+(c.scopes||[]).join(", ")})),
+     el("button",{class:"btn small",text:LANG==="ar"?"إلغاء الربط":"Revoke",onclick:async()=>{
+      if(!confirm(LANG==="ar"?"هل تريد إلغاء هذا الاتصال؟":"Revoke this connection?"))return;
+      try{await api("/v1/oauth/"+encodeURIComponent(c.id)+"/revoke",{method:"POST",body:{}});toast(LANG==="ar"?"تم إلغاء الاتصال":"Connection revoked");await render();}
+      catch(e){toast(e.message);}
+     }})
+    ),
+    actions.length?el("div",{class:"a",style:"margin-top:.5rem"},...actions):null,
+    discovery
+   );
+  }):[el("p",{class:"muted",text:LANG==="ar"?"لا توجد حسابات OAuth مربوطة حتى الآن.":"No OAuth accounts connected yet."})];
+  const cards=providers.map(p=>{
+   const form=el("div",{style:"display:grid;gap:.45rem;margin-top:.5rem"});
+   const account=el("input",{class:"text",dir:"ltr",placeholder:"account ID (optional)"});
+   const status=el("small",{class:"muted",text:LANG==="ar"?"يحتاج بيانات تطبيق OAuth محلية قبل بدء الربط.":"Requires locally configured OAuth app credentials."});
+   const begin=el("button",{class:"btn primary",text:LANG==="ar"?"إنشاء رابط الربط":"Prepare connection",onclick:async()=>{
+    begin.disabled=true;
+    try{
+     const result=await api("/v1/oauth/connect",{method:"POST",body:{provider:p.id,accountId:account.value.trim()||"default"}});
+     const link=el("a",{class:"btn",href:result.authorizationUrl,target:"_blank",rel:"noopener noreferrer",text:LANG==="ar"?"فتح صفحة موافقة المزود":"Open provider consent"});
+     status.replaceChildren(document.createTextNode(LANG==="ar"?"تم إنشاء الرابط. افتحه وأكمل موافقة المزود، ثم حدّث الحالة. ":"Authorization URL ready. Open it, approve access, then refresh. "),link);
+    }catch(e){
+     const message=String(e.message||e);
+     status.textContent=(LANG==="ar"?"تعذر بدء الربط: ":"Could not start OAuth: ")+message+". "+(LANG==="ar"?"تحقق من إعدادات التطبيق ومفتاح العميل وعنوان العودة في الإعدادات المحلية.":"Check the local app credentials and redirect URI in local settings.");
+    }finally{begin.disabled=false;}
+   }});
+   form.append(el("small",{class:"muted",text:(LANG==="ar"?"إعدادات مطلوبة: ":"Required local settings: ")+p.vars}),account,begin,status,
+    el("a",{href:p.url,target:"_blank",rel:"noopener noreferrer",text:(LANG==="ar"?"إعداد تطبيق OAuth لدى المزود ↗":"Configure OAuth app with provider ↗")}));
+   return el("div",{class:"integ",style:"display:block"},el("b",{text:p.label}),form);
+  });
+  box.replaceChildren(el("h3",{text:LANG==="ar"?"ربط الحسابات الاجتماعية والإعلانية عبر OAuth":"Social and ads accounts via OAuth"}),el("p",{class:"muted",text:(LANG==="ar"?"سجّل عنوان العودة هذا حرفيًا في إعدادات كل تطبيق OAuth، واستخدمه في متغير REDIRECT_URI الخاص بالمزود: ":"Register this exact callback URL in each OAuth app and use it for that provider’s REDIRECT_URI: ")+callbackUrl+". "+(LANG==="ar"?"قد تتطلب المنصات مراجعة التطبيق وصلاحيات إضافية.":"Provider app review and additional scopes may be required.")}),el("div",{class:"rows"},accountRows),el("h4",{text:LANG==="ar"?"إضافة اتصال":"Add connection"}),el("div",{class:"grid2",style:"margin-top:.6rem"},cards));
+ };
+ await render();
+ return box;
+}
+
 async function platformsPanel(){
  const box=el("section",{class:"card",style:"margin-top:1rem"});
  const state=s=>s==="connected"?"done":s==="error"?"fail":s==="starting"?"run":s==="available"?"wait":"pend";
@@ -668,7 +753,7 @@ async function refreshDashboard(light){
  if(sig!==refreshDashboard.sig){refreshDashboard.sig=sig;drawAgent();}
 }
 async function renderDashboard(v){
- await Promise.all([loadJobs(),loadSetup(),loadMissions(),loadApprovals(),safe(api("/v1/tools"),null).then(x=>{if(x)S.tools=x.tools||[];}),safe(api("/v1/channels/status"),null).then(x=>S.channels=x),safe(api("/v1/oauth/connections"),null).then(x=>S.oauth=x),safe(api("/v1/business"),null).then(x=>S.biz=x?.business||null),safe(api("/v1/ads"),null).then(x=>S.ads=x),safe(api("/v1/computer/live/status"),null).then(x=>S.live=x),safe(api("/v1/trading/overview"),null).then(x=>S.trading=x)]);
+ await Promise.all([loadJobs(),loadSetup(),loadMissions(),loadApprovals(),safe(api("/v1/tools"),null).then(x=>{if(x)S.tools=x.tools||[];}),safe(api("/v1/channels/status"),null).then(x=>S.channels=x),safe(api("/v1/business"),null).then(x=>S.biz=x?.business||null),safe(api("/v1/ads"),null).then(x=>S.ads=x),safe(api("/v1/computer/live/status"),null).then(x=>S.live=x),safe(api("/v1/trading/overview"),null).then(x=>S.trading=x)]);
  await Promise.all(S.missions.slice(0,5).map(m=>missionDetail(m.id)));
  v.replaceChildren(kpiCards(),
   el("div",{class:"dash"},el("div",{class:"col"},agentCard(false)),el("div",{class:"col"},currentMissionCard(),activitiesCard()),el("div",{class:"col"},systemCard(),computerCard(false),terminalCard(false),quickCard())),
@@ -1054,8 +1139,8 @@ const VIEWS={
    el("section",{class:"card",style:"margin-top:1rem"},el("h3",{text:"Growth"}),stats([[t("experiments"),gd.experiments],[t("st_run"),gd.runningExperiments],[t("openActions"),gd.openActions],[t("completed"),gd.completedExperiments]])));
  },
  async integrations(v){
-  await Promise.all([loadSetup(true),safe(api("/v1/channels/status"),null).then(x=>S.channels=x),safe(api("/v1/oauth/connections"),null).then(x=>S.oauth=x)]);
-  fill(v,head(t("integrations"),"",el("a",{class:"btn",href:"/setup",text:t("setup")})),el("div",{class:"grid3"},integrationStatus().map(([n,st,d])=>el("div",{class:"integ"},el("span",{class:"dot "+(st==="on"?"on":st==="part"?"part":"")}),el("div",{},el("b",{text:n}),el("small",{class:"mono",text:d}))))),await platformsPanel(),await mcpPanel());
+  await Promise.all([loadSetup(true),safe(api("/v1/channels/status"),null).then(x=>S.channels=x),]);
+  fill(v,head(t("integrations"),"",el("a",{class:"btn",href:"/setup",text:t("setup")})),el("div",{class:"grid3"},integrationStatus().map(([n,st,d])=>el("div",{class:"integ"},el("span",{class:"dot "+(st==="on"?"on":st==="part"?"part":"")}),el("div",{},el("b",{text:n}),el("small",{class:"mono",text:d}))))),await oauthConnectionsPanel(),await platformsPanel(),await mcpPanel());
  },
  async team(v){
   const s=await loadSetup(true);const caps=s?.capabilities||{};

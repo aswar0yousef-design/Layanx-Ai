@@ -16,13 +16,17 @@ process.env.LAYANX_X_OAUTH_TOKEN_URL="https://example.test/token";
 process.env.LAYANX_X_OAUTH_SCOPES="tweet.read users.read";
 
 const original=globalThis.fetch;
-globalThis.fetch=(async(url)=>{
- if(String(url)==="https://example.test/token")return new Response(JSON.stringify({access_token:"x-token"}),{status:200});
+globalThis.fetch=(async(url,init)=>{
+ if(String(url)==="https://example.test/token"){
+  assert.equal(init?.method,"POST");const headers=init?.headers as Record<string,string>;assert.equal(headers.Authorization,"Basic "+Buffer.from("x-test:x-secret").toString("base64"));
+  const form=new URLSearchParams(String(init?.body));assert.equal(form.get("client_id"),null);assert.equal(form.get("client_secret"),null);assert.ok(form.get("code_verifier"));
+  return new Response(JSON.stringify({access_token:"x-token"}),{status:200});
+ }
  throw new Error("unexpected_fetch:"+String(url));
 }) as typeof fetch;
 
 const center=new OAuthConnectionCenter();
-const started=center.begin("x");
+const started=center.begin("x");const authorize=new URL(started.authorizationUrl);assert.equal(authorize.searchParams.get("code_challenge_method"),"S256");assert.ok(authorize.searchParams.get("code_challenge"));
 const connection=await center.callback(started.state,"code");
 const first=await center.token(connection);
 const second=await center.token(connection);

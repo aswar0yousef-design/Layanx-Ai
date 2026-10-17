@@ -190,6 +190,11 @@ aside h2{margin-bottom:.5rem}
         <p class="lead">يعمل الوكيل على الملفات وGit والاختبارات داخل هذا المجلد فقط. كل مجلد بداخله مشروع؛ اكتب اسمه في خانة «المشروع» في لوحة التحكم.</p>
         <form class="row" id="ws-form"><div><label for="ws-root">المسار</label><input id="ws-root" dir="ltr" placeholder="C:\\Users\\you\\Projects"></div><div></div><button type="submit">حفظ</button></form>
         <p class="note" id="ws-note"></p>
+        <h3 style="margin-top:1rem">إنشاء مشروع جديد</h3>
+        <p class="lead">ينشئ مجلداً مستقلاً وملف تعريف وREADME. لا يحذف أو يدمج أي مجلد موجود.</p>
+        <form class="row" id="project-create-form"><div><label for="project-create-name">اسم المشروع</label><input id="project-create-name" maxlength="64" required placeholder="my-store"></div><div></div><button type="submit">إنشاء مجلد المشروع</button></form>
+        <p class="note" id="project-create-note" role="status"></p>
+        <ul class="urls" id="workspace-project-list"></ul>
       </section>
 
       <section>
@@ -352,6 +357,7 @@ function render(){
   $("links").replaceChildren(...s.links.map(l=>el("a",{class:"btn",href:l.href,target:"_blank",rel:"noopener",text:l.label})));
   $("ws-root").value=s.workspace.configured||s.workspace.root;
   $("ws-note").textContent="المجلد الحالي: "+s.workspace.root+(s.workspace.projects.length?" · المشاريع: "+s.workspace.projects.join("، "):"");
+  $("workspace-project-list").replaceChildren(...s.workspace.projects.map(name=>el("li",{class:"addr",text:name})));
   renderCloud(s.cloud);
   renderRemote(s.remote);
 }
@@ -428,6 +434,19 @@ function renderRemote(r){
   $("remote-urls").replaceChildren(...(r.active?r.addresses:[]).map(u=>el("li",{class:"addr",text:u})));
 }
 $("ws-form").addEventListener("submit",async e=>{e.preventDefault();try{await api("/v1/setup/settings","PUT",{workspaceRoot:$("ws-root").value.trim()});await load();toast("حُفظ. يعمل بعد إعادة التشغيل.");}catch(err){toast(err.message);}});
+$("project-create-form").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const input=$("project-create-name"),button=e.submitter;
+  if(button)button.disabled=true;
+  try{
+    const result=await api("/v1/setup/projects/create","POST",{name:input.value.trim()});
+    $("project-create-note").textContent="أُنشئ المجلد: "+result.project.path+" — لم يبدأ التنفيذ بعد.";
+    input.value="";
+    await load();
+    toast("تم إنشاء مجلد مستقل للمشروع");
+  }catch(err){$("project-create-note").textContent=err.message;toast(err.message);}
+  finally{if(button)button.disabled=false;}
+});
 $("budget-form").addEventListener("submit",async e=>{e.preventDefault();const n=v=>v.trim()===""?null:Number(v);
   try{await api("/v1/setup/settings","PUT",{cloud:{monthlyBudgetUsd:n($("budget-usd").value),monthlyTokens:n($("budget-tokens").value)}});await load();toast("حُفظ الحد. يعمل بعد إعادة التشغيل.");}catch(err){toast(err.message);}});
 document.querySelectorAll("#cloud-policy input").forEach(i=>i.addEventListener("change",async()=>{try{await api("/v1/setup/settings","PUT",{cloud:{policy:i.value}});await load();toast("حُفظت سياسة السحابة");}catch(e){toast(e.message);}}));
