@@ -164,6 +164,13 @@ export class ExecutionRuntime{
   return{ok:true,missionId:mission.id,verified:true,data:result,recoverable:false};
  }
 
+ /** Forget stale approval requests from memory and persistence after a safer workflow replaces their action. */
+ async forgetApprovalsForMissions(missionIds:string[]):Promise<void>{
+  const ids=[...new Set(missionIds.filter(id=>typeof id==="string"&&id.length>0))];
+  if(!ids.length)return;
+  for(const id of ids)this.approvals.forgetMission(id);
+  await this.persistence?.forgetApprovalRequestsForMissions(ids);
+ }
  async persist(mission:Mission):Promise<void>{
   if(!this.persistence)return;
   const executionState=this.core.executionStates.get(mission.id);
