@@ -57,7 +57,7 @@ const deps:SupervisorDeps={
   async resumeAgent(){return{completed:true};},
   async runTool(){return{ok:true,data:{ok:true,exitCode:0}};},
   isApproved:()=>false,
-  forgetApprovalsForMission(missionId){forgottenApprovalMissions.push(missionId);},
+  forgetApprovalsForMissions(missionIds){forgottenApprovalMissions.push(...missionIds);},
   cloudAvailable:()=>false,
   externalAgent:()=>null,
   detect:()=>null
