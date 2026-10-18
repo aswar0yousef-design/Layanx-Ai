@@ -239,12 +239,16 @@ export class LayanXCore{
   missionDependencyStatus(missionId:string){return this.missionDependencies.status(missionId);}
   async runDependentMission(missionId:string,projectId="default",maxSteps=10,agentId="core"){return this.missionDependencies.runWhenReady(missionId,projectId,maxSteps,agentId);}
   prepareMissionToolRequests(mission:import("./types.js").Mission,projectId:string,agentId="core" ){
-    this.projectIsolation.assertMissionProject(projectId,mission.projectId);
+    // Capability scopes must use the same canonical project ID as ExecutionRuntime.
+    // On Windows canonical() lowercases IDs; issuing against the display-case name caused
+    // otherwise-valid tool requests to fail with "Capability token scope mismatch."
+    const canonicalProjectId=this.projectIsolation.canonical(projectId);
+    this.projectIsolation.assertMissionProject(canonicalProjectId,mission.projectId);
     const contract=this.agents.get(agentId);
     const catalog=this.toolCatalog.list(contract,mission.requiredPermission);
     return (mission.tools??[]).map(plan=>{
-      const request=this.toolRequestBuilder.build(mission,plan,{agentId,projectId,capabilityId:"pending"},catalog);
-      const token=this.capabilities.issue({missionId:mission.id,agentId,projectId,resource:plan.tool,permission:plan.permission,expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
+      const request=this.toolRequestBuilder.build(mission,plan,{agentId,projectId:canonicalProjectId,capabilityId:"pending"},catalog);
+      const token=this.capabilities.issue({missionId:mission.id,agentId,projectId:canonicalProjectId,resource:plan.tool,permission:plan.permission,expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
       return{request,capabilityId:token.id,expiresAt:token.expiresAt};
     });
   }
@@ -283,24 +287,28 @@ export class LayanXCore{
   async executeMissionTool(missionId:string,projectId:string,toolIndex=0,payload:unknown={},approvalId?:string,agentId="core",runtimeOptions:{deferVerification?:boolean}={}){
     const mission=this.missions.get(missionId);
     if(!mission)throw new Error("Mission not found.");
-    this.projectIsolation.assertMissionProject(projectId,mission.projectId);
+    // Keep the token, request, and runtime security context bound to one canonical identity.
+    // Windows treats project IDs case-insensitively, so the display-case ID must not be used
+    // when issuing a token that will be checked against the canonical lower-case ID.
+    const canonicalProjectId=this.projectIsolation.canonical(projectId);
+    this.projectIsolation.assertMissionProject(canonicalProjectId,mission.projectId);
     const plans=mission.tools??[];
     const plan=plans[toolIndex];
     if(!plan)throw new Error("Mission tool plan not found.");
     const contract=this.agents.get(agentId);
     const catalog=this.toolCatalog.list(contract,mission.requiredPermission);
-    const pendingRequest=this.toolRequestBuilder.build(mission,plan,{agentId,projectId,capabilityId:"pending",payload,planIndex:toolIndex},catalog);
-    const token=this.capabilities.issue({missionId:mission.id,agentId,projectId,resource:plan.tool,permission:plan.permission,expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
-    let result=await this.executionRuntime.run(mission,pendingRequest,this.toolAdapters.get(plan.tool),approvalId,{projectId,capabilityId:token.id},runtimeOptions);
+    const pendingRequest=this.toolRequestBuilder.build(mission,plan,{agentId,projectId:canonicalProjectId,capabilityId:"pending",payload,planIndex:toolIndex},catalog);
+    const token=this.capabilities.issue({missionId:mission.id,agentId,projectId:canonicalProjectId,resource:plan.tool,permission:plan.permission,expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
+    let result=await this.executionRuntime.run(mission,pendingRequest,this.toolAdapters.get(plan.tool),approvalId,{projectId:canonicalProjectId,capabilityId:token.id},runtimeOptions);
     let retryAttempt=1;
     while(!result.ok){
       const decision=this.autonomousRetry.decide(plan,result,retryAttempt);
       this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"mission.retry.evaluate",resource:mission.id,result:decision.retry?"allowed":"skipped",metadata:{missionId:mission.id,tool:plan.tool,action:plan.action,attempt:retryAttempt,reason:decision.reason}});
       if(!decision.retry)break;
       if(decision.delayMs>0)await new Promise(resolve=>setTimeout(resolve,decision.delayMs));
-      const retryToken=this.capabilities.issue({missionId:mission.id,agentId,projectId,resource:plan.tool,permission:plan.permission,expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
-      const retryRequest=this.toolRequestBuilder.build(mission,plan,{agentId,projectId,capabilityId:retryToken.id,payload,planIndex:toolIndex,retryAttempt},catalog);
-      result=await this.executionRuntime.run(mission,retryRequest,this.toolAdapters.get(plan.tool),approvalId,{projectId,capabilityId:retryToken.id},runtimeOptions);
+      const retryToken=this.capabilities.issue({missionId:mission.id,agentId,projectId:canonicalProjectId,resource:plan.tool,permission:plan.permission,expiresAt:new Date(Date.now()+15*60*1000).toISOString()});
+      const retryRequest=this.toolRequestBuilder.build(mission,plan,{agentId,projectId:canonicalProjectId,capabilityId:retryToken.id,payload,planIndex:toolIndex,retryAttempt},catalog);
+      result=await this.executionRuntime.run(mission,retryRequest,this.toolAdapters.get(plan.tool),approvalId,{projectId:canonicalProjectId,capabilityId:retryToken.id},runtimeOptions);
       retryAttempt++;
     }
     this.missions.save(mission);
