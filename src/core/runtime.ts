@@ -30,6 +30,18 @@ export class ExecutionRuntime{
  constructor(private readonly core:LayanXCore,persistence?:RuntimePersistence){this.persistence=persistence??core.persistence;}
  async run(mission:Mission,request:ToolRequest,adapter:ToolAdapter,approvalId?:string,security?:RuntimeSecurityContext,runtimeOptions:{deferVerification?:boolean}={}):Promise<RuntimeResult>{
   if(["completed","cancelled"].includes(mission.status)){
+   // Replay is still a project-scoped operation: never expose persisted results before
+   // validating the caller's security context and both mission/request project bindings.
+   if(!security)return{ok:false,missionId:mission.id,verified:false,error:"Capability context is required.",recoverable:false};
+   try{
+    const replayProjectId=this.core.projectIsolation.canonical(security.projectId);
+    this.core.projectIsolation.assertMissionProject(replayProjectId,mission.projectId);
+    this.core.projectIsolation.assertRequestProject(replayProjectId,request.projectId);
+   }catch(error){
+    const message=error instanceof Error?error.message:"Project isolation violation.";
+    this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"denied",metadata:{reason:message,missionId:mission.id,projectId:security.projectId,replay:true}});
+    return{ok:false,missionId:mission.id,verified:false,error:message,recoverable:false};
+   }
    const replay=await this.core.idempotency.get(request.idempotencyKey);
    if(mission.status==="completed"&&replay?.status==="completed"&&replay.missionId===mission.id&&replay.agentId===request.agentId&&replay.tool===request.tool&&replay.action===request.action){
     const executionStep=mission.steps.find(step=>EXECUTION_STEP.test(step.description));
