@@ -262,7 +262,7 @@ async function mcpPanel(){
   const nameInput=el("input",{class:"text",value:"Jarvis on Windows",dir:"auto",autocomplete:"off"});
   const commandInput=el("input",{class:"text",dir:"ltr",placeholder:"C:\\Program Files\\Jarvis\\JarvisAgent.exe",autocomplete:"off"});
   const argsInput=el("textarea",{class:"text",dir:"ltr",rows:"4",placeholder:"--mcp\n--config\nC:\\Users\\YOUR_USER\\AppData\\Local\\Jarvis\\config.toml"});
-  const customForm=el("div",{class:"card",hidden:true,style:"margin-top:.8rem;display:grid;gap:.6rem"},
+  const customForm=el("div",{class:"card",hidden:true,style:"margin-top:.8rem;gap:.6rem"},
    el("h4",{text:t("mcpCustom")}),el("p",{class:"muted",text:t("mcpCustomLead")}),
    el("label",{class:"f"},t("mcpServerId"),idInput),
    el("label",{class:"f"},t("mcpServerName"),nameInput),
