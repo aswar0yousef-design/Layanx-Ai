@@ -52,6 +52,6 @@ assert.equal(verifyMission.tools?.[0]?.action,"desktop find window");
 assert.notEqual(verifyMission.tools?.[0]?.final,true,"a read-only check must be evaluated against its explicit success criteria");
 assert.deepEqual(verifyMission.tools?.[0]?.payload,{title:"Notepad"});
 assert.equal(verifyMission.requiredPermission,"L1_READ");
-assert.deepEqual(verifyMission.successCriteria,["result.exists === true",'result.title contains "Notepad"']);
+assert.deepEqual(verifyMission.successCriteria,["result.exists === true","result.visible === true",'result.title contains "Notepad"']);
 
 console.log("open-app-wrapped-task: opening and verifying Notepad both use deterministic desktop plans");
