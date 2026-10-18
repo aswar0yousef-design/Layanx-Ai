@@ -43,6 +43,7 @@ const file=path.join(store,"supervisor-jobs.json");
 fs.writeFileSync(file,JSON.stringify([oldJob]),"utf8");
 
 const calls:{agent:string;goal:string}[]=[];
+const forgottenApprovalMissions:string[]=[];
 let planningCalls=0;
 const deps:SupervisorDeps={
   async think(prompt){
@@ -56,6 +57,7 @@ const deps:SupervisorDeps={
   async resumeAgent(){return{completed:true};},
   async runTool(){return{ok:true,data:{ok:true,exitCode:0}};},
   isApproved:()=>false,
+  forgetApprovalsForMission(missionId){forgottenApprovalMissions.push(missionId);},
   cloudAvailable:()=>false,
   externalAgent:()=>null,
   detect:()=>null
@@ -156,6 +158,7 @@ assert.equal(verifiedRecovery.milestones[1]!.attempts,1,"the obsolete focus miss
 assert.deepEqual(calls.map(call=>call.agent),["operator"],"restart recovery should rerun verification only");
 assert.ok(Date.parse(verifiedRecovery.deadline)>Date.now(),"legacy verification recovery must renew the deadline");
 assert.ok(verifiedRecovery.log.some(line=>line.msg.includes("Replaced stale Notepad window-focus verification with a read-only window-presence check")));
+assert.ok(forgottenApprovalMissions.includes("prior-focus-mission"),"obsolete focus approvals must be removed when verification is replanned");
 verifySupervisor.stop();
 
 fs.rmSync(store,{recursive:true,force:true});
