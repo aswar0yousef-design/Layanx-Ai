@@ -49,7 +49,7 @@ const verifyMission=await core.planMission(verifyGoal);
 assert.equal(verifyMission.tools?.length,1);
 assert.equal(verifyMission.tools?.[0]?.tool,"desktop.window.find");
 assert.equal(verifyMission.tools?.[0]?.action,"desktop find window");
-assert.equal(verifyMission.tools?.[0]?.final,true);
+assert.notEqual(verifyMission.tools?.[0]?.final,true,"a read-only check must be evaluated against its explicit success criteria");
 assert.deepEqual(verifyMission.tools?.[0]?.payload,{title:"Notepad"});
 assert.equal(verifyMission.requiredPermission,"L1_READ");
 assert.deepEqual(verifyMission.successCriteria,["result.exists === true",'result.title contains "Notepad"']);
