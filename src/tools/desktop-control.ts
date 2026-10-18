@@ -189,12 +189,12 @@ const WIN_HELPER_PS=[
  // fixed command here, anything else is matched by name among the Start menu's installed apps, and a web
  // page must parse as an http(s) URL.
  "   'openapp'{$k=[string]$r.kind;$v=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([string]$r.value));$fixed=@{chrome='chrome';msedge='msedge';firefox='firefox';explorer='explorer.exe';notepad='notepad.exe';calc='calc.exe';settings='ms-settings:';paint='mspaint.exe';taskmgr='taskmgr.exe'};"+
- "if($k -eq 'known'){if(-not $fixed.ContainsKey($v)){throw 'unknown program'};Start-Process $fixed[$v];'ok|'+$v}"+
- "elseif($k -eq 'url'){$u=$null;if(-not [Uri]::TryCreate($v,[UriKind]::Absolute,[ref]$u) -or ($u.Scheme -ne 'https' -and $u.Scheme -ne 'http')){throw 'not a web address'};$b=[string]$r.browser;if($b){if(-not $fixed.ContainsKey($b)){throw 'unknown browser'};Start-Process $fixed[$b] -ArgumentList @($u.AbsoluteUri)}else{Start-Process $u.AbsoluteUri};'ok|'+$u.AbsoluteUri}"+
+ "if($k -eq 'known'){if(-not $fixed.ContainsKey($v)){throw 'unknown program'};Start-Process $fixed[$v] | Out-Null;'ok|'+$v}"+
+ "elseif($k -eq 'url'){$u=$null;if(-not [Uri]::TryCreate($v,[UriKind]::Absolute,[ref]$u) -or ($u.Scheme -ne 'https' -and $u.Scheme -ne 'http')){throw 'not a web address'};$b=[string]$r.browser;if($b){if(-not $fixed.ContainsKey($b)){throw 'unknown browser'};Start-Process $fixed[$b] -ArgumentList @($u.AbsoluteUri) | Out-Null}else{Start-Process $u.AbsoluteUri | Out-Null};'ok|'+$u.AbsoluteUri}"+
  // Start menu apps (Get-StartApps), or where that cmdlet is missing (Windows Server) the Start menu's shortcuts.
  "elseif($k -eq 'start'){$e=[Management.Automation.WildcardPattern]::Escape($v);$pick={param($list,$name)@($list|Where-Object{$_.N -eq $v})+@($list|Where-Object{$_.N -like ($e+'*')}|Sort-Object{$_.N.Length})+@($list|Where-Object{$_.N -like ('*'+$e+'*')}|Sort-Object{$_.N.Length})|Select-Object -First 1};"+
- "$a=$null;if(Get-Command Get-StartApps -ErrorAction SilentlyContinue){$a=& $pick @(Get-StartApps|ForEach-Object{[pscustomobject]@{N=$_.Name;Id=$_.AppID}}) $v};"+
- "if($a){Start-Process 'explorer.exe' -ArgumentList @('shell:AppsFolder\\'+$a.Id);'ok|'+$a.N}"+
+ "$a=$null;if(Get-Command Get-StartApps -ErrorAction SilentlyContinue){$a=& $pick @(Get-StartApps|ForEach-Object{[pscustomobject]@{N=$_.Name;Id=$_.AppID}}) $v;if(-not $a){throw ('not installed: '+$v)};Start-Process 'explorer.exe' -ArgumentList @('shell:AppsFolder\\'+$a.Id) | Out-Null;'ok|'+$a.N}"+
+ "if($a){Start-Process 'explorer.exe' -ArgumentList @('shell:AppsFolder\\'+$a.Id) | Out-Null;'ok|'+$a.N}"+
  "else{$dirs=@((Join-Path $env:ProgramData 'Microsoft\\Windows\\Start Menu\\Programs'),(Join-Path $env:APPDATA 'Microsoft\\Windows\\Start Menu\\Programs'));$l=& $pick @(Get-ChildItem -Path $dirs -Filter '*.lnk' -Recurse -ErrorAction SilentlyContinue|ForEach-Object{[pscustomobject]@{N=$_.BaseName;Id=$_.FullName}}) $v;"+
  "if(-not $l){throw ('not installed: '+$v)};Invoke-Item -LiteralPath $l.Id;'ok|'+$l.N}}else{throw 'unknown kind'}}",
  "   'ping'{'ok'}",
