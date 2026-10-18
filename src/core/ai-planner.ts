@@ -39,15 +39,15 @@ function deterministicDesktopWindowCheck(goal:string,catalog:ToolCatalogEntry[])
  const isCheck=/(?:تحقق|تأكد|افحص|verify|confirm|check)/iu.test(step);
  const isWindow=/(?:نافذة|window)/iu.test(step);
  if(!mentionsNotepad||!isCheck||!isWindow)return undefined;
- const tool=catalog.find(item=>item.name==="desktop.window.focus"&&item.actions.some(action=>action.toLowerCase()==="desktop focus window"));
+ const tool=catalog.find(item=>item.name==="desktop.window.find"&&item.actions.some(action=>action.toLowerCase()==="desktop find window"));
  if(!tool)return undefined;
  return{
   risk:"low",
   requiredPermission:tool.permission,
-  steps:[{description:"Execute: focus the visible Notepad window to verify that it is open."}],
-  successCriteria:["result.focused === true",'result.title contains "Notepad"'],
-  stopCondition:"Stop and report the window-verification error if no Notepad window is open.",
-  tools:[{tool:tool.name,action:"desktop focus window",permission:tool.permission,reason:"The owner asked to confirm that the Notepad window is open.",payload:{title:"Notepad"}}]
+  steps:[{description:"Read the Windows UI Automation window list and verify that Notepad is present."}],
+  successCriteria:["result.exists === true",'result.title contains "Notepad"'],
+  stopCondition:"Stop and report the window-verification result; do not use a window-focus action just to verify visibility.",
+  tools:[{tool:tool.name,action:"desktop find window",permission:tool.permission,reason:"The owner asked to confirm that the Notepad window is open; this read-only check does not change focus.",payload:{title:"Notepad"},final:true}]
  };
 }
 
