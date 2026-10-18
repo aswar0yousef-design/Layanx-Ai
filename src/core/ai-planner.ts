@@ -44,10 +44,10 @@ function deterministicDesktopWindowCheck(goal:string,catalog:ToolCatalogEntry[])
  return{
   risk:"low",
   requiredPermission:tool.permission,
-  steps:[{description:"Read the Windows UI Automation window list and verify that Notepad is present."}],
+  steps:[{description:"Inspect the Windows UI Automation window list and confirm that Notepad is present."}],
   successCriteria:["result.exists === true",'result.title contains "Notepad"'],
   stopCondition:"Stop and report the window-verification result; do not use a window-focus action just to verify visibility.",
-  tools:[{tool:tool.name,action:"desktop find window",permission:tool.permission,reason:"The owner asked to confirm that the Notepad window is open; this read-only check does not change focus.",payload:{title:"Notepad"},final:true}]
+  tools:[{tool:tool.name,action:"desktop find window",permission:tool.permission,reason:"The owner asked to confirm that the Notepad window is open; this read-only check does not change focus.",payload:{title:"Notepad"}}]
  };
 }
 
