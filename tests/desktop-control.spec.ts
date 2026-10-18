@@ -19,12 +19,12 @@ await adapter.execute({...base,tool:"desktop.keyboard.press",action:"desktop pre
 await adapter.execute({...base,tool:"desktop.mouse.move",action:"desktop move mouse",idempotencyKey:"desktop-7",payload:{x:20001,y:0}}).then(()=>{throw new Error("out-of-range coordinate accepted");}).catch(e=>assert.match(String(e),/between 0 and 20000/));
 
 const matchingWindow=parseWindowTitleMatch(JSON.stringify({windows:[
- {title:"Calculator",pid:111},
- {title:"Untitled - Notepad",pid:222}
+ {title:"Calculator",pid:111,visible:true},
+ {title:"Untitled - Notepad",pid:222,visible:true}
 ]}),"Notepad");
-assert.deepEqual(matchingWindow,{exists:true,title:"Untitled - Notepad",pid:222,windowsScanned:2});
-const missingWindow=parseWindowTitleMatch(JSON.stringify({windows:[{title:"Calculator",pid:111}]}),"Notepad");
-assert.deepEqual(missingWindow,{exists:false,title:"Notepad",pid:null,windowsScanned:1});
+assert.deepEqual(matchingWindow,{exists:true,visible:true,title:"Untitled - Notepad",pid:222,windowsScanned:2});
+const missingWindow=parseWindowTitleMatch(JSON.stringify({windows:[{title:"Calculator",pid:111,visible:true}]}),"Notepad");
+assert.deepEqual(missingWindow,{exists:false,visible:false,title:"Notepad",pid:null,windowsScanned:1});
 await Promise.resolve().then(()=>parseWindowTitleMatch("not json","Notepad")).then(()=>{throw new Error("invalid window-list JSON accepted");}).catch(e=>assert.match(String(e),/unreadable window list/));
 
 console.log("Desktop control adapter and read-only window-detection tests passed.");
