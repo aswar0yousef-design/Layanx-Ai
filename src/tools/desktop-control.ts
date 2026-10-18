@@ -273,6 +273,25 @@ export function prewarmDesktopHelper(env:NodeJS.ProcessEnv=process.env):void{
  timer.unref();
 }
 
+/** Parse the Windows UI Automation top-level window list and find a title by case-insensitive substring. */
+export function parseWindowTitleMatch(raw:string,requestedTitle:string):{exists:boolean;title:string;pid:number|null;windowsScanned:number}{
+ const requested=requestedTitle.trim();
+ if(!requested||requested.length>200)throw new Error("title must be 1-200 characters.");
+ let parsed:unknown;
+ try{parsed=JSON.parse(raw);}catch{throw new Error("Windows UI Automation returned an unreadable window list.");}
+ const windows=parsed&&typeof parsed==="object"&&Array.isArray((parsed as Record<string,unknown>).windows)
+  ?(parsed as {windows:unknown[]}).windows:[];
+ const normalized=requested.toLocaleLowerCase("en-US");
+ const match=windows.find(item=>item&&typeof item==="object"&&typeof (item as Record<string,unknown>).title==="string"
+  &&((item as Record<string,unknown>).title as string).toLocaleLowerCase("en-US").includes(normalized)) as Record<string,unknown>|undefined;
+ return{
+  exists:Boolean(match),
+  title:match&&typeof match.title==="string"?match.title:requested,
+  pid:match&&typeof match.pid==="number"?match.pid:null,
+  windowsScanned:windows.length
+ };
+}
+
 export function createDesktopControlToolAdapter(options:{runner?:Runner;windows?:WindowsDesktopBackend}={}):ToolAdapter{
  const run=options.runner??runner();
  const win=():WindowsDesktopBackend=>options.windows??(options.runner?runnerBackend(options.runner):(sharedHelper??=new PowerShellDesktopHelper()));
@@ -339,6 +358,13 @@ export function createDesktopControlToolAdapter(options:{runner?:Runner;windows?
    if(target.kind==="url"){const r=await run(process.platform==="darwin"?"open":"xdg-open",[target.url]);if(r.code!==0)throw new Error(r.stderr||"Could not open the web page.");return {opened:true,what:target.url,via:"web page"};}
    if(process.platform==="darwin"){const name=target.kind==="known"?KNOWN_APPS[target.app].label:target.name;const r=await run("open",["-a",name]);if(r.code!==0)throw new Error(r.stderr||"Could not open "+name+".");return {opened:true,what:name,via:"program"};}
    throw new Error("Opening programs by name is available on Windows and macOS.");
+  }
+  if(request.action==="desktop find window"){
+   if(process.platform!=="win32")throw new Error("Finding a desktop window is available on Windows only.");
+   const title=typeof x.title==="string"?x.title.trim():"";
+   if(!title||title.length>200)throw new Error("title must be 1-200 characters.");
+   const raw=await win().send({op:"uitree",scope:"windows",max:200},20_000);
+   return parseWindowTitleMatch(raw,title);
   }
   if(request.action==="desktop focus window"){
    if(process.platform!=="win32")throw new Error("Focusing windows by title is available on Windows only.");
