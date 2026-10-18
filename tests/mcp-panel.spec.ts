@@ -9,7 +9,7 @@ const app=await readFile(appPath,"utf8");
 // Keep the invocation structured: an absolute executable plus separate argv entries, no shell.
 assert.match(app,/mcpCustom:"Add local MCP server"|mcpCustom:"إضافة خادم محلي"/);
 assert.match(app,/const customForm=el\("div",\{class:"card",hidden:true/);
-assert.match(app,/command,name:name\|\|id,transport:"stdio",args/);
+assert.match(app,/body:\{id,name:name\|\|id,transport:"stdio",command,args,note:/);
 assert.match(app,/\/v1\/mcp\/servers/);
 assert.match(app,/split\(\/\\r\?\\n\/\)/);
 assert.match(app,/mcpCommandHelp:/);
