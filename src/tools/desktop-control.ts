@@ -115,7 +115,7 @@ public static class LxUia{
  public static string Windows(){
   var sb=new StringBuilder("{\"windows\":[");bool first=true;
   var all=AutomationElement.RootElement.FindAll(TreeScope.Children,new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Window));
-  foreach(AutomationElement w in all){string n;int pid;try{n=w.Current.Name;pid=w.Current.ProcessId;}catch(Exception){continue;}if(string.IsNullOrEmpty(n))continue;if(!first)sb.Append(',');first=false;sb.Append("{\"title\":\"").Append(Esc(Cut(n,160))).Append("\",\"pid\":").Append(pid).Append('}');}
+  foreach(AutomationElement w in all){string n;int pid;bool visible;try{var current=w.Current;n=current.Name;pid=current.ProcessId;visible=!current.IsOffscreen;}catch(Exception){continue;}if(string.IsNullOrEmpty(n))continue;if(!first)sb.Append(',');first=false;sb.Append("{\"title\":\"").Append(Esc(Cut(n,160))).Append("\",\"pid\":").Append(pid).Append(",\"visible\":").Append(visible?"true":"false").Append('}');}
   return sb.Append("]}").ToString();
  }
  public static string Tree(int max){
@@ -274,7 +274,7 @@ export function prewarmDesktopHelper(env:NodeJS.ProcessEnv=process.env):void{
 }
 
 /** Parse the Windows UI Automation top-level window list and find a title by case-insensitive substring. */
-export function parseWindowTitleMatch(raw:string,requestedTitle:string):{exists:boolean;title:string;pid:number|null;windowsScanned:number}{
+export function parseWindowTitleMatch(raw:string,requestedTitle:string):{exists:boolean;visible:boolean;title:string;pid:number|null;windowsScanned:number}{
  const requested=requestedTitle.trim();
  if(!requested||requested.length>200)throw new Error("title must be 1-200 characters.");
  let parsed:unknown;
@@ -286,6 +286,7 @@ export function parseWindowTitleMatch(raw:string,requestedTitle:string):{exists:
   &&((item as Record<string,unknown>).title as string).toLocaleLowerCase("en-US").includes(normalized)) as Record<string,unknown>|undefined;
  return{
   exists:Boolean(match),
+  visible:match?.visible===true,
   title:match&&typeof match.title==="string"?match.title:requested,
   pid:match&&typeof match.pid==="number"?match.pid:null,
   windowsScanned:windows.length
