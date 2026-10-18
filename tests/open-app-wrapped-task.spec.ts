@@ -19,6 +19,15 @@ core.tools.register({
 });
 
 core.tools.register({
+  name:"desktop.window.find",
+  description:"Read-only check for a named top-level window",
+  permission:"L1_READ",
+  dangerous:false,
+  actions:["desktop find window"],
+  tags:["desktop","window","inspect","verify"]
+});
+
+core.tools.register({
   name:"desktop.window.focus",
   description:"Focus a named open desktop window",
   permission:"L4_EXECUTE",
