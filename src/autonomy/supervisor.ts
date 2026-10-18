@@ -156,10 +156,30 @@ export class Supervisor{
     this.log(job,"Replanning the unfinished desktop-open request with the direct desktop workflow");
     return true;
   }
+  /** Replace a pre-fix window-focus approval with the new read-only window check, preserving completed opening milestones. */
+  private discardStaleNotepadFocusVerification(job:SupervisorJob):boolean{
+    if(!directDesktopOpenGoal(job.goal)||job.current<=0||job.current>=job.milestones.length)return false;
+    const milestone=job.milestones[job.current];
+    if(!milestone||milestone.status==="done"||milestone.kind!=="desktop")return false;
+    const description=(milestone.title+" "+milestone.goal).toLowerCase();
+    const isWindowCheck=/(?:تحقق|تأكد|verify|confirm|check)/iu.test(description)&&/(?:نافذة|window)/iu.test(description)
+      &&/(?:notepad|المفكرة|المفكره)/iu.test(description);
+    if(!isWindowCheck||!job.milestones.slice(0,job.current).some(previous=>previous.status==="done"))return false;
+    milestone.status="pending";
+    milestone.attempts=0;
+    milestone.notes=undefined;
+    job.waiting=undefined;
+    job.result=undefined;
+    job.rounds=0;
+    job.finalRepairs=0;
+    this.log(job,"Replaced stale Notepad window-focus verification with a read-only window-presence check");
+    return true;
+  }
   resume(id:string):SupervisorJob{
     const job=this.jobs.get(id);if(!job)throw new Error("job_not_found");
     if(!["failed","cancelled","budget_exhausted"].includes(job.status))throw new Error("job_not_stopped");
     this.discardStaleDesktopOpenPlan(job);
+    this.discardStaleNotepadFocusVerification(job);
     job.deadline=new Date(Date.now()+(job.budgetMinutes??120)*60_000).toISOString();
     job.rounds=0;job.finalRepairs=0;job.result=undefined;job.waiting=undefined;job.resumed=(job.resumed??0)+1;
     const m=job.milestones[job.current];
@@ -197,7 +217,11 @@ export class Supervisor{
   start(){
     for(const job of this.jobs.values()){
       if(!ACTIVE.includes(job.status))continue;
-      if(this.discardStaleDesktopOpenPlan(job)){
+      const staleFocusVerification=this.discardStaleNotepadFocusVerification(job);
+      if(staleFocusVerification){
+        job.deadline=new Date(Date.now()+(job.budgetMinutes??120)*60_000).toISOString();
+        this.set(job,"running","Recovered a pending Notepad verification without the obsolete focus approval");
+      }else if(this.discardStaleDesktopOpenPlan(job)){
         job.deadline=new Date(Date.now()+(job.budgetMinutes??120)*60_000).toISOString();
         this.set(job,"planning","Recovered an unfinished desktop-open request after restart");
       }
