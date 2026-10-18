@@ -5,7 +5,7 @@ import {LayanXCore} from "../src/core/orchestrator.js";
 // The app-open planner must still recognise the concrete current milestone without consulting a model.
 const core=new LayanXCore();
 core.registerAgent({
-  agentId:"core",purpose:"Desktop operator",allowedTools:["desktop.app.open","desktop.window.focus"],forbiddenResources:[],
+  agentId:"core",purpose:"Desktop operator",allowedTools:["desktop.app.open","desktop.window.find","desktop.window.focus"],forbiddenResources:[],
   requiredPermission:"L4_EXECUTE",maxToolCalls:5,maxRuntimeMs:10000,
   successCriteria:["requested application is open"],stopCondition:"Stop if launch fails."
 });
@@ -47,10 +47,11 @@ const verifyGoal=[
 ].join("\n");
 const verifyMission=await core.planMission(verifyGoal);
 assert.equal(verifyMission.tools?.length,1);
-assert.equal(verifyMission.tools?.[0]?.tool,"desktop.window.focus");
-assert.equal(verifyMission.tools?.[0]?.action,"desktop focus window");
-assert.notEqual(verifyMission.tools?.[0]?.final,true,"window verification must run its explicit success criteria");
+assert.equal(verifyMission.tools?.[0]?.tool,"desktop.window.find");
+assert.equal(verifyMission.tools?.[0]?.action,"desktop find window");
+assert.equal(verifyMission.tools?.[0]?.final,true);
 assert.deepEqual(verifyMission.tools?.[0]?.payload,{title:"Notepad"});
-assert.deepEqual(verifyMission.successCriteria,["result.focused === true",'result.title contains "Notepad"']);
+assert.equal(verifyMission.requiredPermission,"L1_READ");
+assert.deepEqual(verifyMission.successCriteria,["result.exists === true",'result.title contains "Notepad"']);
 
 console.log("open-app-wrapped-task: opening and verifying Notepad both use deterministic desktop plans");
