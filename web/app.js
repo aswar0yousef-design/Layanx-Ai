@@ -34,7 +34,7 @@ const T={
   cap_trade:"التداول",cap_trade_d:"MetaTrader 5: الحساب والصفقات والمضارب الآلي.",cap_trade_1:"الحساب والصفقات المفتوحة",cap_trade_2:"المضارب الآلي بموافقتك",cap_trade_3:"اختبار الروبوتات",deleteL:"حذف",deletedT:"حُذفت المهمة.",
   deleteJobQ:"حذف هذه المهمة المستقلة نهائياً من القائمة؟ إن كانت تعمل فستتوقف. ملفات المشروع لا تُحذف.",deleteMissionQ:"حذف هذه المهمة نهائياً من القائمة؟ إن كانت تعمل فستتوقف، وتُلغى موافقاتها المعلّقة.",recentActivities:"آخر الأنشطة",viewAll:"عرض الكل",noActivity:"لا يوجد نشاط بعد.",
   st_done:"مكتملة",st_run:"قيد التنفيذ",st_pend:"معلّقة",st_wait:"بانتظار موافقة",st_fail:"فشلت",
-  computerControl:"التحكم بالكمبيوتر",live:"مباشر",screenOff:"البث متوقف. اضغط «لقطة» أو ابدأ البث.",screenWaiting:"جارٍ التقاط أول إطار من سطح المكتب…",screenError:"تعذّر التقاط الشاشة: {error}",screenshot:"لقطة",mouse:"الفأرة",keyboard:"لوحة المفاتيح",apps:"التطبيقات",startLive:"بدء البث",stopLive:"إيقاف البث",
+  computerControl:"التحكم بالكمبيوتر",live:"مباشر",screenOff:"البث متوقف. اضغط «لقطة» أو ابدأ البث.",screenWaiting:"جارٍ التقاط أول إطار من سطح المكتب…",screenError:"تعذّر التقاط الشاشة: {error}",screenStale:"توقّف تحديث صورة سطح المكتب منذ أكثر من 5 ثوانٍ.",screenshot:"لقطة",mouse:"الفأرة",keyboard:"لوحة المفاتيح",apps:"التطبيقات",startLive:"بدء البث",stopLive:"إيقاف البث",
   terminalTitle:"الطرفية",restricted:"(مقيّدة)",termEmpty:"شغّل أمراً مسموحاً. الأوامر التي تنفّذ شيئاً تطلب موافقتك.",quickActions:"إجراءات سريعة",openVSCode:"فتح في VS Code",runTests:"تشغيل الاختبارات",buildProject:"بناء المشروع",createBranch:"إنشاء فرع",branchName:"اسم الفرع الجديد (مثال: feature/login)",
   cap_dev:"التطوير والكود",cap_dev_d:"تحليل الكود وتعديله واختباره ونشره",cap_dev_1:"تكامل Git",cap_dev_2:"إصلاح تلقائي واختبارات",cap_dev_3:"VS Code",
   cap_shop:"التجارة الإلكترونية",cap_shop_d:"Shopify و WooCommerce",cap_shop_1:"إنشاء المنتجات",cap_shop_2:"إدارة الطلبات",cap_shop_3:"مزامنة المخزون",
@@ -111,7 +111,7 @@ const T={
   cap_trade:"Trading",cap_trade_d:"MetaTrader 5: account, positions and the auto-scalper.",cap_trade_1:"Account and open positions",cap_trade_2:"Auto-scalper with your approval",cap_trade_3:"Robot testing",deleteL:"Delete",deletedT:"Deleted.",
   deleteJobQ:"Delete this autonomous mission from the list for good? If it is running it stops. The project's files are kept.",deleteMissionQ:"Delete this mission from the list for good? If it is running it stops, and its pending approvals are cancelled.",recentActivities:"Recent Activities",viewAll:"View all",noActivity:"No activity yet.",
   st_done:"Completed",st_run:"Running",st_pend:"Pending",st_wait:"Awaiting approval",st_fail:"Failed",
-  computerControl:"Computer Control",live:"Live",screenOff:"Live view is off. Take a screenshot or start the stream.",screenWaiting:"Capturing the first desktop frame…",screenError:"Desktop capture failed: {error}",screenshot:"Screenshot",mouse:"Mouse",keyboard:"Keyboard",apps:"Apps",startLive:"Start live",stopLive:"Stop live",
+  computerControl:"Computer Control",live:"Live",screenOff:"Live view is off. Take a screenshot or start the stream.",screenWaiting:"Capturing the first desktop frame…",screenError:"Desktop capture failed: {error}",screenStale:"The desktop frame has not refreshed for more than 5 seconds.",screenshot:"Screenshot",mouse:"Mouse",keyboard:"Keyboard",apps:"Apps",startLive:"Start live",stopLive:"Stop live",
   terminalTitle:"Terminal",restricted:"(Restricted)",termEmpty:"Run an allowed command. Anything that executes asks for your approval.",quickActions:"Quick Actions",openVSCode:"Open VS Code",runTests:"Run Tests",buildProject:"Build Project",createBranch:"Create Branch",branchName:"New branch name (e.g. feature/login)",
   cap_dev:"Development & Code",cap_dev_d:"Analyze, modify, test and deploy",cap_dev_1:"Git integration",cap_dev_2:"Auto fix & testing",cap_dev_3:"VS Code",
   cap_shop:"E-commerce",cap_shop_d:"Shopify & WooCommerce",cap_shop_1:"Create products",cap_shop_2:"Manage orders",cap_shop_3:"Sync inventory",
@@ -541,13 +541,23 @@ function computerCard(big){
    el("button",{class:"tile",onclick:()=>{go("agent");setTimeout(()=>{const i=$("#agentInput");if(i){i.value=LANG==="ar"?"افتح تطبيق ":"Open the app ";i.focus();}},60);}},icon("apps"),t("apps"))));
 }
 async function drawLiveFrame(){
- const box=$("#screenBox");if(!box||!(S.live&&S.live.running))return;
- const f=await safe(api("/v1/computer/live/frame"),{});const fr=f.frame;
- if(fr&&fr.base64){box.replaceChildren(el("img",{alt:"screen",src:"data:"+(fr.mimeType||"image/png")+";base64,"+fr.base64}),el("span",{class:"live",text:"● "+t("live")}));return;}
+ const box=$("#screenBox");if(!box)return;
  const status=await safe(api("/v1/computer/live/status"),S.live||{});
  if(status&&typeof status.running==="boolean")S.live=status;
- if(status&&status.lastError)box.replaceChildren(el("div",{class:"ph",text:t("screenError",{error:String(status.lastError).slice(0,300)})}));
- else if(status&&status.running)box.replaceChildren(el("div",{class:"ph",text:t("screenWaiting")}));
+ if(!(S.live&&S.live.running)){box.replaceChildren(el("div",{class:"ph",text:t("screenOff")}));return;}
+ const f=await safe(api("/v1/computer/live/frame"),{});const fr=f.frame;
+ const captureError=typeof status?.lastError==="string"&&status.lastError?status.lastError:null;
+ if(fr&&fr.base64){
+  const stale=status?.lastFrameAt&&Date.now()-Date.parse(status.lastFrameAt)>5000&&!captureError;
+  const warning=captureError?t("screenError",{error:captureError.slice(0,180)}):stale?t("screenStale"):null;
+  box.replaceChildren(
+   el("img",{alt:"screen",src:"data:"+(fr.mimeType||"image/png")+";base64,"+fr.base64}),
+   el("span",{class:"live"+(warning?" error":""),text:warning||("● "+t("live"))})
+  );
+  return;
+ }
+ if(captureError)box.replaceChildren(el("div",{class:"ph error",text:t("screenError",{error:captureError.slice(0,300)})}));
+ else box.replaceChildren(el("div",{class:"ph",text:t("screenWaiting")}));
 }
 
 // ------------------------------------------------------------------ dashboard
