@@ -133,6 +133,8 @@ svg.i{width:1.15rem;height:1.15rem;flex:none;stroke:currentColor;fill:none;strok
 .screen img{width:100%;height:100%;object-fit:cover}
 .screen .live{position:absolute;top:.5rem;inset-inline-end:.5rem;font-size:.75rem;background:#000A;padding:.1rem .5rem;border-radius:1rem;color:#4ADE80}
 .screen .ph{color:#BFD7FF;font-size:.85rem;text-align:center;padding:1rem}
+.screen .live.error{color:#FCA5A5;max-width:calc(100% - 1rem);white-space:normal;text-align:center}
+.screen .ph.error{color:#FCA5A5}
 .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem;margin-top:.7rem}
 .tile{display:flex;flex-direction:column;align-items:center;gap:.3rem;padding:.6rem .3rem;border-radius:.55rem;background:var(--panel2);border:1px solid var(--line2);cursor:pointer;font-size:.8rem;color:var(--ink)}
 .tile:hover{border-color:var(--soft)}
