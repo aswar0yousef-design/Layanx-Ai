@@ -25,6 +25,29 @@ const failedRecoverable={...snapshot,mission:{...snapshot.mission,id:"recoverabl
 await persistence.saveAtomic(failedRecoverable);
 if(!(await persistence.resumable()).some(item=>item.mission.id==="recoverable"))throw new Error("Recoverable failed mission was not resumable.");
 await rm(dir,{recursive:true,force:true});
+
+const approvalDir=await mkdtemp(join(tmpdir(),"layanx-approval-cleanup-"));
+const approvalPersistence=new RuntimePersistence(RuntimeStorage.json(join(approvalDir,"runtime.json")));
+const staleApproval={
+  id:"stale-focus-approval",missionId:"legacy-focus-mission",agentId:"operator",tool:"desktop.window.focus",
+  action:"desktop focus window",permission:"L4_EXECUTE" as const,payloadHash:"payload-hash",
+  reason:"Old verification workflow",expiresAt:new Date(Date.now()+60_000).toISOString()
+};
+const withApproval={...snapshot,approvals:{requests:[staleApproval],approvedIds:[staleApproval.id],rejectedIds:[]}};
+await approvalPersistence.saveAtomic(withApproval);
+await approvalPersistence.saveAtomic({
+  ...withApproval,
+  mission:{...snapshot.mission,id:"m2"},
+  executionState:{...snapshot.executionState,missionId:"m2"}
+});
+await approvalPersistence.forgetApprovalRequestsForMissions(["legacy-focus-mission"]);
+for(const id of ["m1","m2"]){
+ const saved=await approvalPersistence.get(id);
+ if(saved?.approvals?.requests.some(request=>request.id===staleApproval.id))throw new Error("Stale focus approval remained in a persisted runtime snapshot: "+id);
+ if(saved?.approvals?.approvedIds.includes(staleApproval.id))throw new Error("Stale focus approval remained approved in a persisted runtime snapshot: "+id);
+}
+await rm(approvalDir,{recursive:true,force:true});
+
 console.log("Runtime persistence test passed.");
 
 const invalid={...snapshot,schemaVersion:99};
