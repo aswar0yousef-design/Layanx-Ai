@@ -1,51 +1,48 @@
 # Jarvis on Windows: connect it to LayanX through MCP
 
-## Purpose
+## Goal
 
-LayanX remains the orchestrator: it owns the conversation, task planning, project boundaries, permission checks, approvals, verification, recovery, memory, and audit trail. A separate Jarvis installation can contribute tools through the standard Model Context Protocol (MCP). Do not copy a second full agent runtime into `src/` or run two agents against the desktop at once.
+Keep LayanX as the only orchestrator for missions, approvals, project isolation, verification, recovery, memory, and audit. A separate Jarvis installation may contribute tools through the Model Context Protocol (MCP). Do not copy a second full agent runtime into src/ or let two agents control the same mouse and keyboard at once.
 
-The first candidate to try is [yhongm/jarvis](https://github.com/yhongm/jarvis), whose README documents a Windows installer and an MCP server command:
+The yhongm/jarvis repository documents a Windows x64 installer and a stdio MCP-server mode. An installer being available does not mean Jarvis is installed on this PC, configured, or connected.
 
-`powershell
-JarvisAgent --mcp --config "$env:LOCALAPPDATA\Jarvis\config.toml"
-`
+## 1. Find and verify Jarvis
 
-Use the actual executable path and config location from the installation. Other Jarvis repositories need a native MCP server mode or their own adapter; a Windows installer alone does not make a project MCP-compatible.
+Run PowerShell:
 
-## 1. Verify the Jarvis installation
-
-Open PowerShell and find the executable if it is not on PATH:
-
-`powershell
+~~~powershell
 Get-Command JarvisAgent.exe -ErrorAction SilentlyContinue |
   Select-Object -ExpandProperty Source
 
-Get-ChildItem "$env:LOCALAPPDATA\Programs", "$env:ProgramFiles" -Filter "JarvisAgent.exe" -Recurse -ErrorAction SilentlyContinue |
+Get-ChildItem "$env:LOCALAPPDATA\Programs" -Filter "JarvisAgent.exe" -Recurse -ErrorAction SilentlyContinue |
   Select-Object -First 5 -ExpandProperty FullName
-`
+~~~
 
-Test the installed binary with its documented MCP arguments. Substitute your real executable and config paths:
+If the executable is not found, install Jarvis from its official releases at https://github.com/yhongm/jarvis/releases. Check the actual executable path and its user configuration file. The README documents the default Windows data directory as:
 
-`powershell
+~~~text
+%LOCALAPPDATA%\Jarvis\config.toml
+~~~
+
+Test the installed command with the real path on the PC:
+
+~~~powershell
 & "C:\FULL\PATH\TO\JarvisAgent.exe" --mcp --config "$env:LOCALAPPDATA\Jarvis\config.toml"
-`
+~~~
 
-An MCP stdio server must keep protocol messages on standard output; diagnostics should go to standard error. If this command exits immediately, fix the Jarvis installation/configuration first and read its error output before connecting it to LayanX.
+The process must remain running and speak MCP over standard input/output. Protocol messages belong on stdout; diagnostics belong on stderr. If the command exits, fix the path or configuration before adding it to LayanX.
 
 ## 2. Add it to LayanX
 
-1. Start LayanX with `LayanX.cmd` and open its local Control Center.
-2. Go to **Integrations → MCP** and add a **stdio** server.
-3. Use a stable id such as `jarvis-win`, the actual absolute path to `JarvisAgent.exe` as the command, and these arguments:
-   - `--mcp`
-   - `--config`
-   - the full path to Jarvis's `config.toml`
-4. Keep the server disabled until LayanX has validated the configuration and you approve it. For an absolute local executable, an exact npm package version is not needed; LayanX treats it as an owner-selected local program.
-5. Approve/connect the server and inspect **connected**, **error**, and the returned tool names in the MCP list.
+1. Start LayanX with LayanX.cmd and open the local Control Center.
+2. Open Integrations → MCP and choose a stdio server.
+3. Use a stable id such as jarvis-win. Set command to the actual absolute path to JarvisAgent.exe. Add --mcp, --config, and the full configuration path as separate arguments.
+4. Add the server in the disabled/unapproved state first. Inspect the command and configuration, then explicitly approve/connect it.
+5. Verify that status becomes connected and LayanX lists the tools Jarvis actually exposes.
 
-Equivalent server configuration (illustrative only; replace all paths and add it through the Control Center where possible):
+Example configuration for understanding only. Replace the paths and add it through the Control Center where possible:
 
-`json
+~~~json
 {
   "id": "jarvis-win",
   "name": "Jarvis on this Windows PC",
@@ -57,36 +54,35 @@ Equivalent server configuration (illustrative only; replace all paths and add it
     "C:\\Users\\YOUR_USER\\AppData\\Local\\Jarvis\\config.toml"
   ],
   "enabled": false,
-  "approved": false,
-  "addedAt": "SET-BY-LAYANX"
+  "approved": false
 }
-`
+~~~
 
-LayanX persists MCP configuration in its local data directory, not in the project repository. Do not put access tokens, passwords, or API keys in the command line or this JSON; use LayanX's secret store and the supported `envFromSecrets` field if the server requires a secret.
+Do not put passwords, API keys, or access tokens in the command line or configuration. Use LayanX's secret store and its supported envFromSecrets mechanism when the server requires secrets.
 
-## 3. Verify an end-to-end connection
+## 3. Acceptance test
 
-After approval, check the MCP server list in the Control Center. Connected tools are namespaced as `mcp.jarvis-win.<tool>`. New MCP tools are treated as dangerous by default and require LayanX's normal approval flow. Only mark a tool as safe/read-only after inspecting what it does.
+Perform these checks in order:
 
-Check in this order:
+1. Connection: MCP status is connected and the server tool list is non-empty.
+2. Read-only call: invoke a harmless read-only tool and confirm it returns a real result.
+3. LayanX orchestration: ask LayanX to call that tool and inspect the mission result and audit trail.
+4. Approval gate: call a tool that changes a file or interacts with the desktop; verify LayanX asks for approval.
+5. Disable: disable the MCP server and verify its tools are no longer available to missions.
 
-1. The server reports connected and its tool list is non-empty.
-2. A harmless read-only Jarvis tool returns a real result.
-3. LayanX records the tool call and result in its own task history.
-4. A modifying tool pauses for owner approval; disabling the MCP server removes its tools from LayanX.
+A server appearing in the list is not proof that it works. A successful harmless tool call is the first end-to-end proof. Every high-impact tool must still pass through LayanX's existing approval and project-isolation controls.
 
-If it does not connect, check the absolute executable path, the config path, whether the Jarvis command supports stdio MCP, and the Jarvis stderr output. LayanX's MCP timeout/error status should be reported as a connection failure, not a successful integration.
+## Limits
 
-## Limits and safety
-
-- This connects only the tools that Jarvis actually exposes over MCP. It does not automatically import every Python skill or desktop feature from a different repository.
-- Do not grant overlapping mouse/keyboard automation to two active agents. Use LayanX as the one owner of desktop missions and call the other agent's non-overlapping tools through MCP.
-- Keep LayanX's approval controls enabled. Never classify file writes, shell execution, messaging, payments, or desktop mutation as safe just to avoid approval prompts.
-- A connected server is not proof that every upstream feature works. Test each capability with a bounded acceptance case and record failures before calling it ready.
+- MCP exposes only tools that the Jarvis server publishes; it does not automatically import every Python package, skill, or feature from another repository.
+- Use LayanX as the only desktop orchestrator. Do not enable overlapping keyboard/mouse control from another agent at the same time.
+- Review every tool before marking it read-only/safe. File writes, shell execution, messaging, payments, publishing, and desktop changes must not be marked safe just to bypass approval prompts.
+- Cloud services still need their own credentials, permissions, and successful connection tests. A UI or config entry alone does not mean an integration is operational.
 
 ## References
 
-- [yhongm/jarvis README and MCP usage](https://github.com/yhongm/jarvis)
-- [LayanX MCP client](../src/mcp/client.ts)
-- [LayanX MCP manager and owner approval](../src/mcp/manager.ts)
-- [LayanX Windows setup guide](./WINDOWS-AR.md)
+- Jarvis source and MCP usage: https://github.com/yhongm/jarvis
+- Jarvis official releases: https://github.com/yhongm/jarvis/releases
+- LayanX MCP client: ../src/mcp/client.ts
+- LayanX MCP manager and approvals: ../src/mcp/manager.ts
+- LayanX Windows setup: ./WINDOWS-AR.md
