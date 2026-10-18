@@ -584,7 +584,15 @@ document.addEventListener("visibilitychange",function(){if(!document.hidden&&S.a
 api("/v1/voice/status").then(function(d){var v=d.voice||{};if(v.enabled)$("realtimeBtn").hidden=false;
  if(v.tts==="local")localTts=true;
  if(v.sense)senseOn=true;
- if(v.localStt){localStt=true;setLang(S.lang);if(S.always){pauseListening();resumeListening()}}}).catch(function(){});
+ if(v.localStt){
+  localStt=true;
+  // setLang() already pauses/restarts an existing browser recognizer. Restarting again here
+  // opened a second local microphone pipeline, splitting one Arabic request into two clips.
+  var hadListener=!!rec||mic.active||mic.opening;
+  setLang(S.lang);
+  if(S.always&&!hadListener&&!busy&&!speaking)resumeListening();
+ }
+}).catch(function(){});
 api("/v1/assistant/briefing").then(function(d){var b=d.briefing;if(!b||!b.report)return;if(b.date!==new Date().toISOString().slice(0,10))return;
  $("briefText").textContent=b.report.text[S.lang]||b.report.text.ar;$("briefing").hidden=false}).catch(function(){});
 setLang(S.lang);
