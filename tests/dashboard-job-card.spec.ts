@@ -44,10 +44,22 @@ if(!browser){console.log("dashboard-job-card: skipped (no browser)");process.exi
 
 async function dashboard(world:World){
   const srv=await server(world);
-  const page=await browser.newPage();const errors:string[]=[];page.on("pageerror",(e:Error)=>errors.push(String(e)));
+  const page=await browser.newPage();const errors:string[]=[];const consoleErrors:string[]=[];const requestFailures:string[]=[];
+  page.on("pageerror",(e:Error)=>errors.push(String(e)));
+  page.on("console",(m:any)=>{if(m.type()==="error")consoleErrors.push(m.text());});
+  page.on("requestfailed",(r:any)=>requestFailures.push(r.url()+" :: "+(r.failure()?.errorText||"request failed")));
   await page.addInitScript(`try{localStorage.setItem("lx.cc.lang","ar")}catch(e){}`);
-  await page.goto(srv.url+"/#dashboard");
-  await page.waitForSelector("#curMission",{timeout:15000});
+  await page.goto(srv.url+"/#dashboard",{waitUntil:"domcontentloaded"});
+  // render() intentionally converts dashboard exceptions into a visible error card. Wait for
+  // either the expected card or that error UI, so Windows CI reports the actual UI exception
+  // instead of hiding it behind a generic 15-second selector timeout.
+  await page.waitForFunction(()=>Boolean(document.querySelector("#curMission")||document.querySelector("#view section.card p.muted")),{timeout:15000}).catch(()=>undefined);
+  const currentCard=await page.$("#curMission");
+  if(!currentCard){
+    const viewText=await page.$eval("#view",(e:HTMLElement)=>e.innerText).catch(()=>"no #view");
+    await page.close();srv.close();
+    throw new Error("Dashboard did not render #curMission. view="+viewText.slice(0,1200)+"; pageErrors="+errors.join(" | ")+"; consoleErrors="+consoleErrors.join(" | ")+"; requestFailures="+requestFailures.join(" | "));
+  }
   await page.waitForFunction(()=>!document.querySelector("#curMission .empty")||document.querySelector("#curMission")!.textContent!.length>0);
   const card=await page.$eval("#curMission",(e:HTMLElement)=>e.innerText);
   const active=await page.$eval("#kpis .kpi b",(e:HTMLElement)=>e.innerText);
