@@ -282,8 +282,10 @@ export function parseWindowTitleMatch(raw:string,requestedTitle:string):{exists:
  const windows=parsed&&typeof parsed==="object"&&Array.isArray((parsed as Record<string,unknown>).windows)
   ?(parsed as {windows:unknown[]}).windows:[];
  const normalized=requested.toLocaleLowerCase("en-US");
- const match=windows.find(item=>item&&typeof item==="object"&&typeof (item as Record<string,unknown>).title==="string"
-  &&((item as Record<string,unknown>).title as string).toLocaleLowerCase("en-US").includes(normalized)) as Record<string,unknown>|undefined;
+ const matches=windows.filter(item=>item&&typeof item==="object"&&typeof (item as Record<string,unknown>).title==="string"
+  &&((item as Record<string,unknown>).title as string).toLocaleLowerCase("en-US").includes(normalized)) as Record<string,unknown>[];
+ // If several windows match (for example a minimized old Notepad plus a visible new instance), prefer one on-screen.
+ const match=matches.find(item=>item.visible===true)??matches[0];
  return{
   exists:Boolean(match),
   visible:match?.visible===true,
