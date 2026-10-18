@@ -186,8 +186,17 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     if(action?.startsWith("screens")||parts[3]==="screens"){
      const file=decodeURIComponent(parts[4]??"");const set=new URL(request.url,"http://localhost").searchParams.get("set")==="baselines"?"baselines":"screens";
      if(!/^[\w.-]+\.jpg$/.test(file)){json(response,400,{ok:false,error:"invalid_file"});return;}
-     const p=joinPath(dot,set,file);if(!fsExists(p)){json(response,404,{ok:false,error:"not_found"});return;}
-     response.writeHead(200,{"content-type":"image/jpeg","cache-control":"no-store","x-content-type-options":"nosniff"});response.end(fsRead(p));return;
+     const p=joinPath(dot,set,file);
+     try{
+      const image=await readFile(p);
+      response.writeHead(200,{"content-type":"image/jpeg","cache-control":"no-store","x-content-type-options":"nosniff"});
+      response.end(image);
+     }catch(error){
+      const code=(error as NodeJS.ErrnoException).code;
+      if(code==="ENOENT"||code==="ENOTDIR"){json(response,404,{ok:false,error:"not_found"});}
+      else{json(response,500,{ok:false,error:"image_read_failed"});}
+     }
+     return;
     }
     if(action==="scan"&&request.method==="POST"){
      const input=await body(request,max);
