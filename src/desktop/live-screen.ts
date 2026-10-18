@@ -52,9 +52,22 @@ export class LiveScreenObserver {
         payload:{}
       };
       const result=await this.options.adapter.execute(request);
-      const data=result&&typeof result==="object"&&"data" in result&&result.data&&typeof result.data==="object"?(result.data as Record<string,unknown>):{};
-      if(typeof data.base64!=="string"||typeof data.mimeType!=="string")throw new Error("Desktop screenshot adapter returned an invalid frame.");
+      const envelope=result&&typeof result==="object"&&!Array.isArray(result)
+        ?result as Record<string,unknown>:{};
+      // Runtime wires the raw desktop.screenshot adapter here, which returns the
+      // frame directly. Also accept ToolExecutor's {ok, data} envelope for callers
+      // that route through the executor rather than the adapter registry.
+      if(envelope.ok===false){
+        throw new Error(typeof envelope.error==="string"?envelope.error:"Desktop screenshot adapter failed.");
+      }
+      const nested=envelope.data;
+      const data=nested&&typeof nested==="object"&&!Array.isArray(nested)
+        ?nested as Record<string,unknown>:envelope;
+      if(typeof data.base64!=="string"||!data.base64||typeof data.mimeType!=="string"||!data.mimeType.startsWith("image/")){
+        throw new Error("Desktop screenshot adapter returned an invalid frame.");
+      }
       const bytes=typeof data.bytes==="number"?data.bytes:Buffer.from(data.base64,"base64").length;
+      if(bytes<=0)throw new Error("Desktop screenshot adapter returned an empty frame.");
       const frame={mimeType:data.mimeType,base64:data.base64,bytes,capturedAt:new Date().toISOString(),sequence:++this.sequence};
       this.frame=frame;
       this.lastError=undefined;
