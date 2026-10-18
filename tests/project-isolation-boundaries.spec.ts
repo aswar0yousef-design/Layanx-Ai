@@ -13,14 +13,6 @@ function mustReject(label: string, operation: () => unknown): void {
   if (!rejected) throw new Error(`Expected rejection: ${label}`);
 }
 
-function mustAccept(label: string, operation: () => unknown): void {
-  try {
-    operation();
-  } catch (error) {
-    throw new Error(`Expected acceptance: ${label}: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
 // Missions must be bound to the same canonical project as the security context.
 isolation.assertMissionProject("project-a", "project-a");
 mustReject("cross-project mission", () => isolation.assertMissionProject("project-a", "project-b"));
