@@ -22,7 +22,7 @@ let releaseCapture:((value:{data:{mimeType:string;base64:string;bytes:number}})=
 let slowCalls=0;
 const slowObserver=new LiveScreenObserver({intervalMs:100,adapter:{async execute(){
  slowCalls++;
- return await new Promise(resolve=>{releaseCapture=resolve;});
+ return await new Promise<{data:{mimeType:string;base64:string;bytes:number}}>(resolve=>{releaseCapture=resolve;});
 }}});
 const captureA=slowObserver.captureNow();
 const captureB=slowObserver.captureNow();
