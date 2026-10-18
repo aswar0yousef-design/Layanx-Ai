@@ -1,4 +1,4 @@
-name: Windows dashboard UI regression
+name: Windows UI and MCP panel regressions
 
 on:
   pull_request:
@@ -7,6 +7,7 @@ on:
       - "web/index.html"
       - "web/styles.css"
       - "tests/dashboard-job-card.spec.ts"
+      - "tests/mcp-panel.spec.ts"
       - ".github/workflows/windows-dashboard-smoke.yml"
   push:
     branches:
@@ -39,3 +40,5 @@ jobs:
         shell: pwsh
       - name: Run the real-browser dashboard regression
         run: node node_modules/tsx/dist/cli.mjs tests/dashboard-job-card.spec.ts
+      - name: Verify the local MCP panel
+        run: node node_modules/tsx/dist/cli.mjs tests/mcp-panel.spec.ts
