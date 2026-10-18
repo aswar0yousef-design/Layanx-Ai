@@ -194,9 +194,7 @@ const WIN_HELPER_PS=[
  // Start menu apps (Get-StartApps), or where that cmdlet is missing (Windows Server) the Start menu's shortcuts.
  "elseif($k -eq 'start'){$e=[Management.Automation.WildcardPattern]::Escape($v);$pick={param($list,$name)@($list|Where-Object{$_.N -eq $v})+@($list|Where-Object{$_.N -like ($e+'*')}|Sort-Object{$_.N.Length})+@($list|Where-Object{$_.N -like ('*'+$e+'*')}|Sort-Object{$_.N.Length})|Select-Object -First 1};"+
  "$a=$null;if(Get-Command Get-StartApps -ErrorAction SilentlyContinue){$a=& $pick @(Get-StartApps|ForEach-Object{[pscustomobject]@{N=$_.Name;Id=$_.AppID}}) $v;if(-not $a){throw ('not installed: '+$v)};Start-Process 'explorer.exe' -ArgumentList @('shell:AppsFolder\\'+$a.Id) | Out-Null;'ok|'+$a.N}"+
- "if($a){Start-Process 'explorer.exe' -ArgumentList @('shell:AppsFolder\\'+$a.Id) | Out-Null;'ok|'+$a.N}"+
- "else{$dirs=@((Join-Path $env:ProgramData 'Microsoft\\Windows\\Start Menu\\Programs'),(Join-Path $env:APPDATA 'Microsoft\\Windows\\Start Menu\\Programs'));$l=& $pick @(Get-ChildItem -Path $dirs -Filter '*.lnk' -Recurse -ErrorAction SilentlyContinue|ForEach-Object{[pscustomobject]@{N=$_.BaseName;Id=$_.FullName}}) $v;"+
- "if(-not $l){throw ('not installed: '+$v)};Invoke-Item -LiteralPath $l.Id;'ok|'+$l.N}}else{throw 'unknown kind'}}",
+ "else{$dirs=@((Join-Path $env:ProgramData 'Microsoft\\Windows\\Start Menu\\Programs'),(Join-Path $env:APPDATA 'Microsoft\\Windows\\Start Menu\\Programs'));$l=& $pick @(Get-ChildItem -Path $dirs -Filter '*.lnk' -Recurse -ErrorAction SilentlyContinue|ForEach-Object{[pscustomobject]@{N=$_.BaseName;Id=$_.FullName}}) $v;if(-not $l){throw ('not installed: '+$v)};Invoke-Item -LiteralPath $l.Id;'ok|'+$l.N}}else{throw 'unknown kind'}}",
  "   'ping'{'ok'}",
  "   default{throw 'unknown operation'}",
  "  }",
