@@ -6,7 +6,7 @@ const real=Object.getOwnPropertyDescriptor(process,"platform")!;
 Object.defineProperty(process,"platform",{value:"win32"});
 try{
   const ops:any[]=[];
-  const adapter=createDesktopControlToolAdapter({windows:{async send(op){ops.push(op);return op.op==="shot"?Buffer.from("jpeg-bytes").toString("base64")+"|2560x1440":"ok";}}});
+  const adapter=createDesktopControlToolAdapter({windows:{async send(op){ops.push(op);return op.op==="shot"?Buffer.from("jpeg-bytes").toString("base64")+"|2560x1440":op.op==="uitree"&&op.scope==="windows"?JSON.stringify({windows:[{title:"Calculator",pid:11,visible:true},{title:"Minimized Notepad",pid:33,visible:false},{title:"Untitled - Notepad",pid:22,visible:true}]}):"ok";}}});
   const req=(action:string,payload:Record<string,unknown>)=>({missionId:"m",agentId:"core",projectId:"p",tool:"t",action,permission:"L4_EXECUTE",idempotencyKey:"k",payload} as any);
 
   const evil='مرحبا"; Remove-Item -Recurse C:\\ ; $(calc)';
@@ -22,6 +22,16 @@ try{
   await assert.rejects(adapter.execute(req("desktop press key",{key:"CTRL+;rm"})),/Unsupported keyboard key/);
   await assert.rejects(adapter.execute(req("desktop press key",{key:"A+B+C+D+E"})),/Unsupported keyboard key/);
   assert.equal((await adapter.execute(req("desktop scroll",{amount:-50})) as any).amount,-20,"scroll is bounded");
+  const found=await adapter.execute(req("desktop find window",{title:"Notepad"})) as any;
+  assert.deepEqual({exists:found.exists,visible:found.visible,title:found.title,pid:found.pid},{exists:true,visible:true,title:"Untitled - Notepad",pid:22});
+  assert.equal(ops.at(-1).op,"uitree");
+  assert.equal(ops.at(-1).scope,"windows","window verification must query window state rather than focusing it");
+  const minimized=await adapter.execute(req("desktop find window",{title:"Minimized Notepad"})) as any;
+  assert.deepEqual({exists:minimized.exists,visible:minimized.visible,title:minimized.title},{exists:true,visible:false,title:"Minimized Notepad"},"an open but off-screen window must not satisfy visible-window verification");
+
+  const absent=await adapter.execute(req("desktop find window",{title:"No such app"})) as any;
+  assert.equal(absent.exists,false,"a missing window must return a negative match, not a successful focus result");
+  assert.equal(ops.at(-1).op,"uitree");
   const shot=await adapter.execute(req("desktop screenshot",{})) as any;
   assert.equal(shot.mimeType,"image/jpeg");assert.equal(shot.screen,"2560x1440");
   assert.equal(Buffer.from(shot.base64,"base64").toString(),"jpeg-bytes");

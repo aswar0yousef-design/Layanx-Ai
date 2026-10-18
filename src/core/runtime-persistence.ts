@@ -102,6 +102,34 @@ export class RuntimePersistence{
       if(current.some(x=>x.mission.id===missionId))await tx.set("runtime:snapshots",current.filter(x=>x.mission.id!==missionId));
     });
   }
+  /** Remove obsolete approval requests from every persisted snapshot, since each snapshot stores a shared approval catalogue. */
+  async forgetApprovalRequestsForMissions(missionIds:string[]):Promise<void>{
+    const targets=new Set(missionIds.filter(id=>typeof id==="string"&&id.length>0));
+    if(!targets.size)return;
+    await this.storage.transaction(async tx=>{
+      const current=await tx.get<RuntimeSnapshot[]>("runtime:snapshots")??[];
+      let changed=false;
+      const next=current.map(raw=>{
+        const snapshot=this.migrate(raw);
+        const approvals=snapshot.approvals;
+        if(!approvals)return snapshot;
+        const removed=new Set(approvals.requests.filter(request=>targets.has(request.missionId)).map(request=>request.id));
+        if(!removed.size)return snapshot;
+        changed=true;
+        return {
+          ...snapshot,
+          approvals:{
+            ...approvals,
+            requests:approvals.requests.filter(request=>!removed.has(request.id)),
+            approvedIds:approvals.approvedIds.filter(id=>!removed.has(id)),
+            rejectedIds:(approvals.rejectedIds??[]).filter(id=>!removed.has(id))
+          }
+        };
+      });
+      if(changed)await tx.set("runtime:snapshots",next);
+    });
+  }
+
   async health():Promise<{healthy:boolean;writable:boolean;reason:string}>{
     try{
       const probeKey="runtime:health:probe";

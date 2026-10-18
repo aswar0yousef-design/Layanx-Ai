@@ -96,6 +96,23 @@ process.env.SECRET_FOR_SERVER="s3cret";process.env.OTHER_SECRET="must-not-leak";
 const core=new LayanXCore();
 core.registerAgent({agentId:"core",purpose:"t",allowedTools:["runtime.status"],forbiddenResources:[],requiredPermission:"L4_EXECUTE",maxToolCalls:5,maxRuntimeMs:10000,successCriteria:["done"],stopCondition:"stop"});
 const manager=new McpManager(core,path.join(dir,"mcp-servers.json"));
+
+// A failing tool registration must remove tools registered earlier in the same connection attempt,
+// and a failed approval must roll back enabled/approved status instead of leaving a false green state.
+core.toolAdapters.register("mcp.ghost.fail",{async execute(){return{preserved:true};}});
+const brokenManager=new McpManager(core,path.join(dir,"mcp-broken-servers.json"),{timeoutMs:5000});
+brokenManager.add({id:"ghost",name:"Partially conflicting server",command:"node",args:[serverJs],env:{MODE:"legacy"}});
+await assert.rejects(brokenManager.approve("ghost"),/Tool adapter already registered/);
+const brokenStatus=brokenManager.list().find(s=>s.id==="ghost")!;
+assert.equal(brokenStatus.approved,false,"failed MCP handshake/registration must roll back owner approval");
+assert.equal(brokenStatus.enabled,false,"failed MCP handshake/registration must leave the server disabled");
+assert.equal(brokenStatus.connected,false,"failed MCP server must not show connected");
+assert.equal(core.tools.has("mcp.ghost.echo"),false,"earlier tools from a partially registered server must be removed");
+assert.equal(core.toolAdapters.has("mcp.ghost.echo"),false,"earlier tool adapters must be removed");
+assert.equal(core.tools.has("mcp.ghost.fail"),false,"the colliding tool descriptor must be removed");
+assert.equal(core.toolAdapters.has("mcp.ghost.fail"),true,"cleanup must preserve an adapter it did not create");
+core.toolAdapters.unregister("mcp.ghost.fail");
+
 manager.add({id:"fake",name:"Fake server",command:"node",args:[serverJs],envFromSecrets:["SECRET_FOR_SERVER"],env:{MODE:"legacy"}});
 assert.equal(manager.list()[0]!.approved,false,"new servers wait for the owner");
 await manager.approve("fake");

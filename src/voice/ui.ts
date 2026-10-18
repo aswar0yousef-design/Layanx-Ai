@@ -420,7 +420,7 @@ function resumeListening(){if(busy||speaking||realtime)return;
 
 // ---------------------------------------------------------------- local speech-to-text (Whisper on this PC)
 var localStt=false;
-var mic={ctx:null,stream:null,active:false,mode:null,buf:[],pre:[],voiced:0,silence:0,noise:0.008,pendingUntil:0,rate:16000,epoch:0,checking:false,nextCheck:0};
+var mic={ctx:null,stream:null,active:false,mode:null,buf:[],pre:[],voiced:0,silence:0,noise:0.008,pendingUntil:0,rate:16000,epoch:0,checking:false,nextCheck:0,opening:false};
 /** Audio kept from just before speech starts (the first syllable), and the longest request. */
 var PRE_MS=500,MAX_MS=30000;
 var senseOn=false;
@@ -428,16 +428,21 @@ function useLocal(){return localStt&&S.engine!=="browser"}
 function canListen(){return useLocal()||(!!SR&&S.engine!=="local")}
 function startLocal(mode){
  if(blocked||busy||speaking||realtime)return;
+ // Do not reset mode/buffers when a second caller arrives while getUserMedia is still opening.
+ // Resetting those shared buffers split one spoken request even when no second stream was created.
+ if(mic.opening)return;
  mic.mode=mode;mic.buf=[];mic.voiced=0;mic.silence=0;
  if(mic.ctx){if(mic.ctx.state==="suspended")mic.ctx.resume();mic.active=true;setState(mode==="wake"?"wake":"listen");return}
+ mic.opening=true;
  navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true}}).then(function(stream){
+  mic.opening=false;
   var Ctx=window.AudioContext||window.webkitAudioContext,ctx;
   try{ctx=new Ctx({sampleRate:16000})}catch(e){ctx=new Ctx()}
   var src=ctx.createMediaStreamSource(stream),node=ctx.createScriptProcessor(1024,1,1);
   node.onaudioprocess=function(e){if(mic.active)onFrame(e.inputBuffer.getChannelData(0))};
   src.connect(node);node.connect(ctx.destination);
   mic.ctx=ctx;mic.stream=stream;mic.node=node;mic.rate=ctx.sampleRate;mic.active=true;setState(mode==="wake"?"wake":"listen");holdMic(false);
- }).catch(function(){blocked=true;setState("off",t("denied"))})}
+ }).catch(function(){mic.opening=false;blocked=true;setState("off",t("denied"))})}
 /**
  * Energy-based voice detection in 64 ms frames. One request = speech until a silence as long as the
  * "wait for the end of my speech" setting (1.2 s by default; it was 0.7 s and cut people off mid-
@@ -578,7 +583,15 @@ document.addEventListener("visibilitychange",function(){if(!document.hidden&&S.a
 api("/v1/voice/status").then(function(d){var v=d.voice||{};if(v.enabled)$("realtimeBtn").hidden=false;
  if(v.tts==="local")localTts=true;
  if(v.sense)senseOn=true;
- if(v.localStt){localStt=true;setLang(S.lang);if(S.always){pauseListening();resumeListening()}}}).catch(function(){});
+ if(v.localStt){
+  localStt=true;
+  // setLang() already pauses/restarts an existing browser recognizer. Restarting again here
+  // opened a second local microphone pipeline, splitting one Arabic request into two clips.
+  var hadListener=!!rec||mic.active||mic.opening;
+  setLang(S.lang);
+  if(S.always&&!hadListener&&!busy&&!speaking)resumeListening();
+ }
+}).catch(function(){});
 api("/v1/assistant/briefing").then(function(d){var b=d.briefing;if(!b||!b.report)return;if(b.date!==new Date().toISOString().slice(0,10))return;
  $("briefText").textContent=b.report.text[S.lang]||b.report.text.ar;$("briefing").hidden=false}).catch(function(){});
 setLang(S.lang);

@@ -43,6 +43,7 @@ const file=path.join(store,"supervisor-jobs.json");
 fs.writeFileSync(file,JSON.stringify([oldJob]),"utf8");
 
 const calls:{agent:string;goal:string}[]=[];
+const forgottenApprovalMissions:string[]=[];
 let planningCalls=0;
 const deps:SupervisorDeps={
   async think(prompt){
@@ -56,6 +57,7 @@ const deps:SupervisorDeps={
   async resumeAgent(){return{completed:true};},
   async runTool(){return{ok:true,data:{ok:true,exitCode:0}};},
   isApproved:()=>false,
+  forgetApprovalsForMissions(missionIds){forgottenApprovalMissions.push(...missionIds);},
   cloudAvailable:()=>false,
   externalAgent:()=>null,
   detect:()=>null
@@ -118,6 +120,46 @@ assert.ok(recovered.log.some(line=>line.msg.includes("Recovered an unfinished de
 assert.ok(recovered.log.some(line=>line.msg.includes("Replanning the unfinished desktop-open request")));
 assert.equal(planningCalls,0,"startup recovery should not call an LLM planner for a known app-open command");
 startupSupervisor.stop();
+
+// A job saved before the read-only verification fix can be waiting for approval to focus Notepad.
+// On restart, keep the already-open milestone and rerun only the current verification milestone.
+const staleVerifyJob:SupervisorJob={
+  ...startupJob,
+  id:"startup-stale-focus-verification",
+  status:"waiting_approval",
+  current:1,
+  rounds:4,
+  deadline:new Date(Date.now()-60_000).toISOString(),
+  waiting:{approvalId:"obsolete-focus-approval",missionId:"prior-focus-mission",index:0,kind:"agent",agentId:"operator",milestone:1},
+  milestones:[
+    {...startupJob.milestones[1]!,title:"فتح المفكرة",goal:"افتح Notepad",kind:"desktop",agent:"operator",status:"done",attempts:1,missions:["prior-open-mission"]},
+    {...startupJob.milestones[2]!,title:"التحقق من النافذة",goal:"تحقق من أن نافذة Notepad ظاهرة على سطح المكتب",kind:"desktop",agent:"operator",status:"running",attempts:3,missions:["prior-focus-mission"],notes:"Agent stopped: focus approval was required."}
+  ],
+  log:[{at:now,msg:"Simulated legacy job waiting for a focus approval"}]
+};
+const verifyFile=path.join(store,"startup-stale-focus-jobs.json");
+fs.writeFileSync(verifyFile,JSON.stringify([staleVerifyJob]),"utf8");
+calls.length=0;
+const verifySupervisor=new Supervisor(deps,{file:verifyFile,pollMs:5});
+verifySupervisor.start();
+const untilVerify=async(f:()=>boolean,ms=8000)=>{
+  const end=Date.now()+ms;
+  while(!f()){
+    if(Date.now()>end)throw new Error("focus-verification recovery timeout: "+JSON.stringify(verifySupervisor.get(staleVerifyJob.id)?.log.slice(-8)));
+    await new Promise(resolve=>setTimeout(resolve,10));
+  }
+};
+await untilVerify(()=>["completed","failed"].includes(verifySupervisor.get(staleVerifyJob.id)!.status));
+const verifiedRecovery=verifySupervisor.get(staleVerifyJob.id)!;
+assert.equal(verifiedRecovery.status,"completed",verifiedRecovery.log.map(line=>line.msg).join("\\n"));
+assert.equal(verifiedRecovery.milestones[0]!.status,"done","the successful Notepad-open milestone must be preserved");
+assert.equal(verifiedRecovery.milestones[0]!.missions[0],"prior-open-mission");
+assert.equal(verifiedRecovery.milestones[1]!.attempts,1,"the obsolete focus mission should be replaced with one read-only verification attempt");
+assert.deepEqual(calls.map(call=>call.agent),["operator"],"restart recovery should rerun verification only");
+assert.ok(Date.parse(verifiedRecovery.deadline)>Date.now(),"legacy verification recovery must renew the deadline");
+assert.ok(verifiedRecovery.log.some(line=>line.msg.includes("Replaced stale Notepad window-focus verification with a read-only window-presence check")));
+assert.ok(forgottenApprovalMissions.includes("prior-focus-mission"),"obsolete focus approvals must be removed when verification is replanned");
+verifySupervisor.stop();
 
 fs.rmSync(store,{recursive:true,force:true});
 fs.rmSync(workspace,{recursive:true,force:true});

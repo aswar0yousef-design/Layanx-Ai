@@ -127,9 +127,21 @@ export class McpManager{
   async approve(id:string):Promise<McpServerStatus>{
     const s=this.get(id);
     if(!pinnedSpec(s))throw new Error("Pin an exact version first (for example pkg@1.2.3, pkg==1.2.3 or image:1.2.3) - 'latest' is never installed.");
+    // Keep approval changes transactional from the owner's point of view: a failed handshake
+    // must not leave the UI showing an enabled/approved server that never connected.
+    const previous={approved:s.approved,enabled:s.enabled,approvedAt:s.approvedAt};
     s.approved=true;s.enabled=true;s.approvedAt=new Date().toISOString();this.save();
-    await this.connect(id);
-    return this.list().find(x=>x.id===id)!;
+    try{
+      await this.connect(id);
+      return this.list().find(x=>x.id===id)!;
+    }catch(error){
+      await this.disconnect(id);
+      s.approved=previous.approved;
+      s.enabled=previous.enabled;
+      if(previous.approvedAt===undefined)delete s.approvedAt;else s.approvedAt=previous.approvedAt;
+      this.save();
+      throw error;
+    }
   }
   async disable(id:string){const s=this.get(id);s.enabled=false;this.save();await this.disconnect(id);}
   async remove(id:string){await this.disconnect(id);this.servers=this.servers.filter(s=>s.id!==id);this.errors.delete(id);this.save();}
@@ -159,34 +171,49 @@ export class McpManager{
     if(!s.approved||!s.enabled)throw new Error("Server "+id+" is not approved.");
     await this.disconnect(id);
     const client=new McpClient(this.endpoint(s),this.options.timeoutMs??30_000);
+    const handles:ToolHandle[]=[];
+    const agents=this.options.agents??["core"];
     try{
       await client.connect();
       const tools=await client.listTools();
-      const handles:ToolHandle[]=[];
       for(const tool of tools.slice(0,200)){
         const name=`mcp.${s.id}.${sanitizeToolName(tool.name)}`;
         if(this.core.tools.has(name)||handles.some(h=>h.name===name))continue;
         const safe=(s.safeTools??[]).includes(tool.name);
         const description=`[MCP ${clean(s.name,40)}] ${clean(tool.description,400)}${tool.inputSchema?" Input: "+clean(JSON.stringify(tool.inputSchema),600):""}`;
         this.core.tools.register({name,description,permission:safe?"L2_ANALYZE":"L4_EXECUTE",dangerous:!safe,actions:[clean(tool.name,80),"call "+clean(tool.name,80)],tags:["mcp",s.id,...sanitizeToolName(tool.name).split("_").filter(w=>w.length>2).slice(0,5)]});
-        this.core.toolAdapters.register(name,{execute:async request=>{
-          const args=request.payload&&typeof request.payload==="object"&&!Array.isArray(request.payload)?request.payload as Record<string,unknown>:{};
-          const live=this.live.get(s.id);if(!live)throw new Error("MCP server "+s.id+" is not connected.");
-          const result=await live.client.callTool(tool.name,args);
-          if(result.isError)throw new Error("MCP tool "+tool.name+" failed: "+result.text.slice(0,1000));
-          return{server:s.id,tool:tool.name,text:result.text,...(result.structured!==undefined?{structured:result.structured}:{}),...(result.images.length?{images:result.images.slice(0,2)}:{})};
-        }});
+        try{
+          this.core.toolAdapters.register(name,{execute:async request=>{
+            const args=request.payload&&typeof request.payload==="object"&&!Array.isArray(request.payload)?request.payload as Record<string,unknown>:{};
+            const live=this.live.get(s.id);if(!live)throw new Error("MCP server "+s.id+" is not connected.");
+            const result=await live.client.callTool(tool.name,args);
+            if(result.isError)throw new Error("MCP tool "+tool.name+" failed: "+result.text.slice(0,1000));
+            return{server:s.id,tool:tool.name,text:result.text,...(result.structured!==undefined?{structured:result.structured}:{}),...(result.images.length?{images:result.images.slice(0,2)}:{})};
+          }});
+        }catch(error){
+          this.core.tools.unregister(name);
+          throw error;
+        }
         handles.push({name,tool});
       }
-      for(const agent of this.options.agents??["core"])this.core.agents.allowTools(agent,handles.map(h=>h.name));
-      this.live.set(id,{client,tools:handles});this.errors.delete(id);
+      for(const agent of agents)this.core.agents.allowTools(agent,handles.map(h=>h.name));
+      this.live.set(id,{client,tools:handles});
+      this.errors.delete(id);
     }catch(error){
+      // Registration is atomic: a failed adapter registration or agent allow-list update must
+      // not leave ghost tools behind that point at a client which was never made live.
+      for(const h of handles){
+        this.core.tools.unregister(h.name);
+        this.core.toolAdapters.unregister(h.name);
+      }
+      for(const agent of agents){
+        try{this.core.agents.revokeTools(agent,handles.map(h=>h.name));}catch{}
+      }
       await client.close().catch(()=>undefined);
       this.errors.set(id,error instanceof Error?error.message:String(error));
       throw error;
     }
   }
-
   async disconnect(id:string):Promise<void>{
     const l=this.live.get(id);if(!l)return;
     this.live.delete(id);

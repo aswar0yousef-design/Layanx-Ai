@@ -1,0 +1,44 @@
+name: Windows UI and MCP panel regressions
+
+on:
+  pull_request:
+    paths:
+      - "web/app.js"
+      - "web/index.html"
+      - "web/styles.css"
+      - "tests/dashboard-job-card.spec.ts"
+      - "tests/mcp-panel.spec.ts"
+      - ".github/workflows/windows-dashboard-smoke.yml"
+  push:
+    branches:
+      - fix/desktop-window-verification-live-stream
+    paths:
+      - "web/app.js"
+      - "web/index.html"
+      - "web/styles.css"
+      - "tests/dashboard-job-card.spec.ts"
+      - ".github/workflows/windows-dashboard-smoke.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-dashboard-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dashboard-ui:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: if (Test-Path package-lock.json) { npm ci } else { npm install }
+        shell: pwsh
+      - name: Run the real-browser dashboard regression
+        run: node node_modules/tsx/dist/cli.mjs tests/dashboard-job-card.spec.ts
+      - name: Verify the local MCP panel
+        run: node node_modules/tsx/dist/cli.mjs tests/mcp-panel.spec.ts

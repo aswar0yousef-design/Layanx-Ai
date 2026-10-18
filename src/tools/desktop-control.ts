@@ -115,7 +115,7 @@ public static class LxUia{
  public static string Windows(){
   var sb=new StringBuilder("{\"windows\":[");bool first=true;
   var all=AutomationElement.RootElement.FindAll(TreeScope.Children,new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Window));
-  foreach(AutomationElement w in all){string n;int pid;try{n=w.Current.Name;pid=w.Current.ProcessId;}catch(Exception){continue;}if(string.IsNullOrEmpty(n))continue;if(!first)sb.Append(',');first=false;sb.Append("{\"title\":\"").Append(Esc(Cut(n,160))).Append("\",\"pid\":").Append(pid).Append('}');}
+  foreach(AutomationElement w in all){string n;int pid;bool visible;try{var current=w.Current;n=current.Name;pid=current.ProcessId;visible=!current.IsOffscreen;}catch(Exception){continue;}if(string.IsNullOrEmpty(n))continue;if(!first)sb.Append(',');first=false;sb.Append("{\"title\":\"").Append(Esc(Cut(n,160))).Append("\",\"pid\":").Append(pid).Append(",\"visible\":").Append(visible?"true":"false").Append('}');}
   return sb.Append("]}").ToString();
  }
  public static string Tree(int max){
@@ -189,14 +189,12 @@ const WIN_HELPER_PS=[
  // fixed command here, anything else is matched by name among the Start menu's installed apps, and a web
  // page must parse as an http(s) URL.
  "   'openapp'{$k=[string]$r.kind;$v=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([string]$r.value));$fixed=@{chrome='chrome';msedge='msedge';firefox='firefox';explorer='explorer.exe';notepad='notepad.exe';calc='calc.exe';settings='ms-settings:';paint='mspaint.exe';taskmgr='taskmgr.exe'};"+
- "if($k -eq 'known'){if(-not $fixed.ContainsKey($v)){throw 'unknown program'};Start-Process $fixed[$v];'ok|'+$v}"+
- "elseif($k -eq 'url'){$u=$null;if(-not [Uri]::TryCreate($v,[UriKind]::Absolute,[ref]$u) -or ($u.Scheme -ne 'https' -and $u.Scheme -ne 'http')){throw 'not a web address'};$b=[string]$r.browser;if($b){if(-not $fixed.ContainsKey($b)){throw 'unknown browser'};Start-Process $fixed[$b] -ArgumentList @($u.AbsoluteUri)}else{Start-Process $u.AbsoluteUri};'ok|'+$u.AbsoluteUri}"+
+ "if($k -eq 'known'){if(-not $fixed.ContainsKey($v)){throw 'unknown program'};Start-Process $fixed[$v] | Out-Null;'ok|'+$v}"+
+ "elseif($k -eq 'url'){$u=$null;if(-not [Uri]::TryCreate($v,[UriKind]::Absolute,[ref]$u) -or ($u.Scheme -ne 'https' -and $u.Scheme -ne 'http')){throw 'not a web address'};$b=[string]$r.browser;if($b){if(-not $fixed.ContainsKey($b)){throw 'unknown browser'};Start-Process $fixed[$b] -ArgumentList @($u.AbsoluteUri) | Out-Null}else{Start-Process $u.AbsoluteUri | Out-Null};'ok|'+$u.AbsoluteUri}"+
  // Start menu apps (Get-StartApps), or where that cmdlet is missing (Windows Server) the Start menu's shortcuts.
  "elseif($k -eq 'start'){$e=[Management.Automation.WildcardPattern]::Escape($v);$pick={param($list,$name)@($list|Where-Object{$_.N -eq $v})+@($list|Where-Object{$_.N -like ($e+'*')}|Sort-Object{$_.N.Length})+@($list|Where-Object{$_.N -like ('*'+$e+'*')}|Sort-Object{$_.N.Length})|Select-Object -First 1};"+
- "$a=$null;if(Get-Command Get-StartApps -ErrorAction SilentlyContinue){$a=& $pick @(Get-StartApps|ForEach-Object{[pscustomobject]@{N=$_.Name;Id=$_.AppID}}) $v};"+
- "if($a){Start-Process 'explorer.exe' -ArgumentList @('shell:AppsFolder\\'+$a.Id);'ok|'+$a.N}"+
- "else{$dirs=@((Join-Path $env:ProgramData 'Microsoft\\Windows\\Start Menu\\Programs'),(Join-Path $env:APPDATA 'Microsoft\\Windows\\Start Menu\\Programs'));$l=& $pick @(Get-ChildItem -Path $dirs -Filter '*.lnk' -Recurse -ErrorAction SilentlyContinue|ForEach-Object{[pscustomobject]@{N=$_.BaseName;Id=$_.FullName}}) $v;"+
- "if(-not $l){throw ('not installed: '+$v)};Invoke-Item -LiteralPath $l.Id;'ok|'+$l.N}}else{throw 'unknown kind'}}",
+ "$a=$null;if(Get-Command Get-StartApps -ErrorAction SilentlyContinue){$a=& $pick @(Get-StartApps|ForEach-Object{[pscustomobject]@{N=$_.Name;Id=$_.AppID}}) $v;if(-not $a){throw ('not installed: '+$v)};Start-Process 'explorer.exe' -ArgumentList @('shell:AppsFolder\\'+$a.Id) | Out-Null;'ok|'+$a.N}"+
+ "else{$dirs=@((Join-Path $env:ProgramData 'Microsoft\\Windows\\Start Menu\\Programs'),(Join-Path $env:APPDATA 'Microsoft\\Windows\\Start Menu\\Programs'));$l=& $pick @(Get-ChildItem -Path $dirs -Filter '*.lnk' -Recurse -ErrorAction SilentlyContinue|ForEach-Object{[pscustomobject]@{N=$_.BaseName;Id=$_.FullName}}) $v;if(-not $l){throw ('not installed: '+$v)};Invoke-Item -LiteralPath $l.Id;'ok|'+$l.N}}else{throw 'unknown kind'}}",
  "   'ping'{'ok'}",
  "   default{throw 'unknown operation'}",
  "  }",
@@ -273,6 +271,28 @@ export function prewarmDesktopHelper(env:NodeJS.ProcessEnv=process.env):void{
  timer.unref();
 }
 
+/** Parse the Windows UI Automation top-level window list and find a title by case-insensitive substring. */
+export function parseWindowTitleMatch(raw:string,requestedTitle:string):{exists:boolean;visible:boolean;title:string;pid:number|null;windowsScanned:number}{
+ const requested=requestedTitle.trim();
+ if(!requested||requested.length>200)throw new Error("title must be 1-200 characters.");
+ let parsed:unknown;
+ try{parsed=JSON.parse(raw);}catch{throw new Error("Windows UI Automation returned an unreadable window list.");}
+ const windows=parsed&&typeof parsed==="object"&&Array.isArray((parsed as Record<string,unknown>).windows)
+  ?(parsed as {windows:unknown[]}).windows:[];
+ const normalized=requested.toLocaleLowerCase("en-US");
+ const matches=windows.filter(item=>item&&typeof item==="object"&&typeof (item as Record<string,unknown>).title==="string"
+  &&((item as Record<string,unknown>).title as string).toLocaleLowerCase("en-US").includes(normalized)) as Record<string,unknown>[];
+ // If several windows match (for example a minimized old Notepad plus a visible new instance), prefer one on-screen.
+ const match=matches.find(item=>item.visible===true)??matches[0];
+ return{
+  exists:Boolean(match),
+  visible:match?.visible===true,
+  title:match&&typeof match.title==="string"?match.title:requested,
+  pid:match&&typeof match.pid==="number"?match.pid:null,
+  windowsScanned:windows.length
+ };
+}
+
 export function createDesktopControlToolAdapter(options:{runner?:Runner;windows?:WindowsDesktopBackend}={}):ToolAdapter{
  const run=options.runner??runner();
  const win=():WindowsDesktopBackend=>options.windows??(options.runner?runnerBackend(options.runner):(sharedHelper??=new PowerShellDesktopHelper()));
@@ -339,6 +359,13 @@ export function createDesktopControlToolAdapter(options:{runner?:Runner;windows?
    if(target.kind==="url"){const r=await run(process.platform==="darwin"?"open":"xdg-open",[target.url]);if(r.code!==0)throw new Error(r.stderr||"Could not open the web page.");return {opened:true,what:target.url,via:"web page"};}
    if(process.platform==="darwin"){const name=target.kind==="known"?KNOWN_APPS[target.app].label:target.name;const r=await run("open",["-a",name]);if(r.code!==0)throw new Error(r.stderr||"Could not open "+name+".");return {opened:true,what:name,via:"program"};}
    throw new Error("Opening programs by name is available on Windows and macOS.");
+  }
+  if(request.action==="desktop find window"){
+   if(process.platform!=="win32")throw new Error("Finding a desktop window is available on Windows only.");
+   const title=typeof x.title==="string"?x.title.trim():"";
+   if(!title||title.length>200)throw new Error("title must be 1-200 characters.");
+   const raw=await win().send({op:"uitree",scope:"windows",max:200},20_000);
+   return parseWindowTitleMatch(raw,title);
   }
   if(request.action==="desktop focus window"){
    if(process.platform!=="win32")throw new Error("Focusing windows by title is available on Windows only.");
