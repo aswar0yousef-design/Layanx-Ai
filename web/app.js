@@ -273,7 +273,7 @@ async function mcpPanel(){
     el("button",{class:"btn primary",text:t("mcpCreate"),onclick:async()=>{
      const id=idInput.value.trim().toLowerCase(),name=nameInput.value.trim(),command=commandInput.value.trim();
      if(!id||!command){toast(t("mcpNeedFields"));return;}
-     const args=argsInput.value.split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean);
+     const args=argsInput.value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
      try{
       await api("/v1/mcp/servers",{method:"POST",body:{id,name:name||id,transport:"stdio",command,args,note:"Owner-added local MCP executable"}});
       toast(t("mcpPending"));customForm.hidden=true;await render();
