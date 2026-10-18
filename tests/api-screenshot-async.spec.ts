@@ -32,8 +32,8 @@ try{
  assert.equal(missing.status,404);
  assert.deepEqual(await missing.json(),{ok:false,error:"not_found"});
 
- const invalid=await fetch(base+"/v1/projects/image-test/screens/../PROJECT.md");
- assert.notEqual(invalid.status,200,"invalid or normalized paths must not return project files");
+ const invalid=await fetch(base+"/v1/projects/image-test/screens/%2E%2E%2FPROJECT.md");
+ assert.equal(invalid.status,400,"encoded traversal attempts must be rejected");
  console.log("Asynchronous project screenshot API test passed.");
 }finally{
  await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));
