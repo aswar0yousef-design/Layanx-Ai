@@ -428,12 +428,11 @@ function useLocal(){return localStt&&S.engine!=="browser"}
 function canListen(){return useLocal()||(!!SR&&S.engine!=="local")}
 function startLocal(mode){
  if(blocked||busy||speaking||realtime)return;
+ // Do not reset mode/buffers when a second caller arrives while getUserMedia is still opening.
+ // Resetting those shared buffers split one spoken request even when no second stream was created.
+ if(mic.opening)return;
  mic.mode=mode;mic.buf=[];mic.voiced=0;mic.silence=0;
  if(mic.ctx){if(mic.ctx.state==="suspended")mic.ctx.resume();mic.active=true;setState(mode==="wake"?"wake":"listen");return}
- // The provider-status refresh and setLang() can both restart listening in the same tick.
- // Keep only one pending getUserMedia/AudioContext initialization; otherwise two processors
- // feed the same mic buffers and the same sentence is transcribed and sent twice.
- if(mic.opening)return;
  mic.opening=true;
  navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true}}).then(function(stream){
   mic.opening=false;
