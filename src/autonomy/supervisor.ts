@@ -88,7 +88,6 @@ function directDesktopOpenGoal(text:string):{app?:string;url?:string;label:strin
   if(text.length>240||text.includes("\n"))return undefined;
   let command=text.trim()
     .replace(/(?:[،,;؛.]?\s*)(?:وتأكد(?:\s+من)?|وتحقق(?:\s+من)?|وتاكد(?:\s+من)?|وتثبت(?:\s+من)?|تأكد من نجاح|تحقق من نجاح|and\s+(?:verify|confirm|check|make sure)|then\s+(?:verify|confirm|check)|make sure(?:\s+that)?|verify(?:\s+that)?|confirm(?:\s+that)?)[\s\S]*$/iu,"")
-    .replace(/[،,;؛.!؟?]+$/u,"")
     .replace(/\s+(?:على|في)\s+(?:جهازي|جهاز الكمبيوتر|هذا الجهاز|الكمبيوتر|الحاسوب|سطح المكتب)(?:\s+.*)?$/iu,"")
     .replace(/\s+(?:on|in)\s+(?:my|this|the)\s+(?:computer|pc|device|desktop)(?:\s+.*)?$/iu,"")
     // People often write both the Arabic and English name of the same program.
