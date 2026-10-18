@@ -63,6 +63,8 @@ export interface SupervisorDeps{
   isApproved(approvalId:string):boolean;
   /** The owner said no: the job stops there (it can be resumed later and asks again). */
   isRejected?(approvalId:string):boolean;
+  /** Remove obsolete approval prompts when a persisted milestone is replaced by a safer read-only operation. */
+  forgetApprovalsForMission?(missionId:string):void;
   cloudAvailable():boolean;
   externalAgent():{name:string;kind:"local"|"cloud"}|null;
   detect?(projectId:string):ProjectInfo|null;
@@ -165,6 +167,9 @@ export class Supervisor{
     const isWindowCheck=/(?:تحقق|تأكد|verify|confirm|check)/iu.test(description)&&/(?:نافذة|window)/iu.test(description)
       &&/(?:notepad|المفكرة|المفكره)/iu.test(description);
     if(!isWindowCheck||!job.milestones.slice(0,job.current).some(previous=>previous.status==="done"))return false;
+    // Remove stale focus approvals from this superseded milestone; the new read-only check needs none.
+    const staleMissions=new Set([...milestone.missions,...(job.waiting?.missionId?[job.waiting.missionId]:[])]);
+    for(const missionId of staleMissions)this.deps.forgetApprovalsForMission?.(missionId);
     milestone.status="pending";
     milestone.attempts=0;
     milestone.notes=undefined;
