@@ -17,4 +17,24 @@ if(!observer.isRunning())throw new Error("Observer did not start.");
 if(!observer.latest()?.base64)throw new Error("Observer did not retain a frame.");
 observer.stop();
 if(observer.isRunning())throw new Error("Observer did not stop.");
-console.log("live screen observer ok");
+
+let releaseCapture:((value:{data:{mimeType:string;base64:string;bytes:number}})=>void)|undefined;
+let slowCalls=0;
+const slowObserver=new LiveScreenObserver({intervalMs:100,adapter:{async execute(){
+ slowCalls++;
+ return await new Promise(resolve=>{releaseCapture=resolve;});
+}}});
+const captureA=slowObserver.captureNow();
+const captureB=slowObserver.captureNow();
+if(slowCalls!==1)throw new Error("Concurrent live-frame requests were not coalesced.");
+releaseCapture?.({data:{mimeType:"image/png",base64:frame,bytes:frame.length}});
+await Promise.all([captureA,captureB]);
+if(slowCalls!==1)throw new Error("More than one screenshot was captured for overlapping requests.");
+
+const failingObserver=new LiveScreenObserver({adapter:{async execute(){throw new Error("simulated desktop capture denied");}}});
+await failingObserver.captureNow().then(()=>{throw new Error("failed desktop capture was accepted");}).catch(error=>{
+ if(!String(error).includes("simulated desktop capture denied"))throw error;
+});
+if(failingObserver.lastErrorMessage()!=="simulated desktop capture denied")throw new Error("Live screen did not preserve the capture error.");
+
+console.log("live screen observer, capture coalescing and diagnostics ok");
