@@ -530,7 +530,7 @@ async function screenshotNow(target){
 }
 function computerCard(big){
  const screen=el("div",{class:"screen",id:"screenBox",style:big?"aspect-ratio:16/9;max-height:70vh":undefined},el("div",{class:"ph",text:t("screenOff")}));
- const live=S.live&&S.live.enabled;
+ const live=S.live&&S.live.running;
  return el("section",{class:"card"},el("div",{class:"card-head"},el("h3",{},icon("computer"),t("computerControl")),
    el("button",{class:"link",onclick:async()=>{try{await api("/v1/computer/live/"+(live?"stop":"start"),{method:"POST",body:{}});S.live=await safe(api("/v1/computer/live/status"),S.live);render();}catch(e){toast(e.message);}}},live?t("stopLive"):t("startLive"))),
   screen,
@@ -541,7 +541,7 @@ function computerCard(big){
    el("button",{class:"tile",onclick:()=>{go("agent");setTimeout(()=>{const i=$("#agentInput");if(i){i.value=LANG==="ar"?"افتح تطبيق ":"Open the app ";i.focus();}},60);}},icon("apps"),t("apps"))));
 }
 async function drawLiveFrame(){
- const box=$("#screenBox");if(!box||!(S.live&&S.live.enabled))return;
+ const box=$("#screenBox");if(!box||!(S.live&&S.live.running))return;
  const f=await safe(api("/v1/computer/live/frame"),{});const fr=f.frame;
  if(fr&&fr.base64)box.replaceChildren(el("img",{alt:"screen",src:"data:"+(fr.mimeType||"image/png")+";base64,"+fr.base64}),el("span",{class:"live",text:"● "+t("live")}));
 }
