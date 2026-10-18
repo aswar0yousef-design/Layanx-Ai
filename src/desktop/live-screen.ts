@@ -19,9 +19,10 @@ export class LiveScreenObserver {
   private readonly intervalMs:number;
   private timer?:ReturnType<typeof setInterval>;
   private running=false;
-  private capturing=false;
+  private inFlight?:Promise<LiveScreenFrame>;
   private sequence=0;
   private frame?:LiveScreenFrame;
+  private lastError?:string;
 
   constructor(private readonly options:LiveScreenObserverOptions){
     this.intervalMs=Math.min(Math.max(Math.floor(options.intervalMs??500),100),5000);
@@ -29,10 +30,16 @@ export class LiveScreenObserver {
 
   isRunning(){return this.running;}
   latest(){return this.frame?{...this.frame}:undefined;}
+  lastErrorMessage(){return this.lastError;}
 
-  async captureNow():Promise<LiveScreenFrame>{
-    if(this.capturing&&this.frame)return this.frame;
-    this.capturing=true;
+  captureNow():Promise<LiveScreenFrame>{
+    if(this.inFlight)return this.inFlight;
+    const work=this.captureFrame();
+    this.inFlight=work;
+    return work.finally(()=>{if(this.inFlight===work)this.inFlight=undefined;});
+  }
+
+  private async captureFrame():Promise<LiveScreenFrame>{
     try{
       const request=this.options.requestFactory?.()??{
         missionId:"live-screen",
@@ -50,8 +57,12 @@ export class LiveScreenObserver {
       const bytes=typeof data.bytes==="number"?data.bytes:Buffer.from(data.base64,"base64").length;
       const frame={mimeType:data.mimeType,base64:data.base64,bytes,capturedAt:new Date().toISOString(),sequence:++this.sequence};
       this.frame=frame;
+      this.lastError=undefined;
       return frame;
-    } finally {this.capturing=false;}
+    }catch(error){
+      this.lastError=(error instanceof Error?error.message:String(error)).slice(0,500);
+      throw error;
+    }
   }
 
   start(){
