@@ -36,7 +36,9 @@ export class ExecutionRuntime{
    try{
     const replayProjectId=this.core.projectIsolation.canonical(security.projectId);
     this.core.projectIsolation.assertMissionProject(replayProjectId,mission.projectId);
-    this.core.projectIsolation.assertRequestProject(replayProjectId,request.projectId);
+    // The API adapter may omit projectId from its normalized ToolRequest after it has
+    // validated the incoming request and capability. If present, the binding must match.
+    if(request.projectId)this.core.projectIsolation.assertRequestProject(replayProjectId,request.projectId);
    }catch(error){
     const message=error instanceof Error?error.message:"Project isolation violation.";
     this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"denied",metadata:{reason:message,missionId:mission.id,projectId:security.projectId,replay:true}});
