@@ -61,6 +61,13 @@ export class MemoryEngine{
     return this.scored(query,projectId).slice(0,limit).map(item=>structuredClone(item.entry));
   }
 
+  /** Project-scoped recall for user-, agent-, and tool-facing paths. */
+  recallScoped(query:string,limit:number,projectId:string){
+    const scope=projectId.trim();
+    if(!scope)throw new Error("Project id is required for scoped memory recall.");
+    return this.recall(query,limit,scope);
+  }
+
   /**
    * Hybrid recall: lexical scores mixed with embedding similarity when an embedder is configured
    * (Ollama embedding model). Any embedding failure falls back to lexical recall.
@@ -92,6 +99,13 @@ export class MemoryEngine{
       this.embedderPausedUntil=Date.now()+10*60_000;
       return lexical.slice(0,limit).map(item=>structuredClone(item.entry));
     }
+  }
+
+  /** Hybrid recall restricted to a required project scope. */
+  async recallAsyncScoped(query:string,limit:number,projectId:string):Promise<MemoryEntry[]>{
+    const scope=projectId.trim();
+    if(!scope)throw new Error("Project id is required for scoped memory recall.");
+    return this.recallAsync(query,limit,scope);
   }
 
   /** Enable semantic recall. embed() returns one vector per text; model names the vector space. */
