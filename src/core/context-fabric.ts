@@ -22,13 +22,15 @@ export class ContextFabric{
  constructor(private readonly memory:MemoryEngine){}
 
  build(request:ContextFabricRequest):ContextFabricResult{
-  return this.compose(request,this.memory.recall(request.query,this.limitOf(request),request.projectId.trim()));
+  const projectId=request.projectId.trim();
+  if(!projectId)throw new Error("Project id is required.");
+  return this.compose(request,this.memory.recallScoped(request.query,this.limitOf(request),projectId));
  }
 
  /** Same as build(), with hybrid (embedding) recall when an embedding model is configured. */
  async buildAsync(request:ContextFabricRequest):Promise<ContextFabricResult>{
   if(!request.projectId.trim())throw new Error("Project id is required.");
-  return this.compose(request,await this.memory.recallAsync(request.query,this.limitOf(request),request.projectId.trim()));
+  return this.compose(request,await this.memory.recallAsyncScoped(request.query,this.limitOf(request),request.projectId.trim()));
  }
 
  private limitOf(request:ContextFabricRequest){return Math.min(Math.max(request.limit??8,1),50);}
