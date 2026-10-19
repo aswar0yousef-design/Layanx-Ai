@@ -16,4 +16,18 @@ if(stored?.status!=="completed")throw new Error("mission was not persisted as co
 const replay=await core.executeMissionTool(mission.id,"project-test",0,{});
 if(!replay.ok||!replay.verified||replay.recoverable!==false)throw new Error("safe replay did not succeed");
 if(calls!==1)throw new Error("replay executed the adapter twice");
+
+const mixedCaseProject="LayanX-AI-Fresh-20261018";
+const mixedCaseMission=core.startMission("Read runtime status from mixed-case project",mixedCaseProject);
+mixedCaseMission.requiredPermission="L1_READ";
+mixedCaseMission.tools=[{tool:"runtime.status",action:"read runtime status",permission:"L1_READ",reason:"Windows capability scope regression test"}];
+core.missions.save(mixedCaseMission);
+const canonicalProjectId=core.projectIsolation.canonical(mixedCaseProject);
+const prepared=core.prepareMissionToolRequests(mixedCaseMission,mixedCaseProject);
+if(prepared[0]?.request.projectId!==canonicalProjectId)throw new Error("Prepared tool request did not use canonical project ID.");
+const preparedToken=core.capabilities.active().find(token=>token.id===prepared[0]?.capabilityId);
+if(preparedToken?.projectId!==canonicalProjectId)throw new Error("Prepared capability token did not use canonical project ID.");
+const mixedCaseResult=await core.executeMissionTool(mixedCaseMission.id,mixedCaseProject,0,{});
+if(!mixedCaseResult.ok||!mixedCaseResult.verified)throw new Error("Mixed-case project capability scope failed: "+String(mixedCaseResult.error));
+
 console.log("Planned mission tool execution passed.");
