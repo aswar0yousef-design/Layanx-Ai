@@ -23,4 +23,17 @@ memory.remember({missionId:"m-a",projectId:"project-a",kind:"fact",summary:"Sens
 const sanitized=memory.recall("Sensitive",10,"project-a")[0];
 if(!sanitized||sanitized.content===undefined||JSON.stringify(sanitized.content).includes("redacted-value"))throw new Error("Memory sanitization regression.");
 
+
+const asyncContext=await fabric.buildAsync({projectId:"project-a",mission,query:"Arabic project fact",limit:10,maxChars:2000});
+if(asyncContext.memories.some(entry=>entry.projectId!=="project-a"||JSON.stringify(entry).includes("secret project context")))throw new Error("Async context fabric leaked another project's memory.");
+if(!asyncContext.text.includes("مرحبا"))throw new Error("Async context fabric did not preserve scoped Arabic memory.");
+
+let blankAsyncRejected=false;
+try{await fabric.buildAsync({projectId:"  ",mission,query:"project"});}catch(error){blankAsyncRejected=error instanceof Error&&error.message.includes("Project id is required");}
+if(!blankAsyncRejected)throw new Error("Async context fabric accepted a blank project id.");
+
+let wrongAsyncRejected=false;
+try{await fabric.buildAsync({projectId:"project-a",mission:wrong,query:"project"});}catch(error){wrongAsyncRejected=error instanceof Error&&error.message.includes("Project isolation");}
+if(!wrongAsyncRejected)throw new Error("Async context fabric accepted a mission from another project.");
+
 console.log("Memory context fabric tests passed.");
