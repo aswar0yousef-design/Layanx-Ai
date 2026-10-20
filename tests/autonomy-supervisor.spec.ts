@@ -9,11 +9,11 @@ const root=fs.mkdtempSync(path.join(os.tmpdir(),"lx-sup-"));
 process.env.LAYANX_WORKSPACE_ROOT=root;
 fs.mkdirSync(path.join(root,"shop",".git"),{recursive:true});
 const until=async(f:()=>boolean,ms=8000)=>{const end=Date.now()+ms;while(!f()){if(Date.now()>end)throw new Error("timeout");await new Promise(r=>setTimeout(r,10));}};
-const info={dir:path.join(root,"shop"),stack:"node" as const,packageManager:"npm" as const,scripts:["test","build","dev"],hasLockfile:true,git:true,tasks:[]};
+const info={dir:path.join(root,"shop"),stack:"node" as const,packageManager:"npm" as const,scripts:["test","build","dev","typecheck"],hasLockfile:true,git:true,tasks:[]};
 
-function scenario(opts:{testFailures:number;needApproval?:boolean;cloud?:boolean;visualIssue?:boolean}){
+function scenario(opts:{testFailures:number;needApproval?:boolean;cloud?:boolean;visualIssue?:boolean;toolApproval?:boolean}){
   const calls:{agents:Array<{agent:string;routing?:unknown;goal:string}>;tools:Array<{tool:string;payload:any}>;think:Array<{cloud?:boolean;images:number}>}={agents:[],tools:[],think:[]};
-  let testRuns=0,approved=false,visualAsked=0;
+  let testRuns=0,approved=false,toolApproved=false,typecheckRuns=0,visualAsked=0;
   const deps:SupervisorDeps={
     async think(prompt,o={}){
       calls.think.push({cloud:o.cloud,images:o.images?.length??0});
@@ -26,19 +26,24 @@ function scenario(opts:{testFailures:number;needApproval?:boolean;cloud?:boolean
       return{completed:true,missionId:"m-"+calls.agents.length};
     },
     async resumeAgent(){return{completed:true,missionId:"m-approval"};},
-    async runTool(_p,tool,payload){
+    async runTool(_p,tool,payload,resume){
       calls.tools.push({tool,payload});
+      if(tool==="project.run"&&payload.task==="typecheck"){
+        typecheckRuns++;
+        if(opts.toolApproval&&typecheckRuns===2&&!resume)return{ok:false,missionId:"m-tool-approval",approvalId:"ap-tool"};
+        if(resume?.approvalId==="ap-tool")return{ok:true,data:{ok:true,exitCode:0,stdout:"typecheck passed"}};
+      }
       if(tool==="project.run"&&payload.task==="test"){testRuns++;const fail=testRuns>1&&testRuns<=1+opts.testFailures;return{ok:true,data:{ok:!fail,exitCode:fail?1:0,stdout:fail?"1 failing: products API returns 500":"ok"}};}
       if(tool==="project.run"&&payload.task==="dev:start")return{ok:true,data:{running:true,url:"http://localhost:5173"}};
       if(tool==="browser.test")return{ok:true,data:{ok:true,problems:[],results:[{viewport:"desktop",screenshot:{mimeType:"image/jpeg",base64:"AAAA"}},{viewport:"mobile",screenshot:{mimeType:"image/jpeg",base64:"BBBB"}}]}};
       return{ok:true,data:{ok:true,exitCode:0}};
     },
-    isApproved:id=>{if(id==="ap-1"&&approved)return true;return false;},
+    isApproved:id=>{if(id==="ap-1"&&approved)return true;if(id==="ap-tool"&&toolApproved)return true;return false;},
     cloudAvailable:()=>Boolean(opts.cloud),
     externalAgent:()=>({name:"aider",kind:"local"}),
     detect:()=>info
   };
-  return{deps,calls,approve:()=>{approved=true;}};
+  return{deps,calls,approve:()=>{approved=true;},approveTool:()=>{toolApproved=true;},getTypecheckRuns:()=>typecheckRuns};
 }
 
 // 1) happy path: plan -> baseline -> 2 milestones -> commits -> dev server + browser + vision -> notes
@@ -91,6 +96,20 @@ function scenario(opts:{testFailures:number;needApproval?:boolean;cloud?:boolean
   assert.equal(sup.get(job.id)!.status,"completed");
 }
 
+// 4) approving a verification command resumes the same milestone instead of re-running the coder
+{
+  const s=scenario({testFailures:0,toolApproval:true});
+  const sup=new Supervisor(s.deps,{pollMs:5});
+  const job=sup.create("verify approval continuation","shop");
+  await until(()=>sup.get(job.id)!.status==="waiting_approval"&&sup.get(job.id)!.waiting?.approvalId==="ap-tool");
+  assert.equal(sup.get(job.id)!.milestones[0]!.attempts,1,"approval pause must not start a second coder attempt");
+  s.approveTool();
+  await until(()=>["completed","failed"].includes(sup.get(job.id)!.status));
+  assert.equal(sup.get(job.id)!.status,"completed",sup.get(job.id)!.log.map(l=>l.msg).join("\n"));
+  assert.equal(sup.get(job.id)!.milestones[0]!.attempts,1,"resuming an approved check must continue the same milestone");
+  assert.equal(s.getTypecheckRuns(),3,"typecheck runs once, pauses once, and resumes once; it is not rerun after approval");
+}
+
 // 4) final visual review finds a problem -> repair milestone -> verified
 {
   const s=scenario({testFailures:0,visualIssue:true});
@@ -114,5 +133,5 @@ function scenario(opts:{testFailures:number;needApproval?:boolean;cloud?:boolean
   const j2=sup2.create("something","shop");await until(()=>sup2.get(j2.id)!.status==="waiting_approval");
   sup2.cancel(j2.id);assert.equal(sup2.get(j2.id)!.status,"cancelled");
 }
-console.log("autonomy-supervisor: plan, gates, regression, repair, coding agent, cloud escalation, approvals, visual review verified");
+console.log("autonomy-supervisor: plan, gates, regression, repair, coding agent, cloud escalation, approval continuation, visual review verified");
 process.exit(0);
