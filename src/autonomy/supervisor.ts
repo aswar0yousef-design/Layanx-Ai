@@ -199,7 +199,9 @@ export class Supervisor{
   /** An instruction from the owner for a job (running or finished): used from the next step on. */
   addNote(id:string,text:string):SupervisorJob{
     const job=this.jobs.get(id);if(!job)throw new Error("job_not_found");
-    const note=text.trim().slice(0,1000);if(!note)throw new Error("note_required");    job.notes=[...(job.notes??[]),note].slice(-20);    this.log(job,"Owner note: "+note);
+    const note=text.trim().slice(0,1000);if(!note)throw new Error("note_required");
+    job.notes=[...(job.notes??[]),note].slice(-20);
+    this.log(job,"Owner note: "+note);
     if(wantsOpenWhenDone(note)){
       job.openWhenDone=true;
       this.log(job,"The site opens in the browser when the job is done");
@@ -397,8 +399,10 @@ export class Supervisor{
     if(checks===undefined)return;
     job.lastChecks=checks;
     const failed=checks.filter(c=>!c.ok&&!c.skipped);
-    const regressions=(job.baseline??[]).filter(b=>b.ok&&!b.skipped&&checks.some(c=>c.name===b.name&&!c.ok&&!c.skipped)).map(b=>b.name);    const agentFailed=agentStopped!==undefined;
-    if(!failed.length&&!agentFailed){      m.status="done";m.notes=undefined;
+    const regressions=(job.baseline??[]).filter(b=>b.ok&&!b.skipped&&checks.some(c=>c.name===b.name&&!c.ok&&!c.skipped)).map(b=>b.name);
+    const agentFailed=agentStopped!==undefined;
+    if(!failed.length&&!agentFailed){
+      m.status="done";m.notes=undefined;
       if(previousFailure)await this.learnFix(job,m,previousFailure);
       if(m.kind==="research")this.importProjectPlaybooks(job);
       this.log(job,`Milestone passed: ${m.title}`+(checks.length?` (${checks.filter(c=>!c.skipped).map(c=>c.name).join(", ")||"no checks"})`:""));
@@ -615,9 +619,11 @@ export class Supervisor{
     }catch{}
     const lesson=recordLesson({projectId:job.projectId,stack:this.stack(job),kind:"fix",...(signature?{signature}:{}),trigger:clip(failure,280),text,tags});
     (job.learned??=[]).push("lesson:"+lesson.id);
-    this.log(job,"Learned: "+clip(text,200));  }
+    this.log(job,"Learned: "+clip(text,200));
+  }
   /** A research milestone wrote playbooks into .layanx/playbooks: use them here, propose them globally. */
-  private importProjectPlaybooks(job:SupervisorJob){    for(const p of listPlaybooks(job.projectId).filter(x=>x.source==="project")){
+  private importProjectPlaybooks(job:SupervisorJob){
+    for(const p of listPlaybooks(job.projectId).filter(x=>x.source==="project")){
       if((job.discovered??[]).includes(p.id))continue;
       (job.discovered??=[]).push(p.id);
       if(p.status==="rejected"){this.log(job,`Ignored playbook "${p.title}": it failed the safety scan`,"warn");continue;}
