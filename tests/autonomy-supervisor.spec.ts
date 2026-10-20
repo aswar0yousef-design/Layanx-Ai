@@ -107,7 +107,7 @@ function scenario(opts:{testFailures:number;needApproval?:boolean;cloud?:boolean
   await until(()=>["completed","failed"].includes(sup.get(job.id)!.status));
   assert.equal(sup.get(job.id)!.status,"completed",sup.get(job.id)!.log.map(l=>l.msg).join("\n"));
   assert.equal(sup.get(job.id)!.milestones[0]!.attempts,1,"resuming an approved check must continue the same milestone");
-  assert.equal(s.getTypecheckRuns(),3,"typecheck runs once, pauses once, and resumes once; it is not rerun after approval");
+  assert.equal(s.getTypecheckRuns(),5,"one baseline, the paused/resumed milestone check, the next milestone check, and final verification; no duplicate retry");
 }
 
 // 4) final visual review finds a problem -> repair milestone -> verified
