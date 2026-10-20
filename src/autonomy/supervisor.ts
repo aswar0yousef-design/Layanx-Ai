@@ -513,7 +513,7 @@ export class Supervisor{
     this.save();
   }
 
-  private async runChecks(job:SupervisorJob,purpose?:"baseline"|"milestone"|"final"="baseline"):Promise<CheckResult[]|undefined>{
+  private async runChecks(job:SupervisorJob,purpose:"baseline"|"milestone"|"final"="baseline"):Promise<CheckResult[]|undefined>{
     this.refreshChecks(job);
     const c=job.checks;if(!c)return[];
     if(job.needsInstall){
