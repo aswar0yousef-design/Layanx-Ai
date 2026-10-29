@@ -42,7 +42,7 @@
   "dependencies": {
     "pg": "^8.23.1",
     "imapflow": "^2.2.1",
-    "nodemailer": "^10.0.13"
+    "nodemailer": "^10.2.1"
   },
   "optionalDependencies": {
     "playwright-core": "^1.55.0"
