@@ -496,7 +496,7 @@ export class Supervisor{
   /** Which checks prove this project works, from the planner's choice and what the project can run now. */
   private computeChecks(job:SupervisorJob,info:ProjectInfo|null):Checks{
     const c=(job.specChecks??{}) as any;
-    const canRun=(t:string)=>Boolean(info&&(info.stack!=="node"?["install","test","build"].includes(t):info.scripts.includes(t)||t==="install"));
+    const canRun=(t:string)=>Boolean(info&&info.stack!=="unknown"&&(info.stack!=="node"?["install","test","build"].includes(t):info.scripts.includes(t)||t==="install"));
     return{
       install:Boolean(info&&info.stack!=="unknown"&&(c.install??true)),
       test:canRun("test")&&c.test!==false,build:canRun("build")&&c.build!==false,
