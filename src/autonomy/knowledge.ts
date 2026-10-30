@@ -37,10 +37,11 @@ export function ensureLayanxIgnore(dir:string){
   try{
     const d=dotDir(dir);fs.mkdirSync(d,{recursive:true});
     const file=path.join(d,".gitignore");
-    if(!fs.existsSync(file))fs.writeFileSync(file,"# Local transient checks and private delivery evidence.\nscreens/\nhealth.json\nsecurity.json\nindex.json\noutcomes/\n");
+    if(!fs.existsSync(file))fs.writeFileSync(file,"# Local transient checks and private delivery evidence.\nscreens/\nhealth.json\nsecurity.json\nindex.json\noutcomes/\ndeliveries/\n");
     else{
       const lines=fs.readFileSync(file,"utf8").split(/\r?\n/).map(line=>line.trim());
-      if(!lines.includes("outcomes/"))fs.appendFileSync(file,"\n# Keep private delivery reports local.\noutcomes/\n");
+      if(!lines.includes("outcomes/"))fs.appendFileSync(file,"\n# Keep private outcome reports local.\noutcomes/\n");
+      if(!lines.includes("deliveries/"))fs.appendFileSync(file,"\n# Keep delivery manifests on the local machine.\ndeliveries/\n");
     }
   }catch{}
 }

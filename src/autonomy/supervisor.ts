@@ -30,6 +30,8 @@ import {errorSignature,findLessons,guidanceText,listLessons,listPlaybooks,markLe
 export type JobStatus="queued"|"planning"|"running"|"waiting_approval"|"verifying"|"completed"|"failed"|"cancelled"|"budget_exhausted";
 export type MilestoneKind="code"|"test"|"research"|"desktop"|"business"|"general";
 import {assessOutcome,type OutcomeReport,type OutcomeRuntimeProof} from "./outcome.js";
+import {writeDeliveryManifest} from "./delivery.js";
+import {verifyTaskApp,type TaskAppProbeResult} from "./task-app-verifier.js";
 
 export interface Milestone{title:string;goal:string;kind:MilestoneKind;agent:string;status:"pending"|"running"|"done"|"failed";attempts:number;missions:string[];notes?:string}
 export interface Checks{install:boolean;test:boolean;build:boolean;typecheck:boolean;lint:boolean;browser:{path:string}|null;security?:boolean}
@@ -41,6 +43,9 @@ export interface SupervisorJob{
   baseline?:CheckResult[];lastChecks?:CheckResult[];visual?:{url:string;problems:string[];judgement?:string;screens:string[]};
   /** Machine-observed result of the final delivery gates, persisted with the job. */
   outcome?:OutcomeReport;
+  acceptanceProfile?:"task-app-http-v1";
+  behavior?:TaskAppProbeResult;
+  delivery?:{manifestPath:string;guidePath:string;fileCount:number};
   runtimeProofs?:OutcomeRuntimeProof[];
   waiting?:{approvalId:string;missionId:string;index:number;kind:"agent"|"tool";agentId?:string;tool?:string;payload?:Record<string,unknown>;milestone:number;continuation?:"milestone"|"final"};
   /** Check results already executed while resuming an approval-gated verification pass. */
@@ -130,13 +135,13 @@ export class Supervisor{
   }
 
   // ------------------------------------------------------------ public API
-  create(goal:string,projectId="default",opts:{maxMinutes?:number;maxRounds?:number;openWhenDone?:boolean}={}):SupervisorJob{
+  create(goal:string,projectId="default",opts:{maxMinutes?:number;maxRounds?:number;openWhenDone?:boolean;acceptanceProfile?:"task-app-http-v1"}={}):SupervisorJob{
     const g=goal.trim();if(g.length<3||g.length>4000)throw new Error("goal_required");
     const minutes=Math.min(Math.max(opts.maxMinutes??120,5),24*60);
     const job:SupervisorJob={id:randomUUID(),projectId,goal:g,status:"planning",createdAt:now(),updatedAt:now(),
       deadline:new Date(Date.now()+minutes*60_000).toISOString(),budgetMinutes:minutes,openWhenDone:Boolean(opts.openWhenDone)||wantsOpenWhenDone(g),
       trust:trustLevel(projectId),acceptance:[],checks:null,milestones:[],current:0,rounds:0,maxRounds:Math.min(Math.max(opts.maxRounds??30,3),200),
-      cloudUsed:false,externalUsed:[],checkpoints:[],log:[],finalRepairs:0};
+      cloudUsed:false,externalUsed:[],checkpoints:[],log:[],finalRepairs:0,...(opts.acceptanceProfile?{acceptanceProfile:opts.acceptanceProfile}:{})};
     this.jobs.set(job.id,job);this.log(job,"Job created");this.save();
     void this.drive(job.id);
     return job;
@@ -193,7 +198,7 @@ export class Supervisor{
     this.discardStaleDesktopOpenPlan(job);
     this.discardStaleNotepadFocusVerification(job);
     job.deadline=new Date(Date.now()+(job.budgetMinutes??120)*60_000).toISOString();
-    job.rounds=0;job.finalRepairs=0;job.result=undefined;job.waiting=undefined;job.outcome=undefined;job.resumed=(job.resumed??0)+1;
+    job.rounds=0;job.finalRepairs=0;job.result=undefined;job.waiting=undefined;job.outcome=undefined;job.behavior=undefined;job.delivery=undefined;job.resumed=(job.resumed??0)+1;
     const m=job.milestones[job.current];
     if(m&&m.status!=="done"){m.status="pending";m.attempts=0;}
     const next:JobStatus=!job.milestones.length||!job.checks?"planning":job.current>=job.milestones.length?"verifying":"running";
@@ -618,11 +623,42 @@ export class Supervisor{
     if(c?.security&&!c.browser&&(!(job as SupervisorJob).security||(job as SupervisorJob).security?.blocked)){const sec=await this.securityGate(job);if(sec==="waiting")return;if(sec){this.captureOutcome(job,final);return this.reopen(job,sec);}}
     // Independent machine-evidence gate: no non-skipped checks means no verified code delivery.
     // The human-readable acceptance strings remain *planned* criteria, never auto-asserted.
-    const outcome=this.captureOutcome(job,final);
+    let outcome=this.captureOutcome(job,final);
     if(outcome.status!=="verified")return this.reopen(job,"Delivery evidence is insufficient:\n"+outcome.blockers.join("\n"));
+    // A test/build can prove code runs, but cannot prove that the requested behavior works.
+    // Explicit acceptance profiles run independently BEFORE marking a job completed.
+    if(job.acceptanceProfile==="task-app-http-v1"){
+      let observed:TaskAppProbeResult;
+      try{observed=await verifyTaskApp(projectDir(job.projectId));}
+      catch(error){
+        observed={ok:false,checks:[],blockers:["Independent probe failed: "+(error instanceof Error?error.message:String(error))],verificationScope:"real-http-and-restart"};
+      }
+      job.behavior=observed;
+      const reason=observed.blockers.join("; ")||"Task application behavior could not be verified.";
+      outcome={...outcome,status:observed.ok?"verified":"blocked",
+        evidence:[...outcome.evidence,{kind:"check",name:"task-app-http-v1",passed:observed.ok,observedAt:now(),
+          reference:"independent:http:task-app",detail:observed.ok?"Observed create/list/delete and persistence after restart":reason.slice(0,1200)}],
+        blockers:observed.ok?outcome.blockers:[...outcome.blockers,reason]};
+      job.outcome=outcome;this.save();this.writeOutcomeReport(job);
+      if(!observed.ok)return this.reopen(job,"Independent behavior verification failed: "+reason);
+    }
     writeProjectNotes(job);
     try{refreshKnowledge(projectDir(job.projectId));}catch{}
     await this.commitNotes(job);
+    if(job.milestones.some(m=>m.kind==="code"||m.kind==="test")&&fs.existsSync(path.join(projectDir(job.projectId),"package.json"))){
+      try{
+        const delivery=writeDeliveryManifest(projectDir(job.projectId),job.id,outcome);
+        job.delivery={manifestPath:delivery.relativePath,guidePath:delivery.guideRelativePath,fileCount:delivery.manifest.artifacts.length};
+        this.save();
+        this.log(job,"Verified delivery manifest: "+delivery.relativePath+" ("+job.delivery.fileCount+" files)");
+      }catch(error){
+        const reason="Delivery manifest failed: "+(error instanceof Error?error.message:String(error));
+        job.outcome={...outcome,status:"blocked",blockers:[...outcome.blockers,reason]};
+        job.delivery=undefined;
+        this.save();this.writeOutcomeReport(job);
+        return this.reopen(job,reason);
+      }
+    }
     job.result=`Automated verification passed (${outcome.evidence.length} recorded evidence items; human acceptance criteria remain separately reviewable). ${job.milestones.length} milestone(s), checks ${final.map(f=>f.name).join(", ")||"none"} passing`+(job.visual?`, visual check ${job.visual.problems.length?"with issues":"clean"}`:"")+((job as SupervisorJob).security?`, security score ${(job as SupervisorJob).security!.score}/100`:"")+(job.branch?`, branch ${job.branch}`:"");
     this.finished(job,true);
     await this.learnPlaybook(job);
@@ -643,7 +679,7 @@ export class Supervisor{
       browserRequired:Boolean(c?.browser),
       ...(job.visual?{browser:{url:job.visual.url,ok:job.visual.problems.length===0,
         viewports:job.visual.screens,problems:job.visual.problems}}:{}),
-      securityRequired:job.specChecks?.security===true,
+      securityRequired:Boolean(c?.security),
       ...(job.security?{security:{score:job.security.score,blocked:job.security.blocked}}:{})
     });
     job.outcome=outcome;

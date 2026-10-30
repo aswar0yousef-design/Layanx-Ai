@@ -25,8 +25,8 @@ npm run acceptance:live:local
 
 - An actual local model plans a goal and the LayanX coder attempts to generate a brand-new Node.js task API.
 - The real `project.run` adapter executes install, test and build steps.
-- The output file `acceptance-result.json` records the final status, test references, blockers and workspace path.
-- `ok: true` requires a completed Supervisor job, a verified Outcome report, successful non-skipped test **and** build evidence, and the requested project files.
+- The output file `acceptance-result.json` records the final status, test references, blockers, independent behavior checks and workspace path.
+- `ok: true` requires a completed Supervisor job, a verified Outcome report, successful non-skipped test **and** build evidence, the requested project files, **and independent observed HTTP behavior**: health, bilingual HTML, create/list/delete and persistence across two server restarts.
 - If approval is required or any check fails, the run reports `ok: false` (never a fabricated pass).
 
 ## Isolation and limitations
@@ -36,6 +36,9 @@ The script sets local-only AI, enables the coding capability only, disables brow
 `no-scripts` prevents npm package lifecycle scripts; it is not a full OS sandbox.
 The local agent can still execute coding tools. Review the run on a non-sensitive test machine and do not use this command with production credentials.
 No external accounts are intentionally used.
+
+The independent probe runs generated app code in a child Node process with a minimal environment; this is **not a security sandbox**. Do not use a machine containing production secrets to test untrusted generated code.
+The probe verifies the HTTP API and bilingual HTML presence, **not** interactive browser visuals or accessibility; those require a separate browser test. It restarts the generated app server, **not** the LayanX Supervisor or Windows.
 
 Passing this test demonstrates **one specific app-delivery workflow on this machine**.
 It does not validate every desktop operation, every business connector, or real trading.
