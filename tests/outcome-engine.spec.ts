@@ -10,6 +10,10 @@ const assess=(patch:Partial<OutcomeInput>={})=>assessOutcome({...base,...patch})
 assert.equal(assess().status,"blocked","Model confidence is not an execution proof.");
 assert.match(assess().blockers.join(" "),/no successful non-skipped/);
 assert.equal(assess({checks:[{name:"test",ok:true,skipped:true,summary:"not configured"}]}).status,"blocked","Skipped tests never count.");
+assert.equal(assess({checks:[{name:"install",ok:true,summary:"installed"}]}).status,"blocked","Install alone is not proof that code runs.");
+assert.equal(assess({checks:[{name:"test",ok:true,summary:"passed"}],requiredChecks:["test","build"]}).status,"blocked","Every required check must have successful evidence.");
+assert.equal(assess({checks:[{name:"test",ok:true,summary:"passed"},{name:"build",ok:true,skipped:true,summary:"skipped"}],requiredChecks:["test","build"]}).status,"blocked","A skipped required build cannot pass.");
+assert.equal(assess({checks:[{name:"test",ok:true,summary:"passed"},{name:"build",ok:true,summary:"built"}],requiredChecks:["test","build"]}).status,"verified");
 const success=assess({checks:[{name:"test",ok:true,summary:"passed"}]});
 assert.equal(success.status,"verified");
 assert.equal(success.verificationScope,"automated-gates");
