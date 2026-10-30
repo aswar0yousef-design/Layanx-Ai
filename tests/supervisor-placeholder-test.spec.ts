@@ -25,6 +25,8 @@ const deps:SupervisorDeps={
     ran.push(tool+":"+String(payload.task??""));
     // What the real project.run does for the placeholder: it fails.
     if(tool==="project.run"&&payload.task==="test")return{ok:false,error:"Error: no test specified"};
+    if(tool==="project.run"&&payload.task==="dev:start")return{ok:true,data:{url:"http://127.0.0.1:5173"}};
+    if(tool==="browser.test")return{ok:true,data:{ok:true,problems:[],results:[{viewport:"desktop",screenshot:{mimeType:"image/jpeg",base64:"AAAA"}}]}};
     if(tool==="project.security")return{ok:true,data:{score:100,blocked:false,counts:{}}};
     return{ok:true,data:{ok:true,exitCode:0}};
   },

@@ -223,33 +223,59 @@ class PowerShellDesktopHelper implements WindowsDesktopBackend{
    const child=spawn(existsSync(exe)?exe:"powershell.exe",["-NoLogo","-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-InputFormat","None","-EncodedCommand",Buffer.from(WIN_HELPER_PS,"utf16le").toString("base64")],
     {shell:false,windowsHide:true,stdio:["pipe","pipe","pipe"],env:safeChildEnv()});
    this.child=child;
+   this.stderr="";
+   let startupSettled=false;
+   const failStartup=(error:Error)=>{if(startupSettled)return;startupSettled=true;reject(error);};
    child.stdin.on("error",()=>undefined);
    child.stdin.write(Buffer.from(WIN_HELPER_CS,"utf8").toString("base64")+"\n"+Buffer.from(WIN_UIA_CS,"utf8").toString("base64")+"\n");
-   // First start compiles two C# helpers and loads UI Automation: a cold Windows (or CI runner) can need a minute.
-   const startup=setTimeout(()=>{reject(new Error("Desktop helper did not start within 120 s: "+this.stderr.slice(0,300)));try{child.kill();}catch{}this.reset();},120_000);
-   child.stderr.setEncoding("utf8").on("data",(c:string)=>{this.stderr=(this.stderr+c).slice(-4000);});
+   // Compiling the Windows C# helpers can be slow under CI load; never let an old
+   // child close event reset a newer helper and corrupt its pending requests.
+   const startup=setTimeout(()=>{
+    failStartup(new Error("Desktop helper did not start within 120 s: "+this.stderr.slice(0,300)));
+    if(this.child===child)this.reset();
+    try{child.kill();}catch{}
+   },120_000);
+   child.stderr.setEncoding("utf8").on("data",(c:string)=>{if(this.child===child)this.stderr=(this.stderr+c).slice(-4000);});
    createInterface({input:child.stdout}).on("line",line=>{
+    if(this.child!==child)return;
     let msg:{ready?:boolean;id?:string;ok?:boolean;data?:string;error?:string};
     try{msg=JSON.parse(line.replace(/^\uFEFF/,""));}catch{return;}
-    if(msg.ready){clearTimeout(startup);resolve();return;}
+    if(msg.ready){clearTimeout(startup);if(!startupSettled){startupSettled=true;resolve();}return;}
     const p=msg.id?this.pending.get(msg.id):undefined;
     if(!p)return;
     this.pending.delete(msg.id!);clearTimeout(p.timer);
     if(msg.ok)p.resolve(String(msg.data??""));else p.reject(new Error(msg.error||"Desktop action failed."));
    });
-   child.on("exit",()=>{clearTimeout(startup);for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(new Error("Desktop helper stopped: "+this.stderr.slice(0,300)));}this.pending.clear();this.reset();});
-   child.on("error",error=>{clearTimeout(startup);reject(error);this.reset();});
+   child.on("exit",code=>{
+    clearTimeout(startup);
+    if(this.child!==child)return;
+    failStartup(new Error("Desktop helper exited before ready (code "+code+"): "+this.stderr.slice(0,300)));
+    for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(new Error("Desktop helper stopped: "+this.stderr.slice(0,300)));}
+    this.pending.clear();this.reset();
+   });
+   child.on("error",error=>{clearTimeout(startup);if(this.child!==child)return;failStartup(error);this.reset();});
   });
   return this.ready;
  }
  private reset(){this.child=null;this.ready=null;}
  async send(op:Record<string,unknown>,timeoutMs=8000):Promise<string>{
-  await this.start();
+  try{await this.start();}
+  catch{
+   // A failed startup cannot have executed this action: one bounded retry is safe.
+   await new Promise(resolve=>setTimeout(resolve,250));
+   await this.start();
+  }
+  const child=this.child;
+  if(!child||!child.stdin.writable)throw new Error("Desktop helper unavailable after startup.");
   const id=randomUUID();
   return new Promise((resolve,reject)=>{
    const timer=setTimeout(()=>{this.pending.delete(id);reject(new Error("Desktop action timed out."));},timeoutMs);
    this.pending.set(id,{resolve,reject,timer});
-   this.child!.stdin.write(JSON.stringify({...op,id})+"\n");
+   child.stdin.write(JSON.stringify({...op,id})+"\n",(error?:Error|null)=>{
+    if(!error)return;
+    const pending=this.pending.get(id);
+    if(pending){this.pending.delete(id);clearTimeout(pending.timer);pending.reject(error);}
+   });
   });
  }
 }

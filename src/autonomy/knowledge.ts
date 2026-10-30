@@ -34,8 +34,15 @@ export interface Health{[check:string]:{ok:boolean;at:string;summary?:string;sco
 const dotDir=(dir:string)=>path.join(dir,".layanx");
 /** Volatile files (rewritten on every check) stay out of Git so they never block merges or clutter history. */
 export function ensureLayanxIgnore(dir:string){
-  try{const d=dotDir(dir);fs.mkdirSync(d,{recursive:true});const f=path.join(d,".gitignore");
-    if(!fs.existsSync(f))fs.writeFileSync(f,"# Rewritten on every check; the rest of .layanx/ is project memory worth keeping in Git.\nscreens/\nhealth.json\nsecurity.json\nindex.json\n");}catch{}
+  try{
+    const d=dotDir(dir);fs.mkdirSync(d,{recursive:true});
+    const file=path.join(d,".gitignore");
+    if(!fs.existsSync(file))fs.writeFileSync(file,"# Local transient checks and private delivery evidence.\nscreens/\nhealth.json\nsecurity.json\nindex.json\noutcomes/\n");
+    else{
+      const lines=fs.readFileSync(file,"utf8").split(/\r?\n/).map(line=>line.trim());
+      if(!lines.includes("outcomes/"))fs.appendFileSync(file,"\n# Keep private delivery reports local.\noutcomes/\n");
+    }
+  }catch{}
 }
 const read=(file:string)=>{try{return fs.readFileSync(file,"utf8");}catch{return"";}};
 

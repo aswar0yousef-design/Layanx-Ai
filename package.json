@@ -31,7 +31,8 @@
     "free:bootstrap": "node scripts/free-llm-bootstrap.mjs",
     "free:check": "npm run typecheck && npm test && npm run build && npm run free:bootstrap",
     "vsix": "node scripts/build-vsix.mjs",
-    "tools:security": "tsx scripts/install-security-tools.ts"
+    "tools:security": "tsx scripts/install-security-tools.ts",
+    "acceptance:live:local": "tsx scripts/outcome-live-acceptance.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",

@@ -39,7 +39,7 @@ const deps:SupervisorDeps={
   async runTool(_p,tool,payload){
     tools.push(tool+":"+String(payload.task??""));
     if(tool==="project.run"&&payload.task==="dev:start")return{ok:true,data:{url:"http://localhost:3000"}};
-    if(tool==="browser.test")return{ok:true,data:{problems:[],results:[]}};
+    if(tool==="browser.test")return{ok:true,data:{problems:[],results:[{viewport:"desktop",screenshot:{mimeType:"image/jpeg",base64:"AAAA",bytes:3}}]}};
     if(tool==="project.security")return{ok:true,data:{score:100,blocked:false,counts:{}}};
     return{ok:true,data:{ok:true,exitCode:0}};
   },
