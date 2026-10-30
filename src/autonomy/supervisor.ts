@@ -639,7 +639,7 @@ export class Supervisor{
     const outcome=assessOutcome({
       jobId:job.id,projectId:job.projectId,acceptanceCriteria:job.acceptance,
       codeTask:job.milestones.some(m=>m.kind==="code"||m.kind==="test"),
-      checks:final,runtimeProofs:job.runtimeProofs??[],
+      checks:final,requiredChecks:(["test","build","typecheck","lint"] as const).filter(name=>Boolean(c?.[name])),runtimeProofs:job.runtimeProofs??[],
       browserRequired:Boolean(c?.browser),
       ...(job.visual?{browser:{url:job.visual.url,ok:job.visual.problems.length===0,
         viewports:job.visual.screens,problems:job.visual.problems}}:{}),
