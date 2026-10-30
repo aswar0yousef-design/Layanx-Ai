@@ -84,7 +84,7 @@ try{
   assert.ok(result.outcome?.evidence.some(e=>e.reference==="project.run:build"));
   const evidenceFile=path.join(workspace,".layanx","outcomes",job.id+".json");
   const recorded=JSON.parse(fs.readFileSync(evidenceFile,"utf8")) as {evidence:Array<{reference:string}>};
-  assert.match(fs.readFileSync(path.join(workspace,".layanx",".gitignore"),"utf8"),/^outcomes\\/$/m,"private evidence must not be staged by git.add");
+  assert.match(fs.readFileSync(path.join(workspace,".layanx",".gitignore"),"utf8"),/^outcomes\/$/m,"private evidence must not be staged by git.add");
   assert.ok(recorded.evidence.some(e=>e.reference==="project.run:test"));
   assert.ok(fs.existsSync(path.join(workspace,"app.mjs")));
   assert.ok(fs.existsSync(path.join(workspace,"test.mjs")));
