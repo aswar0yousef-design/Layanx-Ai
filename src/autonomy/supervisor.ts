@@ -64,6 +64,8 @@ export interface SupervisorJob{
   needsInstall?:boolean;
   budgetMinutes?:number;
   resumed?:number;
+  /** A step was in flight when LayanX restarted. Never repeat unknown side effects automatically. */
+  recoveryHold?:{kind:"interrupted-milestone"|"missing-approval";milestone:number;at:string;description:string};
 }
 export interface AgentRun{completed?:boolean;paused?:boolean;missionId?:string;nextToolIndex?:number;approvalId?:string;reason?:string;status?:string;final?:{ok?:boolean;error?:string;verified?:boolean};results?:unknown[]}
 export interface ToolRun{ok?:boolean;missionId?:string;approvalId?:string;data?:any;error?:string}
@@ -195,6 +197,7 @@ export class Supervisor{
   resume(id:string):SupervisorJob{
     const job=this.jobs.get(id);if(!job)throw new Error("job_not_found");
     if(!["failed","cancelled","budget_exhausted"].includes(job.status))throw new Error("job_not_stopped");
+    if(job.recoveryHold)throw new Error("recovery_reconciliation_required");
     this.discardStaleDesktopOpenPlan(job);
     this.discardStaleNotepadFocusVerification(job);
     job.deadline=new Date(Date.now()+(job.budgetMinutes??120)*60_000).toISOString();
@@ -205,6 +208,22 @@ export class Supervisor{
     this.set(job,next,`Resumed by the owner (${job.milestones.filter(x=>x.status==="done").length}/${job.milestones.length} milestones already done)`);
     void this.drive(job.id);
     return job;
+  }
+  /** Owner-reviewed reconciliation: retry requires manual verification that no external side effect was duplicated.
+   * A rejected/uncertain action is never automatically replayed merely because LayanX rebooted. */
+  reconcile(id:string,decision:"retry"|"abort"):SupervisorJob{
+    const job=this.jobs.get(id);if(!job)throw new Error("job_not_found");
+    if(!job.recoveryHold||job.status!=="failed")throw new Error("recovery_not_pending");
+    if(decision!=="retry"&&decision!=="abort")throw new Error("invalid_recovery_decision");
+    this.log(job,"Owner reconciled interrupted milestone "+(job.recoveryHold.milestone+1)+": "+decision+
+      (decision==="retry"?" (confirmed safe to retry after checking external effects)":" (no replay)"),"warn");
+    if(decision==="abort"){
+      this.set(job,"cancelled","Owner stopped the interrupted task; retry remains blocked until explicitly reconciled");
+      return job;
+    }
+    job.recoveryHold=undefined;
+    this.save();
+    return this.resume(id);
   }
   /** An instruction from the owner for a job (running or finished): used from the next step on. */
   addNote(id:string,text:string):SupervisorJob{
@@ -241,6 +260,21 @@ export class Supervisor{
       }else if(this.discardStaleDesktopOpenPlan(job)){
         job.deadline=new Date(Date.now()+(job.budgetMinutes??120)*60_000).toISOString();
         this.set(job,"planning","Recovered an unfinished desktop-open request after restart");
+      }
+      // A completed mission may have triggered real side effects immediately before a crash.
+      // Without a persisted terminal receipt, replaying a running milestone is unsafe.
+      const interrupted=job.milestones[job.current];
+      const unknownEffects=(job.status==="running"||(job.status==="queued"&&job.queuedFrom==="running"))
+        &&interrupted?.status==="running";
+      const orphanApproval=job.status==="waiting_approval"&&!job.waiting;
+      if(unknownEffects||orphanApproval){
+        job.recoveryHold={kind:orphanApproval?"missing-approval":"interrupted-milestone",
+          milestone:job.current,at:now(),description:orphanApproval
+            ?"Approval state was lost during restart. Check the runtime audit before proceeding."
+            :"An in-flight step may already have modified files or executed external actions. Check the runtime audit and external effects before allowing any retry."};
+        job.result="Review required after restart: "+job.recoveryHold.description;
+        this.set(job,"failed","Recovery hold: outcome of an interrupted operation is unknown. No action was replayed.");
+        continue;
       }
       void this.drive(job.id);
     }
@@ -389,6 +423,9 @@ export class Supervisor{
     const external=m.kind==="code"&&m.attempts===3?this.deps.externalAgent():null;
     this.log(job,`Milestone ${job.current+1}/${job.milestones.length} attempt ${m.attempts}: ${m.title}`+(escalate?" (cloud model)":"")+(external?` (with ${external.name})`:""));
     if(escalate)job.cloudUsed=true;
+    // Persist the in-flight state *before* handing a task to an agent.
+    // Otherwise a crash leaves the last stored milestone pending and restart may replay it.
+    this.save();
     if(external){
       const r=await this.tool(job,"agent.external",{agent:external.name,task:this.taskText(job,m)});
       if(r==="waiting")return;
