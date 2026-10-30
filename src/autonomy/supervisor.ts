@@ -37,7 +37,9 @@ export interface SupervisorJob{
   id:string;projectId:string;goal:string;status:JobStatus;createdAt:string;updatedAt:string;deadline:string;trust:string;
   acceptance:string[];checks:Checks|null;milestones:Milestone[];current:number;rounds:number;maxRounds:number;
   baseline?:CheckResult[];lastChecks?:CheckResult[];visual?:{url:string;problems:string[];judgement?:string;screens:string[]};
-  waiting?:{approvalId:string;missionId:string;index:number;kind:"agent"|"tool";agentId?:string;tool?:string;payload?:Record<string,unknown>;milestone:number};
+  waiting?:{approvalId:string;missionId:string;index:number;kind:"agent"|"tool";agentId?:string;tool?:string;payload?:Record<string,unknown>;milestone:number;continuation?:"milestone"|"final"};
+  /** Check results already executed while resuming an approval-gated verification pass. */
+  checkCache?:{purpose:"milestone"|"final";results:Partial<Record<"typecheck"|"lint"|"test"|"build",CheckResult>>};
   cloudUsed:boolean;externalUsed:string[];checkpoints:string[];log:JobLog[];result?:string;finalRepairs:number;
   branch?:string;queuedFrom?:JobStatus;security?:{score:number;blocked:boolean;counts:Record<string,number>};
   playbooks?:string[];lessons?:string[];learned?:string[];discovered?:string[];
@@ -393,7 +395,7 @@ export class Supervisor{
    */
   private async afterWork(job:SupervisorJob,m:Milestone,agentStopped?:string){
     const previousFailure=m.attempts>1?m.notes:undefined;
-    const checks=await this.runChecks(job);
+    const checks=await this.runChecks(job,"milestone");
     if(checks===undefined)return;
     job.lastChecks=checks;
     const failed=checks.filter(c=>!c.ok&&!c.skipped);
@@ -438,10 +440,10 @@ export class Supervisor{
   }
 
   // ------------------------------------------------------------ tools through the runtime (approvals respected)
-  private async tool(job:SupervisorJob,tool:string,payload:Record<string,unknown>):Promise<ToolRun|"waiting">{
+  private async tool(job:SupervisorJob,tool:string,payload:Record<string,unknown>,continuation?:"milestone"|"final"):Promise<ToolRun|"waiting">{
     const r=await this.deps.runTool(job.projectId,tool,payload);
     if(!r.ok&&r.approvalId&&r.missionId){
-      job.waiting={approvalId:r.approvalId,missionId:r.missionId,index:0,kind:"tool",tool,payload,milestone:job.current};
+      job.waiting={approvalId:r.approvalId,missionId:r.missionId,index:0,kind:"tool",tool,payload,milestone:job.current,...(continuation?{continuation}:{})};
       this.set(job,"waiting_approval",`Waiting for your approval: ${tool} ${payload.task??payload.agent??""}`);return"waiting";
     }
     return r;
@@ -462,9 +464,22 @@ export class Supervisor{
       await this.afterWork(job,m,run.completed?undefined:run.reason??run.final?.error??run.status??"unknown");return;
     }
     if(w.kind==="tool"){
-      await this.deps.runTool(job.projectId,w.tool!,w.payload??{},{missionId:w.missionId,approvalId:w.approvalId});
-      if(w.tool==="agent.external"&&m)await this.afterWork(job,m);
-      // install / checks / dev server: the next step re-runs whatever was waiting
+      const resumed=await this.deps.runTool(job.projectId,w.tool!,w.payload??{},{missionId:w.missionId,approvalId:w.approvalId});
+      if(w.tool==="agent.external"&&m){await this.afterWork(job,m);return;}
+      // Continue the interrupted verification pass with the approved command's actual result.
+      // Re-running the milestone here used to discard this result and launch the coder again.
+      const task=w.payload?.task;
+      if(w.tool==="project.run"&&w.continuation&&(task==="typecheck"||task==="lint"||task==="test"||task==="build")){
+        const d=resumed.data??{};
+        const ok=Boolean(resumed.ok&&(d.ok??d.exitCode===0));
+        const result:CheckResult={name:task,ok,summary:ok?"passed":clip(String(d.stderr||"")+"\n"+String(d.stdout||"")||resumed.error||"failed",2000)};
+        const purpose=w.continuation;
+        if(!job.checkCache||job.checkCache.purpose!==purpose)job.checkCache={purpose,results:{}};
+        job.checkCache.results[task]=result;
+        if(purpose==="milestone"&&m){await this.afterWork(job,m);return;}
+        if(purpose==="final"){await this.finalVerification(job);return;}
+      }
+      // install / baseline checks / dev server: keep their existing continuation behavior.
       if(job.status==="running"&&!job.baseline&&job.milestones.length&&job.current===0&&w.tool==="project.run"&&w.payload?.task==="install"){job.baseline=await this.runChecks(job);this.save();}
     }
   }
@@ -498,7 +513,7 @@ export class Supervisor{
     this.save();
   }
 
-  private async runChecks(job:SupervisorJob):Promise<CheckResult[]|undefined>{
+  private async runChecks(job:SupervisorJob,purpose:"baseline"|"milestone"|"final"="baseline"):Promise<CheckResult[]|undefined>{
     this.refreshChecks(job);
     const c=job.checks;if(!c)return[];
     if(job.needsInstall){
@@ -506,17 +521,24 @@ export class Supervisor{
       if(r==="waiting")return undefined;
       job.needsInstall=false;this.save();
     }
+    const resumable=purpose==="milestone"||purpose==="final";
+    if(resumable&&(!job.checkCache||job.checkCache.purpose!==purpose))job.checkCache={purpose,results:{}};
     const out:CheckResult[]=[];
     for(const name of ["typecheck","lint","test","build"] as const){
       if(!c[name])continue;
       // A job planned before LayanX ignored the `npm init` placeholder still lists "test": it is not a test.
       if(name==="test"&&placeholderTest(projectDir(job.projectId))){out.push({name,ok:true,skipped:true,summary:"no tests yet (npm init placeholder)"});continue;}
-      const r=await this.tool(job,"project.run",{task:name});
+      const cached=resumable?job.checkCache?.results[name]:undefined;
+      if(cached){out.push(cached);continue;}
+      const r=await this.tool(job,"project.run",{task:name},resumable?purpose:undefined);
       if(r==="waiting")return undefined;
       const d=r.data??{};
       const ok=Boolean(r.ok&&(d.ok??d.exitCode===0));
-      out.push({name,ok,summary:ok?"passed":clip(String(d.stderr||"")+"\n"+String(d.stdout||"")||r.error||"failed",2000)});
+      const result:CheckResult={name,ok,summary:ok?"passed":clip(String(d.stderr||"")+"\n"+String(d.stdout||"")||r.error||"failed",2000)};
+      out.push(result);
+      if(resumable&&job.checkCache)job.checkCache.results[name]=result;
     }
+    if(resumable)job.checkCache=undefined;
     return out;
   }
 
@@ -524,7 +546,7 @@ export class Supervisor{
   private async finalVerification(job:SupervisorJob){
     job.rounds++;
     const c=job.checks;
-    const final=await this.runChecks(job);
+    const final=await this.runChecks(job,"final");
     if(final===undefined)return;
     const failing=final.filter(x=>!x.ok&&!x.skipped);
     if(failing.length)return this.reopen(job,"Final checks failed:\n"+failing.map(f=>`${f.name}: ${f.summary}`).join("\n"));
