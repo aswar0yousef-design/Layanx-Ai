@@ -141,6 +141,8 @@ function scenario(opts:{testFailures:number;needApproval?:boolean;cloud?:boolean
   await until(()=>["completed","failed"].includes(sup.get(job.id)!.status));
   assert.equal(sup.get(job.id)!.status,"failed","missing browser URL must block completion");
   assert.match(sup.get(job.id)!.result??"",/browser verification/);
+  assert.equal(sup.get(job.id)!.outcome?.status,"blocked","failed deliveries retain blocked evidence");
+  assert.ok(fs.existsSync(path.join(root,"shop",".layanx","outcomes",job.id+".json")),"failed final verification should write a report");
 }
 
 // Failed dependency installation must never be accepted just because later tools could run.
