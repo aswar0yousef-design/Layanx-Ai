@@ -4,7 +4,7 @@ import {randomUUID} from "node:crypto";
 import {detectProject,placeholderTest,type ProjectInfo} from "./project-runner.js";
 import {projectDir} from "./project-dir.js";
 import {trustLevel} from "./trust.js";
-import {knowledgeSummary,recordIssue,refreshKnowledge,updateHealth} from "./knowledge.js";
+import {ensureLayanxIgnore,knowledgeSummary,recordIssue,refreshKnowledge,updateHealth} from "./knowledge.js";
 import {buildRepoMap} from "./repo-map.js";
 import {isLocalPreview} from "../platform/open-url.js";
 import {openRequest} from "../tools/open-app.js";
@@ -654,7 +654,9 @@ export class Supervisor{
   }
   private writeOutcomeReport(job:SupervisorJob){
     if(!job.outcome)return;
-    const dir=path.join(projectDir(job.projectId),".layanx","outcomes");
+    const workspace=projectDir(job.projectId);
+    ensureLayanxIgnore(workspace);
+    const dir=path.join(workspace,".layanx","outcomes");
     fs.mkdirSync(dir,{recursive:true});
     const target=path.join(dir,job.id+".json");
     const tmp=target+".tmp";
