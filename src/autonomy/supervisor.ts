@@ -615,7 +615,7 @@ export class Supervisor{
         if(problems.length){this.captureOutcome(job,final);return this.reopen(job,"Browser check found problems:\n"+problems.join("\n"));}
       }
     }
-    if(c?.security&&!c.browser&&(!job.security||job.security.blocked)){const sec=await this.securityGate(job);if(sec==="waiting")return;if(sec){this.captureOutcome(job,final);return this.reopen(job,sec);}}
+    if(c?.security&&!c.browser&&(!(job as SupervisorJob).security||(job as SupervisorJob).security?.blocked)){const sec=await this.securityGate(job);if(sec==="waiting")return;if(sec){this.captureOutcome(job,final);return this.reopen(job,sec);}}
     // Independent machine-evidence gate: no non-skipped checks means no verified code delivery.
     // The human-readable acceptance strings remain *planned* criteria, never auto-asserted.
     const outcome=this.captureOutcome(job,final);
@@ -623,7 +623,7 @@ export class Supervisor{
     writeProjectNotes(job);
     try{refreshKnowledge(projectDir(job.projectId));}catch{}
     await this.commitNotes(job);
-    job.result=`Automated verification passed (${outcome.evidence.length} recorded evidence items; human acceptance criteria remain separately reviewable). ${job.milestones.length} milestone(s), checks ${final.map(f=>f.name).join(", ")||"none"} passing`+(job.visual?`, visual check ${job.visual.problems.length?"with issues":"clean"}`:"")+(job.security?`, security score ${job.security.score}/100`:"")+(job.branch?`, branch ${job.branch}`:"");
+    job.result=`Automated verification passed (${outcome.evidence.length} recorded evidence items; human acceptance criteria remain separately reviewable). ${job.milestones.length} milestone(s), checks ${final.map(f=>f.name).join(", ")||"none"} passing`+(job.visual?`, visual check ${job.visual.problems.length?"with issues":"clean"}`:"")+((job as SupervisorJob).security?`, security score ${(job as SupervisorJob).security!.score}/100`:"")+(job.branch?`, branch ${job.branch}`:"");
     this.finished(job,true);
     await this.learnPlaybook(job);
     this.set(job,"completed","Automated gates passed; descriptive acceptance criteria are not separately certified");
