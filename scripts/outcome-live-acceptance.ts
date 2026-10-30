@@ -72,12 +72,15 @@ if(!ollama?.available){
       "Create a working Node.js ESM HTTP task-list application in this project folder only.",
       "Do not use external packages or any cloud, publishing, payment, messaging, or trading tools.",
       "Create package.json with scripts test (node --test) and build (node --check src/server.mjs).",
-      "Create src/server.mjs that exports createServer and responds to GET /health with {ok:true},",
-      "POST /tasks with JSON title, and GET /tasks with the list of stored tasks.",
-      "Create tests/tasks.test.mjs using node:test, covering the real HTTP health, add and list flows.",
+      "Create src/server.mjs that exports createServer and responds to GET /health with JSON {ok:true}.",
+      "GET / must render a usable bilingual Arabic/English HTML task UI with add and delete controls.",
+      "POST /tasks accepts JSON {title} and returns {id,title}; GET /tasks returns {tasks:[{id,title}]}.",
+      "DELETE /tasks/:id removes the requested task. Save changes durably to the file in environment variable LAYANX_TASKS_FILE.",
+      "Tasks must survive server restarts, including deletions. Never write outside this disposable project.",
+      "Create tests/tasks.test.mjs using node:test, covering health, creation, listing, deletion and restart persistence.",
       "Run project.run install, test and build; fix failures. Do not stop at only writing code."
     ].join(" ");
-    const job=supervisor.create(goal,id,{maxMinutes:20,maxRounds:30,openWhenDone:false});
+    const job=supervisor.create(goal,id,{maxMinutes:20,maxRounds:30,openWhenDone:false,acceptanceProfile:"task-app-http-v1"});
     const deadline=Date.now()+21*60_000;
     const terminal=new Set(["completed","failed","cancelled","budget_exhausted","waiting_approval"]);
     while(!terminal.has(supervisor.get(job.id)?.status??"")&&Date.now()<deadline){
@@ -91,17 +94,24 @@ if(!ollama?.available){
     const hasProject=fs.existsSync(path.join(app,"src","server.mjs"))
       &&fs.existsSync(path.join(app,"tests","tasks.test.mjs"))
       &&fs.existsSync(pkgFile);
+    const deliveryFile=path.join(app,".layanx","deliveries",job.id+".json");
+    const deliveryGuide=path.join(app,".layanx","deliveries",job.id+".md");
+    const hasDelivery=Boolean(finished.delivery&&fs.existsSync(deliveryFile)&&fs.existsSync(deliveryGuide));
+    const {verifyTaskApp}=await import("../src/autonomy/task-app-verifier.js");
+    const independent=hasProject?await verifyTaskApp(app):{ok:false,checks:[],blockers:["Generated application files missing."],verificationScope:"real-http-and-restart" as const};
     const ok=finished.status==="completed"&&report?.status==="verified"
-      &&machineRefs.has("project.run:test")&&machineRefs.has("project.run:build")&&hasProject;
+      &&machineRefs.has("project.run:test")&&machineRefs.has("project.run:build")
+      &&machineRefs.has("independent:http:task-app")&&hasProject&&hasDelivery&&finished.behavior?.ok===true&&independent.ok;
     const result={
       ok,
       stage:"real-ollama-agent->generated-app->real-project-run->outcome-verification",
       status:finished.status,
       model:process.env.OLLAMA_MODEL??"configured Ollama default",
-      hasProject,missionCount:finished.milestones.flatMap(m=>m.missions).length,
+      hasProject,hasDelivery,deliveryFile,deliveryGuide,missionCount:finished.milestones.flatMap(m=>m.missions).length,
       checkRefs:[...machineRefs],
+      independentBehavior:independent,
       acceptanceCriteria:report?.acceptanceCriteria??[],
-      blockers:report?.blockers??(ok?[]:["Job did not produce a verified outcome."]),
+      blockers:[...(report?.blockers??(ok?[]:["Job did not produce a verified outcome."])),...independent.blockers],
       outcomeFile:path.join(app,".layanx","outcomes",job.id+".json"),
       jobId:job.id,
       lastLog:finished.log.slice(-12)

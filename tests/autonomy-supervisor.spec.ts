@@ -40,6 +40,7 @@ function scenario(opts:{testFailures:number;needApproval?:boolean;cloud?:boolean
       if(tool==="project.run"&&payload.task==="test"){testRuns++;const fail=testRuns>1&&testRuns<=1+opts.testFailures;return{ok:true,data:{ok:!fail,exitCode:fail?1:0,stdout:fail?"1 failing: products API returns 500":"ok"}};}
       if(tool==="project.run"&&payload.task==="dev:start")return{ok:true,data:{running:true,...(opts.noBrowserUrl?{}:{url:"http://localhost:5173"})}};
       if(tool==="browser.test")return{ok:true,data:{ok:true,problems:[],results:[{viewport:"desktop",screenshot:{mimeType:"image/jpeg",base64:"AAAA"}},{viewport:"mobile",screenshot:{mimeType:"image/jpeg",base64:"BBBB"}}]}};
+      if(tool==="project.security")return{ok:true,data:{score:100,blocked:false,counts:{}}};
       return{ok:true,data:{ok:true,exitCode:0}};
     },
     isApproved:id=>{if(id==="ap-1"&&approved)return true;if(id==="ap-tool"&&toolApproved)return true;return false;},

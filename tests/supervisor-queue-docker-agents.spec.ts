@@ -25,7 +25,7 @@ const deps:SupervisorDeps={
     return{completed:true,missionId:"m"};
   },
   async resumeAgent(){return{completed:true};},
-  async runTool(){return{ok:true,data:{ok:true,exitCode:0}};},
+  async runTool(_p,tool){if(tool==="project.security")return{ok:true,data:{score:100,blocked:false,counts:{}}};return{ok:true,data:{ok:true,exitCode:0}};},
   isApproved:()=>false,cloudAvailable:()=>false,externalAgent:()=>null,detect:p=>info(p)
 };
 const sup=new Supervisor(deps,{pollMs:5});

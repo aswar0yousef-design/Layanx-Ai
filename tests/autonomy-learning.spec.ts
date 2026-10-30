@@ -87,6 +87,7 @@ const deps:SupervisorDeps={
   runAgent:async(goal)=>{goals.push(goal);return{completed:true,missionId:"m"};},resumeAgent:async()=>({completed:true}),
   async runTool(_p,tool,payload){if(tool==="project.run"&&payload.task==="test"){run++;const fail=run===2;return{ok:true,data:{ok:!fail,exitCode:fail?1:0,stdout:fail?"Error: GET /orders failed with status 500 at src/routes/orders.ts:12":"ok"}};}
     if(tool==="git.diff")return{ok:true,data:{stdout:"diff --git a/src/routes/orders.ts b/src/routes/orders.ts\n+const price=Number(body.price)\n"}};
+    if(tool==="project.security")return{ok:true,data:{score:100,blocked:false,counts:{}}};
     return{ok:true,data:{ok:true,exitCode:0}};},
   isApproved:()=>false,cloudAvailable:()=>false,externalAgent:()=>null,detect:()=>({dir:path.join(root,"ws","shop"),stack:"node",scripts:["test"],hasLockfile:true,git:false,tasks:[]} as any)
 };
