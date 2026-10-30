@@ -570,17 +570,18 @@ export class Supervisor{
   // ------------------------------------------------------------ 6. visual + final verification
   private async finalVerification(job:SupervisorJob){
     job.rounds++;
+    job.visual=undefined; // Do not carry previous evidence into this verification pass.
+    job.security=undefined;
     const c=job.checks;
     const final=await this.runChecks(job,"final");
     if(final===undefined)return;
     const failing=final.filter(x=>!x.ok&&!x.skipped);
-    if(failing.length)return this.reopen(job,"Final checks failed:\n"+failing.map(f=>`${f.name}: ${f.summary}`).join("\n"));
+    if(failing.length){this.captureOutcome(job,final);return this.reopen(job,"Final checks failed:\n"+failing.map(f=>`${f.name}: ${f.summary}`).join("\n"));}
     if(c?.browser){
-      job.visual=undefined; // Never reuse a screenshot/status from an earlier verification attempt.
       const dev=await this.tool(job,"project.run",{task:"dev:start"});
       if(dev==="waiting")return;
       const url=dev.data?.url as string|undefined;
-      if(!url){return this.reopen(job,"Required browser verification failed: the dev server returned no URL.");}
+      if(!url){this.captureOutcome(job,final);return this.reopen(job,"Required browser verification failed: the dev server returned no URL.");}
       else{
         const target=url.replace(/\/$/,"")+(c.browser.path||"/");
         const t=await this.tool(job,"browser.test",{url:target,viewports:["desktop","mobile"],baseline:"final"});
@@ -606,30 +607,18 @@ export class Supervisor{
         }
         job.visual={url:target,problems,judgement,screens:(data.results??[]).map((r:any)=>r.viewport)};
         try{updateHealth(projectDir(job.projectId),"visual",{ok:!problems.length,summary:problems.slice(0,3).join("; ")||"clean"});}catch{}
-        if(!problems.length){const sec=await this.securityGate(job,url);if(sec==="waiting")return;if(sec){await this.deps.runTool(job.projectId,"project.run",{task:"dev:stop"}).catch(()=>undefined);return this.reopen(job,sec);}}
+        if(!problems.length){const sec=await this.securityGate(job,url);if(sec==="waiting")return;if(sec){await this.deps.runTool(job.projectId,"project.run",{task:"dev:stop"}).catch(()=>undefined);this.captureOutcome(job,final);return this.reopen(job,sec);}}
         // Kept running when the owner wants to see the result (opened below, once the job is done).
         const keep=Boolean(job.openWhenDone&&!problems.length&&isLocalPreview(target));
         if(keep)job.preview=target;
         else await this.deps.runTool(job.projectId,"project.run",{task:"dev:stop"}).catch(()=>undefined);
-        if(problems.length)return this.reopen(job,"Browser check found problems:\n"+problems.join("\n"));
+        if(problems.length){this.captureOutcome(job,final);return this.reopen(job,"Browser check found problems:\n"+problems.join("\n"));}
       }
     }
-    if(c?.security&&!c.browser&&(!job.security||job.security.blocked)){const sec=await this.securityGate(job);if(sec==="waiting")return;if(sec)return this.reopen(job,sec);}
+    if(c?.security&&!c.browser&&(!job.security||job.security.blocked)){const sec=await this.securityGate(job);if(sec==="waiting")return;if(sec){this.captureOutcome(job,final);return this.reopen(job,sec);}}
     // Independent machine-evidence gate: no non-skipped checks means no verified code delivery.
     // The human-readable acceptance strings remain *planned* criteria, never auto-asserted.
-    const outcome=assessOutcome({
-      jobId:job.id,projectId:job.projectId,acceptanceCriteria:job.acceptance,
-      codeTask:job.milestones.some(m=>m.kind==="code"||m.kind==="test"),
-      checks:final,runtimeProofs:job.runtimeProofs??[],
-      browserRequired:Boolean(c?.browser),
-      ...(job.visual?{browser:{url:job.visual.url,ok:job.visual.problems.length===0,
-        viewports:job.visual.screens,problems:job.visual.problems}}:{}),
-      securityRequired:job.specChecks?.security===true,
-      ...(job.security?{security:{score:job.security.score,blocked:job.security.blocked}}:{})
-    });
-    job.outcome=outcome;
-    this.save();
-    this.writeOutcomeReport(job); // Keep a failure manifest too, not just successful deliveries.
+    const outcome=this.captureOutcome(job,final);
     if(outcome.status!=="verified")return this.reopen(job,"Delivery evidence is insufficient:\n"+outcome.blockers.join("\n"));
     writeProjectNotes(job);
     try{refreshKnowledge(projectDir(job.projectId));}catch{}
@@ -644,6 +633,25 @@ export class Supervisor{
     }
   }
   /** Persist a machine-readable delivery manifest alongside the project's existing notes. */
+  /** Save a traceable report even when an earlier gate fails. */
+  private captureOutcome(job:SupervisorJob,final:CheckResult[]):OutcomeReport{
+    const c=job.checks;
+    const outcome=assessOutcome({
+      jobId:job.id,projectId:job.projectId,acceptanceCriteria:job.acceptance,
+      codeTask:job.milestones.some(m=>m.kind==="code"||m.kind==="test"),
+      checks:final,runtimeProofs:job.runtimeProofs??[],
+      browserRequired:Boolean(c?.browser),
+      ...(job.visual?{browser:{url:job.visual.url,ok:job.visual.problems.length===0,
+        viewports:job.visual.screens,problems:job.visual.problems}}:{}),
+      securityRequired:job.specChecks?.security===true,
+      ...(job.security?{security:{score:job.security.score,blocked:job.security.blocked}}:{})
+    });
+    job.outcome=outcome;
+    this.save();
+    this.writeOutcomeReport(job);
+
+    return outcome;
+  }
   private writeOutcomeReport(job:SupervisorJob){
     if(!job.outcome)return;
     const dir=path.join(projectDir(job.projectId),".layanx","outcomes");
