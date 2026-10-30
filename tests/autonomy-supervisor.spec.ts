@@ -11,9 +11,9 @@ fs.mkdirSync(path.join(root,"shop",".git"),{recursive:true});
 const until=async(f:()=>boolean,ms=8000)=>{const end=Date.now()+ms;while(!f()){if(Date.now()>end)throw new Error("timeout");await new Promise(r=>setTimeout(r,10));}};
 const info={dir:path.join(root,"shop"),stack:"node" as const,packageManager:"npm" as const,scripts:["test","build","dev","typecheck"],hasLockfile:true,git:true,tasks:[]};
 
-function scenario(opts:{testFailures:number;needApproval?:boolean;cloud?:boolean;visualIssue?:boolean;toolApproval?:boolean;noBrowserUrl?:boolean}){
+function scenario(opts:{testFailures:number;needApproval?:boolean;cloud?:boolean;visualIssue?:boolean;toolApproval?:boolean;noBrowserUrl?:boolean;installFailures?:number}){
   const calls:{agents:Array<{agent:string;routing?:unknown;goal:string}>;tools:Array<{tool:string;payload:any}>;think:Array<{cloud?:boolean;images:number}>}={agents:[],tools:[],think:[]};
-  let testRuns=0,approved=false,toolApproved=false,typecheckRuns=0,visualAsked=0;
+  let testRuns=0,installRuns=0,approved=false,toolApproved=false,typecheckRuns=0,visualAsked=0;
   const deps:SupervisorDeps={
     async think(prompt,o={}){
       calls.think.push({cloud:o.cloud,images:o.images?.length??0});
@@ -28,6 +28,10 @@ function scenario(opts:{testFailures:number;needApproval?:boolean;cloud?:boolean
     async resumeAgent(){return{completed:true,missionId:"m-approval"};},
     async runTool(_p,tool,payload,resume){
       calls.tools.push({tool,payload});
+      if(tool==="project.run"&&payload.task==="install"){
+        installRuns++;
+        if(installRuns<=(opts.installFailures??0))return{ok:false,error:"npm install failed",data:{ok:false,exitCode:1,stderr:"could not install dependency"}};
+      }
       if(tool==="project.run"&&payload.task==="typecheck"){
         typecheckRuns++;
         if(opts.toolApproval&&typecheckRuns===2&&!resume)return{ok:false,missionId:"m-tool-approval",approvalId:"ap-tool"};
@@ -43,7 +47,7 @@ function scenario(opts:{testFailures:number;needApproval?:boolean;cloud?:boolean
     externalAgent:()=>({name:"aider",kind:"local"}),
     detect:()=>info
   };
-  return{deps,calls,approve:()=>{approved=true;},approveTool:()=>{toolApproved=true;},getTypecheckRuns:()=>typecheckRuns};
+  return{deps,calls,approve:()=>{approved=true;},approveTool:()=>{toolApproved=true;},getTypecheckRuns:()=>typecheckRuns,getInstallRuns:()=>installRuns};
 }
 
 // 1) happy path: plan -> baseline -> 2 milestones -> commits -> dev server + browser + vision -> notes
@@ -137,6 +141,17 @@ function scenario(opts:{testFailures:number;needApproval?:boolean;cloud?:boolean
   await until(()=>["completed","failed"].includes(sup.get(job.id)!.status));
   assert.equal(sup.get(job.id)!.status,"failed","missing browser URL must block completion");
   assert.match(sup.get(job.id)!.result??"",/browser verification/);
+}
+
+// Failed dependency installation must never be accepted just because later tools could run.
+{
+  const s=scenario({testFailures:0,installFailures:99});
+  const sup=new Supervisor(s.deps,{pollMs:5});
+  const job=sup.create("create an app whose install fails","shop");
+  await until(()=>["completed","failed"].includes(sup.get(job.id)!.status));
+  assert.equal(sup.get(job.id)!.status,"failed");
+  assert.ok(s.getInstallRuns()>=4,"dependencies must be retried and their failure must block completion");
+  assert.ok(sup.get(job.id)!.lastChecks===undefined||!sup.get(job.id)!.lastChecks!.every(c=>c.ok&&!c.skipped));
 }
 
 // 5) gives up cleanly after repeated failures, and cancel works
