@@ -348,7 +348,15 @@ export class Supervisor{
     if(!job.acceptance.length)job.acceptance=[job.goal];
     job.milestones=milestones;
     this.log(job,`Plan: ${milestones.length} milestone(s); checks: ${Object.entries(job.checks).filter(([,v])=>v).map(([k])=>k).join(", ")||"none"}`);
-    if(job.checks.install){const r=await this.tool(job,"project.run",{task:"install"});if(r==="waiting")return;}
+    if(job.checks.install){
+      const r=await this.tool(job,"project.run",{task:"install"});
+      if(r==="waiting")return;
+      const d=r.data??{};
+      if(!r.ok||d.ok===false||(d.exitCode!==undefined&&d.exitCode!==0)){
+        job.needsInstall=true;
+        this.log(job,"Initial dependency installation failed; the job must repair it before completion","warn");
+      }
+    }
     job.baseline=await this.runChecks(job);
     if(job.baseline===undefined)return;
     this.log(job,"Baseline: "+job.baseline.map(c=>`${c.name} ${c.skipped?"skip":c.ok?"ok":"FAIL"}`).join(", "));
@@ -528,6 +536,14 @@ export class Supervisor{
     if(job.needsInstall){
       const r=await this.tool(job,"project.run",{task:"install"});
       if(r==="waiting")return undefined;
+      const d=r.data??{};
+      const ok=Boolean(r.ok&&d.ok!==false&&(d.exitCode===undefined||d.exitCode===0)&&(d.ok===true||d.exitCode===0));
+      if(!ok){
+        const failure:CheckResult={name:"install",ok:false,summary:clip(r.error??d.stderr??d.stdout??"Dependency installation failed",2000)};
+        this.log(job,"Dependency installation is not verified: "+failure.summary,"warn");
+        this.save();
+        return [failure];
+      }
       job.needsInstall=false;this.save();
     }
     const resumable=purpose==="milestone"||purpose==="final";
