@@ -193,7 +193,7 @@ export class Supervisor{
     this.discardStaleDesktopOpenPlan(job);
     this.discardStaleNotepadFocusVerification(job);
     job.deadline=new Date(Date.now()+(job.budgetMinutes??120)*60_000).toISOString();
-    job.rounds=0;job.finalRepairs=0;job.result=undefined;job.waiting=undefined;job.resumed=(job.resumed??0)+1;
+    job.rounds=0;job.finalRepairs=0;job.result=undefined;job.waiting=undefined;job.outcome=undefined;job.resumed=(job.resumed??0)+1;
     const m=job.milestones[job.current];
     if(m&&m.status!=="done"){m.status="pending";m.attempts=0;}
     const next:JobStatus=!job.milestones.length||!job.checks?"planning":job.current>=job.milestones.length?"verifying":"running";
@@ -572,6 +572,8 @@ export class Supervisor{
         const data=t.data??{};
         const problems:string[]=Array.isArray(data.problems)?[...data.problems]:[];
         if(!t.ok||data.ok===false)problems.push(String(t.error??"browser test failed"));
+        if(!Array.isArray(data.results)||!data.results.length||data.results.some((r:any)=>!r.screenshot?.bytes&&!r.screenshot?.base64))
+          problems.push("Browser test did not return a usable screenshot or viewport result.");
         const shots=(data.results??[]).map((r:any)=>r.screenshot).filter((s:any)=>s?.base64);
         let judgement:string|undefined;
         if(shots.length){
@@ -611,15 +613,15 @@ export class Supervisor{
     });
     job.outcome=outcome;
     this.save();
+    this.writeOutcomeReport(job); // Keep a failure manifest too, not just successful deliveries.
     if(outcome.status!=="verified")return this.reopen(job,"Delivery evidence is insufficient:\n"+outcome.blockers.join("\n"));
-    this.writeOutcomeReport(job);
     writeProjectNotes(job);
     try{refreshKnowledge(projectDir(job.projectId));}catch{}
     await this.commitNotes(job);
     job.result=`Automated verification passed (${outcome.evidence.length} recorded evidence items; human acceptance criteria remain separately reviewable). ${job.milestones.length} milestone(s), checks ${final.map(f=>f.name).join(", ")||"none"} passing`+(job.visual?`, visual check ${job.visual.problems.length?"with issues":"clean"}`:"")+(job.security?`, security score ${job.security.score}/100`:"")+(job.branch?`, branch ${job.branch}`:"");
     this.finished(job,true);
     await this.learnPlaybook(job);
-    this.set(job,"completed","Completed and verified");
+    this.set(job,"completed","Automated gates passed; descriptive acceptance criteria are not separately certified");
     if(job.openWhenDone){
       if(job.preview)this.openPreview(job);
       else this.log(job,"Nothing to open: this project has no web page to show (no browser check ran)","warn");
