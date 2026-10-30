@@ -34,6 +34,7 @@ export interface OutcomeInput {
   acceptanceCriteria:string[];
   codeTask:boolean;
   checks:OutcomeCheck[];
+  requiredChecks?:string[];
   runtimeProofs:OutcomeRuntimeProof[];
   browserRequired:boolean;
   browser?:OutcomeBrowserProof;
@@ -70,7 +71,10 @@ export function assessOutcome(input:OutcomeInput):OutcomeReport {
   }
   if(input.browserRequired&&!input.browser)blockers.push("Required browser verification has no evidence.");
   if(input.securityRequired&&!input.security)blockers.push("Required security scan has no evidence.");
-  const machineProof=evidence.some(e=>e.passed&&(e.kind==="check"||e.kind==="browser"));
+  for(const name of input.requiredChecks??[]){
+    if(!input.checks.some(c=>c.name===name&&c.ok&&!c.skipped))blockers.push("Required check has no successful non-skipped evidence: "+name);
+  }
+  const machineProof=evidence.some(e=>e.passed&&((e.kind==="check"&&["test","build","typecheck","lint"].includes(e.name))||e.kind==="browser"));
   if(input.codeTask&&!machineProof)blockers.push("Code work has no successful non-skipped build, typecheck, test or browser proof.");
   if(!input.codeTask&&!evidence.some(e=>e.passed))blockers.push("No successful runtime or tool evidence for this task.");
   return {version:1,jobId:input.jobId,projectId:input.projectId,
