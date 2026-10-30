@@ -299,6 +299,13 @@ export function startRuntimeApi(options:RuntimeApiOptions){
      let missions=0;for(const id of ids)if(!others.has(id)&&await options.core.deleteMission(id,job.projectId).catch(()=>false))missions++;
      json(response,200,{ok:true,deleted:job.id,missions});return;
     }
+    // Interrupted actions have unknown external effects. Owner must explicitly reconcile before replay.
+    if(request.method==="POST"&&parts[4]==="reconcile"){
+     const input=await body(request,max);
+     if(input.acknowledgeUnknownEffects!==true)throw new Error("recovery_acknowledgement_required");
+     if(input.decision!=="retry"&&input.decision!=="abort")throw new Error("invalid_recovery_decision");
+     json(response,200,{ok:true,job:supervisor.reconcile(job.id,input.decision)});return;
+    }
     // Continue a stopped job from where it stopped.
     if(request.method==="POST"&&parts[4]==="resume"){json(response,200,{ok:true,job:supervisor.resume(job.id)});return;}
     // An instruction for a job that is running (or done): "when you finish, open it".
