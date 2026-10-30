@@ -378,8 +378,8 @@ const JOB_ACTIVE=["queued","planning","running","waiting_approval","verifying"];
 const jobState=j=>j.status==="completed"?"done":j.status==="waiting_approval"?"wait":j.status==="queued"?"pend":["failed","cancelled","budget_exhausted"].includes(j.status)?"fail":"run";
 async function loadJobs(){const d=await safe(api("/v1/supervisor/jobs?projectId="+encodeURIComponent(project())),null);if(d)S.jobs=d.jobs||[];return S.jobs;}
 const openWhenDonePref=()=>{try{return localStorage.getItem("lx.job.open")!=="0";}catch{return true;}};
-async function startJob(goal,minutes,openWhenDone=openWhenDonePref()){
- const d=await api("/v1/supervisor/jobs",{method:"POST",body:{goal,projectId:project(),openWhenDone,...(minutes?{maxMinutes:minutes}:{})}});
+async function startJob(goal,minutes,openWhenDone=openWhenDonePref(),acceptanceProfile){
+ const d=await api("/v1/supervisor/jobs",{method:"POST",body:{goal,projectId:project(),openWhenDone,...(minutes?{maxMinutes:minutes}:{}),...(acceptanceProfile?{acceptanceProfile}:{})}});
  S.jobs.unshift(d.job);toast(t("jobStarted"));return d.job;
 }
 const JOB_STOPPED=["failed","cancelled","budget_exhausted"];
@@ -415,6 +415,22 @@ function jobView(j,full){
  const where=projectPath(j.projectId);
  const files=where?el("div",{class:"small muted",style:"margin-top:.3rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap"},el("span",{text:t("folderPath")+":"}),el("span",{class:"mono",dir:"ltr",text:where}),el("a",{class:"link",href:vscodeUrl(j.projectId),text:t("openVSCode")})):null;
  const notes=(j.notes||[]).length||j.openWhenDone?el("div",{class:"small muted",dir:"auto",style:"margin-top:.3rem"},(j.notes||[]).length?t("ownerNotesL")+": "+j.notes.slice(-3).join(" · "):"",j.openWhenDone&&JOB_ACTIVE.includes(j.status)?((j.notes||[]).length?" — ":"")+t("willOpenL"):""):null;
+ const outcome=j.outcome;
+ const proof=outcome?el("div",{class:"small",dir:"auto",style:"margin-top:.6rem"},
+  el("span",{class:"status "+(outcome.status==="verified"?"s-done":"s-fail"),text:(LANG==="ar"?"نتيجة التحقق: ":"Verification: ")+outcome.status}),
+  el("span",{class:"muted",style:"margin-inline-start:.45rem",text:(outcome.evidence||[]).filter(e=>e.passed).length+"/"+(outcome.evidence||[]).length+(LANG==="ar"?" أدلة ناجحة":" passing evidence items")}),
+  ...(outcome.blockers||[]).slice(0,4).map(reason=>el("div",{class:"bad",style:"margin-top:.3rem",text:reason}))
+ ):null;
+ const behavior=j.acceptanceProfile==="task-app-http-v1"?el("div",{class:"small",dir:"auto",style:"margin-top:.4rem"},
+  (LANG==="ar"?"اختبار التطبيق المستقل: ":"Independent task-app check: ")+(j.behavior?(j.behavior.ok?"✓":"✗"):"…"),
+  ...(j.behavior?.checks||[]).map(c=>el("span",{class:"status "+(c.ok?"s-done":"s-fail"),style:"margin:.2rem",title:c.detail,text:c.name})),
+  ...(j.behavior?.blockers||[]).slice(0,3).map(reason=>el("div",{class:"bad",text:reason}))
+ ):null;
+ const handoff=j.delivery?el("div",{class:"small muted",dir:"auto",style:"margin-top:.5rem"},
+  el("span",{text:(LANG==="ar"?"ملفات التسليم: ":"Delivery files: ")+j.delivery.fileCount+" · "}),
+  el("span",{class:"mono",dir:"ltr",text:j.delivery.guidePath||j.delivery.manifestPath}),
+  el("span",{text:" · "+j.delivery.manifestPath})
+ ):null;
  return el("section",{class:"card",style:"margin-bottom:1rem"},
   el("div",{class:"card-head"},el("h3",{dir:"auto",text:j.goal.split("\n")[0].slice(0,140)}),el("div",{style:"display:flex;gap:.4rem;align-items:center;flex-wrap:wrap"},pill(jobState(j),t("j_"+j.status)),approve,
    stopped?el("button",{class:"btn primary small",onclick:()=>resumeJob(j)},icon("play"),t("resumeJob")):null,
@@ -422,9 +438,9 @@ function jobView(j,full){
    JOB_ACTIVE.includes(j.status)?el("button",{class:"btn small",text:t("cancel"),onclick:async()=>{try{await api("/v1/supervisor/jobs/"+encodeURIComponent(j.id)+"/cancel",{method:"POST",body:{}});render();}catch(e){toast(e.message);}}}):null,
    el("button",{class:"btn small danger",text:t("deleteL"),title:t("deleteJobQ"),onclick:async()=>{if(!confirm(t("deleteJobQ")))return;try{await api("/v1/supervisor/jobs/"+encodeURIComponent(j.id)+"/delete",{method:"POST",body:{}});toast(t("deletedT"));await loadJobs();render();}catch(e){toast(e.message);}}}),
    el("button",{class:"btn small",text:t("logL"),onclick:()=>{box.hidden=!box.hidden;}}))),
-  el("div",{class:"small muted",style:"display:flex;justify-content:space-between"},el("span",{text:t("stepsDone",{a:done,b:total||"—"})+" · "+t("trustL")+": "+t("t_"+j.trust).split(":")[0]+(j.cloudUsed?" · "+t("cloudUsedL"):"")+(j.externalUsed&&j.externalUsed.length?" · "+j.externalUsed.join(", "):"")}),el("span",{text:pct+"%"})),
+  el("div",{class:"small muted",style:"display:flex;justify-content:space-between"},el("span",{text:t("stepsDone",{a:done,b:total||"—"})+" · "+t("trustL")+": "+t("t_"+j.trust).split(":")[0]+(j.cloudUsed?" · "+t("cloudUsedL"):"")+(j.externalUsed&&j.externalUsed.length?" · "+j.externalUsed.join(", "):"")}),el("span",{text:(LANG==="ar"?"تقدم الخطوات ":"Milestones ")+pct+"%"})),
   el("div",{class:"progress"},el("i",{style:"width:"+pct+"%"})),
-  summary,files,notes,
+  summary,files,notes,proof,behavior,handoff,
   el("ul",{class:"steps"},j.milestones.map((m,i)=>el("li",{class:i===j.current&&JOB_ACTIVE.includes(j.status)?"current":""},el("span",{class:"tick "+(m.status==="done"?"done":m.status==="failed"?"fail":i===j.current&&j.status==="waiting_approval"?"wait":i===j.current&&JOB_ACTIVE.includes(j.status)?"run":"pend"),text:m.status==="done"?"✓":m.status==="failed"?"!":""}),
    el("span",{class:"t",dir:"auto",text:m.title}),el("span",{class:"status s-pend",text:t("ag_"+m.agent)}),m.attempts>1?el("span",{class:"status s-wait",text:"×"+m.attempts}):null))),
   j.lastChecks&&j.lastChecks.length?el("div",{class:"chips"},j.lastChecks.map(c=>el("span",{class:"status "+(c.ok?"s-done":"s-fail"),text:c.name}))):null,
@@ -987,12 +1003,14 @@ const VIEWS={
   const goal=el("textarea",{class:"text",rows:"3",dir:"auto",placeholder:LANG==="ar"?"مثال: أضف صفحة منتجات للمتجر مع البحث والفلترة، واكتب اختباراتها، وتأكد أنها تعمل على الهاتف":"e.g. Add a products page with search and filters, write its tests and make sure it works on mobile"});
   const minutes=el("input",{class:"text",type:"number",min:"5",max:"1440",value:"120",dir:"ltr"});
   const openBox=el("input",{type:"checkbox",checked:openWhenDonePref()||undefined,onchange:e=>{try{localStorage.setItem("lx.job.open",e.target.checked?"1":"0");}catch{}}});
+  const verifyBox=el("input",{type:"checkbox",checked:false});
   const list=el("div",{});
   const draw=()=>list.replaceChildren(...(S.jobs.length?S.jobs.map(j=>jobView(j,false)):[el("div",{class:"empty",text:t("noJobs")})]));
   fill(v,head(t("autonomous"),t("autoLead")),
    el("section",{class:"card",style:"margin-bottom:1rem"},el("div",{class:"form",style:"grid-template-columns:3fr 1fr auto"},el("label",{class:"f"},t("task"),goal),el("label",{class:"f"},t("maxMinutes"),minutes),
-    el("button",{class:"btn primary",onclick:async()=>{const g=goal.value.trim();if(!g)return;try{await startJob(g,Number(minutes.value)||120,openBox.checked);goal.value="";draw();}catch(e){toast(e.message);}}},icon("spark"),t("start"))),
+    el("button",{class:"btn primary",onclick:async()=>{const g=goal.value.trim();if(!g)return;try{await startJob(g,Number(minutes.value)||120,openBox.checked,verifyBox.checked?"task-app-http-v1":undefined);goal.value="";draw();}catch(e){toast(e.message);}}},icon("spark"),t("start"))),
     el("label",{class:"small",style:"display:flex;gap:.4rem;align-items:center;margin-top:.6rem"},openBox,t("openWhenDoneL")),
+    el("label",{class:"small",style:"display:flex;gap:.4rem;align-items:center;margin-top:.6rem"},verifyBox,LANG==="ar"?"اختبار قبول مستقل لتطبيق المهام (HTTP والحفظ بعد إعادة التشغيل)":"Independent task-app acceptance (HTTP and restart persistence)"),
     el("p",{class:"small muted",style:"margin:.6rem 0 0",text:t("trustL")+": "+t("t_"+(S.setup?.workspace?.trust?.[project().toLowerCase()]||"supervised"))+" — "+t("trustNote")})),
    list);draw();
   timers.push(setInterval(async()=>{if(S.jobs.some(j=>JOB_ACTIVE.includes(j.status))){await loadJobs();draw();}},3000));
