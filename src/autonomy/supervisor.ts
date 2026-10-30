@@ -29,6 +29,8 @@ import {errorSignature,findLessons,guidanceText,listLessons,listPlaybooks,markLe
  */
 export type JobStatus="queued"|"planning"|"running"|"waiting_approval"|"verifying"|"completed"|"failed"|"cancelled"|"budget_exhausted";
 export type MilestoneKind="code"|"test"|"research"|"desktop"|"business"|"general";
+import {assessOutcome,type OutcomeReport,type OutcomeRuntimeProof} from "./outcome.js";
+
 export interface Milestone{title:string;goal:string;kind:MilestoneKind;agent:string;status:"pending"|"running"|"done"|"failed";attempts:number;missions:string[];notes?:string}
 export interface Checks{install:boolean;test:boolean;build:boolean;typecheck:boolean;lint:boolean;browser:{path:string}|null;security?:boolean}
 export interface CheckResult{name:string;ok:boolean;skipped?:boolean;summary:string}
@@ -37,6 +39,9 @@ export interface SupervisorJob{
   id:string;projectId:string;goal:string;status:JobStatus;createdAt:string;updatedAt:string;deadline:string;trust:string;
   acceptance:string[];checks:Checks|null;milestones:Milestone[];current:number;rounds:number;maxRounds:number;
   baseline?:CheckResult[];lastChecks?:CheckResult[];visual?:{url:string;problems:string[];judgement?:string;screens:string[]};
+  /** Machine-observed result of the final delivery gates, persisted with the job. */
+  outcome?:OutcomeReport;
+  runtimeProofs?:OutcomeRuntimeProof[];
   waiting?:{approvalId:string;missionId:string;index:number;kind:"agent"|"tool";agentId?:string;tool?:string;payload?:Record<string,unknown>;milestone:number;continuation?:"milestone"|"final"};
   /** Check results already executed while resuming an approval-gated verification pass. */
   checkCache?:{purpose:"milestone"|"final";results:Partial<Record<"typecheck"|"lint"|"test"|"build",CheckResult>>};
@@ -402,6 +407,10 @@ export class Supervisor{
     const regressions=(job.baseline??[]).filter(b=>b.ok&&!b.skipped&&checks.some(c=>c.name===b.name&&!c.ok&&!c.skipped)).map(b=>b.name);
     const agentFailed=agentStopped!==undefined;
     if(!failed.length&&!agentFailed){
+      const missionId=m.missions.at(-1);
+      if(missionId&&!(job.runtimeProofs??[]).some(p=>p.missionId===missionId)){
+        (job.runtimeProofs??=[]).push({missionId,milestone:m.title,observedAt:now()});
+      }
       m.status="done";m.notes=undefined;
       if(previousFailure)await this.learnFix(job,m,previousFailure);
       if(m.kind==="research")this.importProjectPlaybooks(job);
@@ -551,16 +560,18 @@ export class Supervisor{
     const failing=final.filter(x=>!x.ok&&!x.skipped);
     if(failing.length)return this.reopen(job,"Final checks failed:\n"+failing.map(f=>`${f.name}: ${f.summary}`).join("\n"));
     if(c?.browser){
+      job.visual=undefined; // Never reuse a screenshot/status from an earlier verification attempt.
       const dev=await this.tool(job,"project.run",{task:"dev:start"});
       if(dev==="waiting")return;
       const url=dev.data?.url as string|undefined;
-      if(!url){this.log(job,"Dev server did not report a URL; visual check skipped","warn");}
+      if(!url){return this.reopen(job,"Required browser verification failed: the dev server returned no URL.");}
       else{
         const target=url.replace(/\/$/,"")+(c.browser.path||"/");
         const t=await this.tool(job,"browser.test",{url:target,viewports:["desktop","mobile"],baseline:"final"});
         if(t==="waiting")return;
         const data=t.data??{};
-        const problems:string[]=Array.isArray(data.problems)?data.problems:t.ok?[]:[t.error??"browser test failed"];
+        const problems:string[]=Array.isArray(data.problems)?[...data.problems]:[];
+        if(!t.ok||data.ok===false)problems.push(String(t.error??"browser test failed"));
         const shots=(data.results??[]).map((r:any)=>r.screenshot).filter((s:any)=>s?.base64);
         let judgement:string|undefined;
         if(shots.length){
@@ -586,10 +597,26 @@ export class Supervisor{
       }
     }
     if(c?.security&&!c.browser&&(!job.security||job.security.blocked)){const sec=await this.securityGate(job);if(sec==="waiting")return;if(sec)return this.reopen(job,sec);}
+    // Independent machine-evidence gate: no non-skipped checks means no verified code delivery.
+    // The human-readable acceptance strings remain *planned* criteria, never auto-asserted.
+    const outcome=assessOutcome({
+      jobId:job.id,projectId:job.projectId,acceptanceCriteria:job.acceptance,
+      codeTask:job.milestones.some(m=>m.kind==="code"||m.kind==="test"),
+      checks:final,runtimeProofs:job.runtimeProofs??[],
+      browserRequired:Boolean(c?.browser),
+      ...(job.visual?{browser:{url:job.visual.url,ok:job.visual.problems.length===0,
+        viewports:job.visual.screens,problems:job.visual.problems}}:{}),
+      securityRequired:job.specChecks?.security===true,
+      ...(job.security?{security:{score:job.security.score,blocked:job.security.blocked}}:{})
+    });
+    job.outcome=outcome;
+    this.save();
+    if(outcome.status!=="verified")return this.reopen(job,"Delivery evidence is insufficient:\n"+outcome.blockers.join("\n"));
+    this.writeOutcomeReport(job);
     writeProjectNotes(job);
     try{refreshKnowledge(projectDir(job.projectId));}catch{}
     await this.commitNotes(job);
-    job.result=`Done: ${job.milestones.length} milestone(s), checks ${final.map(f=>f.name).join(", ")||"none"} passing`+(job.visual?`, visual check ${job.visual.problems.length?"with issues":"clean"}`:"")+(job.security?`, security score ${job.security.score}/100`:"")+(job.branch?`, branch ${job.branch}`:"");
+    job.result=`Automated verification passed (${outcome.evidence.length} recorded evidence items; human acceptance criteria remain separately reviewable). ${job.milestones.length} milestone(s), checks ${final.map(f=>f.name).join(", ")||"none"} passing`+(job.visual?`, visual check ${job.visual.problems.length?"with issues":"clean"}`:"")+(job.security?`, security score ${job.security.score}/100`:"")+(job.branch?`, branch ${job.branch}`:"");
     this.finished(job,true);
     await this.learnPlaybook(job);
     this.set(job,"completed","Completed and verified");
@@ -598,6 +625,18 @@ export class Supervisor{
       else this.log(job,"Nothing to open: this project has no web page to show (no browser check ran)","warn");
     }
   }
+  /** Persist a machine-readable delivery manifest alongside the project's existing notes. */
+  private writeOutcomeReport(job:SupervisorJob){
+    if(!job.outcome)return;
+    const dir=path.join(projectDir(job.projectId),".layanx","outcomes");
+    fs.mkdirSync(dir,{recursive:true});
+    const target=path.join(dir,job.id+".json");
+    const tmp=target+".tmp";
+    fs.writeFileSync(tmp,JSON.stringify(job.outcome,null,2),{encoding:"utf8",mode:0o600});
+    fs.renameSync(tmp,target);
+    this.log(job,"Outcome evidence saved: .layanx/outcomes/"+job.id+".json");
+  }
+
   // ------------------------------------------------------------ learning
   private stack(job:SupervisorJob){return this.info(job)?.stack??"unknown";}
   private finished(job:SupervisorJob,success:boolean){
