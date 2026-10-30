@@ -11,7 +11,7 @@ fs.mkdirSync(path.join(root,"shop",".git"),{recursive:true});
 const until=async(f:()=>boolean,ms=8000)=>{const end=Date.now()+ms;while(!f()){if(Date.now()>end)throw new Error("timeout");await new Promise(r=>setTimeout(r,10));}};
 const info={dir:path.join(root,"shop"),stack:"node" as const,packageManager:"npm" as const,scripts:["test","build","dev","typecheck"],hasLockfile:true,git:true,tasks:[]};
 
-function scenario(opts:{testFailures:number;needApproval?:boolean;cloud?:boolean;visualIssue?:boolean;toolApproval?:boolean}){
+function scenario(opts:{testFailures:number;needApproval?:boolean;cloud?:boolean;visualIssue?:boolean;toolApproval?:boolean;noBrowserUrl?:boolean}){
   const calls:{agents:Array<{agent:string;routing?:unknown;goal:string}>;tools:Array<{tool:string;payload:any}>;think:Array<{cloud?:boolean;images:number}>}={agents:[],tools:[],think:[]};
   let testRuns=0,approved=false,toolApproved=false,typecheckRuns=0,visualAsked=0;
   const deps:SupervisorDeps={
@@ -34,7 +34,7 @@ function scenario(opts:{testFailures:number;needApproval?:boolean;cloud?:boolean
         if(resume?.approvalId==="ap-tool")return{ok:true,data:{ok:true,exitCode:0,stdout:"typecheck passed"}};
       }
       if(tool==="project.run"&&payload.task==="test"){testRuns++;const fail=testRuns>1&&testRuns<=1+opts.testFailures;return{ok:true,data:{ok:!fail,exitCode:fail?1:0,stdout:fail?"1 failing: products API returns 500":"ok"}};}
-      if(tool==="project.run"&&payload.task==="dev:start")return{ok:true,data:{running:true,url:"http://localhost:5173"}};
+      if(tool==="project.run"&&payload.task==="dev:start")return{ok:true,data:{running:true,...(opts.noBrowserUrl?{}:{url:"http://localhost:5173"})}};
       if(tool==="browser.test")return{ok:true,data:{ok:true,problems:[],results:[{viewport:"desktop",screenshot:{mimeType:"image/jpeg",base64:"AAAA"}},{viewport:"mobile",screenshot:{mimeType:"image/jpeg",base64:"BBBB"}}]}};
       return{ok:true,data:{ok:true,exitCode:0}};
     },
@@ -66,6 +66,13 @@ function scenario(opts:{testFailures:number;needApproval?:boolean;cloud?:boolean
   assert.match(fs.readFileSync(path.join(root,"shop",".layanx","CHANGELOG.md"),"utf8"),/أضف صفحة منتجات/);
   assert.ok(fs.existsSync(path.join(root,"shop",".layanx","PROJECT.md")));
   assert.equal(JSON.parse(fs.readFileSync(file,"utf8"))[0].status,"completed","jobs are persisted");
+  assert.equal(j.outcome?.status,"verified","completed jobs require independent machine evidence");
+  assert.equal(j.outcome?.verificationScope,"automated-gates","descriptive acceptance is not silently proven");
+  assert.ok(j.outcome?.evidence.some(e=>e.reference==="project.run:test"));
+  assert.ok(j.outcome?.evidence.some(e=>e.kind==="browser"));
+  const evidenceFile=path.join(root,"shop",".layanx","outcomes",job.id+".json");
+  assert.ok(fs.existsSync(evidenceFile),"delivery evidence must survive process exit");
+  assert.equal(JSON.parse(fs.readFileSync(evidenceFile,"utf8")).jobId,job.id);
 }
 
 // 2) tests fail -> repair with the failure output -> local coding agent on attempt 3 -> cloud model on attempt 3+
@@ -120,6 +127,16 @@ function scenario(opts:{testFailures:number;needApproval?:boolean;cloud?:boolean
   assert.equal(j.status,"completed");
   assert.equal(j.milestones.at(-1)!.title,"Fix final verification");
   assert.ok(s.calls.agents.some(a=>/header overlaps the menu/.test(a.goal)),"visual issue was sent to the coder");
+}
+
+// Required browser verification cannot silently pass when the dev server has no address.
+{
+  const s=scenario({testFailures:0,noBrowserUrl:true});
+  const sup=new Supervisor(s.deps,{pollMs:5});
+  const job=sup.create("build a web page with a verifiable UI","shop");
+  await until(()=>["completed","failed"].includes(sup.get(job.id)!.status));
+  assert.equal(sup.get(job.id)!.status,"failed","missing browser URL must block completion");
+  assert.match(sup.get(job.id)!.result??"",/browser verification/);
 }
 
 // 5) gives up cleanly after repeated failures, and cancel works
