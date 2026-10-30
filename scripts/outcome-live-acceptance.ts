@@ -21,6 +21,15 @@ fs.mkdirSync(store,{recursive:true,mode:0o700});
 // Deliberately isolate this proof from store, email, trading, ads, and cloud.
 process.env.LAYANX_WORKSPACE_ROOT=projects;
 process.env.LAYANX_STORE_DIR=store;
+process.env.LAYANX_DATA_DIR=root;
+process.env.LAYANX_DATABASE_URL="";
+process.env.DATABASE_URL="";
+process.env.LAYANX_BUSINESS_STORAGE_PATH=path.join(store,"business.json");
+process.env.LAYANX_MEDIA_STORAGE_PATH=path.join(store,"media.json");
+process.env.LAYANX_CREATOR_OUTPUT_DIR=path.join(store,"creator");
+process.env.LAYANX_QURAN_OUTPUT_DIR=path.join(store,"quran");
+process.env.LAYANX_FREE_POOL_CONFIG=path.join(store,"free-providers.json");
+process.env.LAYANX_GOOGLE_INVOICE_REGISTRY=path.join(store,"google-invoices.json");
 process.env.LAYANX_RUNTIME_STORAGE_PATH=path.join(store,"runtime.json");
 process.env.LAYANX_LESSONS_FILE=path.join(store,"lessons.json");
 process.env.LAYANX_PLAYBOOKS_DIR=path.join(store,"playbooks");
