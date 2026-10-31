@@ -83,7 +83,7 @@ if(!ollama?.available){
       "Create tests/tasks.test.mjs using node:test, covering health, creation, listing, deletion and restart persistence.",
       "Run project.run install, test and build; fix failures. Do not stop at only writing code."
     ].join(" ");
-    const job=supervisor.create(goal,id,{maxMinutes:20,maxRounds:30,openWhenDone:false,acceptanceProfile:"task-app-http-v1"});
+    const job=supervisor.create(goal,id,{maxMinutes:20,maxRounds:30,openWhenDone:false,acceptanceProfile:"task-app-ui-v1"});
     const deadline=Date.now()+21*60_000;
     const terminal=new Set(["completed","failed","cancelled","budget_exhausted","waiting_approval"]);
     while(!terminal.has(supervisor.get(job.id)?.status??"")&&Date.now()<deadline){
@@ -106,7 +106,8 @@ if(!ollama?.available){
     const ui=hasProject?await verifyTaskAppUI(app):{ok:false,checks:[],blockers:["Generated application files missing."],verificationScope:"browser-click-and-reload" as const};
     const ok=finished.status==="completed"&&report?.status==="verified"
       &&machineRefs.has("project.run:test")&&machineRefs.has("project.run:build")
-      &&machineRefs.has("independent:http:task-app")&&hasProject&&hasDelivery&&finished.behavior?.ok===true&&independent.ok&&ui.ok;
+      &&machineRefs.has("independent:http:task-app")&&machineRefs.has("independent:ui:task-app")
+      &&hasProject&&hasDelivery&&finished.behavior?.ok===true&&finished.uiBehavior?.ok===true&&independent.ok&&ui.ok;
     const result={
       ok,
       stage:"real-ollama-agent->generated-app->real-project-run->outcome-verification",
@@ -116,6 +117,7 @@ if(!ollama?.available){
       checkRefs:[...machineRefs],
       independentBehavior:independent,
       independentUI:ui,
+      supervisorUI:finished.uiBehavior,
       acceptanceCriteria:report?.acceptanceCriteria??[],
       blockers:[...(report?.blockers??(ok?[]:["Job did not produce a verified outcome."])),...independent.blockers,...ui.blockers],
       outcomeFile:path.join(app,".layanx","outcomes",job.id+".json"),
