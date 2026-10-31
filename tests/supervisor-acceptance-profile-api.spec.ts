@@ -33,6 +33,9 @@ try{
   assert.equal(detail.status,200);
   const stored=await detail.json() as {job:{acceptanceProfile?:string}};
   assert.equal(stored.job.acceptanceProfile,"task-app-http-v1");
+  const uiProfile=await request({goal:"Create a task app with working browser buttons",projectId:"ui-project",acceptanceProfile:"task-app-ui-v1"});
+  assert.equal(uiProfile.status,201);
+  assert.equal((await uiProfile.json() as {job:{acceptanceProfile?:string}}).job.acceptanceProfile,"task-app-ui-v1");
   const ordinary=await request({goal:"Read workspace status",projectId:"default"});
   assert.equal(ordinary.status,201);
   assert.equal((await ordinary.json() as {job:{acceptanceProfile?:string}}).job.acceptanceProfile,undefined);
