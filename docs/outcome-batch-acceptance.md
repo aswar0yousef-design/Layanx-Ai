@@ -29,7 +29,7 @@ The output includes:
 
 An individual run passes only when all of the following independently agree:
 1. Its generated isolated project reports `completed`, `ok:true`, an existing deliverable and app files.
-2. Its test/build result and independent HTTP behavior evidence are present.
+2. Its test/build result and independently recorded Supervisor HTTP **and browser UI** evidence are present.
 3. Each of ten distinct HTTP/restart checks **and nine browser interaction checks** passed exactly once. The browser probe must click the task add/delete controls at desktop and mobile viewport sizes and verify list persistence across page reloads.
 4. The offline manifest verifier confirms file sizes, SHA-256 checksums, the Outcome report and no unlisted project files.
 5. The subprocess exited with code zero.
