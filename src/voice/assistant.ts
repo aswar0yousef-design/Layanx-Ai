@@ -109,7 +109,7 @@ export function capabilityQuestion(text:string):boolean{
   const v=normalizeArabic(text).replace(/[؟?!،,.؛:]/g," ").replace(/\s+/g," ").trim();
   if(!v||v.split(" ").length>12)return false;
   const cleaned=v.replace(/^(?:(?:يا )?(?:ليان|layanx|جارفيس|jarvis) )/u,"").trim();
-  return /^(?:ما\s*الذي\s+(?:يمكنك|تستطيع)\s+(?:فعله|ان تفعل)(?: لي)?|ماذا\s+(?:يمكنك|تستطيع)\s+(?:فعله|ان تفعل)(?: لي)?|(?:ما هي|ماهي|ما)\s+(?:قدراتك|امكانياتك|مهامك)|كيف (?:يمكنك )?(?:مساعدتي|تساعدني)|(?:وش|ايش)\s+(?:تقدر|تعرف|تستطيع)\s+(?:تسوي|تعمل|تفعل)|what can you do(?: for me)?|what are your capabilities|how can you help me|what do you do)$/iu.test(cleaned);
+  return /^(?:(?:ما\s*الذي|مالذي)\s+(?:يمكنك|تستطيع)\s+(?:فعله|ان تفعل)(?: لي)?|ماذا\s+(?:يمكنك|تستطيع)\s+(?:فعله|ان تفعل)(?: لي)?|(?:ما هي|ماهي|ما)\s+(?:قدراتك|امكانياتك|مهامك)|كيف (?:يمكنك )?(?:مساعدتي|تساعدني)|(?:وش|ايش)\s+(?:تقدر|تعرف|تستطيع)\s+(?:تسوي|تعمل|تفعل)|what can you do(?: for me)?|what are your capabilities|how can you help me|what do you do)$/iu.test(cleaned);
 }
 
 /** How long a spoken request waits for the model before LayanX says why it is slow (ms). */
