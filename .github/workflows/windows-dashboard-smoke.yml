@@ -7,6 +7,7 @@ on:
       - "web/index.html"
       - "web/styles.css"
       - "tests/dashboard-job-card.spec.ts"
+      - "tests/control-center-greeting-route.spec.ts"
       - "tests/mcp-panel.spec.ts"
       - ".github/workflows/windows-dashboard-smoke.yml"
   push:
@@ -17,6 +18,7 @@ on:
       - "web/index.html"
       - "web/styles.css"
       - "tests/dashboard-job-card.spec.ts"
+      - "tests/control-center-greeting-route.spec.ts"
       - ".github/workflows/windows-dashboard-smoke.yml"
 
 permissions:
@@ -40,5 +42,7 @@ jobs:
         shell: pwsh
       - name: Run the real-browser dashboard regression
         run: node node_modules/tsx/dist/cli.mjs tests/dashboard-job-card.spec.ts
+      - name: Verify pure greetings bypass autonomous mode in a real browser
+        run: node node_modules/tsx/dist/cli.mjs tests/control-center-greeting-route.spec.ts
       - name: Verify the local MCP panel
         run: node node_modules/tsx/dist/cli.mjs tests/mcp-panel.spec.ts
