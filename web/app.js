@@ -474,10 +474,22 @@ function resultLines(r){
  }
  return lines;
 }
+// Route pure greetings through the existing conversational assistant. Never create missions for small talk.
+// Mixed requests (e.g. "مرحبا افتح المتصفح") still use the normal permission-gated agent path.
+function greetingOnly(text){
+ const normalized=String(text||"").toLowerCase().replace(/[\u064b-\u065f\u0670]/g,"").replace(/[؟!،,.]/g," ").replace(/\s+/g," ").trim();
+ return /^(?:(?:يا\s+)?(?:layanx|ليان|جارفيس|jarvis)\s+)?(?:مرحبا(?:\s+كيف\s+(?:الحال|حالك))?|كيف\s+(?:الحال|حالك)|السلام\s+عليكم(?:\s+ورحمه\s+الله(?:\s+وبركاته)?)?|اهلا(?:\s+وسهلا)?|هلا|صباح\s+الخير|مساء\s+الخير|شكرا|hello(?:\s+how\s+are\s+you)?|hi|hey|how\s+are\s+you|good\s+morning|good\s+evening|thank\s+you|thanks)$/i.test(normalized);
+}
 async function runGoal(goal,model){
  if(!goal.trim())return;
  S.log.push({id:uid(),role:"you",text:goal,at:Date.now()});
  const me={id:uid(),role:"me",text:t("received"),state:"run",steps:[],lines:[],at:Date.now()};S.log.push(me);drawAgent();
+ if(greetingOnly(goal)){
+  const answer=await safe(api("/v1/assistant/turn",{method:"POST",body:{text:goal,projectId:project(),allowTasks:false}}),{ok:false,error:"assistant_unavailable"});
+  me.state=answer.ok&&answer.intent==="answer"?"done":"fail";
+  me.text=me.state==="done"?answer.reply:t("notCompleted")+": "+reasonText(answer.error||"assistant_unavailable");
+  me.at=Date.now();drawAgent();return;
+ }
  const before=new Set(S.missions.map(m=>m.id));let done=false;
  (async()=>{while(!done){await sleep(1200);if(done)break;if(!me.missionId){const ms=await loadMissions();const n=ms.find(m=>!before.has(m.id));if(n)me.missionId=n.id;}if(me.missionId){me.steps=deriveSteps(await missionDetail(me.missionId));drawAgent();}}})();
  const r=await safe(api("/v1/agent/gateway",{method:"POST",body:{goal,projectId:project(),maxSteps:10,model:model||"auto"},allow:[422]}),{ok:false,error:"network"});
