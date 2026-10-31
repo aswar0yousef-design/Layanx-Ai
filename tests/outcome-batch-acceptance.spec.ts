@@ -10,7 +10,7 @@ const workspace="C:\\test\\outcome-runs\\first\\projects\\acceptance-12345678";
 const base:LocalAcceptanceObserved={
   id:"acceptance-12345678",jobId:"valid-job",workspace,ok:true,status:"completed",
   hasProject:true,hasDelivery:true,
-  checkRefs:["project.run:test","project.run:build","independent:http:task-app"],
+  checkRefs:["project.run:test","project.run:build","independent:http:task-app","independent:ui:task-app"],
   independentBehavior:{ok:true,checks,blockers:[]},
   independentUI:{ok:true,checks:["browser-start","desktop-create","desktop-reload","desktop-delete","desktop-delete-reload","mobile-create","mobile-reload","mobile-delete","mobile-delete-reload"].map(name=>({name,ok:true})),blockers:[]}
 };
