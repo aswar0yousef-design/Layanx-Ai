@@ -528,6 +528,8 @@ function agentCard(big){
  const auto=el("button",{class:"btn small",type:"button","aria-pressed":String(localStorage.getItem("lx.cc.auto")==="1"),title:t("toEndHint"),onclick:()=>{const on=auto.getAttribute("aria-pressed")!=="true";auto.setAttribute("aria-pressed",String(on));auto.classList.toggle("primary",on);localStorage.setItem("lx.cc.auto",on?"1":"0");}},icon("spark"),t("toEnd"));
  if(localStorage.getItem("lx.cc.auto")==="1")auto.classList.add("primary");
  const submit=async()=>{const g=input.value.trim();if(!g)return;input.value="";
+  // Pure greetings must never become autonomous jobs or notes on someone else’s job.
+  if(greetingOnly(g)){runGoal(g,model.value);return;}
   try{if(await noteForRunningJob(g))return;}catch(e){toast(e.message);return;}
   if(auto.getAttribute("aria-pressed")==="true"){try{const j=await startJob(g);S.log.push({id:uid(),role:"you",text:g,at:Date.now()},{id:uid(),role:"me",text:t("jobStarted"),state:"run",at:Date.now(),job:j.id});drawAgent();}catch(e){toast(e.message);}return;}
   runGoal(g,model.value);};
