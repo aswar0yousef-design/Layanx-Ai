@@ -26,7 +26,7 @@ npm run acceptance:live:local
 - An actual local model plans a goal and the LayanX coder attempts to generate a brand-new Node.js task API.
 - The real `project.run` adapter executes install, test and build steps.
 - The output file `acceptance-result.json` records the final status, machine references, independent HTTP checks, **real Edge/Chrome UI click checks**, blockers and workspace path.
-- `ok: true` requires a completed Supervisor job, verified Outcome report, successful test/build evidence and independent observed HTTP behavior **plus working task add/delete controls in real Edge/Chrome desktop and mobile sessions**. Browser tests click the UI and verify list state across page reloads.
+- `ok: true` requires a completed Supervisor job using the strict `task-app-ui-v1` acceptance profile. The Supervisor must persist both HTTP and Edge/Chrome UI proof, in addition to successful build/test evidence; the CLI independently repeats both probes after completion.
 - If approval is required or any check fails, the run reports `ok: false` (never a fabricated pass).
 
 ## Isolation and limitations
