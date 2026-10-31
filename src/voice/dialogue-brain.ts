@@ -36,6 +36,9 @@ export function classifyDialogue(text:string):DialogueDecision{
  if(IDENTITY.test(v))return{kind:"conversation",topic:"identity",reason:"identity_question"};
  if(LEARNING.test(v))return{kind:"conversation",topic:"self-development",reason:"self_development_question"};
  if(GREETING.test(v))return{kind:"conversation",topic:"greeting",reason:"small_talk"};
+ const afterGreeting=v.replace(/^(?:مرحبا|اهلا|هلا|السلام عليكم|hi|hey|hello|شكرا)\s+/u,"").trim();
+ if(afterGreeting!==v&&ACTION.test(afterGreeting))return{kind:"action",topic:"instruction",reason:"greeting_followed_by_command"};
+ if(afterGreeting!==v&&startsWithQuestion(afterGreeting))return{kind:"conversation",topic:"question",reason:"greeting_followed_by_question"};
  // Two clear clauses, including an imperative, must retain the explicit action.
  // A bare question such as 'هل يمكنك إنشاء موقع؟' never executes anything.
  const hasInstructionInSecondClause=/\s(?:و|ثم)\s*(?:افتح|اكتب|ارسل|انشر|انشئ|صمم|نفذ|شغل|اصلح|قم)\s/u.test(v);
