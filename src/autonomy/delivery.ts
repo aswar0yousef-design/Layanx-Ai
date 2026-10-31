@@ -20,10 +20,10 @@ const privateName=/(^\.env(?:\.|$)|secrets?|credentials?|password|token|private[
 function inventory(root:string):DeliveryArtifact[]{
   const files:DeliveryArtifact[]=[];
   const visit=(dir:string)=>{
-    if(files.length>=500)return;
+    if(files.length>=500)throw Error("Project file inventory exceeds 500 artifacts; delivery cannot be claimed complete.");
     const entries=fs.readdirSync(dir,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name));
     for(const entry of entries){
-      if(files.length>=500)break;
+      if(files.length>=500)throw Error("Project file inventory exceeds 500 artifacts; delivery cannot be claimed complete.");
       if(privateName.test(entry.name)||entry.isSymbolicLink())continue;
       const abs=path.join(dir,entry.name);
       if(entry.isDirectory()){if(!skipDirs.has(entry.name))visit(abs);continue;}
@@ -102,4 +102,80 @@ export function writeDeliveryManifest(projectRoot:string,jobId:string,outcome:Ou
     fs.renameSync(guideTmp,guide);
   }finally{if(fs.existsSync(guideTmp))fs.rmSync(guideTmp,{force:true});}
   return {manifest,relativePath,guideRelativePath};
+}
+
+
+/** Inspect a delivered project without executing any agent-produced code or commands.
+ * The manifest is locally editable: hashes detect accidental changes against it, not a malicious
+ * actor who rewrites both the manifest and files. No signature or external attestation is claimed.
+ */
+export interface DeliveryVerification {
+  ok:boolean;
+  jobId:string;
+  projectRoot:string;
+  checkedFiles:number;
+  blockers:string[];
+  warnings:string[];
+}
+export function verifyDeliveryManifest(projectRoot:string,jobId:string):DeliveryVerification{
+  const blockers:string[]=[],warnings:string[]=[];
+  const checked=new Set<string>();
+  let root="";
+  const result=():DeliveryVerification=>({ok:blockers.length===0&&warnings.length===0,jobId,projectRoot:root||projectRoot,checkedFiles:checked.size,blockers,warnings});
+  try{root=fs.realpathSync(projectRoot);}catch{blockers.push("Project folder is missing");return result();}
+  if(!/^[a-zA-Z0-9-]{1,100}$/.test(jobId)){blockers.push("Invalid job ID");return result();}
+  const dir=path.join(root,".layanx","deliveries");
+  const reportPath=path.join(root,".layanx","outcomes",jobId+".json");
+  const manifestPath=path.join(dir,jobId+".json");
+  const guidePath=path.join(dir,jobId+".md");
+  const safeRead=(file:string,label:string):unknown=>{
+    try{return JSON.parse(fs.readFileSync(file,"utf8")) as unknown;}
+    catch{blockers.push("Missing or invalid "+label);return null;}
+  };
+  const manifest=safeRead(manifestPath,"delivery manifest");
+  const report=safeRead(reportPath,"outcome report");
+  if(!fs.existsSync(guidePath))blockers.push("Missing human-readable delivery guide");
+  if(!manifest||typeof manifest!=="object"||Array.isArray(manifest))return result();
+  const m=manifest as Partial<DeliveryManifest>;
+  if(m.version!==1||m.jobId!==jobId||m.projectRoot!==root||
+     m.outcomeReference!==".layanx/outcomes/"+jobId+".json"||m.verificationScope!=="automated-gates")
+    blockers.push("Delivery manifest metadata does not match the requested workspace and job");
+  if(!report||typeof report!=="object"||Array.isArray(report)||
+     (report as Partial<OutcomeReport>).status!=="verified"||
+     (report as Partial<OutcomeReport>).jobId!==jobId)
+    blockers.push("Delivery outcome is not independently recorded as verified for this job");
+  if(!Array.isArray(m.artifacts)||m.artifacts.length===0){blockers.push("No valid deliverable inventory");return result();}
+  for(const artifact of m.artifacts){
+    if(!artifact||typeof artifact.path!=="string"||
+       artifact.path.startsWith("/")||artifact.path.includes("\\")||
+       path.posix.isAbsolute(artifact.path)||path.win32.isAbsolute(artifact.path)||
+       artifact.path.split("/").some(p=>!p||p==="."||p==="..")||
+       artifact.path.startsWith(".layanx/")||checked.has(artifact.path)){
+      blockers.push("Invalid or duplicated artifact path in delivery manifest");
+      continue;
+    }
+    checked.add(artifact.path);
+    const target=path.join(root,...artifact.path.split("/"));
+    try{
+      const real=fs.realpathSync(target);
+      if(!real.startsWith(root+path.sep))throw Error("Artifact leaves project workspace");
+      const stat=fs.lstatSync(target);
+      if(!stat.isFile()||stat.isSymbolicLink())throw Error("Artifact is not a regular file");
+      if(!Number.isSafeInteger(artifact.bytes)||artifact.bytes!==stat.size)
+        throw Error("Artifact size has changed");
+      if(typeof artifact.sha256==="string"&&/^[a-f0-9]{64}$/.test(artifact.sha256)){
+        const digest=createHash("sha256").update(fs.readFileSync(target)).digest("hex");
+        if(digest!==artifact.sha256)throw Error("Artifact SHA-256 mismatch");
+      }else{
+        warnings.push("Artifact lacks a verifiable SHA-256: "+artifact.path);
+      }
+    }catch(error){blockers.push("Artifact invalid: "+artifact.path+" ("+(error instanceof Error?error.message:String(error))+")");}
+  }
+  try{
+    const live=inventory(root);
+    const names=new Set(live.map(f=>f.path));
+    for(const artifact of live)if(!checked.has(artifact.path))blockers.push("Unlisted project artifact: "+artifact.path);
+    for(const name of checked)if(!names.has(name))blockers.push("Listed project artifact no longer in inventory: "+name);
+  }catch(error){blockers.push("Could not independently enumerate project files: "+(error instanceof Error?error.message:String(error)));}
+  return result();
 }
