@@ -13,7 +13,7 @@ for(const phrase of ["ما الذي تستطيع عمله؟","هل تستطيع 
  assert.equal(classifyDialogue(phrase).kind,"conversation",phrase);
 }
 for(const phrase of ["افتح المتصفح","يا ليان افتح المتصفح","أنشئ تطبيق مهام","قم بفحص المستودع",
- "أرسل الرسالة","أريد منك تطوير المشروع","ابدأ الاختبارات","run the tests","create a shop",
+ "أرسل الرسالة","أريد منك تطوير المشروع","ابدأ الاختبارات","افحص المشروع","طبق التعديلات","توقف","run the tests","create a shop",
  "مرحبا افتح المتصفح","hello write a post","شكرا ارسل الفاتورة"]){
  assert.equal(classifyDialogue(phrase).kind,"action",phrase);
 }
