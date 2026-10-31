@@ -6,7 +6,7 @@ import path from "node:path";
 const src=fs.readFileSync(path.resolve("web","app.js"),"utf8");
 new Function(src); // reject broken Control Center JavaScript before browser loading
 const start=src.indexOf("function greetingOnly(text){");
-const end=src.indexOf("async function runGoal(goal,model){",start);
+const end=src.indexOf("async function classifyTurn(goal){",start);
 assert.ok(start>=0&&end>start,"Control Center has a greeting-only fast path");
 const classifiers=new Function(src.slice(start,end)+"; return {greetingOnly,capabilityQuestionOnly,conversationOnly};")() as {greetingOnly:(text:string)=>boolean;capabilityQuestionOnly:(text:string)=>boolean;conversationOnly:(text:string)=>boolean};
 const {greetingOnly,capabilityQuestionOnly,conversationOnly}=classifiers;
@@ -25,11 +25,12 @@ for(const phrase of ["ما الذي يمكنك عمله في مشروعي؟","م
  assert.equal(capabilityQuestionOnly(phrase),false,"Specific action must remain gated: "+phrase);
 }
 const handler=src.slice(end,src.indexOf("function messageView(m){",end));
-assert.ok(handler.indexOf('if(conversationOnly(goal))')>=0);
+assert.ok(handler.indexOf('route==="conversation"')>=0,"Shared brain must explicitly route conversations");
+assert.match(handler,/const route=knownKind\|\|/,"Direct commands must also go through the dialogue brain");
 assert.match(src,/if\(conversationOnly\(g\)\)\{runGoal\(g,model.value\);return;\}/,"Pure information must bypass autonomous jobs");
 assert.ok(handler.indexOf('"/v1/assistant/turn"')<handler.indexOf('"/v1/agent/gateway"'));
 assert.match(handler,/allowTasks:false/,"Greeting calls should never execute external actions");
-assert.match(handler,/me\.text=me\.state==="done"\?answer\.reply/,"Show the assistant's actual answer, not a fake completed mission");
+assert.match(handler,/me\.text=informational\?answer\.reply/,"Show the actual informative answer, never a fake completion");
 
 let pw:any;try{pw=await import("playwright-core");}catch{pw=null;}
 const chromium=pw?.chromium??pw?.default?.chromium;
@@ -52,7 +53,7 @@ const server=http.createServer(async(req,res)=>{
   brainCalls++;
   let input="";for await(const chunk of req)input+=String(chunk);
   const text=String((JSON.parse(input) as {text?:string}).text||"");
-  const question=/^(?:من انت|هل تتعلم|كيف |ما |ماذا |who |what |can |how )/i.test(text);
+  const question=/^(?:من\s|هل\s|كيف\s|ما\s|ماذا\s|who\s|what\s|can\s|how\s)/i.test(text);
   return send({ok:true,kind:question?"conversation":"action",topic:question?"question":"instruction"});
  }
  if(url==="/v1/assistant/turn"){
