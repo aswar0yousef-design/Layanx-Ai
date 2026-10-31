@@ -68,25 +68,39 @@ export async function verifyTaskAppUI(workspace:string):Promise<TaskAppUIResult>
         const input=page.locator('[data-testid="task-input"]');
         const add=page.locator('[data-testid="task-add"]');
         const item=()=>page.locator('[data-testid="task-item"]').filter({hasText:title});
+        const backendHasTask=async()=>{
+          const reply=await fetch(started.url+"/tasks",{signal:AbortSignal.timeout(5000)});
+          if(!reply.ok)throw Error("GET /tasks failed while verifying browser action");
+          const body:unknown=await reply.json();
+          const tasks=Array.isArray(body)?body:
+            body&&typeof body==="object"&&Array.isArray((body as {tasks?:unknown}).tasks)?
+              (body as {tasks:unknown[]}).tasks:null;
+          if(!tasks)throw Error("GET /tasks has no task list");
+          return tasks.some(t=>t&&typeof t==="object"&&(t as {title?:unknown}).title===title);
+        };
         await record(viewport+"-create",async()=>{
           await input.fill(title,{timeout:5000});
           await add.click({timeout:5000});
           await item().waitFor({state:"visible",timeout:8000});
+          if(!await backendHasTask())throw Error("UI created a visible item but backend GET /tasks did not contain it");
           if(failures.length)throw Error("Browser JavaScript errors: "+failures.join("; "));
         });
         await record(viewport+"-reload",async()=>{
           await page.reload({waitUntil:"load"});
           await item().waitFor({state:"visible",timeout:8000});
+          if(!await backendHasTask())throw Error("UI item not durable in backend after reload");
           const overflow=await page.evaluate("document.documentElement.scrollWidth > innerWidth + 3");
           if(overflow)throw Error("The app overflows its viewport");
         });
         await record(viewport+"-delete",async()=>{
           await item().locator('[data-testid="task-delete"]').click({timeout:5000});
           await item().waitFor({state:"detached",timeout:8000});
+          if(await backendHasTask())throw Error("UI deleted item visually but backend still contains it");
         });
         await record(viewport+"-delete-reload",async()=>{
           await page.reload({waitUntil:"load"});
           await item().waitFor({state:"detached",timeout:5000});
+          if(await backendHasTask())throw Error("Deleted UI task reappeared in backend after reload");
           if(failures.length)throw Error("Browser JavaScript errors: "+failures.join("; "));
         });
       }finally{await context.close();}
