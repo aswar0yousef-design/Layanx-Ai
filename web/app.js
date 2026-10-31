@@ -384,6 +384,17 @@ async function startJob(goal,minutes,openWhenDone=openWhenDonePref(),acceptanceP
 }
 const JOB_STOPPED=["failed","cancelled","budget_exhausted"];
 async function resumeJob(j){try{await api("/v1/supervisor/jobs/"+encodeURIComponent(j.id)+"/resume",{method:"POST",body:{}});toast(t("jobResumed"));await loadJobs();render();}catch(e){toast(e.message);}}
+async function reconcileJob(j,decision){
+ const warning=LANG==="ar"
+  ?"حدث انقطاع أثناء تنفيذ خطوة، وقد تكون إجراءاتها نُفذت بالفعل. راجع سجل التنفيذ ونتائج أي إرسال أو نشر أو تداول قبل المتابعة. هل تؤكد أنك تحققت وأن "+(decision==="retry"?"إعادة المحاولة آمنة؟":"المهمة ستتوقف دون إعادة المحاولة؟")
+  :"The task was interrupted during an action. Check audit logs and any external messages, publications, or orders first. Confirm "+(decision==="retry"?"that retry is safe and will not duplicate effects.":"that the task should be stopped without replay.");
+ if(!confirm(warning))return;
+ try{
+  await api("/v1/supervisor/jobs/"+encodeURIComponent(j.id)+"/reconcile",{method:"POST",
+   body:{decision,acknowledgeUnknownEffects:true}});
+  await loadJobs();render();
+ }catch(error){toast(error.message);}
+}
 /** Show a job's site: the server starts the dev server if needed (approval or trust decides) and opens it on this PC. */
 async function openJobSite(j,extra={}){
  try{
@@ -433,14 +444,18 @@ function jobView(j,full){
  ):null;
  return el("section",{class:"card",style:"margin-bottom:1rem"},
   el("div",{class:"card-head"},el("h3",{dir:"auto",text:j.goal.split("\n")[0].slice(0,140)}),el("div",{style:"display:flex;gap:.4rem;align-items:center;flex-wrap:wrap"},pill(jobState(j),t("j_"+j.status)),approve,
-   stopped?el("button",{class:"btn primary small",onclick:()=>resumeJob(j)},icon("play"),t("resumeJob")):null,
+   stopped&&!j.recoveryHold?el("button",{class:"btn primary small",onclick:()=>resumeJob(j)},icon("play"),t("resumeJob")):null,
+   j.recoveryHold&&j.status==="failed"?el("button",{class:"btn warn small",onclick:()=>reconcileJob(j,"retry"),text:LANG==="ar"?"تحققت من التنفيذ: أعد المحاولة":"Reviewed effects: retry"}):null,
+   j.recoveryHold&&j.status==="failed"?el("button",{class:"btn danger small",onclick:()=>reconcileJob(j,"abort"),text:LANG==="ar"?"إيقاف دون تكرار":"Stop without retry"}):null,
    j.status==="completed"||j.preview?el("button",{class:"btn small",onclick:()=>openJobSite(j)},icon("globe"),t("openSite")):null,
    JOB_ACTIVE.includes(j.status)?el("button",{class:"btn small",text:t("cancel"),onclick:async()=>{try{await api("/v1/supervisor/jobs/"+encodeURIComponent(j.id)+"/cancel",{method:"POST",body:{}});render();}catch(e){toast(e.message);}}}):null,
    el("button",{class:"btn small danger",text:t("deleteL"),title:t("deleteJobQ"),onclick:async()=>{if(!confirm(t("deleteJobQ")))return;try{await api("/v1/supervisor/jobs/"+encodeURIComponent(j.id)+"/delete",{method:"POST",body:{}});toast(t("deletedT"));await loadJobs();render();}catch(e){toast(e.message);}}}),
    el("button",{class:"btn small",text:t("logL"),onclick:()=>{box.hidden=!box.hidden;}}))),
   el("div",{class:"small muted",style:"display:flex;justify-content:space-between"},el("span",{text:t("stepsDone",{a:done,b:total||"—"})+" · "+t("trustL")+": "+t("t_"+j.trust).split(":")[0]+(j.cloudUsed?" · "+t("cloudUsedL"):"")+(j.externalUsed&&j.externalUsed.length?" · "+j.externalUsed.join(", "):"")}),el("span",{text:(LANG==="ar"?"تقدم الخطوات ":"Milestones ")+pct+"%"})),
   el("div",{class:"progress"},el("i",{style:"width:"+pct+"%"})),
-  summary,files,notes,proof,behavior,handoff,
+  summary,files,notes,
+  j.recoveryHold?el("div",{class:"job-sum bad",dir:"auto",text:(LANG==="ar"?"إيقاف احترازي: نتيجة الخطوة السابقة مجهولة. راجع العمليات الخارجية قبل إعادة المحاولة. ":"Recovery hold: previous action outcome unknown; inspect external effects before retry. ")+j.recoveryHold.description}):null,
+  proof,behavior,handoff,
   el("ul",{class:"steps"},j.milestones.map((m,i)=>el("li",{class:i===j.current&&JOB_ACTIVE.includes(j.status)?"current":""},el("span",{class:"tick "+(m.status==="done"?"done":m.status==="failed"?"fail":i===j.current&&j.status==="waiting_approval"?"wait":i===j.current&&JOB_ACTIVE.includes(j.status)?"run":"pend"),text:m.status==="done"?"✓":m.status==="failed"?"!":""}),
    el("span",{class:"t",dir:"auto",text:m.title}),el("span",{class:"status s-pend",text:t("ag_"+m.agent)}),m.attempts>1?el("span",{class:"status s-wait",text:"×"+m.attempts}):null))),
   j.lastChecks&&j.lastChecks.length?el("div",{class:"chips"},j.lastChecks.map(c=>el("span",{class:"status "+(c.ok?"s-done":"s-fail"),text:c.name}))):null,
