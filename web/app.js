@@ -480,11 +480,23 @@ function greetingOnly(text){
  const normalized=String(text||"").toLowerCase().replace(/[\u064b-\u065f\u0670]/g,"").replace(/[أإآ]/g,"ا").replace(/[؟!،,.]/g," ").replace(/\s+/g," ").trim();
  return /^(?:(?:يا\s+)?(?:layanx|ليان|جارفيس|jarvis)\s+)?(?:مرحبا(?:\s+كيف\s+(?:الحال|حالك))?|كيف\s+(?:الحال|حالك)|السلام\s+عليكم(?:\s+ورحمه\s+الله(?:\s+وبركاته)?)?|اهلا(?:\s+وسهلا)?|هلا|صباح\s+الخير|مساء\s+الخير|شكرا|hello(?:\s+how\s+are\s+you)?|hi|hey|how\s+are\s+you|good\s+morning|good\s+evening|thank\s+you|thanks)$/i.test(normalized);
 }
+// Whole-question classification only. Other questions and instructions remain permission gated.
+// Keep this shortlist aligned with capabilityQuestion in src/voice/assistant.ts.
+function capabilityQuestionOnly(text){
+ const v=String(text||"").toLowerCase().replace(/[\u064b-\u065f\u0670\u0640]/g,"")
+  .replace(/[أإآٱ]/g,"ا").replace(/ى/g,"ي").replace(/ة/g,"ه")
+  .replace(/[ؤ]/g,"و").replace(/[ئ]/g,"ي").replace(/[؟?!،,.؛:]/g," ")
+  .replace(/\s+/g," ").trim();
+ if(!v||v.split(" ").length>12)return false;
+ const q=v.replace(/^(?:(?:يا )?(?:ليان|layanx|جارفيس|jarvis) )/u,"").trim();
+ return /^(?:(?:ما\s*الذي|مالذي)\s+(?:يمكنك|تستطيع)\s+(?:فعله|عمله|ان تفعل|ان تعمل|تعمله)(?: لي)?|ماذا\s+(?:يمكنك|تستطيع)\s+(?:فعله|عمله|ان تفعل|ان تعمل|تعمله)(?: لي)?|(?:ما هي|ماهي|ما)\s+(?:قدراتك|امكانياتك|مهامك)|كيف (?:يمكنك )?(?:مساعدتي|تساعدني)|(?:وش|ايش)\s+(?:تقدر|تعرف|تستطيع)\s+(?:تسوي|تعمل|تفعل)|what can you do(?: for me)?|what are your capabilities|how can you help me|what do you do)$/iu.test(q);
+}
+function conversationOnly(text){return greetingOnly(text)||capabilityQuestionOnly(text);}
 async function runGoal(goal,model){
  if(!goal.trim())return;
  S.log.push({id:uid(),role:"you",text:goal,at:Date.now()});
  const me={id:uid(),role:"me",text:t("received"),state:"run",steps:[],lines:[],at:Date.now()};S.log.push(me);drawAgent();
- if(greetingOnly(goal)){
+ if(conversationOnly(goal)){
   const answer=await safe(api("/v1/assistant/turn",{method:"POST",body:{text:goal,projectId:project(),allowTasks:false}}),{ok:false,error:"assistant_unavailable"});
   me.state=answer.ok&&answer.intent==="answer"?"done":"fail";
   me.text=me.state==="done"?answer.reply:t("notCompleted")+": "+reasonText(answer.error||"assistant_unavailable");
@@ -529,7 +541,7 @@ function agentCard(big){
  if(localStorage.getItem("lx.cc.auto")==="1")auto.classList.add("primary");
  const submit=async()=>{const g=input.value.trim();if(!g)return;input.value="";
   // Pure greetings must never become autonomous jobs or notes on someone else’s job.
-  if(greetingOnly(g)){runGoal(g,model.value);return;}
+  if(conversationOnly(g)){runGoal(g,model.value);return;}
   try{if(await noteForRunningJob(g))return;}catch(e){toast(e.message);return;}
   if(auto.getAttribute("aria-pressed")==="true"){try{const j=await startJob(g);S.log.push({id:uid(),role:"you",text:g,at:Date.now()},{id:uid(),role:"me",text:t("jobStarted"),state:"run",at:Date.now(),job:j.id});drawAgent();}catch(e){toast(e.message);}return;}
   runGoal(g,model.value);};
