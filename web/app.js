@@ -477,7 +477,7 @@ function resultLines(r){
 // Route pure greetings through the existing conversational assistant. Never create missions for small talk.
 // Mixed requests (e.g. "مرحبا افتح المتصفح") still use the normal permission-gated agent path.
 function greetingOnly(text){
- const normalized=String(text||"").toLowerCase().replace(/[\u064b-\u065f\u0670]/g,"").replace(/[؟!،,.]/g," ").replace(/\s+/g," ").trim();
+ const normalized=String(text||"").toLowerCase().replace(/[\u064b-\u065f\u0670]/g,"").replace(/[أإآ]/g,"ا").replace(/[؟!،,.]/g," ").replace(/\s+/g," ").trim();
  return /^(?:(?:يا\s+)?(?:layanx|ليان|جارفيس|jarvis)\s+)?(?:مرحبا(?:\s+كيف\s+(?:الحال|حالك))?|كيف\s+(?:الحال|حالك)|السلام\s+عليكم(?:\s+ورحمه\s+الله(?:\s+وبركاته)?)?|اهلا(?:\s+وسهلا)?|هلا|صباح\s+الخير|مساء\s+الخير|شكرا|hello(?:\s+how\s+are\s+you)?|hi|hey|how\s+are\s+you|good\s+morning|good\s+evening|thank\s+you|thanks)$/i.test(normalized);
 }
 async function runGoal(goal,model){
