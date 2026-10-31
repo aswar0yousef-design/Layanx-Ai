@@ -1,7 +1,7 @@
 import {linkedProjectPath} from "../platform/linked-projects.js";
 import {safeChildEnv} from "../platform/safe-env.js";
 import {readFile,readdir,stat,mkdir,writeFile} from "node:fs/promises";
-import {resolve,relative,isAbsolute,sep} from "node:path";
+import {resolve,relative,isAbsolute,sep,win32} from "node:path";
 import {spawn} from "node:child_process";
 import type {ToolRequest} from "../core/types.js";
 import type {ToolAdapter} from "./executor.js";
@@ -30,7 +30,7 @@ function workspaceFor(root:string,projectId?:string):string{
  return linkedProjectPath(safe)??resolve(root,safe);
 }
 function sandboxPath(root:string,input:string):string{
- if(!input||isAbsolute(input))throw new Error("Workspace paths must be relative.");
+ if(!input||isAbsolute(input)||win32.isAbsolute(input))throw new Error("Workspace paths must be relative.");
  const base=resolve(root),target=resolve(base,input),rel=relative(base,target);
  if(rel===""||(!rel.startsWith(".."+sep)&&rel!==".."))return target;
  throw new Error("Workspace path escapes the project sandbox.");
@@ -39,7 +39,11 @@ export function createFileToolAdapter(options:{root:string}):ToolAdapter{
  const root=resolve(options.root);
  return{async execute(request){
   const workspace=workspaceFor(root,request.projectId);await mkdir(workspace,{recursive:true});
-  const input=payload(request),path=typeof input.path==="string"?input.path:"",target=sandboxPath(workspace,path);
+  const input=payload(request),requestedPath=typeof input.path==="string"?input.path.trim():"";
+  // A directory listing with no path means the current project root, never the OS root.
+  // File reads and metadata checks still require a concrete relative path.
+  const path=request.action==="list files"&&!requestedPath?".":requestedPath;
+  const target=sandboxPath(workspace,path);
   if(request.action==="list files"){const entries=await readdir(target,{withFileTypes:true});return{path,entries:entries.slice(0,200).map(entry=>({name:entry.name,type:entry.isDirectory()?"directory":"file"}))};}
   if(request.action==="stat file"){const info=await stat(target);return{path,type:info.isDirectory()?"directory":"file",size:info.size,modifiedAt:info.mtime.toISOString()};}
   if(request.action==="read file"){const info=await stat(target);if(!info.isFile())throw new Error("Target is not a file.");if(info.size>1024*1024)throw new Error("File exceeds the 1 MiB read limit.");return{path,content:await readFile(target,"utf8")};}

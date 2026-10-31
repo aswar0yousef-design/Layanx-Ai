@@ -474,10 +474,22 @@ function resultLines(r){
  }
  return lines;
 }
+// Route pure greetings through the existing conversational assistant. Never create missions for small talk.
+// Mixed requests (e.g. "مرحبا افتح المتصفح") still use the normal permission-gated agent path.
+function greetingOnly(text){
+ const normalized=String(text||"").toLowerCase().replace(/[\u064b-\u065f\u0670]/g,"").replace(/[أإآ]/g,"ا").replace(/[؟!،,.]/g," ").replace(/\s+/g," ").trim();
+ return /^(?:(?:يا\s+)?(?:layanx|ليان|جارفيس|jarvis)\s+)?(?:مرحبا(?:\s+كيف\s+(?:الحال|حالك))?|كيف\s+(?:الحال|حالك)|السلام\s+عليكم(?:\s+ورحمه\s+الله(?:\s+وبركاته)?)?|اهلا(?:\s+وسهلا)?|هلا|صباح\s+الخير|مساء\s+الخير|شكرا|hello(?:\s+how\s+are\s+you)?|hi|hey|how\s+are\s+you|good\s+morning|good\s+evening|thank\s+you|thanks)$/i.test(normalized);
+}
 async function runGoal(goal,model){
  if(!goal.trim())return;
  S.log.push({id:uid(),role:"you",text:goal,at:Date.now()});
  const me={id:uid(),role:"me",text:t("received"),state:"run",steps:[],lines:[],at:Date.now()};S.log.push(me);drawAgent();
+ if(greetingOnly(goal)){
+  const answer=await safe(api("/v1/assistant/turn",{method:"POST",body:{text:goal,projectId:project(),allowTasks:false}}),{ok:false,error:"assistant_unavailable"});
+  me.state=answer.ok&&answer.intent==="answer"?"done":"fail";
+  me.text=me.state==="done"?answer.reply:t("notCompleted")+": "+reasonText(answer.error||"assistant_unavailable");
+  me.at=Date.now();drawAgent();return;
+ }
  const before=new Set(S.missions.map(m=>m.id));let done=false;
  (async()=>{while(!done){await sleep(1200);if(done)break;if(!me.missionId){const ms=await loadMissions();const n=ms.find(m=>!before.has(m.id));if(n)me.missionId=n.id;}if(me.missionId){me.steps=deriveSteps(await missionDetail(me.missionId));drawAgent();}}})();
  const r=await safe(api("/v1/agent/gateway",{method:"POST",body:{goal,projectId:project(),maxSteps:10,model:model||"auto"},allow:[422]}),{ok:false,error:"network"});
@@ -516,6 +528,8 @@ function agentCard(big){
  const auto=el("button",{class:"btn small",type:"button","aria-pressed":String(localStorage.getItem("lx.cc.auto")==="1"),title:t("toEndHint"),onclick:()=>{const on=auto.getAttribute("aria-pressed")!=="true";auto.setAttribute("aria-pressed",String(on));auto.classList.toggle("primary",on);localStorage.setItem("lx.cc.auto",on?"1":"0");}},icon("spark"),t("toEnd"));
  if(localStorage.getItem("lx.cc.auto")==="1")auto.classList.add("primary");
  const submit=async()=>{const g=input.value.trim();if(!g)return;input.value="";
+  // Pure greetings must never become autonomous jobs or notes on someone else’s job.
+  if(greetingOnly(g)){runGoal(g,model.value);return;}
   try{if(await noteForRunningJob(g))return;}catch(e){toast(e.message);return;}
   if(auto.getAttribute("aria-pressed")==="true"){try{const j=await startJob(g);S.log.push({id:uid(),role:"you",text:g,at:Date.now()},{id:uid(),role:"me",text:t("jobStarted"),state:"run",at:Date.now(),job:j.id});drawAgent();}catch(e){toast(e.message);}return;}
   runGoal(g,model.value);};

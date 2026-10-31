@@ -14,6 +14,23 @@ const read=await files.execute({...base,payload:{path:"hello.txt"}});
 if((read as {content:string}).content!=="LayanX fabric")throw new Error("File read failed.");
 const listed=await files.execute({...base,action:"list files",payload:{path:"."}});
 if(!(listed as {entries:Array<{name:string}>}).entries.some(x=>x.name==="hello.txt"))throw new Error("File listing failed.");
+for(const payload of [{},{path:""},{path:"   "}]){
+ const rootListing=await files.execute({...base,action:"list files",payload});
+ if((rootListing as {path:string;entries:Array<{name:string}>}).path!=="."||
+    !(rootListing as {entries:Array<{name:string}>}).entries.some(x=>x.name==="hello.txt"))
+   throw new Error("Unspecified files.list path must list only the current project root.");
+}
+for(const invalid of ["/etc/passwd","C:\\\\Windows\\\\win.ini","\\\\\\\\server\\\\share\\\\outside.txt"]){
+ await files.execute({...base,action:"list files",payload:{path:invalid}})
+  .then(()=>{throw new Error("Absolute workspace path unexpectedly accepted: "+invalid);})
+  .catch(error=>{if(!String(error).includes("must be relative"))throw error;});
+}
+for(const action of ["read file","stat file"]){
+ await files.execute({...base,action,payload:{}})
+  .then(()=>{throw new Error("Non-listing file tool unexpectedly accepted missing path.");})
+  .catch(error=>{if(!String(error).includes("must be relative"))throw error;});
+}
+
 await files.execute({...base,payload:{path:"../outside.txt"}}).then(()=>{throw new Error("Path traversal was not blocked.");}).catch(error=>{if(!String(error).includes("escapes"))throw error;});
 await files.execute({...base,projectId:"project-b",payload:{path:"hello.txt"}}).then(()=>{throw new Error("Cross-project workspace unexpectedly exposed a file.");}).catch(error=>{if(!String(error).includes("ENOENT"))throw error;});
 await files.execute({...base,projectId:"../escape",payload:{path:"hello.txt"}}).then(()=>{throw new Error("Invalid project workspace identity was accepted.");}).catch(error=>{if(!String(error).includes("Invalid project workspace identity"))throw error;});
