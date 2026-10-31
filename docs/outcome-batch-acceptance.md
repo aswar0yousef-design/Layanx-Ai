@@ -38,7 +38,7 @@ The five-run gate passes only for **five independent passing runs** with distinc
 
 ## Important remaining constraints
 
-This still verifies a narrow generated bilingual task-list app with real desktop/mobile browser interactions. Edge or Chrome and the optional `playwright-core` dependency must be available; browser absence is a failing release result, not a skipped success. It does **not** show that every natural-language request is reliably fulfilled, that HTML controls are usable by keyboard/screen reader, or that a browser user interaction was independently exercised. Restart testing here restarts the generated app server, not the Windows PC.
+This still verifies a narrow generated bilingual task-list app with real desktop/mobile browser interactions. Edge or Chrome and the optional `playwright-core` dependency must be available; browser absence is a failing release result, not a skipped success. It does **not** show that every natural-language request is reliably fulfilled, nor establish keyboard or screen-reader accessibility, pixel-perfect layout, or all user interaction paths. Restart testing here restarts the generated app server, not the Windows PC.
 
 The recovery and external-action tests remain separate. No real trading or external publishing action should be switched on as a result of this score. After the batch test, inspect the workspace, generated app and reports yourself; record the Windows version, Node version, Ollama version and local model alongside the evidence.
 
