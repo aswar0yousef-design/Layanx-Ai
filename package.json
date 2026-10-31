@@ -33,7 +33,8 @@
     "vsix": "node scripts/build-vsix.mjs",
     "tools:security": "tsx scripts/install-security-tools.ts",
     "acceptance:live:local": "tsx scripts/outcome-live-acceptance.ts",
-    "delivery:verify": "tsx scripts/verify-delivery.ts"
+    "delivery:verify": "tsx scripts/verify-delivery.ts",
+    "acceptance:batch:local": "tsx scripts/outcome-batch-acceptance.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
