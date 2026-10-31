@@ -8,7 +8,8 @@ new Function(src); // reject broken Control Center JavaScript before browser loa
 const start=src.indexOf("function greetingOnly(text){");
 const end=src.indexOf("async function runGoal(goal,model){",start);
 assert.ok(start>=0&&end>start,"Control Center has a greeting-only fast path");
-const greetingOnly=new Function(src.slice(start,end)+"; return greetingOnly;")() as (text:string)=>boolean;
+const classifiers=new Function(src.slice(start,end)+"; return {greetingOnly,capabilityQuestionOnly,conversationOnly};")() as {greetingOnly:(text:string)=>boolean;capabilityQuestionOnly:(text:string)=>boolean;conversationOnly:(text:string)=>boolean};
+const {greetingOnly,capabilityQuestionOnly,conversationOnly}=classifiers;
 for(const phrase of ["مرحبا كيف الحال","كيف الحال؟","مرحبا","أهلا","صباح الخير","السلام عليكم","Hello","how are you","Hi"]){
  assert.equal(greetingOnly(phrase),true,"Greeting must be conversational: "+phrase);
 }
@@ -16,8 +17,16 @@ for(const phrase of ["مرحبا افتح المتصفح","كيف الحال ف�
  "افتح ملفاتي","list files","صحح أخطاء المشروع","مرحبا ارسل رسالة","تحقق من حالة الجهاز"]){
  assert.equal(greetingOnly(phrase),false,"Action must not be swallowed as greeting: "+phrase);
 }
+for(const phrase of ["مالذي يمكنك عمله","ما الذي يمكنك عمله؟","ما الذي يمكنك فعله","ماذا يمكنك عمله لي","ما هي إمكانياتك","what can you do?"]){
+ assert.equal(capabilityQuestionOnly(phrase),true,"Capabilities must be conversation: "+phrase);
+ assert.equal(conversationOnly(phrase),true);
+}
+for(const phrase of ["ما الذي يمكنك عمله في مشروعي؟","ماذا يمكنك عمله لتطوير المتجر","what can you do with this CSV file?","افتح المتصفح"]){
+ assert.equal(capabilityQuestionOnly(phrase),false,"Specific action must remain gated: "+phrase);
+}
 const handler=src.slice(end,src.indexOf("function messageView(m){",end));
-assert.ok(handler.indexOf('if(greetingOnly(goal))')>=0);
+assert.ok(handler.indexOf('if(conversationOnly(goal))')>=0);
+assert.match(src,/if\(conversationOnly\(g\)\)\{runGoal\(g,model.value\);return;\}/,"Pure information must bypass autonomous jobs");
 assert.ok(handler.indexOf('"/v1/assistant/turn"')<handler.indexOf('"/v1/agent/gateway"'));
 assert.match(handler,/allowTasks:false/,"Greeting calls should never execute external actions");
 assert.match(handler,/me\.text=me\.state==="done"\?answer\.reply/,"Show the assistant's actual answer, not a fake completed mission");
@@ -43,7 +52,7 @@ const server=http.createServer(async(req,res)=>{
   assistantCalls++;
   let body="";for await (const c of req)body+=String(c);
   lastAssistant=JSON.parse(body) as Record<string,unknown>;
-  return send({ok:true,intent:"answer",reply:"بخير والحمد لله، كيف أقدر أساعدك؟"});
+  return send({ok:true,intent:"answer",reply:String(lastAssistant?.text).includes("عمله")?"أستطيع مساعدتك في الملفات والبرمجة والاختبارات ضمن الصلاحيات.":"بخير والحمد لله، كيف أقدر أساعدك؟"});
  }
  if(url==="/v1/agent/gateway"){
   gatewayCalls++;
@@ -72,14 +81,25 @@ try{
  assert.equal(gatewayCalls,0,"A greeting must not create an agent mission");
  assert.equal(supervisorPosts,0,"Greeting must not create an autonomous Supervisor job when Auto mode is enabled");
  assert.equal(lastAssistant?.allowTasks,false);
+ await page.locator("#agentInput").fill("مالذي يمكنك عمله");
+ await page.locator("#agentInput").press("Enter");
+ await page.waitForFunction(()=>document.querySelector("#chat")?.textContent?.includes("أستطيع مساعدتك في الملفات"),{timeout:15000});
+ assert.equal(assistantCalls,2,"Capabilities must use assistant even with Auto mode on");
+ assert.equal(gatewayCalls,0);
+ assert.equal(supervisorPosts,0,"Capabilities must not create autonomous Supervisor jobs");
  await autonomy.click();
  assert.equal(await autonomy.getAttribute("aria-pressed"),"false");
+ await page.locator("#agentInput").fill("ما الذي يمكنك عمله؟");
+ await page.locator("#agentInput").press("Enter");
+ const until=Date.now()+15000;while(assistantCalls<3&&Date.now()<until)await new Promise(r=>setTimeout(r,40));
+ assert.equal(assistantCalls,3,"Capability question still conversational with Auto off");
+ assert.equal(gatewayCalls,0);
  await page.locator("#agentInput").fill("مرحبا افتح المتصفح");
  await page.locator("#agentInput").press("Enter");
  const deadline=Date.now()+10000;while(gatewayCalls===0&&Date.now()<deadline)await new Promise(r=>setTimeout(r,40));
  assert.equal(gatewayCalls,1,"A mixed greeting and instruction goes to the permission-gated gateway");
- assert.equal(assistantCalls,1,"Mixed request not swallowed by conversational route");
- console.log("control-center greeting routing: real browser, autonomous greeting no supervisor task, correct reply and mixed action gated");
+ assert.equal(assistantCalls,3,"Mixed request not swallowed by conversational route");
+ console.log("control-center conversational routing: real browser, greetings and capabilities in both modes; no supervisor jobs; mixed actions gated");
 }finally{
  await page.close();await browser.close();
  await new Promise<void>(resolve=>server.close(()=>resolve()));
