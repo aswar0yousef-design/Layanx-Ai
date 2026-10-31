@@ -29,7 +29,7 @@ if(chromium)for(const option of [...(process.env.LAYANX_BROWSER_PATH?[{executabl
  {channel:"msedge"},{channel:"chrome"}]){try{browser=await chromium.launch({headless:true,...option});break;}catch{}}
 if(!browser){console.log("control-center greeting routing: static checks passed (browser unavailable)");process.exit(0);}
 
-let assistantCalls=0,gatewayCalls=0,lastAssistant:Record<string,unknown>|null=null;
+let assistantCalls=0,gatewayCalls=0,supervisorPosts=0,lastAssistant:Record<string,unknown>|null=null;
 const publicFiles=path.resolve("web");
 const server=http.createServer(async(req,res)=>{
  const url=(req.url??"/").split("?")[0]!;
@@ -50,7 +50,7 @@ const server=http.createServer(async(req,res)=>{
   return send({ok:false,completed:false,status:"failed",reason:"mock no external execution"});
  }
  if(url==="/v1/setup/status")return send({owner:{name:"Owner"},workspace:{root:"C:\\Users\\Test\\LayanX-Projects",projects:["default"],linked:[]},capabilities:{},secrets:{names:[]}});
- if(url==="/v1/supervisor/jobs")return send({ok:true,jobs:[]});
+ if(url==="/v1/supervisor/jobs"){if(req.method==="POST"){supervisorPosts++;return send({ok:true,job:{id:"unexpected-job",projectId:"default",status:"running"}});}return send({ok:true,jobs:[]});}
  if(url==="/v1/missions")return send({ok:true,missions:[]});
  if(url==="/v1/approvals")return send({ok:true,approvals:[]});
  return send({ok:true});
@@ -61,18 +61,25 @@ const page=await browser.newPage();
 try{
  await page.goto("http://127.0.0.1:"+address.port+"/#agent",{waitUntil:"domcontentloaded"});
  await page.locator("#agentInput").waitFor({timeout:15000});
+ const autonomy=page.locator("button[aria-pressed]").first();
+ await autonomy.waitFor({timeout:10000});
+ if(await autonomy.getAttribute("aria-pressed")!=="true")await autonomy.click();
+ assert.equal(await autonomy.getAttribute("aria-pressed"),"true","Autonomous mode is enabled for the regression");
  await page.locator("#agentInput").fill("مرحبا كيف الحال");
  await page.locator("#agentInput").press("Enter");
  await page.waitForFunction(()=>document.querySelector("#chat")?.textContent?.includes("بخير والحمد لله"),{timeout:15000});
  assert.equal(assistantCalls,1,"One assistant turn for pure greeting");
  assert.equal(gatewayCalls,0,"A greeting must not create an agent mission");
+ assert.equal(supervisorPosts,0,"Greeting must not create an autonomous Supervisor job when Auto mode is enabled");
  assert.equal(lastAssistant?.allowTasks,false);
+ await autonomy.click();
+ assert.equal(await autonomy.getAttribute("aria-pressed"),"false");
  await page.locator("#agentInput").fill("مرحبا افتح المتصفح");
  await page.locator("#agentInput").press("Enter");
  const deadline=Date.now()+10000;while(gatewayCalls===0&&Date.now()<deadline)await new Promise(r=>setTimeout(r,40));
  assert.equal(gatewayCalls,1,"A mixed greeting and instruction goes to the permission-gated gateway");
  assert.equal(assistantCalls,1,"Mixed request not swallowed by conversational route");
- console.log("control-center greeting routing: real browser, correct reply, no mission, mixed action remains gated");
+ console.log("control-center greeting routing: real browser, autonomous greeting no supervisor task, correct reply and mixed action gated");
 }finally{
  await page.close();await browser.close();
  await new Promise<void>(resolve=>server.close(()=>resolve()));
