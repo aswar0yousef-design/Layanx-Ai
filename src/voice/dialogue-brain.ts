@@ -23,7 +23,7 @@ function stripName(text:string):string{
 }
 const IDENTITY=/^(?:من انت|من تكون|ما اسمك|ما هو اسمك|عرفني بنفسك|تكلم عن نفسك|who are you|what is your name|tell me about yourself)$/u;
 const LEARNING=/^(?:هل (?:تتعلم|تطور|تستطيع تعلم|تستطيع تطوير|يمكنك تطوير|بامكانك تطوير|تقدر تطور)(?: و?تطور)?(?: من نفسك| نفسك| ذاتيا)?|هل يمكنك (?:ان )?تطور نفسك|هل تستطيع (?:ان )?تطور نفسك|هل (?:تتعلم وتطور|تتعلم و تطور) من نفسك|do you learn(?: on your own| by yourself)?|can you (?:learn|improve|develop) yourself|can you improve your own code|do you improve yourself)$/u;
-const ACTION=/^(?:قم|اريد منك|اريدك|ابد[اأ]|اكمل|تابع|اصلح|انش[ئيأ]|صمم|اكتب|افتح|شغل|نفذ|اعرض|استخرج|ابحث|تحقق|اختبر|راجع|حدث|اغلق|ارسل|انشر|سجل|تداول|احجز|حلل|انقل|احفظ|احضر|جهز|طور|ابن|بناء|اضف|اربط|انسخ|حمل|ثبت|اعمل|اذهب|سوي|run|create|build|make|fix|open|start|stop|write|send|publish|deploy|install|test|check|show|list|find|inspect|review|update|delete|remove|generate|commit|merge|push|pull|place|book|order)(?:\s|$)/iu;
+const ACTION=/^(?:قم|اريد منك|اريدك|ابد[اأ]|اكمل|تابع|استمر|اصلح|انش[ئيأ]|صمم|اكتب|افتح|شغل|نفذ|اعرض|استخرج|ابحث|افحص|طبق|تاكد|تحقق|اختبر|راجع|حدث|اغلق|اوقف|توقف|ارسل|انشر|سجل|تداول|احجز|حلل|انقل|احفظ|احضر|جهز|طور|ابن|بناء|اضف|اربط|انسخ|حمل|ثبت|اعمل|اذهب|سوي|run|create|build|make|fix|open|start|stop|write|send|publish|deploy|install|test|check|show|list|find|inspect|review|update|delete|remove|generate|commit|merge|push|pull|place|book|order)(?:\s|$)/iu;
 const GREETING=/^(?:مرحبا|اهلا|هلا|السلام عليكم|صباح الخير|مساء الخير|hi|hey|hello|good morning|good evening|thanks|شكرا)(?:\s+(?:كيف الحال|كيف حالك|وسهلا|ورحمه الله|لك))?$/iu;
 function startsWithQuestion(t:string):boolean{
  return /^(?:هل|من|ما|ماذا|ماهي|مالذي|لماذا|ليش|كيف|متي|اين|وين|كم|اي|ايش|وش)(?:\s|$)/u.test(t)
