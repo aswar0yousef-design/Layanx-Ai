@@ -25,6 +25,7 @@ import type {IdempotencyService} from "./idempotency.js";
 import {IdempotencyStore} from "./idempotency.js";
 import {ModelProviderRegistry,ModelExecutionRouter} from "./model-execution.js";
 import {AiMissionPlanner} from "./ai-planner.js";
+import {readSignature,repeatedReadReason} from "./repeated-read-guard.js";
 import {ExecutionRuntime} from "./runtime.js";
 import {MissionCompiler} from "./mission-compiler.js";
 import {ToolSelector} from "./tool-selection.js";
@@ -662,6 +663,7 @@ export class LayanXCore{
     this.projectIsolation.assertMissionProject(projectId,mission.projectId);
     const limit=Math.min(Math.max(Math.floor(maxSteps),1),25);
     const results:unknown[]=[];
+    const successfulObservations:string[]=[];
     let latest:unknown={status:"not_started"};
     let steps=0;
     let visualContext:{mimeType:string;base64:string}|undefined;
@@ -759,6 +761,18 @@ export class LayanXCore{
         plan=screenshot;
         planIndex=replaceAt;
       }
+      // Do not burn the remaining mission budget repeating an unchanged successful read.
+      // Mark the mission failed rather than pretending these observations fulfilled the goal.
+      const repeatedObservation=plan?repeatedReadReason(plan,successfulObservations):null;
+      if(repeatedObservation){
+        setLifecycle(current,this.executionStates,"failed",true);
+        this.missions.save(current);
+        await this.executionRuntime.persist(current);
+        this.audit.append({timestamp:new Date().toISOString(),actor:agentId,action:"mission.repeated_read.block",resource:missionId,
+          result:"failure",metadata:{missionId,tool:plan?.tool,observed:successfulObservations.length,reason:repeatedObservation}});
+        cleanupLiveScreen();
+        return{missionId,completed:false,status:"failed",steps,results,reason:repeatedObservation};
+      }
       const actualIndex=planIndex>=0?planIndex:(this.missions.get(missionId)?.tools?.length??1)-1;
       // Running a project that does not exist yet can only fail: tell the planner instead of asking the
       // owner to approve it (a new website goal used to ask twice for npm in an empty folder).
@@ -768,6 +782,9 @@ export class LayanXCore{
         :await this.executeMissionTool(missionId,projectId,actualIndex,plan.payload??{},approvalIds[actualIndex],agentId,{deferVerification:true});
       results.push(result);
       steps++;
+      const observationSignature=plan?readSignature(plan):null;
+      if(result.ok&&observationSignature)successfulObservations.push(observationSignature);
+      else successfulObservations.length=0;
       latest=result.ok?result.data:result.error;
       if(result.ok&&plan.tool==="desktop.screenshot"){
         const data=result.data as Record<string,unknown>;
