@@ -99,6 +99,19 @@ export function greetingOf(text:string):Greeting|null{
   if(!found.length||rest.split(/\s+/).filter(Boolean).some(w=>!GREETING_FILLER.test(w)))return null;
   return found[0]!;
 }
+/**
+ * Questions about the assistant itself should be answered predictably, even
+ * if Ollama is overloaded. Only match a whole question about LayanX's general
+ * capabilities: "what can you do with THIS FILE" is a different request and
+ * must still be interpreted normally.
+ */
+export function capabilityQuestion(text:string):boolean{
+  const v=normalizeArabic(text).replace(/[؟?!،,.؛:]/g," ").replace(/\s+/g," ").trim();
+  if(!v||v.split(" ").length>12)return false;
+  const cleaned=v.replace(/^(?:(?:يا )?(?:ليان|layanx|جارفيس|jarvis) )/u,"").trim();
+  return /^(?:ما\s*الذي\s+(?:يمكنك|تستطيع)\s+(?:فعله|ان تفعل)(?: لي)?|ماذا\s+(?:يمكنك|تستطيع)\s+(?:فعله|ان تفعل)(?: لي)?|(?:ما هي|ماهي|ما)\s+(?:قدراتك|امكانياتك|مهامك)|كيف (?:يمكنك )?(?:مساعدتي|تساعدني)|(?:وش|ايش)\s+(?:تقدر|تعرف|تستطيع)\s+(?:تسوي|تعمل|تفعل)|what can you do(?: for me)?|what are your capabilities|how can you help me|what do you do)$/iu.test(cleaned);
+}
+
 /** How long a spoken request waits for the model before LayanX says why it is slow (ms). */
 const DECIDE_TIMEOUT_MS=()=>Math.min(Math.max(Number(process.env.LAYANX_ASSISTANT_TIMEOUT_MS)||30_000,100),300_000);
 
@@ -126,6 +139,7 @@ const T={
     paused:"المهمة تحتاج موافقتك قبل أن أكمل. افتح الموافقات في لوحة التحكم.",
     failed:(r:string)=>`لم أستطع إكمال المهمة. ${r}`,
     tasksOff:(g:string)=>`هذا يحتاج تنفيذ مهمة: ${g}. فعّل تنفيذ المهام في المساعد إن أردت ذلك.`,
+    capabilities:(enabled:boolean)=>"أستطيع الإجابة عن أسئلتك وشرح الأمور. "+(enabled?"ويمكنني أيضًا مساعدتك في ملفات المشاريع والبرمجة والاختبارات والتحكم بأدوات ويندوز ضمن الصلاحيات المتاحة.":"وعند تفعيل تنفيذ المهام، أستطيع مساعدتك في ملفات المشاريع والبرمجة والاختبارات وأدوات ويندوز.")+" ربط الخدمات والإجراءات الحساسة يحتاج إعدادًا وموافقتك، ولا أعتبر المهمة منجزة دون نتيجة يمكن التحقق منها.",
     greet:{howAreYou:"بخير والحمد لله، شكراً لسؤالك. كيف أقدر أساعدك؟",salam:"وعليكم السلام ورحمة الله. كيف أقدر أساعدك؟",hello:"أهلاً بك! كيف أقدر أساعدك؟",
       morning:"صباح النور! كيف أقدر أساعدك؟",evening:"مساء النور! كيف أقدر أساعدك؟",thanks:"العفو! أنا هنا متى احتجتني."} as Record<Greeting,string>,
     busy:(job?:string)=>job?`ما زلت أفكر، لأن النموذج المحلي مشغول الآن بمهمة «${job}». سأكون أسرع عندما تنتهي، أو اسألني بعد قليل.`:"النموذج المحلي يتأخر في الرد. تأكد أن Ollama يعمل، ثم اسألني مرة أخرى.",
@@ -139,6 +153,7 @@ const T={
     paused:"This task needs your approval before I continue. Open Approvals in the Control Center.",
     failed:(r:string)=>`I couldn't finish the task. ${r}`,
     tasksOff:(g:string)=>`That needs a task: ${g}. Turn on task execution in the assistant if you want me to do it.`,
+    capabilities:(enabled:boolean)=>"I can answer questions and explain things. "+(enabled?"I can also help with project files, coding, tests, and Windows tools within the permissions you grant.":"With task execution enabled, I can also help with project files, coding, tests, and Windows tools.")+" Connected services and sensitive actions require setup and your approval, and I only report completion when there is verifiable evidence.",
     greet:{howAreYou:"I'm well, thank you for asking. How can I help?",salam:"Wa alaikum assalam. How can I help?",hello:"Hello! How can I help?",
       morning:"Good morning! How can I help?",evening:"Good evening! How can I help?",thanks:"You're welcome! I'm here whenever you need me."} as Record<Greeting,string>,
     busy:(job?:string)=>job?`I'm still thinking: the local model is busy with the job "${job}". I'll be faster when it finishes, or ask me again in a little while.`:"The local model is slow to answer. Check that Ollama is running, then ask me again.",
@@ -191,6 +206,7 @@ export class VoiceAssistant{
     if(TIME_AR.test(normalized)||TIME_EN.test(text))return{ok:true,lang,intent:"time",reply:t.time(this.now())};
     const greeting=greetingOf(text);
     if(greeting)return{ok:true,lang,intent:"answer",reply:t.greet[greeting]};
+    if(capabilityQuestion(text))return{ok:true,lang,intent:"answer",reply:t.capabilities(input.allowTasks!==false)};
     // "Open Chrome" is a task already: no model to ask what it means (and the planner opens it in one step).
     const opening=openRequest(text);
     if(opening){
