@@ -24,7 +24,7 @@ const REPLY="حسناً، هذا تقرير اليوم";
 // An 8 s spoken reply that starts quietly (0.3 s), like Piper's: long enough to be interrupted.
 const LONG_REPLY=voiceWav([[0.3,false],[7.7,true]],16000);
 
-function serve(o:{localStt:boolean;transcribe?:(clip:Buffer,n:number)=>string}){
+function serve(o:{localStt:boolean;transcribe?:(clip:Buffer,n:number)=>string;replyDuration?:number}){
   const seen={assistant:[] as string[],clips:[] as Buffer[],speak:0,earlyPause:0,played:0,
     /** When the second request arrived: had the first reply started playing, and was it stopped early? */
     atSecond:null as null|{played:number;earlyPause:number}};
@@ -33,7 +33,7 @@ function serve(o:{localStt:boolean;transcribe?:(clip:Buffer,n:number)=>string}){
     if(req.url==="/v1/voice/status")return send({ok:true,voice:{enabled:false,...(o.localStt?{stt:"local",localStt:{baseUrl:"x",model:"w"}}:{stt:"none"}),tts:"local"}});
     if(req.url==="/v1/voice/transcribe"){seen.clips.push(body);return send({ok:true,text:o.transcribe?.(body,seen.clips.length)??""});}
     if(req.url==="/v1/assistant/turn"){seen.assistant.push(JSON.parse(body.toString()).text);if(seen.assistant.length===2)seen.atSecond={played:seen.played,earlyPause:seen.earlyPause};return send({ok:true,reply:REPLY,lang:"ar"});}
-    if(req.url==="/v1/voice/speak"){seen.speak++;res.writeHead(200,{"content-type":"audio/wav"});res.end(LONG_REPLY);return;}
+    if(req.url==="/v1/voice/speak"){seen.speak++;res.writeHead(200,{"content-type":"audio/wav"});res.end(o.replyDuration?voiceWav([[0.3,false],[o.replyDuration-0.3,true]],16000):LONG_REPLY);return;}
     if(req.url==="/v1/assistant/briefing")return send({ok:true,briefing:null});
     if(req.url==="/__paused?early=true"){seen.earlyPause++;return send({ok:true});}
     if(req.url==="/__played"){seen.played++;return send({ok:true});}
@@ -71,7 +71,7 @@ const fakeSR=(script:Record<number,Array<[string,number,boolean]>>)=>`window.__s
  FakeSR.prototype.abort=function(){var self=this;if(this.dead)return;this.dead=true;this.timers.forEach(clearTimeout);setTimeout(function(){self.onend&&self.onend()},5)};
  FakeSR.prototype.stop=FakeSR.prototype.abort;window.SpeechRecognition=FakeSR;window.webkitSpeechRecognition=FakeSR;`;
 
-async function scenario(name:string,o:{localStt:boolean;args:string[];init:string;path:string;transcribe?:(clip:Buffer,n:number)=>string;act?:(tab:any)=>Promise<void>;check:(seen:ReturnType<typeof serve>["seen"])=>Promise<void>}){
+async function scenario(name:string,o:{localStt:boolean;args:string[];init:string;path:string;replyDuration?:number;transcribe?:(clip:Buffer,n:number)=>string;act?:(tab:any)=>Promise<void>;check:(seen:ReturnType<typeof serve>["seen"])=>Promise<void>}){
   const {s,seen}=serve(o);await new Promise<void>(r=>s.listen(0,"127.0.0.1",()=>r()));
   const browser=await launchBrowser(o.args);
   if(!browser){console.log("voice-listen: "+name+" skipped (no browser)");s.close();return;}
@@ -121,10 +121,11 @@ await scenario("browser recognizer: after a tap, the whole request is heard, not
 
 // 3. Local speech-to-text: the request, the reply starts, the owner talks over it.
 {
-  const f=micFile("barge-local",[[2.5,false],[1.4,true],[2.8,false],[1.5,true],[12,false]]);
-  await scenario("interrupting with local speech-to-text: stops talking and hears the command from its start (with echo)",{localStt:true,args:[...FAKE_MIC,`--use-file-for-fake-audio-capture=${f}`],init:NO_FOLLOW+echo(0.15),path:"/voice?listen=1",
+  // Leave enough time for the first reply to start even on slow Windows CI before the second fake utterance.
+  const f=micFile("barge-local",[[2.5,false],[1.4,true],[4.2,false],[1.8,true],[12,false]]);
+  await scenario("interrupting with local speech-to-text: stops talking and hears the command from its start (with echo)",{localStt:true,args:[...FAKE_MIC,`--use-file-for-fake-audio-capture=${f}`],init:NO_FOLLOW+echo(0.15),path:"/voice?listen=1",replyDuration:14,
     transcribe:(clip,n)=>n===1?"ليان أعطني تقرير اليوم":voicedSeconds(clip)>=1.35?"اعرض الطقس بدلاً من ذلك":"الطقس",
-    check:async seen=>{await until(()=>seen.assistant.length>1,20000);
+    check:async seen=>{await until(()=>seen.assistant.length>1,26000);
       assert.deepEqual(seen.assistant.slice(0,2),["أعطني تقرير اليوم","اعرض الطقس بدلاً من ذلك"],JSON.stringify(seen.clips.map(c=>voicedSeconds(c))));
       assert.ok(stoppedEarly(seen),"the reply stopped before its end: "+JSON.stringify(seen.atSecond));}});
 }
