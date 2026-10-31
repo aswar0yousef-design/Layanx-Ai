@@ -492,11 +492,20 @@ function capabilityQuestionOnly(text){
  return /^(?:(?:ما\s*الذي|مالذي)\s+(?:يمكنك|تستطيع)\s+(?:فعله|عمله|ان تفعل|ان تعمل|تعمله)(?: لي)?|ماذا\s+(?:يمكنك|تستطيع)\s+(?:فعله|عمله|ان تفعل|ان تعمل|تعمله)(?: لي)?|(?:ما هي|ماهي|ما)\s+(?:قدراتك|امكانياتك|مهامك)|كيف (?:يمكنك )?(?:مساعدتي|تساعدني)|(?:وش|ايش)\s+(?:تقدر|تعرف|تستطيع)\s+(?:تسوي|تعمل|تفعل)|what can you do(?: for me)?|what are your capabilities|how can you help me|what do you do)$/iu.test(q);
 }
 function conversationOnly(text){return greetingOnly(text)||capabilityQuestionOnly(text);}
-async function runGoal(goal,model){
+// The same server-side dialogue brain classifies both UI modes and /voice.
+async function classifyTurn(goal){
+ const result=await safe(api("/v1/assistant/classify",{method:"POST",body:{text:goal}}),{ok:false,kind:"unavailable"});
+ return result.ok&&(result.kind==="conversation"||result.kind==="action")?result.kind:"unavailable";
+}
+async function runGoal(goal,model,knownKind){
  if(!goal.trim())return;
  S.log.push({id:uid(),role:"you",text:goal,at:Date.now()});
  const me={id:uid(),role:"me",text:t("received"),state:"run",steps:[],lines:[],at:Date.now()};S.log.push(me);drawAgent();
- if(conversationOnly(goal)){
+ const route=knownKind||(conversationOnly(goal)?"conversation":await classifyTurn(goal));
+ if(route==="unavailable"){
+  me.state="fail";me.text=LANG==="ar"?"تعذر تحديد نوع الطلب بأمان. لم أنفذ أي مهمة. تحقق من اتصال LayanX وأعد المحاولة.":"The dialogue brain could not classify the request safely. No task was executed.";me.at=Date.now();drawAgent();return;
+ }
+ if(route==="conversation"){
   const answer=await safe(api("/v1/assistant/turn",{method:"POST",body:{text:goal,projectId:project(),allowTasks:false}}),{ok:false,error:"assistant_unavailable"});
   me.state=answer.ok&&answer.intent==="answer"?"done":"fail";
   me.text=me.state==="done"?answer.reply:t("notCompleted")+": "+reasonText(answer.error||"assistant_unavailable");
@@ -542,9 +551,12 @@ function agentCard(big){
  const submit=async()=>{const g=input.value.trim();if(!g)return;input.value="";
   // Pure greetings must never become autonomous jobs or notes on someone else’s job.
   if(conversationOnly(g)){runGoal(g,model.value);return;}
+  // Informational turns must never become autonomous jobs or notes on an active job.
+  const route=await classifyTurn(g);
+  if(route==="conversation"||route==="unavailable"){runGoal(g,model.value,route);return;}
   try{if(await noteForRunningJob(g))return;}catch(e){toast(e.message);return;}
   if(auto.getAttribute("aria-pressed")==="true"){try{const j=await startJob(g);S.log.push({id:uid(),role:"you",text:g,at:Date.now()},{id:uid(),role:"me",text:t("jobStarted"),state:"run",at:Date.now(),job:j.id});drawAgent();}catch(e){toast(e.message);}return;}
-  runGoal(g,model.value);};
+  runGoal(g,model.value,"action");};
  input.addEventListener("keydown",e=>{if(e.key==="Enter")submit();});
  const active=()=>S.missions.find(m=>["running","planned","verifying"].includes(m.status));
  return el("section",{class:"card"},
