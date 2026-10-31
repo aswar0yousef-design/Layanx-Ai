@@ -41,7 +41,7 @@ const REQUIRED_BEHAVIOR=[
   "persistent-create","delete-task","restart-after-delete","persistent-delete"
 ] as const;
 const REQUIRED_REFERENCES=[
-  "project.run:test","project.run:build","independent:http:task-app"
+  "project.run:test","project.run:build","independent:http:task-app","independent:ui:task-app"
 ] as const;
 export function evaluateLocalAcceptance(
   observed:LocalAcceptanceObserved|null,
