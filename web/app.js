@@ -507,8 +507,9 @@ async function runGoal(goal,model,knownKind){
  }
  if(route==="conversation"){
   const answer=await safe(api("/v1/assistant/turn",{method:"POST",body:{text:goal,projectId:project(),allowTasks:false}}),{ok:false,error:"assistant_unavailable"});
-  me.state=answer.ok&&answer.intent==="answer"?"done":"fail";
-  me.text=me.state==="done"?answer.reply:t("notCompleted")+": "+reasonText(answer.error||"assistant_unavailable");
+  const informational=answer.ok&&["answer","report","time","busy"].includes(answer.intent);
+  me.state=informational?(answer.intent==="busy"?"wait":"done"):"fail";
+  me.text=informational?answer.reply:t("notCompleted")+": "+reasonText(answer.error||answer.reply||"assistant_unavailable");
   me.at=Date.now();drawAgent();return;
  }
  const before=new Set(S.missions.map(m=>m.id));let done=false;
