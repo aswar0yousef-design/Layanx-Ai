@@ -10,8 +10,9 @@ const workspace="C:\\test\\outcome-runs\\first\\projects\\acceptance-12345678";
 const base:LocalAcceptanceObserved={
   id:"acceptance-12345678",jobId:"valid-job",workspace,ok:true,status:"completed",
   hasProject:true,hasDelivery:true,
-  checkRefs:["project.run:test","project.run:build","independent:http:task-app"],
-  independentBehavior:{ok:true,checks,blockers:[]}
+  checkRefs:["project.run:test","project.run:build","independent:http:task-app","independent:ui:task-app"],
+  independentBehavior:{ok:true,checks,blockers:[]},
+  independentUI:{ok:true,checks:["browser-start","desktop-create","desktop-reload","desktop-delete","desktop-delete-reload","mobile-create","mobile-reload","mobile-delete","mobile-delete-reload"].map(name=>({name,ok:true})),blockers:[]}
 };
 const integrity:IntegrityObserved={ok:true,jobId:"valid-job",projectRoot:workspace,checkedFiles:6,blockers:[],warnings:[]};
 const good=evaluateLocalAcceptance(base,integrity,workspace);
@@ -26,6 +27,9 @@ assert.equal(deceptive.ok,false);
 assert.match(deceptive.blockers.join(" "),/persistent-delete/);
 const duplicate=evaluateLocalAcceptance({...base,independentBehavior:{ok:true,checks:[...checks,checks[0]!]}},integrity,workspace);
 assert.equal(duplicate.ok,false);
+const missingUI=evaluateLocalAcceptance({...base,independentUI:{ok:false,checks:[],blockers:["missing Edge"]}},integrity,workspace);
+assert.equal(missingUI.ok,false);
+assert.match(missingUI.blockers.join(" "),/browser/);
 const mismatched=evaluateLocalAcceptance(base,{...integrity,jobId:"different-job"},workspace);
 assert.equal(mismatched.ok,false);
 const warnings=evaluateLocalAcceptance(base,{...integrity,warnings:["Unhashed large file"]},workspace);

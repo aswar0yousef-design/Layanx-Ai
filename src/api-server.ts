@@ -279,8 +279,8 @@ export function startRuntimeApi(options:RuntimeApiOptions){
      const input=await body(request,max);
      const goal=typeof input.goal==="string"?input.goal:"";
      const projectId=typeof input.projectId==="string"&&input.projectId.trim()?input.projectId.trim():"default";
-     if(input.acceptanceProfile!==undefined&&input.acceptanceProfile!=="task-app-http-v1")throw new Error("unsupported_acceptance_profile");
-     json(response,201,{ok:true,job:supervisor.create(goal,projectId,{maxMinutes:typeof input.maxMinutes==="number"?input.maxMinutes:undefined,openWhenDone:input.openWhenDone===true,...(input.acceptanceProfile==="task-app-http-v1"?{acceptanceProfile:"task-app-http-v1" as const}:{})})});return;
+     if(input.acceptanceProfile!==undefined&&input.acceptanceProfile!=="task-app-http-v1"&&input.acceptanceProfile!=="task-app-ui-v1")throw new Error("unsupported_acceptance_profile");
+     json(response,201,{ok:true,job:supervisor.create(goal,projectId,{maxMinutes:typeof input.maxMinutes==="number"?input.maxMinutes:undefined,openWhenDone:input.openWhenDone===true,...(input.acceptanceProfile==="task-app-http-v1"?{acceptanceProfile:"task-app-http-v1" as const}:input.acceptanceProfile==="task-app-ui-v1"?{acceptanceProfile:"task-app-ui-v1" as const}:{})})});return;
     }
     if(request.method==="GET"&&parts.length===3){
      const projectId=params.get("projectId")?.trim()||undefined;

@@ -432,7 +432,7 @@ function jobView(j,full){
   el("span",{class:"muted",style:"margin-inline-start:.45rem",text:(outcome.evidence||[]).filter(e=>e.passed).length+"/"+(outcome.evidence||[]).length+(LANG==="ar"?" أدلة ناجحة":" passing evidence items")}),
   ...(outcome.blockers||[]).slice(0,4).map(reason=>el("div",{class:"bad",style:"margin-top:.3rem",text:reason}))
  ):null;
- const behavior=j.acceptanceProfile==="task-app-http-v1"?el("div",{class:"small",dir:"auto",style:"margin-top:.4rem"},
+ const behavior=(j.acceptanceProfile==="task-app-http-v1"||j.acceptanceProfile==="task-app-ui-v1")?el("div",{class:"small",dir:"auto",style:"margin-top:.4rem"},
   (LANG==="ar"?"اختبار التطبيق المستقل: ":"Independent task-app check: ")+(j.behavior?(j.behavior.ok?"✓":"✗"):"…"),
   ...(j.behavior?.checks||[]).map(c=>el("span",{class:"status "+(c.ok?"s-done":"s-fail"),style:"margin:.2rem",title:c.detail,text:c.name})),
   ...(j.behavior?.blockers||[]).slice(0,3).map(reason=>el("div",{class:"bad",text:reason}))
@@ -455,7 +455,12 @@ function jobView(j,full){
   el("div",{class:"progress"},el("i",{style:"width:"+pct+"%"})),
   summary,files,notes,
   j.recoveryHold?el("div",{class:"job-sum bad",dir:"auto",text:(LANG==="ar"?"إيقاف احترازي: نتيجة الخطوة السابقة مجهولة. راجع العمليات الخارجية قبل إعادة المحاولة. ":"Recovery hold: previous action outcome unknown; inspect external effects before retry. ")+j.recoveryHold.description}):null,
-  proof,behavior,handoff,
+  proof,behavior,
+  j.acceptanceProfile==="task-app-ui-v1"?el("div",{class:"small",dir:"auto",style:"margin-top:.4rem"},
+   (LANG==="ar"?"فحص أزرار التطبيق في المتصفح: ":"Browser UI checks: ")+(j.uiBehavior?(j.uiBehavior.ok?"✓":"✗"):"…"),
+   ...(j.uiBehavior?.checks||[]).map(c=>el("span",{class:"status "+(c.ok?"s-done":"s-fail"),style:"margin:.2rem",title:c.detail,text:c.name})),
+   ...(j.uiBehavior?.blockers||[]).slice(0,3).map(reason=>el("div",{class:"bad",text:reason}))):null,
+  handoff,
   el("ul",{class:"steps"},j.milestones.map((m,i)=>el("li",{class:i===j.current&&JOB_ACTIVE.includes(j.status)?"current":""},el("span",{class:"tick "+(m.status==="done"?"done":m.status==="failed"?"fail":i===j.current&&j.status==="waiting_approval"?"wait":i===j.current&&JOB_ACTIVE.includes(j.status)?"run":"pend"),text:m.status==="done"?"✓":m.status==="failed"?"!":""}),
    el("span",{class:"t",dir:"auto",text:m.title}),el("span",{class:"status s-pend",text:t("ag_"+m.agent)}),m.attempts>1?el("span",{class:"status s-wait",text:"×"+m.attempts}):null))),
   j.lastChecks&&j.lastChecks.length?el("div",{class:"chips"},j.lastChecks.map(c=>el("span",{class:"status "+(c.ok?"s-done":"s-fail"),text:c.name}))):null,
@@ -1023,9 +1028,9 @@ const VIEWS={
   const draw=()=>list.replaceChildren(...(S.jobs.length?S.jobs.map(j=>jobView(j,false)):[el("div",{class:"empty",text:t("noJobs")})]));
   fill(v,head(t("autonomous"),t("autoLead")),
    el("section",{class:"card",style:"margin-bottom:1rem"},el("div",{class:"form",style:"grid-template-columns:3fr 1fr auto"},el("label",{class:"f"},t("task"),goal),el("label",{class:"f"},t("maxMinutes"),minutes),
-    el("button",{class:"btn primary",onclick:async()=>{const g=goal.value.trim();if(!g)return;try{await startJob(g,Number(minutes.value)||120,openBox.checked,verifyBox.checked?"task-app-http-v1":undefined);goal.value="";draw();}catch(e){toast(e.message);}}},icon("spark"),t("start"))),
+    el("button",{class:"btn primary",onclick:async()=>{const g=goal.value.trim();if(!g)return;try{await startJob(g,Number(minutes.value)||120,openBox.checked,verifyBox.checked?"task-app-ui-v1":undefined);goal.value="";draw();}catch(e){toast(e.message);}}},icon("spark"),t("start"))),
     el("label",{class:"small",style:"display:flex;gap:.4rem;align-items:center;margin-top:.6rem"},openBox,t("openWhenDoneL")),
-    el("label",{class:"small",style:"display:flex;gap:.4rem;align-items:center;margin-top:.6rem"},verifyBox,LANG==="ar"?"اختبار قبول مستقل لتطبيق المهام (HTTP والحفظ بعد إعادة التشغيل)":"Independent task-app acceptance (HTTP and restart persistence)"),
+    el("label",{class:"small",style:"display:flex;gap:.4rem;align-items:center;margin-top:.6rem"},verifyBox,LANG==="ar"?"اختبار قبول مستقل لتطبيق المهام (HTTP وأزرار إضافة/حذف في المتصفح)":"Independent task-app acceptance (HTTP and real browser controls)"),
     el("p",{class:"small muted",style:"margin:.6rem 0 0",text:t("trustL")+": "+t("t_"+(S.setup?.workspace?.trust?.[project().toLowerCase()]||"supervised"))+" — "+t("trustNote")})),
    list);draw();
   timers.push(setInterval(async()=>{if(S.jobs.some(j=>JOB_ACTIVE.includes(j.status))){await loadJobs();draw();}},3000));

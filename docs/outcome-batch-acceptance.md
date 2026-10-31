@@ -29,8 +29,8 @@ The output includes:
 
 An individual run passes only when all of the following independently agree:
 1. Its generated isolated project reports `completed`, `ok:true`, an existing deliverable and app files.
-2. Its test/build result and independent HTTP behavior evidence are present.
-3. Each of ten distinct HTTP/restart checks passed exactly once.
+2. Its test/build result and independently recorded Supervisor HTTP **and browser UI** evidence are present.
+3. Each of ten distinct HTTP/restart checks **and nine browser interaction checks** passed exactly once. The browser probe must click the task add/delete controls at desktop and mobile viewport sizes and verify list persistence across page reloads.
 4. The offline manifest verifier confirms file sizes, SHA-256 checksums, the Outcome report and no unlisted project files.
 5. The subprocess exited with code zero.
 
@@ -38,7 +38,7 @@ The five-run gate passes only for **five independent passing runs** with distinc
 
 ## Important remaining constraints
 
-This still verifies a narrow generated bilingual HTTP task-list app. It does **not** show that every natural-language request is reliably fulfilled, that HTML controls are usable by keyboard/screen reader, or that a browser user interaction was independently exercised. Restart testing here restarts the generated app server, not the Windows PC.
+This still verifies a narrow generated bilingual task-list app with real desktop/mobile browser interactions. Edge or Chrome and the optional `playwright-core` dependency must be available; browser absence is a failing release result, not a skipped success. It does **not** show that every natural-language request is reliably fulfilled, nor establish keyboard or screen-reader accessibility, pixel-perfect layout, or all user interaction paths. Restart testing here restarts the generated app server, not the Windows PC.
 
 The recovery and external-action tests remain separate. No real trading or external publishing action should be switched on as a result of this score. After the batch test, inspect the workspace, generated app and reports yourself; record the Windows version, Node version, Ollama version and local model alongside the evidence.
 
