@@ -3,6 +3,7 @@ import {dirname,join} from "node:path";
 import type {LayanXCore} from "../core/orchestrator.js";
 import {normalizeArabic,tokenize} from "../providers/tool-selection.js";
 import {openRequest} from "../tools/open-app.js";
+import {classifyDialogue,directDialogueAnswer,reviewDialogueAnswer} from "./dialogue-brain.js";
 
 /**
  * The "Jarvis" layer: one conversational entry point for voice and text.
@@ -139,6 +140,8 @@ const T={
     paused:"المهمة تحتاج موافقتك قبل أن أكمل. افتح الموافقات في لوحة التحكم.",
     failed:(r:string)=>`لم أستطع إكمال المهمة. ${r}`,
     tasksOff:(g:string)=>`هذا يحتاج تنفيذ مهمة: ${g}. فعّل تنفيذ المهام في المساعد إن أردت ذلك.`,
+    unhelpful:"لم أتمكن من صياغة إجابة موثوقة لسؤالك الآن. يمكنك إعادة صياغته أو اختيار نموذج آخر من إعدادات LayanX.",
+    informational:"فهمت سؤالك على أنه طلب معلومات، وليس إذنًا لتنفيذ إجراء على الجهاز. يمكنك طلب التنفيذ بصيغة أمر واضحة إذا أردت ذلك.",
     capabilities:(enabled:boolean)=>"أستطيع الإجابة عن أسئلتك وشرح الأمور. "+(enabled?"ويمكنني أيضًا مساعدتك في ملفات المشاريع والبرمجة والاختبارات والتحكم بأدوات ويندوز ضمن الصلاحيات المتاحة.":"وعند تفعيل تنفيذ المهام، أستطيع مساعدتك في ملفات المشاريع والبرمجة والاختبارات وأدوات ويندوز.")+" ربط الخدمات والإجراءات الحساسة يحتاج إعدادًا وموافقتك، ولا أعتبر المهمة منجزة دون نتيجة يمكن التحقق منها.",
     greet:{howAreYou:"بخير والحمد لله، شكراً لسؤالك. كيف أقدر أساعدك؟",salam:"وعليكم السلام ورحمة الله. كيف أقدر أساعدك؟",hello:"أهلاً بك! كيف أقدر أساعدك؟",
       morning:"صباح النور! كيف أقدر أساعدك؟",evening:"مساء النور! كيف أقدر أساعدك؟",thanks:"العفو! أنا هنا متى احتجتني."} as Record<Greeting,string>,
@@ -153,6 +156,8 @@ const T={
     paused:"This task needs your approval before I continue. Open Approvals in the Control Center.",
     failed:(r:string)=>`I couldn't finish the task. ${r}`,
     tasksOff:(g:string)=>`That needs a task: ${g}. Turn on task execution in the assistant if you want me to do it.`,
+    unhelpful:"I could not produce a reliable answer just now. Please rephrase the question or select a different model in LayanX settings.",
+    informational:"I understood that as a question, not permission to perform an action. Please give an explicit instruction if you want something executed.",
     capabilities:(enabled:boolean)=>"I can answer questions and explain things. "+(enabled?"I can also help with project files, coding, tests, and Windows tools within the permissions you grant.":"With task execution enabled, I can also help with project files, coding, tests, and Windows tools.")+" Connected services and sensitive actions require setup and your approval, and I only report completion when there is verifiable evidence.",
     greet:{howAreYou:"I'm well, thank you for asking. How can I help?",salam:"Wa alaikum assalam. How can I help?",hello:"Hello! How can I help?",
       morning:"Good morning! How can I help?",evening:"Good evening! How can I help?",thanks:"You're welcome! I'm here whenever you need me."} as Record<Greeting,string>,
@@ -207,6 +212,9 @@ export class VoiceAssistant{
     const greeting=greetingOf(text);
     if(greeting)return{ok:true,lang,intent:"answer",reply:t.greet[greeting]};
     if(capabilityQuestion(text))return{ok:true,lang,intent:"answer",reply:t.capabilities(input.allowTasks!==false)};
+    const dialogue=classifyDialogue(text);
+    const direct=directDialogueAnswer(dialogue.topic,lang);
+    if(direct)return{ok:true,lang,intent:"answer",reply:direct};
     // "Open Chrome" is a task already: no model to ask what it means (and the planner opens it in one step).
     const opening=openRequest(text);
     if(opening){
@@ -234,8 +242,13 @@ export class VoiceAssistant{
 
     const reply=clean(typeof decision?.reply==="string"?decision.reply:"",500);
     const goal=clean(typeof decision?.goal==="string"?decision.goal:"",1000);
-    if(decision?.intent!=="task"||!goal)
-      return{ok:true,lang,intent:"answer",reply:reply||(lang==="ar"?"حسناً.":"Okay.")};
+    // The model never gets to override an informational question into a tool action.
+    if(dialogue.kind==="conversation"&&decision?.intent==="task")return{ok:true,lang,intent:"answer",reply:t.informational};
+    if(decision?.intent!=="task"||!goal){
+      const checked=reviewDialogueAnswer(text,reply);
+      if(!checked.ok)return{ok:false,lang,intent:"error",reply:t.unhelpful};
+      return{ok:true,lang,intent:"answer",reply};
+    }
     if(input.allowTasks===false)return{ok:true,lang,intent:"task",goal,reply:t.tasksOff(goal)};
     return this.runGoal(goal,projectId,lang);
   }
