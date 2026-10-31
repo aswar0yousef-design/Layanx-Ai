@@ -73,7 +73,10 @@ if(!ollama?.available){
       "Do not use external packages or any cloud, publishing, payment, messaging, or trading tools.",
       "Create package.json with scripts test (node --test) and build (node --check src/server.mjs).",
       "Create src/server.mjs that exports createServer and responds to GET /health with JSON {ok:true}.",
-      "GET / must render a usable bilingual Arabic/English HTML task UI with add and delete controls.",
+      "GET / must render a usable bilingual Arabic/English HTML task UI with real working add and delete controls.",
+      "The task input must have data-testid=task-input; add button data-testid=task-add.",
+      "Each listed task must have data-testid=task-item and its delete button data-testid=task-delete.",
+      "Use client-side JavaScript to call /tasks and update the visible list; the controls must work on desktop and mobile browser.",
       "POST /tasks accepts JSON {title} and returns {id,title}; GET /tasks returns {tasks:[{id,title}]}.",
       "DELETE /tasks/:id removes the requested task. Save changes durably to the file in environment variable LAYANX_TASKS_FILE.",
       "Tasks must survive server restarts, including deletions. Never write outside this disposable project.",
@@ -99,9 +102,11 @@ if(!ollama?.available){
     const hasDelivery=Boolean(finished.delivery&&fs.existsSync(deliveryFile)&&fs.existsSync(deliveryGuide));
     const {verifyTaskApp}=await import("../src/autonomy/task-app-verifier.js");
     const independent=hasProject?await verifyTaskApp(app):{ok:false,checks:[],blockers:["Generated application files missing."],verificationScope:"real-http-and-restart" as const};
+    const {verifyTaskAppUI}=await import("../src/autonomy/task-app-ui-verifier.js");
+    const ui=hasProject?await verifyTaskAppUI(app):{ok:false,checks:[],blockers:["Generated application files missing."],verificationScope:"browser-click-and-reload" as const};
     const ok=finished.status==="completed"&&report?.status==="verified"
       &&machineRefs.has("project.run:test")&&machineRefs.has("project.run:build")
-      &&machineRefs.has("independent:http:task-app")&&hasProject&&hasDelivery&&finished.behavior?.ok===true&&independent.ok;
+      &&machineRefs.has("independent:http:task-app")&&hasProject&&hasDelivery&&finished.behavior?.ok===true&&independent.ok&&ui.ok;
     const result={
       ok,
       stage:"real-ollama-agent->generated-app->real-project-run->outcome-verification",
@@ -110,8 +115,9 @@ if(!ollama?.available){
       hasProject,hasDelivery,deliveryFile,deliveryGuide,missionCount:finished.milestones.flatMap(m=>m.missions).length,
       checkRefs:[...machineRefs],
       independentBehavior:independent,
+      independentUI:ui,
       acceptanceCriteria:report?.acceptanceCriteria??[],
-      blockers:[...(report?.blockers??(ok?[]:["Job did not produce a verified outcome."])),...independent.blockers],
+      blockers:[...(report?.blockers??(ok?[]:["Job did not produce a verified outcome."])),...independent.blockers,...ui.blockers],
       outcomeFile:path.join(app,".layanx","outcomes",job.id+".json"),
       jobId:job.id,
       lastLog:finished.log.slice(-12)
