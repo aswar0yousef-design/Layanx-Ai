@@ -5,6 +5,7 @@ import {createOpenAIProvider} from "../providers/openai-provider.js";
 import {createOllamaProvider} from "../providers/ollama-provider.js";
 import {createAnthropicProvider} from "../providers/anthropic-provider.js";
 import {createGeminiProvider} from "../providers/gemini-provider.js";
+import {createKimiProvider} from "../providers/kimi-provider.js";
 import {FreeCapacityProvider,freeProviderRuntimeName,type FreeCapacitySpec} from "../providers/free-capacity.js";
 import {FREE_LLM_DIRECTORY} from "../providers/free-llm-directory.js";
 import {localSecret} from "../security/local-secret-vault.js";
@@ -15,6 +16,7 @@ export interface ProviderRuntimeConfig{
  openai:{enabled:boolean;apiKey?:string;baseUrl:string;healthUrl:string;model:string};
  anthropic:{enabled:boolean;apiKey?:string;baseUrl:string;healthUrl:string;model:string};
  gemini:{enabled:boolean;apiKey?:string;baseUrl:string;healthUrl:string;model:string};
+ kimi:{enabled:boolean;apiKey?:string;baseUrl:string;model:string};
  freePool:{enabled:boolean;configPath:string;providers:FreeCapacitySpec[]};
 }
 function loadFreePool(env:NodeJS.ProcessEnv){
@@ -42,6 +44,7 @@ export function loadProviderConfig(env:NodeJS.ProcessEnv=process.env):ProviderRu
   openai:{enabled:env.OPENAI_ENABLED==="true",apiKey:env.OPENAI_API_KEY,baseUrl:env.OPENAI_BASE_URL??"https://api.openai.com/v1/responses",healthUrl:env.OPENAI_HEALTH_URL??"https://api.openai.com/v1/models",model:env.OPENAI_MODEL?.trim()||"gpt-5.6-terra"},
   anthropic:{enabled:env.ANTHROPIC_ENABLED==="true",apiKey:env.ANTHROPIC_API_KEY,baseUrl:env.ANTHROPIC_BASE_URL??"https://api.anthropic.com/v1/messages",healthUrl:env.ANTHROPIC_HEALTH_URL??"https://api.anthropic.com/v1/models",model:env.ANTHROPIC_MODEL?.trim()||"claude-sonnet-5-5"},
   gemini:{enabled:env.GEMINI_ENABLED==="true",apiKey:env.GEMINI_API_KEY,baseUrl:env.GEMINI_BASE_URL??"https://generativelanguage.googleapis.com/v1beta",healthUrl:env.GEMINI_HEALTH_URL??"https://generativelanguage.googleapis.com/v1beta/models",model:env.GEMINI_MODEL?.trim()||"gemini-3.6-flash"},
+  kimi:{enabled:env.KIMI_ENABLED==="true",apiKey:env.KIMI_API_KEY,baseUrl:env.KIMI_BASE_URL??"https://api.moonshot.ai/v1",model:env.KIMI_MODEL?.trim()||"kimi-k2.5"},
   freePool:loadFreePool(env)
  };
 }
@@ -88,7 +91,8 @@ export function configureProviders(config=loadProviderConfig(),models=new ModelR
  const cloud={
   openai:()=>{if(!(config.openai.enabled&&config.openai.apiKey))return;providers.register(createOpenAIProvider({apiKey:config.openai.apiKey,baseUrl:config.openai.baseUrl,healthUrl:config.openai.healthUrl,timeoutMs:cloudTimeout}));models.register({id:config.openai.model,provider:"openai",capabilities:["chat","reasoning","coding","vision"],local:false,enabled:true,priority:priority++,tags:["openai","gpt","cloud"]});},
   anthropic:()=>{if(!(config.anthropic.enabled&&config.anthropic.apiKey))return;providers.register(createAnthropicProvider({apiKey:config.anthropic.apiKey,baseUrl:config.anthropic.baseUrl,healthUrl:config.anthropic.healthUrl,timeoutMs:cloudTimeout}));models.register({id:config.anthropic.model,provider:"anthropic",capabilities:["chat","reasoning","coding","vision"],local:false,enabled:true,priority:priority++,tags:["anthropic","claude","cloud"]});},
-  gemini:()=>{if(!(config.gemini.enabled&&config.gemini.apiKey))return;providers.register(createGeminiProvider({apiKey:config.gemini.apiKey,baseUrl:config.gemini.baseUrl,healthUrl:config.gemini.healthUrl,timeoutMs:cloudTimeout}));models.register({id:config.gemini.model,provider:"gemini",capabilities:["chat","reasoning","coding","vision","audio"],local:false,enabled:true,priority:priority++,tags:["gemini","google","cloud"]});}
+  gemini:()=>{if(!(config.gemini.enabled&&config.gemini.apiKey))return;providers.register(createGeminiProvider({apiKey:config.gemini.apiKey,baseUrl:config.gemini.baseUrl,healthUrl:config.gemini.healthUrl,timeoutMs:cloudTimeout}));models.register({id:config.gemini.model,provider:"gemini",capabilities:["chat","reasoning","coding","vision","audio"],local:false,enabled:true,priority:priority++,tags:["gemini","google","cloud"]});},
+  kimi:()=>{if(!(config.kimi.enabled&&config.kimi.apiKey))return;providers.register(createKimiProvider({apiKey:config.kimi.apiKey,baseUrl:config.kimi.baseUrl,timeoutMs:cloudTimeout}));models.register({id:config.kimi.model,provider:"kimi",capabilities:["chat","reasoning","coding"],local:false,enabled:true,priority:priority++,tags:["kimi","cloud"]});}
  } as const;
  if(allowCloud){
   const order=(process.env.LAYANX_CLOUD_ORDER??"openai,anthropic,gemini").split(",").map(v=>v.trim()).filter((v):v is keyof typeof cloud=>v in cloud);
@@ -112,6 +116,7 @@ export function providerSummary(config=loadProviderConfig()){
   openai:{enabled:config.openai.enabled,configured:Boolean(config.openai.apiKey),baseUrl:config.openai.baseUrl,healthUrl:config.openai.healthUrl,model:config.openai.model},
   anthropic:{enabled:config.anthropic.enabled,configured:Boolean(config.anthropic.apiKey),baseUrl:config.anthropic.baseUrl,healthUrl:config.anthropic.healthUrl,model:config.anthropic.model},
   gemini:{enabled:config.gemini.enabled,configured:Boolean(config.gemini.apiKey),baseUrl:config.gemini.baseUrl,healthUrl:config.gemini.healthUrl,model:config.gemini.model},
+  kimi:{enabled:config.kimi.enabled,configured:Boolean(config.kimi.apiKey),baseUrl:config.kimi.baseUrl,model:config.kimi.model},
   freePool:{enabled:config.freePool.enabled,configPath:config.freePool.configPath,providers:config.freePool.providers.map(provider=>({name:provider.name,baseUrl:provider.baseUrl,models:provider.models,capabilities:provider.capabilities??["chat","reasoning","coding"],priority:provider.priority??null,dailyTokenLimit:provider.dailyTokenLimit??null,monthlyTokenLimit:provider.monthlyTokenLimit??null,tags:provider.tags??[]}))}};
 }
 
@@ -130,7 +135,8 @@ export function cloudPolicy(env:NodeJS.ProcessEnv=process.env):CloudPolicy{
 const PROVIDER_HINTS:Array<[RegExp,string]>=[
  [/\b(claude|anthropic)\b|كلود|انثروبيك/i,"anthropic"],
  [/\b(gpt|openai|chatgpt)\b|اوبن ?اي|أوبن ?إي|شات ?جي ?بي ?تي|جي ?بي ?تي/i,"openai"],
- [/\bgemini\b|جيميني|جيمناي|جمناي/i,"gemini"]
+ [/\bgemini\b|جيميني|جيمناي|جمناي/i,"gemini"],
+ [/\bkimi\b|كيمي/i,"kimi"]
 ];
 const COMPLEX=/\b(architecture|refactor|redesign|strategy|in depth|step by step plan|complex|full (project|plan|app))\b|معماري|إعادة هيكلة|اعادة هيكلة|استراتيجية|خطة كاملة|بشكل معمق|بعمق|معقد|مشروع كامل|تطبيق كامل/i;
 export function isComplexGoal(goal:string):boolean{

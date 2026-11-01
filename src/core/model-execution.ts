@@ -13,6 +13,14 @@ export class ModelExecutionRouter{
  /** Monthly cloud spending cap; replace with CloudBudget.forStore() in the runtime. */
  budget:CloudBudget=new CloudBudget(null);
  constructor(private readonly models:ModelRegistry,private readonly providers:ModelProviderRegistry,private readonly defaultRouting:ModelRoutingOptions={}){this.router=new ModelRouter(models);}
+ /** Opt-in unified execution; normal execute() remains the fast single-model path. */
+ async executeUnified(goal:string,request:ModelRequest){
+  const {buildCouncilPlan}=await import("./model-management.js");
+  const {UnifiedModelCouncil}=await import("./unified-model-council.js");
+  const plan=buildCouncilPlan(goal,this.models);
+  if(!plan)return this.execute(request);
+  return new UnifiedModelCouncil(this).execute(request,plan);
+ }
  async execute(request:ModelRequest):Promise<ModelExecutionResult>{
   const routing={...this.defaultRouting,...(request.routing??{})};
   const candidates=this.router.selectAll(request.capability,routing);

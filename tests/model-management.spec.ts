@@ -1,0 +1,22 @@
+import {strict as assert} from "node:assert";
+import {ModelRegistry} from "../src/models/registry.js";
+import {buildCouncilPlan,classifyWork,shouldUseCouncil} from "../src/core/model-management.js";
+const models=new ModelRegistry();
+for(const [id,provider] of [["local","ollama"],["claude","anthropic"],["gpt","openai"],["gemini","gemini"],["kimi","kimi"]] as const)
+ models.register({id,provider,capabilities:["chat","coding","reasoning"],local:provider==="ollama",enabled:true,priority:1});
+assert.equal(classifyWork("Hello"),"conversation");
+assert.equal(classifyWork("Refactor the code"),"coding");
+assert.equal(classifyWork("ابحث عن الحل"),"research");
+assert.equal(shouldUseCouncil("Hello"),false);
+assert.equal(shouldUseCouncil("Refactor the code"),true);
+const plan=buildCouncilPlan("Refactor the code",models);
+assert.ok(plan);
+assert.equal(plan.specialists.length,3);
+assert.equal(new Set(plan.specialists.map(s=>s.provider)).size,3);
+assert.equal(plan.specialists[0].provider,"anthropic");
+assert.equal(buildCouncilPlan("Hello",models),undefined);
+assert.equal(buildCouncilPlan("Refactor the code",models,{mode:"adaptive",maxSpecialists:3,allowCloud:false,preferLocalForSimple:true}),undefined);
+const explicit=buildCouncilPlan("Hello",models,{mode:"council",maxSpecialists:2,allowCloud:true,preferLocalForSimple:true,synthesizerProvider:"kimi"});
+assert.equal(explicit?.specialists.length,2);
+assert.equal(explicit?.synthesizer.provider,"kimi");
+console.log("model-management: PASS");
