@@ -5,6 +5,7 @@ import {createOpenAIProvider} from "../providers/openai-provider.js";
 import {createOllamaProvider} from "../providers/ollama-provider.js";
 import {createAnthropicProvider} from "../providers/anthropic-provider.js";
 import {createGeminiProvider} from "../providers/gemini-provider.js";
+import {createKimiProvider} from "../providers/kimi-provider.js";
 import {FreeCapacityProvider,freeProviderRuntimeName,type FreeCapacitySpec} from "../providers/free-capacity.js";
 import {FREE_LLM_DIRECTORY} from "../providers/free-llm-directory.js";
 import {localSecret} from "../security/local-secret-vault.js";
@@ -15,6 +16,7 @@ export interface ProviderRuntimeConfig{
  openai:{enabled:boolean;apiKey?:string;baseUrl:string;healthUrl:string;model:string};
  anthropic:{enabled:boolean;apiKey?:string;baseUrl:string;healthUrl:string;model:string};
  gemini:{enabled:boolean;apiKey?:string;baseUrl:string;healthUrl:string;model:string};
+ kimi:{enabled:boolean;apiKey?:string;baseUrl:string;model:string};
  freePool:{enabled:boolean;configPath:string;providers:FreeCapacitySpec[]};
 }
 function loadFreePool(env:NodeJS.ProcessEnv){
@@ -42,6 +44,7 @@ export function loadProviderConfig(env:NodeJS.ProcessEnv=process.env):ProviderRu
   openai:{enabled:env.OPENAI_ENABLED==="true",apiKey:env.OPENAI_API_KEY,baseUrl:env.OPENAI_BASE_URL??"https://api.openai.com/v1/responses",healthUrl:env.OPENAI_HEALTH_URL??"https://api.openai.com/v1/models",model:env.OPENAI_MODEL?.trim()||"gpt-5.6-terra"},
   anthropic:{enabled:env.ANTHROPIC_ENABLED==="true",apiKey:env.ANTHROPIC_API_KEY,baseUrl:env.ANTHROPIC_BASE_URL??"https://api.anthropic.com/v1/messages",healthUrl:env.ANTHROPIC_HEALTH_URL??"https://api.anthropic.com/v1/models",model:env.ANTHROPIC_MODEL?.trim()||"claude-sonnet-5-5"},
   gemini:{enabled:env.GEMINI_ENABLED==="true",apiKey:env.GEMINI_API_KEY,baseUrl:env.GEMINI_BASE_URL??"https://generativelanguage.googleapis.com/v1beta",healthUrl:env.GEMINI_HEALTH_URL??"https://generativelanguage.googleapis.com/v1beta/models",model:env.GEMINI_MODEL?.trim()||"gemini-3.6-flash"},
+  kimi:{enabled:env.KIMI_ENABLED==="true",apiKey:env.KIMI_API_KEY,baseUrl:env.KIMI_BASE_URL??"https://api.moonshot.ai/v1",model:env.KIMI_MODEL?.trim()||"kimi-k2.5"},
   freePool:loadFreePool(env)
  };
 }
