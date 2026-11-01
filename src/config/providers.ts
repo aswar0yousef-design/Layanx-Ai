@@ -135,7 +135,8 @@ export function cloudPolicy(env:NodeJS.ProcessEnv=process.env):CloudPolicy{
 const PROVIDER_HINTS:Array<[RegExp,string]>=[
  [/\b(claude|anthropic)\b|كلود|انثروبيك/i,"anthropic"],
  [/\b(gpt|openai|chatgpt)\b|اوبن ?اي|أوبن ?إي|شات ?جي ?بي ?تي|جي ?بي ?تي/i,"openai"],
- [/\bgemini\b|جيميني|جيمناي|جمناي/i,"gemini"]
+ [/\bgemini\b|جيميني|جيمناي|جمناي/i,"gemini"],
+ [/\bkimi\b|كيمي/i,"kimi"]
 ];
 const COMPLEX=/\b(architecture|refactor|redesign|strategy|in depth|step by step plan|complex|full (project|plan|app))\b|معماري|إعادة هيكلة|اعادة هيكلة|استراتيجية|خطة كاملة|بشكل معمق|بعمق|معقد|مشروع كامل|تطبيق كامل/i;
 export function isComplexGoal(goal:string):boolean{
