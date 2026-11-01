@@ -21,6 +21,7 @@ import {GrowthEngine} from "./business/growth-engine.js";
 import {MessagingChannels} from "./channels/service.js";
 import {deviceIdentity} from "./device-identity.js";
 import {VoiceAssistant,DailyBriefing,coreAssistantDeps,type AssistantHistoryItem} from "./voice/assistant.js";
+import {classifyDialogue} from "./voice/dialogue-brain.js";
 import {Supervisor} from "./autonomy/supervisor.js";
 import {coreSupervisorDeps,runSingleTool} from "./autonomy/runtime-deps.js";
 import {detectExternalAgents,cloudAgentsAllowed} from "./autonomy/external-agents.js";
@@ -329,6 +330,17 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   if(request.method==="GET"&&request.url==="/v1/agents/external"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    json(response,200,{ok:true,cloudAllowed:cloudAgentsAllowed(),agents:detectExternalAgents(true).map(a=>({name:a.name,kind:a.kind,label:a.label}))});return;
+  }
+  // Shared dialogue-brain intake for all Control Center modes. No LLM or tool execution.
+  if(request.method==="POST"&&request.url==="/v1/assistant/classify"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const input=await body(request,max);
+    const text=typeof input.text==="string"?input.text:"";
+    if(!text.trim()||text.length>4000){json(response,422,{ok:false,error:"invalid_dialogue_text"});return;}
+    json(response,200,{ok:true,...classifyDialogue(text)});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"classification_failed"});}
+   return;
   }
   // ---- Jarvis assistant: one conversational entry point for voice and text ----
   if(request.method==="POST"&&request.url==="/v1/assistant/turn"){
