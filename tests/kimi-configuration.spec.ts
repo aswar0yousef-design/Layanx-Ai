@@ -1,0 +1,12 @@
+import {strict as assert} from "node:assert";
+import {configureProviders,loadProviderConfig,cloudRoutingForGoal} from "../src/config/providers.js";
+const config=loadProviderConfig({LAYANX_AI_MODE:"hybrid",OLLAMA_ENABLED:"false",KIMI_ENABLED:"true",KIMI_API_KEY:"dummy-test-value",KIMI_MODEL:"kimi-test"} as NodeJS.ProcessEnv);
+assert.equal(config.kimi.enabled,true);
+assert.equal(config.kimi.model,"kimi-test");
+const {models,providers}=configureProviders(config);
+assert.equal(models.list().some(m=>m.provider==="kimi"),true);
+assert.equal(providers.list().some(p=>p.name==="kimi"),true);
+assert.deepEqual(cloudRoutingForGoal("استخدم كيمي",models)?.tags,["kimi"]);
+const disabled=loadProviderConfig({LAYANX_AI_MODE:"local",OLLAMA_ENABLED:"false"} as NodeJS.ProcessEnv);
+assert.equal(configureProviders(disabled).models.list().length,0);
+console.log("kimi-configuration: PASS");
