@@ -13,7 +13,7 @@ export interface CouncilResult {
   sources:Array<{provider:string;modelId:string;role:string;ok:boolean;error?:string}>;
   synthesisModel?:string;
 }
-const clean=(s:string)=>s.replace(/[\\u0000-\\u001f]/g," ").trim();
+const clean=(s:string)=>s.replace(/\s+/g," ").trim();
 export class UnifiedModelCouncil {
   constructor(private readonly router:ModelExecutionRouter){}
   async execute(request:ModelRequest,plan:CouncilPlan):Promise<CouncilResult>{
