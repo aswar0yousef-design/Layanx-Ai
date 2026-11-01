@@ -1,0 +1,11 @@
+import {strict as assert} from "node:assert";
+import {isMetaIntegrationGoal,metaIntegrationMilestones} from "../src/autonomy/meta-integration-playbook.js";
+assert.equal(isMetaIntegrationGoal("اربط ميتا مع الوكيل"),true);
+assert.equal(isMetaIntegrationGoal("Connect Instagram and WhatsApp to LayanX"),true);
+assert.equal(isMetaIntegrationGoal("افتح كروم"),false);
+assert.equal(isMetaIntegrationGoal("ما هو فيسبوك؟"),false);
+const milestones=metaIntegrationMilestones();
+assert.deepEqual(milestones.map(m=>m.id),["inspect","browser","permissions","configure","verify"]);
+assert.equal(milestones.some(m=>m.requiresOwner),true);
+assert.match(milestones.at(-1)!.proof,/test/i);
+console.log("meta-integration-playbook: PASS");
