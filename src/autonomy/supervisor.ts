@@ -8,6 +8,7 @@ import {ensureLayanxIgnore,knowledgeSummary,recordIssue,refreshKnowledge,updateH
 import {buildRepoMap} from "./repo-map.js";
 import {isLocalPreview} from "../platform/open-url.js";
 import {openRequest} from "../tools/open-app.js";
+import {isMetaIntegrationGoal,metaIntegrationMilestones} from "./meta-integration-playbook.js";
 import {errorSignature,findLessons,guidanceText,listLessons,listPlaybooks,markLessons,matchPlaybooks,recordLesson,recordPlaybookOutcome,savePlaybookCandidate,trustProjectPlaybook} from "./learning.js";
 
 /**
@@ -370,6 +371,10 @@ export class Supervisor{
         checks:{install:false,test:false,build:false,typecheck:false,lint:false,security:false,browser:null}
       };
       this.log(job,"Recognised a direct desktop-open request; skipped research and planned opening plus window verification");
+    }else if(isMetaIntegrationGoal(job.goal)){
+      const stages=metaIntegrationMilestones();
+      spec={acceptance:stages.map(stage=>stage.proof),milestones:stages.map(stage=>({title:stage.title,goal:stage.goal,kind:stage.kind})),checks:{install:false,test:false,build:false,typecheck:false,lint:false,security:false,browser:null}};
+      this.log(job,"Selected deterministic Meta integration workflow; owner approval and runtime evidence remain mandatory");
     }else{
       try{spec=extractJson(await this.deps.think(prompt));}catch(e){this.log(job,"Local planner failed: "+(e as Error).message,"warn");}
       if(!spec?.milestones?.length&&this.deps.cloudAvailable()){
