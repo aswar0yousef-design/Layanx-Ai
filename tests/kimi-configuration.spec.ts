@@ -1,6 +1,6 @@
 import {strict as assert} from "node:assert";
 import {configureProviders,loadProviderConfig,cloudRoutingForGoal} from "../src/config/providers.js";
-const config=loadProviderConfig({LAYANX_AI_MODE:"hybrid",OLLAMA_ENABLED:"false",KIMI_ENABLED:"true",KIMI_API_KEY:"dummy-test-value",KIMI_MODEL:"kimi-test"} as NodeJS.ProcessEnv);
+const config=loadProviderConfig({LAYANX_AI_MODE:"hybrid",OLLAMA_ENABLED:"false",KIMI_ENABLED:"true",KIMI_API_KEY:"placeholder",KIMI_MODEL:"kimi-test"} as NodeJS.ProcessEnv);
 assert.equal(config.kimi.enabled,true);
 assert.equal(config.kimi.model,"kimi-test");
 const {models,providers}=configureProviders(config);
