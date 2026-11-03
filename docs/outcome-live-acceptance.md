@@ -25,8 +25,8 @@ npm run acceptance:live:local
 
 - An actual local model plans a goal and the LayanX coder attempts to generate a brand-new Node.js task API.
 - The real `project.run` adapter executes install, test and build steps.
-- The output file `acceptance-result.json` records the final status, test references, blockers, independent behavior checks and workspace path.
-- `ok: true` requires a completed Supervisor job, a verified Outcome report, successful non-skipped test **and** build evidence, the requested project files, **and independent observed HTTP behavior**: health, bilingual HTML, create/list/delete and persistence across two server restarts.
+- The output file `acceptance-result.json` records the final status, machine references, independent HTTP checks, **real Edge/Chrome UI click checks**, blockers and workspace path.
+- `ok: true` requires a completed Supervisor job using the strict `task-app-ui-v1` acceptance profile. The Supervisor must persist both HTTP and Edge/Chrome UI proof, in addition to successful build/test evidence; the CLI independently repeats both probes after completion.
 - If approval is required or any check fails, the run reports `ok: false` (never a fabricated pass).
 
 ## Isolation and limitations
@@ -38,7 +38,7 @@ The local agent can still execute coding tools. Review the run on a non-sensitiv
 No external accounts are intentionally used.
 
 The independent probe runs generated app code in a child Node process with a minimal environment; this is **not a security sandbox**. Do not use a machine containing production secrets to test untrusted generated code.
-The probe verifies the HTTP API and bilingual HTML presence, **not** interactive browser visuals or accessibility; those require a separate browser test. It restarts the generated app server, **not** the LayanX Supervisor or Windows.
+The HTTP probe verifies API persistence after server restarts. A separate Edge/Chrome probe checks visible task add/delete buttons on desktop and mobile after page reloads. It does not certify all visual/accessibility criteria; inspect screenshots and interactions separately. It restarts the generated app server, **not** the LayanX Supervisor or Windows.
 
 Passing this test demonstrates **one specific app-delivery workflow on this machine**.
 It does not validate every desktop operation, every business connector, or real trading.

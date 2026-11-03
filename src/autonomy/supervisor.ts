@@ -32,6 +32,7 @@ export type MilestoneKind="code"|"test"|"research"|"desktop"|"business"|"general
 import {assessOutcome,type OutcomeReport,type OutcomeRuntimeProof} from "./outcome.js";
 import {writeDeliveryManifest} from "./delivery.js";
 import {verifyTaskApp,type TaskAppProbeResult} from "./task-app-verifier.js";
+import {verifyTaskAppUI,type TaskAppUIResult} from "./task-app-ui-verifier.js";
 
 export interface Milestone{title:string;goal:string;kind:MilestoneKind;agent:string;status:"pending"|"running"|"done"|"failed";attempts:number;missions:string[];notes?:string}
 export interface Checks{install:boolean;test:boolean;build:boolean;typecheck:boolean;lint:boolean;browser:{path:string}|null;security?:boolean}
@@ -43,8 +44,9 @@ export interface SupervisorJob{
   baseline?:CheckResult[];lastChecks?:CheckResult[];visual?:{url:string;problems:string[];judgement?:string;screens:string[]};
   /** Machine-observed result of the final delivery gates, persisted with the job. */
   outcome?:OutcomeReport;
-  acceptanceProfile?:"task-app-http-v1";
+  acceptanceProfile?:"task-app-http-v1"|"task-app-ui-v1";
   behavior?:TaskAppProbeResult;
+  uiBehavior?:TaskAppUIResult;
   delivery?:{manifestPath:string;guidePath:string;fileCount:number};
   runtimeProofs?:OutcomeRuntimeProof[];
   waiting?:{approvalId:string;missionId:string;index:number;kind:"agent"|"tool";agentId?:string;tool?:string;payload?:Record<string,unknown>;milestone:number;continuation?:"milestone"|"final"};
@@ -137,7 +139,7 @@ export class Supervisor{
   }
 
   // ------------------------------------------------------------ public API
-  create(goal:string,projectId="default",opts:{maxMinutes?:number;maxRounds?:number;openWhenDone?:boolean;acceptanceProfile?:"task-app-http-v1"}={}):SupervisorJob{
+  create(goal:string,projectId="default",opts:{maxMinutes?:number;maxRounds?:number;openWhenDone?:boolean;acceptanceProfile?:"task-app-http-v1"|"task-app-ui-v1"}={}):SupervisorJob{
     const g=goal.trim();if(g.length<3||g.length>4000)throw new Error("goal_required");
     const minutes=Math.min(Math.max(opts.maxMinutes??120,5),24*60);
     const job:SupervisorJob={id:randomUUID(),projectId,goal:g,status:"planning",createdAt:now(),updatedAt:now(),
@@ -201,7 +203,7 @@ export class Supervisor{
     this.discardStaleDesktopOpenPlan(job);
     this.discardStaleNotepadFocusVerification(job);
     job.deadline=new Date(Date.now()+(job.budgetMinutes??120)*60_000).toISOString();
-    job.rounds=0;job.finalRepairs=0;job.result=undefined;job.waiting=undefined;job.outcome=undefined;job.behavior=undefined;job.delivery=undefined;job.resumed=(job.resumed??0)+1;
+    job.rounds=0;job.finalRepairs=0;job.result=undefined;job.waiting=undefined;job.outcome=undefined;job.behavior=undefined;job.uiBehavior=undefined;job.delivery=undefined;job.resumed=(job.resumed??0)+1;
     const m=job.milestones[job.current];
     if(m&&m.status!=="done"){m.status="pending";m.attempts=0;}
     const next:JobStatus=!job.milestones.length||!job.checks?"planning":job.current>=job.milestones.length?"verifying":"running";
@@ -664,7 +666,7 @@ export class Supervisor{
     if(outcome.status!=="verified")return this.reopen(job,"Delivery evidence is insufficient:\n"+outcome.blockers.join("\n"));
     // A test/build can prove code runs, but cannot prove that the requested behavior works.
     // Explicit acceptance profiles run independently BEFORE marking a job completed.
-    if(job.acceptanceProfile==="task-app-http-v1"){
+    if(job.acceptanceProfile==="task-app-http-v1"||job.acceptanceProfile==="task-app-ui-v1"){
       let observed:TaskAppProbeResult;
       try{observed=await verifyTaskApp(projectDir(job.projectId));}
       catch(error){
@@ -678,6 +680,19 @@ export class Supervisor{
         blockers:observed.ok?outcome.blockers:[...outcome.blockers,reason]};
       job.outcome=outcome;this.save();this.writeOutcomeReport(job);
       if(!observed.ok)return this.reopen(job,"Independent behavior verification failed: "+reason);
+      if(job.acceptanceProfile==="task-app-ui-v1"){
+        let ui:TaskAppUIResult;
+        try{ui=await verifyTaskAppUI(projectDir(job.projectId));}
+        catch(error){ui={ok:false,checks:[],blockers:["Independent browser probe failed: "+(error instanceof Error?error.message:String(error))],verificationScope:"browser-click-and-reload"};}
+        job.uiBehavior=ui;
+        const detail=ui.blockers.join("; ")||"Task app UI could not be tested in Edge or Chrome.";
+        outcome={...outcome,status:ui.ok?"verified":"blocked",
+          evidence:[...outcome.evidence,{kind:"check",name:"task-app-ui-v1",passed:ui.ok,observedAt:now(),
+            reference:"independent:ui:task-app",detail:ui.ok?"Observed desktop and mobile task creation/deletion after reload":detail.slice(0,1200)}],
+          blockers:ui.ok?outcome.blockers:[...outcome.blockers,detail]};
+        job.outcome=outcome;this.save();this.writeOutcomeReport(job);
+        if(!ui.ok)return this.reopen(job,"Independent browser UI verification failed: "+detail);
+      }
     }
     writeProjectNotes(job);
     try{refreshKnowledge(projectDir(job.projectId));}catch{}

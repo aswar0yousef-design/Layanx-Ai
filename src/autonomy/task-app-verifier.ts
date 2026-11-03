@@ -27,7 +27,8 @@ const launcher=[
   'process.on("SIGTERM",()=>server.close(()=>process.exit(0)));'
 ].join("\n");
 
-async function startServer(serverFile:string,workspace:string,storageFile:string):Promise<{child:ChildProcess;url:string}>{
+/** Start a generated task app with a deliberately restricted child process environment. */
+export async function startTaskAppServer(serverFile:string,workspace:string,storageFile:string):Promise<{child:ChildProcess;url:string}>{
   const env:NodeJS.ProcessEnv={
     PATH:process.env.PATH??process.env.Path??"",
     SystemRoot:process.env.SystemRoot,
@@ -70,7 +71,8 @@ async function startServer(serverFile:string,workspace:string,storageFile:string
     child.stderr?.on("data",(chunk:Buffer)=>{errors=(errors+chunk.toString()).slice(-2000);});
   });
 }
-async function stopServer(child:ChildProcess|undefined){
+/** End a generated acceptance process; do not treat this as an OS security boundary. */
+export async function stopTaskAppServer(child:ChildProcess|undefined){
   if(!child||child.exitCode!==null||child.killed)return;
   const exited=new Promise<void>(resolve=>child.once("exit",()=>resolve()));
   child.kill();
@@ -107,7 +109,7 @@ export async function verifyTaskApp(workspace:string):Promise<TaskAppProbeResult
     if(!fs.existsSync(serverFile))throw Error("Missing src/server.mjs");
     fs.mkdirSync(path.dirname(storageFile),{recursive:true});
     let url="";
-    await record("start",async()=>{const started=await startServer(serverFile,workspace,storageFile);child=started.child;url=started.url;});
+    await record("start",async()=>{const started=await startTaskAppServer(serverFile,workspace,storageFile);child=started.child;url=started.url;});
     await record("health",async()=>{
       const res=await request(url,"/health");
       if(!res.ok||((await res.json()) as {ok?:unknown}).ok!==true)throw Error("GET /health must return {ok:true}");
@@ -132,8 +134,8 @@ export async function verifyTaskApp(workspace:string):Promise<TaskAppProbeResult
       const tasks=await parseTasks(await request(url,"/tasks"));
       if(!tasks.some(t=>String(t.id)===id&&t.title===title))throw Error("Created task missing from GET /tasks");
     });
-    await stopServer(child);child=undefined;
-    await record("restart",async()=>{const started=await startServer(serverFile,workspace,storageFile);child=started.child;url=started.url;});
+    await stopTaskAppServer(child);child=undefined;
+    await record("restart",async()=>{const started=await startTaskAppServer(serverFile,workspace,storageFile);child=started.child;url=started.url;});
     await record("persistent-create",async()=>{
       const tasks=await parseTasks(await request(url,"/tasks"));
       if(!tasks.some(t=>String(t.id)===id&&t.title===title))throw Error("Task was lost after a server restart");
@@ -144,8 +146,8 @@ export async function verifyTaskApp(workspace:string):Promise<TaskAppProbeResult
       const tasks=await parseTasks(await request(url,"/tasks"));
       if(tasks.some(t=>String(t.id)===id))throw Error("Deleted task still appears in task list");
     });
-    await stopServer(child);child=undefined;
-    await record("restart-after-delete",async()=>{const started=await startServer(serverFile,workspace,storageFile);child=started.child;url=started.url;});
+    await stopTaskAppServer(child);child=undefined;
+    await record("restart-after-delete",async()=>{const started=await startTaskAppServer(serverFile,workspace,storageFile);child=started.child;url=started.url;});
     await record("persistent-delete",async()=>{
       const tasks=await parseTasks(await request(url,"/tasks"));
       if(tasks.some(t=>String(t.id)===id))throw Error("Deleted task returned after restart");
@@ -153,7 +155,7 @@ export async function verifyTaskApp(workspace:string):Promise<TaskAppProbeResult
   }catch(e){
     if(!blockers.length)blockers.push(e instanceof Error?e.message:String(e));
   }finally{
-    await stopServer(child);
+    await stopTaskAppServer(child);
     try{fs.rmSync(storageFile,{force:true});}catch{}
   }
   return {ok:blockers.length===0&&checks.length===10,checks,blockers,verificationScope:"real-http-and-restart"};
