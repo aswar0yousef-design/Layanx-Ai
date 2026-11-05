@@ -34,7 +34,7 @@ try{
   const stored=await detail.json() as {job:{acceptanceProfile?:string}};
   assert.equal(stored.job.acceptanceProfile,"task-app-http-v1");
   const strict=await request({goal:"Build and verify a sample",projectId:"strict-api",requiredAcceptance:[
-    {id:"build",description:"Build succeeds and is independently checked",required:true}
+    {id:"build",description:"Build succeeds and is independently checked",required:true,checkId:"build",artifact:"dist/output.js"}
   ]});
   assert.equal(strict.status,201);
   const strictBody=await strict.json() as {job:{id:string;requiredAcceptance?:Array<{id:string;description:string;required:boolean}>;acceptanceProofs?:unknown}};
@@ -48,6 +48,8 @@ try{
     {requiredAcceptance:[]},
     {requiredAcceptance:[{id:"only",description:"Not mandatory",required:false}]},
     {requiredAcceptance:[{id:"same",description:"A",required:true},{id:"same",description:"B",required:true}]},
+    {requiredAcceptance:[{id:"missing-check",description:"Missing check binding",required:true}]},
+    {requiredAcceptance:[{id:"unsafe-check",description:"Unknown check",required:true,checkId:"invented",artifact:"report.json"}]},
     {requiredAcceptance:[{id:"unsafe/path",description:"A",required:true}]},
     {requiredAcceptance:[{id:"ok",description:" ",required:true}]},
     {requiredAcceptance:"not-an-array"},
