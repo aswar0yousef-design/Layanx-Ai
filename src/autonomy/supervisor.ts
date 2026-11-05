@@ -30,6 +30,7 @@ import {errorSignature,findLessons,guidanceText,listLessons,listPlaybooks,markLe
 export type JobStatus="queued"|"planning"|"running"|"waiting_approval"|"verifying"|"completed"|"failed"|"cancelled"|"budget_exhausted";
 export type MilestoneKind="code"|"test"|"research"|"desktop"|"business"|"general";
 import {assessOutcome,type OutcomeReport,type OutcomeRuntimeProof} from "./outcome.js";
+import {evaluateAcceptance,type AcceptanceRequirement,type AcceptanceProof} from "./acceptance-evidence.js";
 import {writeDeliveryManifest} from "./delivery.js";
 import {verifyTaskApp,type TaskAppProbeResult} from "./task-app-verifier.js";
 
@@ -678,6 +679,21 @@ export class Supervisor{
         blockers:observed.ok?outcome.blockers:[...outcome.blockers,reason]};
       job.outcome=outcome;this.save();this.writeOutcomeReport(job);
       if(!observed.ok)return this.reopen(job,"Independent behavior verification failed: "+reason);
+    }
+    // Optional strict acceptance contract: never interpret a model claim as proof.
+    // Legacy jobs without an explicit contract keep their existing behavior.
+    const acceptanceContract=job as SupervisorJob & {
+      requiredAcceptance?:AcceptanceRequirement[];
+      acceptanceProofs?:AcceptanceProof[];
+    };
+    if(acceptanceContract.requiredAcceptance?.length){
+      const verdict=evaluateAcceptance(acceptanceContract.requiredAcceptance,acceptanceContract.acceptanceProofs??[]);
+      if(verdict.status!=="verified"){
+        const reason="Required acceptance evidence failed: "+verdict.blockers.join("; ");
+        job.outcome={...outcome,status:"blocked",blockers:[...outcome.blockers,...verdict.blockers]};
+        this.save();this.writeOutcomeReport(job);
+        return this.reopen(job,reason);
+      }
     }
     writeProjectNotes(job);
     try{refreshKnowledge(projectDir(job.projectId));}catch{}
