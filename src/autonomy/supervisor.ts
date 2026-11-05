@@ -688,13 +688,18 @@ export class Supervisor{
     // Optional strict acceptance contract: never interpret a model claim as proof.
     // Legacy jobs without an explicit contract keep their existing behavior.
     if(job.requiredAcceptance!==undefined){
-      const proofs=job.acceptanceProofs??[];
-      const verdict=evaluateAcceptance(job.requiredAcceptance,proofs);
-      const artifactBlockers:string[]=[];
       // A receipt is not evidence of a test unless this verification pass actually ran it.
       const successfulChecks=new Set(final.filter(c=>c.ok&&!c.skipped).map(c=>c.name));
       if(job.acceptanceProfile==="task-app-http-v1"&&job.behavior?.ok)
         successfulChecks.add("independent:task-app-http-v1");
+      // Bind owner-declared requirements to the checks we observed ourselves.
+      // Never accept an HTTP client's self-reported proof of execution.
+      const generatedProofs:AcceptanceProof[]=job.requiredAcceptance
+        .filter(r=>r.required&&r.checkId&&r.artifact&&successfulChecks.has(r.checkId))
+        .map(r=>({requirementId:r.id,checkId:r.checkId!,artifact:r.artifact!,passed:true,observedAt:now()}));
+      const proofs=[...(job.acceptanceProofs??[]),...generatedProofs];
+      const verdict=evaluateAcceptance(job.requiredAcceptance,proofs);
+      const artifactBlockers:string[]=[];
       for(const requirement of job.requiredAcceptance.filter(r=>r.required)){
         for(const proof of proofs.filter(p=>p.requirementId===requirement.id&&p.passed&&!p.skipped)){
           if(!successfulChecks.has(proof.checkId))
