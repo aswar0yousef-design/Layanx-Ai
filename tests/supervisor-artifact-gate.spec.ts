@@ -36,7 +36,7 @@ const until=async(getStatus:()=>string,timeoutMs=15000)=>{
   }
   throw Error("Supervisor did not finish before timeout.");
 };
-const receipt={requirementId:"output",checkId:"independent:output",passed:true,
+const receipt={requirementId:"output",checkId:"test",passed:true,
   artifact:"reports/output.json",observedAt:new Date().toISOString()};
 const requirements=[{id:"output",description:"Output file exists after verification",required:true}];
 const sup=new Supervisor(deps,{file:path.join(root,"jobs.json"),pollMs:5});
@@ -55,5 +55,10 @@ try{
   assert.equal(await until(()=>sup.get(present.id)!.status),"completed",
     "A real existing artifact plus passing checks can satisfy the strict contract");
   assert.equal(sup.get(present.id)!.outcome?.status,"verified");
-  console.log("supervisor artifact gate: missing proof file blocks delivery, existing proof file permits delivery");
+  const forged=sup.create("Generate verifiable output",projectId,{maxRounds:10,requiredAcceptance:requirements});
+  forged.acceptanceProofs=[{...receipt,checkId:"not-run:e2e"}];
+  assert.equal(await until(()=>sup.get(forged.id)!.status),"failed",
+    "An invented test name cannot certify an existing artifact");
+  assert.match(sup.get(forged.id)!.outcome?.blockers.join(" ")??"",/not independently executed/);
+  console.log("supervisor artifact gate: missing files and unexecuted checks block delivery; a real file with passing test permits delivery");
 }finally{sup.stop();fs.rmSync(root,{recursive:true,force:true});}
