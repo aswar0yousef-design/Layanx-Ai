@@ -31,6 +31,7 @@ export type JobStatus="queued"|"planning"|"running"|"waiting_approval"|"verifyin
 export type MilestoneKind="code"|"test"|"research"|"desktop"|"business"|"general";
 import {assessOutcome,type OutcomeReport,type OutcomeRuntimeProof} from "./outcome.js";
 import {evaluateAcceptance,type AcceptanceRequirement,type AcceptanceProof} from "./acceptance-evidence.js";
+import {verifyAcceptanceArtifact} from "./acceptance-artifact.js";
 import {writeDeliveryManifest} from "./delivery.js";
 import {verifyTaskApp,type TaskAppProbeResult} from "./task-app-verifier.js";
 
@@ -687,10 +688,19 @@ export class Supervisor{
     // Optional strict acceptance contract: never interpret a model claim as proof.
     // Legacy jobs without an explicit contract keep their existing behavior.
     if(job.requiredAcceptance!==undefined){
-      const verdict=evaluateAcceptance(job.requiredAcceptance,job.acceptanceProofs??[]);
-      if(verdict.status!=="verified"){
-        const reason="Required acceptance evidence failed: "+verdict.blockers.join("; ");
-        job.outcome={...outcome,status:"blocked",blockers:[...outcome.blockers,...verdict.blockers]};
+      const proofs=job.acceptanceProofs??[];
+      const verdict=evaluateAcceptance(job.requiredAcceptance,proofs);
+      const artifactBlockers:string[]=[];
+      for(const requirement of job.requiredAcceptance.filter(r=>r.required)){
+        for(const proof of proofs.filter(p=>p.requirementId===requirement.id&&p.passed&&!p.skipped&&p.artifact?.trim())){
+          const artifact=await verifyAcceptanceArtifact(projectDir(job.projectId),proof.artifact!);
+          if(!artifact.ok)artifactBlockers.push("Invalid acceptance artifact for "+requirement.id+": "+artifact.reason);
+        }
+      }
+      const blockers=[...verdict.blockers,...artifactBlockers];
+      if(verdict.status!=="verified"||artifactBlockers.length){
+        const reason="Required acceptance evidence failed: "+blockers.join("; ");
+        job.outcome={...outcome,status:"blocked",blockers:[...outcome.blockers,...blockers]};
         this.save();this.writeOutcomeReport(job);
         return this.reopen(job,reason);
       }
