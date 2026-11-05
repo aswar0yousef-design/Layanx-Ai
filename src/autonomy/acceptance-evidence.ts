@@ -25,8 +25,9 @@ export function evaluateAcceptance(requirements:readonly AcceptanceRequirement[]
   const passed:string[]=[];
   const seen=new Set<string>();
   if(!requirements.length)blockers.push("No acceptance requirements defined.");
+  if(requirements.length&&!requirements.some(r=>r.required))blockers.push("No required acceptance criteria defined.");
   for(const requirement of requirements){
-    if(!requirement.id.trim()||seen.has(requirement.id)){
+    if(!requirement.id.trim()||!requirement.description.trim()||seen.has(requirement.id)){
       blockers.push("Invalid or duplicate requirement ID: "+requirement.id);
       continue;
     }
