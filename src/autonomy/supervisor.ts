@@ -691,10 +691,18 @@ export class Supervisor{
       const proofs=job.acceptanceProofs??[];
       const verdict=evaluateAcceptance(job.requiredAcceptance,proofs);
       const artifactBlockers:string[]=[];
+      // A receipt is not evidence of a test unless this verification pass actually ran it.
+      const successfulChecks=new Set(final.filter(c=>c.ok&&!c.skipped).map(c=>c.name));
+      if(job.acceptanceProfile==="task-app-http-v1"&&job.behavior?.ok)
+        successfulChecks.add("independent:task-app-http-v1");
       for(const requirement of job.requiredAcceptance.filter(r=>r.required)){
-        for(const proof of proofs.filter(p=>p.requirementId===requirement.id&&p.passed&&!p.skipped&&p.artifact?.trim())){
-          const artifact=await verifyAcceptanceArtifact(projectDir(job.projectId),proof.artifact!);
-          if(!artifact.ok)artifactBlockers.push("Invalid acceptance artifact for "+requirement.id+": "+artifact.reason);
+        for(const proof of proofs.filter(p=>p.requirementId===requirement.id&&p.passed&&!p.skipped)){
+          if(!successfulChecks.has(proof.checkId))
+            artifactBlockers.push("Acceptance check was not independently executed: "+requirement.id+" / "+proof.checkId);
+          if(proof.artifact?.trim()){
+            const artifact=await verifyAcceptanceArtifact(projectDir(job.projectId),proof.artifact);
+            if(!artifact.ok)artifactBlockers.push("Invalid acceptance artifact for "+requirement.id+": "+artifact.reason);
+          }
         }
       }
       const blockers=[...verdict.blockers,...artifactBlockers];
