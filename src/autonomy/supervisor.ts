@@ -472,6 +472,19 @@ export class Supervisor{
     if(checks===undefined)return;
     job.lastChecks=checks;
     const failed=checks.filter(c=>!c.ok&&!c.skipped);
+    // A model's completed response is not proof that a requested file exists.
+    // For the isolated HTTP-task acceptance, enforce files named by each step.
+    if(job.acceptanceProfile==="task-app-http-v1"&&(m.kind==="code"||m.kind==="test")){
+      const description=(m.title+" "+m.goal).toLowerCase();
+      const required=description.includes("fix final verification")
+        ?["package.json","src/server.mjs","tests/tasks.test.mjs"]
+        :["package.json","src/server.mjs","tests/tasks.test.mjs"].filter(file=>description.includes(file));
+      for(const file of required){
+        const target=path.join(projectDir(job.projectId),file);
+        if(!fs.existsSync(target)||!fs.statSync(target).isFile()||fs.statSync(target).size===0)
+          failed.push({name:"required artifact",ok:false,summary:"Missing or empty "+file+". Write the real file before completing this milestone."});
+      }
+    }
     const regressions=(job.baseline??[]).filter(b=>b.ok&&!b.skipped&&checks.some(c=>c.name===b.name&&!c.ok&&!c.skipped)).map(b=>b.name);
     const agentFailed=agentStopped!==undefined;
     if(!failed.length&&!agentFailed){
@@ -633,6 +646,16 @@ export class Supervisor{
     job.visual=undefined; // Do not carry previous evidence into this verification pass.
     job.security=undefined;
     const c=job.checks;
+    if(job.acceptanceProfile==="task-app-http-v1"){
+      const missing=["package.json","src/server.mjs","tests/tasks.test.mjs"].filter(file=>{
+        const target=path.join(projectDir(job.projectId),file);
+        return !fs.existsSync(target)||!fs.statSync(target).isFile()||fs.statSync(target).size===0;
+      });
+      if(missing.length){
+        this.captureOutcome(job,[]);
+        return this.reopen(job,"Required application files missing or empty: "+missing.join(", ")+". Write the real app and tests; a mission completion claim is not evidence.");
+      }
+    }
     const final=await this.runChecks(job,"final");
     if(final===undefined)return;
     const failing=final.filter(x=>!x.ok&&!x.skipped);
