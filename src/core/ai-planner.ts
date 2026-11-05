@@ -317,10 +317,18 @@ export class AiMissionPlanner{
     const steps=Array.isArray(v.steps)?v.steps.filter(x=>x&&typeof x==="object"&&typeof (x as Record<string,unknown>).description==="string").map(x=>({description:String((x as Record<string,unknown>).description)})):[];
     const successCriteria=Array.isArray(v.successCriteria)?v.successCriteria.filter(x=>typeof x==="string").map(String):[];
     if(!steps.length||!successCriteria.length||typeof v.stopCondition!=="string"||!v.stopCondition.trim())throw new Error("Incomplete mission plan.");
-    const tools=this.parseTools(v.tools,catalog,v.requiredPermission as PermissionLevel);
-    return{risk:v.risk as PlannedMission["risk"],requiredPermission:v.requiredPermission as PermissionLevel,steps,successCriteria,stopCondition:String(v.stopCondition),tools};
+    // Model-supplied mission scope is a proposal, not an authority decision.
+    // Derive the minimum scope needed for catalog-approved tools. The catalog is
+    // already limited by the agent contract; execution still enforces trust,
+    // capability tokens, approvals and Sentinel. Never alter a tool's permission.
+    const tools=this.parseTools(v.tools,catalog);
+    const levels:PermissionLevel[]=["L1_READ","L2_ANALYZE","L3_MODIFY","L4_EXECUTE","L5_CRITICAL"];
+    const requested=v.requiredPermission as PermissionLevel;
+    const requiredPermission=tools.reduce<PermissionLevel>((scope,tool)=>
+      levels.indexOf(tool.permission)>levels.indexOf(scope)?tool.permission:scope,requested);
+    return{risk:v.risk as PlannedMission["risk"],requiredPermission,steps,successCriteria,stopCondition:String(v.stopCondition),tools};
   }
-  private parseTools(value:unknown,catalog:ToolCatalogEntry[],missionPermission:PermissionLevel):PlannedTool[]{
+  private parseTools(value:unknown,catalog:ToolCatalogEntry[]):PlannedTool[]{
     if(!Array.isArray(value))return[];
     const byName=new Map(catalog.map(tool=>[tool.name,tool]));
     return value.map(item=>{
@@ -335,7 +343,7 @@ export class AiMissionPlanner{
       if(!levels.includes(permission))throw new Error("Planner returned an invalid tool permission.");
       const rank=(x:PermissionLevel)=>levels.indexOf(x);
       if(rank(permission)!==rank(tool.permission))throw new Error("Planner tool permission must match the tool requirement.");
-      if(rank(permission)>rank(missionPermission))throw new Error("Planner tool permission exceeds mission scope.");
+      // The enclosing scope is recalculated from validated tools in parse().
       const payload=entry.payload&&typeof entry.payload==="object"&&!Array.isArray(entry.payload)?entry.payload as Record<string,unknown>:undefined;
       if(payload&&JSON.stringify(payload).length>4096)throw new Error("Planner tool payload is too large.");
       return{tool:tool.name,action,permission,reason:typeof entry.reason==="string"?entry.reason:"",payload};
