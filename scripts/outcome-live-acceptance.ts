@@ -100,9 +100,11 @@ if(!ollama?.available){
     const machineRefs=new Set(report?.evidence.filter(e=>e.passed).map(e=>e.reference)??[]);
     const app=path.join(projects,id);
     const pkgFile=path.join(app,"package.json");
-    const hasProject=fs.existsSync(path.join(app,"src","server.mjs"))
-      &&fs.existsSync(path.join(app,"tests","tasks.test.mjs"))
-      &&fs.existsSync(pkgFile);
+    const artifactStatus=Object.fromEntries(["package.json","src/server.mjs","tests/tasks.test.mjs"].map(name=>{
+      const full=path.join(app,name);
+      return[name,fs.existsSync(full)?{exists:true,bytes:fs.statSync(full).size}:{exists:false,bytes:0}];
+    }));
+    const hasProject=Object.values(artifactStatus).every(file=>file.exists&&file.bytes>0);
     const deliveryFile=path.join(app,".layanx","deliveries",job.id+".json");
     const deliveryGuide=path.join(app,".layanx","deliveries",job.id+".md");
     const hasDelivery=Boolean(finished.delivery&&fs.existsSync(deliveryFile)&&fs.existsSync(deliveryGuide));
@@ -120,7 +122,9 @@ if(!ollama?.available){
       stage:"real-ollama-agent->generated-app->real-project-run->outcome-verification",
       status:finished.status,
       model:process.env.OLLAMA_MODEL??"configured Ollama default",
-      hasProject,hasDelivery,accepted,acceptanceIds,deliveryFile,deliveryGuide,missionCount:finished.milestones.flatMap(m=>m.missions).length,
+      hasProject,hasDelivery,accepted,acceptanceIds,artifactStatus,
+      failureReason:finished.result??null,
+      deliveryFile,deliveryGuide,missionCount:finished.milestones.flatMap(m=>m.missions).length,
       milestoneFailures:finished.milestones.filter(m=>m.status==="failed"||Boolean(m.notes))
         .map(m=>({title:m.title,kind:m.kind,status:m.status,attempts:m.attempts,
           reason:m.notes?.slice(0,3000)??null,missionIds:m.missions})),
