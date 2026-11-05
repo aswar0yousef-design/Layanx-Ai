@@ -121,6 +121,9 @@ if(!ollama?.available){
       status:finished.status,
       model:process.env.OLLAMA_MODEL??"configured Ollama default",
       hasProject,hasDelivery,accepted,acceptanceIds,deliveryFile,deliveryGuide,missionCount:finished.milestones.flatMap(m=>m.missions).length,
+      milestoneFailures:finished.milestones.filter(m=>m.status==="failed"||Boolean(m.notes))
+        .map(m=>({title:m.title,kind:m.kind,status:m.status,attempts:m.attempts,
+          reason:m.notes?.slice(0,3000)??null,missionIds:m.missions})),
       checkRefs:[...machineRefs],
       independentBehavior:independent,
       acceptanceCriteria:report?.acceptanceCriteria??[],
