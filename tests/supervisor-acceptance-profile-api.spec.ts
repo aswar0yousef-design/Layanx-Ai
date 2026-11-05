@@ -33,6 +33,29 @@ try{
   assert.equal(detail.status,200);
   const stored=await detail.json() as {job:{acceptanceProfile?:string}};
   assert.equal(stored.job.acceptanceProfile,"task-app-http-v1");
+  const strict=await request({goal:"Build and verify a sample",projectId:"strict-api",requiredAcceptance:[
+    {id:"build",description:"Build succeeds and is independently checked",required:true}
+  ]});
+  assert.equal(strict.status,201);
+  const strictBody=await strict.json() as {job:{id:string;requiredAcceptance?:Array<{id:string;description:string;required:boolean}>;acceptanceProofs?:unknown}};
+  assert.equal(strictBody.job.requiredAcceptance?.[0]?.id,"build");
+  assert.equal(strictBody.job.acceptanceProofs,undefined,"HTTP caller cannot submit self-certified receipts");
+  const strictDetail=await fetch(base+"/"+encodeURIComponent(strictBody.job.id),{headers});
+  assert.equal(strictDetail.status,200);
+  const strictStored=await strictDetail.json() as {job:{requiredAcceptance?:Array<{id:string}>}};
+  assert.equal(strictStored.job.requiredAcceptance?.[0]?.id,"build","criteria persist in the supervisor");
+  for(const invalidInput of [
+    {requiredAcceptance:[]},
+    {requiredAcceptance:[{id:"only",description:"Not mandatory",required:false}]},
+    {requiredAcceptance:[{id:"same",description:"A",required:true},{id:"same",description:"B",required:true}]},
+    {requiredAcceptance:[{id:"unsafe/path",description:"A",required:true}]},
+    {requiredAcceptance:[{id:"ok",description:" ",required:true}]},
+    {requiredAcceptance:"not-an-array"},
+    {acceptanceProofs:[{requirementId:"build",passed:true,artifact:"forged.json"}]}
+  ]){
+    const rejected=await request({goal:"Do not create this job",projectId:"invalid-api",...invalidInput});
+    assert.equal(rejected.status,422,"Reject invalid acceptance contracts and submitted proof receipts");
+  }
   const ordinary=await request({goal:"Read workspace status",projectId:"default"});
   assert.equal(ordinary.status,201);
   assert.equal((await ordinary.json() as {job:{acceptanceProfile?:string}}).job.acceptanceProfile,undefined);
