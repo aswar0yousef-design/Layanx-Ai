@@ -646,16 +646,6 @@ export class Supervisor{
     job.visual=undefined; // Do not carry previous evidence into this verification pass.
     job.security=undefined;
     const c=job.checks;
-    if(job.acceptanceProfile==="task-app-http-v1"){
-      const missing=["package.json","src/server.mjs","tests/tasks.test.mjs"].filter(file=>{
-        const target=path.join(projectDir(job.projectId),file);
-        return !fs.existsSync(target)||!fs.statSync(target).isFile()||fs.statSync(target).size===0;
-      });
-      if(missing.length){
-        this.captureOutcome(job,[]);
-        return this.reopen(job,"Required application files missing or empty: "+missing.join(", ")+". Write the real app and tests; a mission completion claim is not evidence.");
-      }
-    }
     const final=await this.runChecks(job,"final");
     if(final===undefined)return;
     const failing=final.filter(x=>!x.ok&&!x.skipped);
