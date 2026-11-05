@@ -379,7 +379,7 @@ export function createDesktopControlToolAdapter(options:{runner?:Runner;windows?
    const target=resolveOpenTarget(x);
    if(process.platform==="win32"){
     const value=target.kind==="known"?target.app:target.kind==="url"?target.url:target.name;
-    const out=await win().send({op:"openapp",kind:target.kind,value:Buffer.from(value,"utf8").toString("base64"),...(target.kind==="url"&&target.browser?{browser:target.browser}:{})},20_000);
+    const out=await win().send({op:"openapp",kind:target.kind,value:Buffer.from(value,"utf8").toString("base64"),...(target.kind==="url"&&target.browser?{browser:target.browser}:{})},target.kind==="start"?60_000:20_000);
     return {opened:true,what:out.split("|").slice(1).join("|")||target.label,via:target.kind==="known"?"program":target.kind==="start"?"start menu":"web page"};
    }
    if(target.kind==="url"){const r=await run(process.platform==="darwin"?"open":"xdg-open",[target.url]);if(r.code!==0)throw new Error(r.stderr||"Could not open the web page.");return {opened:true,what:target.url,via:"web page"};}
