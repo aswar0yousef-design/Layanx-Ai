@@ -331,7 +331,7 @@ export class AiMissionPlanner{
       :v.requiredPermission as PermissionLevel;
     return{risk:v.risk as PlannedMission["risk"],requiredPermission,steps,successCriteria,stopCondition:String(v.stopCondition),tools};
   }
-  private parseTools(value:unknown,catalog:ToolCatalogEntry[]):PlannedTool[]{
+  private parseTools(value:unknown,catalog:ToolCatalogEntry[],missionPermission?:PermissionLevel):PlannedTool[]{
     if(!Array.isArray(value))return[];
     const byName=new Map(catalog.map(tool=>[tool.name,tool]));
     return value.map(item=>{
@@ -346,7 +346,10 @@ export class AiMissionPlanner{
       if(!levels.includes(permission))throw new Error("Planner returned an invalid tool permission.");
       const rank=(x:PermissionLevel)=>levels.indexOf(x);
       if(rank(permission)!==rank(tool.permission))throw new Error("Planner tool permission must match the tool requirement.");
-      // The enclosing scope is recalculated from validated tools in parse().
+      // Initial mission scope is derived from these catalog-validated tools.
+      // Adaptive tool selections MUST remain inside the existing mission scope.
+      if(missionPermission&&rank(permission)>rank(missionPermission))
+        throw new Error("Planner tool permission exceeds mission scope.");
       const payload=entry.payload&&typeof entry.payload==="object"&&!Array.isArray(entry.payload)?entry.payload as Record<string,unknown>:undefined;
       if(payload&&JSON.stringify(payload).length>4096)throw new Error("Planner tool payload is too large.");
       return{tool:tool.name,action,permission,reason:typeof entry.reason==="string"?entry.reason:"",payload};
