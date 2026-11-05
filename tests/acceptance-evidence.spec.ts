@@ -38,3 +38,10 @@ test("a failed check cannot be overridden by an earlier success", () => {
 test("optional requirements do not require a proof", () => {
   assert.equal(evaluateAcceptance([...requirements, { id: "optional", description: "Nice to have", required: false }], [receipt]).status, "verified");
 });
+
+test("optional-only contracts cannot certify a delivery", () => {
+  assert.equal(evaluateAcceptance([{ id: "nice", description: "Optional polish", required: false }], []).status, "blocked");
+});
+test("requirements must include a meaningful description", () => {
+  assert.equal(evaluateAcceptance([{ id: "login", description: " ", required: true }], [receipt]).status, "blocked");
+});
