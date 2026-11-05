@@ -80,7 +80,16 @@ if(!ollama?.available){
       "Create tests/tasks.test.mjs using node:test, covering health, creation, listing, deletion and restart persistence.",
       "Run project.run install, test and build; fix failures. Do not stop at only writing code."
     ].join(" ");
-    const job=supervisor.create(goal,id,{maxMinutes:20,maxRounds:30,openWhenDone:false,acceptanceProfile:"task-app-http-v1"});
+    // The live exercise must pass both behavioral probes and strict filesystem-backed
+    // acceptance; a successful model response or a claimed test is never enough.
+    const requiredAcceptance=[
+      {id:"task-tests",description:"Generated task tests pass",required:true,checkId:"test" as const,artifact:"tests/tasks.test.mjs"},
+      {id:"server-build",description:"Generated HTTP server passes build",required:true,checkId:"build" as const,artifact:"src/server.mjs"},
+      {id:"task-behavior",description:"Independent HTTP and restart probe passes",required:true,
+        checkId:"independent:task-app-http-v1" as const,artifact:"src/server.mjs"}
+    ];
+    const job=supervisor.create(goal,id,{maxMinutes:20,maxRounds:30,openWhenDone:false,
+      acceptanceProfile:"task-app-http-v1",requiredAcceptance});
     const deadline=Date.now()+21*60_000;
     const terminal=new Set(["completed","failed","cancelled","budget_exhausted","waiting_approval"]);
     while(!terminal.has(supervisor.get(job.id)?.status??"")&&Date.now()<deadline){
@@ -97,17 +106,21 @@ if(!ollama?.available){
     const deliveryFile=path.join(app,".layanx","deliveries",job.id+".json");
     const deliveryGuide=path.join(app,".layanx","deliveries",job.id+".md");
     const hasDelivery=Boolean(finished.delivery&&fs.existsSync(deliveryFile)&&fs.existsSync(deliveryGuide));
+    const acceptanceIds=requiredAcceptance.map(r=>r.id);
+    const accepted=acceptanceIds.every(id=>report?.evidence.some(e=>
+      e.name==="acceptance:"+id&&e.passed&&e.reference.startsWith("project-artifact:")));
     const {verifyTaskApp}=await import("../src/autonomy/task-app-verifier.js");
     const independent=hasProject?await verifyTaskApp(app):{ok:false,checks:[],blockers:["Generated application files missing."],verificationScope:"real-http-and-restart" as const};
     const ok=finished.status==="completed"&&report?.status==="verified"
       &&machineRefs.has("project.run:test")&&machineRefs.has("project.run:build")
-      &&machineRefs.has("independent:http:task-app")&&hasProject&&hasDelivery&&finished.behavior?.ok===true&&independent.ok;
+      &&machineRefs.has("independent:http:task-app")&&hasProject&&hasDelivery&&accepted
+      &&finished.behavior?.ok===true&&independent.ok;
     const result={
       ok,
       stage:"real-ollama-agent->generated-app->real-project-run->outcome-verification",
       status:finished.status,
       model:process.env.OLLAMA_MODEL??"configured Ollama default",
-      hasProject,hasDelivery,deliveryFile,deliveryGuide,missionCount:finished.milestones.flatMap(m=>m.missions).length,
+      hasProject,hasDelivery,accepted,acceptanceIds,deliveryFile,deliveryGuide,missionCount:finished.milestones.flatMap(m=>m.missions).length,
       checkRefs:[...machineRefs],
       independentBehavior:independent,
       acceptanceCriteria:report?.acceptanceCriteria??[],
