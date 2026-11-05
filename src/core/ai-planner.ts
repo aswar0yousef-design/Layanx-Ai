@@ -214,12 +214,14 @@ export class AiMissionPlanner{
     const response=await this.models.execute({capability:"reasoning",routing,input:basePrompt,responseSchema});
     try{return this.parse(response.output,scopedTools);}
     catch(error){
-      if(!(error instanceof Error)||error.message!=="Incomplete mission plan.")throw error;
+      if(!(error instanceof Error)||(!error.message.startsWith("Planner success criteria reference runtime.status fields")&&error.message!=="Incomplete mission plan."))throw error;
       const repair=await this.models.execute({
         capability:"reasoning",routing,responseSchema,
         input:[
           "Repair the following LayanX mission plan.",
-          "Return ONLY valid JSON. Preserve valid fields exactly and add missing required fields.",
+          "The original plan failed validation: "+(error instanceof Error?error.message:"invalid plan"),
+          "Success criteria must ONLY describe fields in the final selected tool's raw result, never intermediate tools. For a files.write task, describe successful file writing; do not test runtime.system or runtime.ready.",
+          "Return ONLY valid JSON. Preserve valid fields exactly except invalid success criteria and add missing required fields.",
           "Required fields: risk, requiredPermission, steps (at least one description), successCriteria (at least one string), stopCondition (non-empty string), tools (array).",
           "Do not invent tools. Only use tools from this catalog. Do not increase permissions.",
           "Original plan: "+response.output,
@@ -329,6 +331,15 @@ export class AiMissionPlanner{
       ?tools.reduce<PermissionLevel>((scope,tool)=>
         levels.indexOf(tool.permission)>levels.indexOf(scope)?tool.permission:scope,"L1_READ")
       :v.requiredPermission as PermissionLevel;
+    // Some local models combine fields from several unrelated tool results in
+    // successCriteria. The verifier evaluates ONLY the final tool's raw data:
+    // checking runtime.status fields after a file/write/research action can
+    // never succeed. Reject that contradictory plan instead of retrying a
+    // correct tool four times or silently marking an unverified task done.
+    const finalTool=tools.at(-1)?.tool;
+    if(finalTool&&finalTool!=="runtime.status"&&successCriteria.some(c=>
+      /^result\.(?:system|ready)(?:\b|\s|\.)/i.test(c.trim())))
+      throw new Error("Planner success criteria reference runtime.status fields but the final tool is "+finalTool+".");
     return{risk:v.risk as PlannedMission["risk"],requiredPermission,steps,successCriteria,stopCondition:String(v.stopCondition),tools};
   }
   private parseTools(value:unknown,catalog:ToolCatalogEntry[],missionPermission?:PermissionLevel):PlannedTool[]{
