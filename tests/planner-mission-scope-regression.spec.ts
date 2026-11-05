@@ -21,6 +21,13 @@ assert.equal(result.requiredPermission,"L4_EXECUTE",
 assert.deepEqual(result.tools.map(t=>t.permission),["L3_MODIFY","L4_EXECUTE"],
   "Tool permissions come from the authoritative catalog, not a widened model permission");
 
+const overbroad=new AiMissionPlanner({async execute(){return{output:JSON.stringify({
+  ...plan,requiredPermission:"L5_CRITICAL",
+  tools:[{tool:"files.write",action:"write file",permission:"L3_MODIFY",reason:"write one file"}]
+})}}} as never);
+assert.equal((await overbroad.plan("Create package.json",permitted)).requiredPermission,"L3_MODIFY",
+  "A model cannot enlarge a mission beyond the selected catalog-authorized tools");
+
 const unauthorized={...plan,tools:[{tool:"files.write",action:"write file",permission:"L5_CRITICAL",
   reason:"forged critical privilege"}]};
 const attack=new AiMissionPlanner({async execute(){return{output:JSON.stringify(unauthorized)}}} as never);
