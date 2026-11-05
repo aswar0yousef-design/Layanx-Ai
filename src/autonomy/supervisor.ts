@@ -686,7 +686,7 @@ export class Supervisor{
     }
     // Optional strict acceptance contract: never interpret a model claim as proof.
     // Legacy jobs without an explicit contract keep their existing behavior.
-    if(job.requiredAcceptance?.length){
+    if(job.requiredAcceptance!==undefined){
       const verdict=evaluateAcceptance(job.requiredAcceptance,job.acceptanceProofs??[]);
       if(verdict.status!=="verified"){
         const reason="Required acceptance evidence failed: "+verdict.blockers.join("; ");
