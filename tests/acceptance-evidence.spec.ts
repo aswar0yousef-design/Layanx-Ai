@@ -27,3 +27,14 @@ test("evidenced required checks may pass", () => {
 test("duplicate requirement IDs block completion", () => {
   assert.equal(evaluateAcceptance([...requirements, ...requirements], [receipt]).status, "blocked");
 });
+
+test("invalid timestamps and blank check IDs cannot certify acceptance", () => {
+  assert.equal(evaluateAcceptance(requirements, [{ ...receipt, observedAt: "not-a-date" }]).status, "blocked");
+  assert.equal(evaluateAcceptance(requirements, [{ ...receipt, checkId: " " }]).status, "blocked");
+});
+test("a failed check cannot be overridden by an earlier success", () => {
+  assert.equal(evaluateAcceptance(requirements, [receipt, { ...receipt, passed: false }]).status, "blocked");
+});
+test("optional requirements do not require a proof", () => {
+  assert.equal(evaluateAcceptance([...requirements, { id: "optional", description: "Nice to have", required: false }], [receipt]).status, "verified");
+});
