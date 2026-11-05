@@ -214,7 +214,7 @@ export class AiMissionPlanner{
     const response=await this.models.execute({capability:"reasoning",routing,input:basePrompt,responseSchema});
     try{return this.parse(response.output,scopedTools);}
     catch(error){
-      if(!(error instanceof Error)||(!error.message.startsWith("Planner success criteria reference runtime.status fields")&&error.message!=="Incomplete mission plan."))throw error;
+      if(!(error instanceof Error)||(!error.message.startsWith("Planner success criteria reference runtime.status fields")&&!error.message.startsWith("Unsupported planner success criterion:")&&error.message!=="Incomplete mission plan."))throw error;
       const repair=await this.models.execute({
         capability:"reasoning",routing,responseSchema,
         input:[
@@ -319,6 +319,13 @@ export class AiMissionPlanner{
     const steps=Array.isArray(v.steps)?v.steps.filter(x=>x&&typeof x==="object"&&typeof (x as Record<string,unknown>).description==="string").map(x=>({description:String((x as Record<string,unknown>).description)})):[];
     const successCriteria=Array.isArray(v.successCriteria)?v.successCriteria.filter(x=>typeof x==="string").map(String):[];
     if(!steps.length||!successCriteria.length||typeof v.stopCondition!=="string"||!v.stopCondition.trim())throw new Error("Incomplete mission plan.");
+    // A criterion beginning with result. must use the verifier's supported
+    // assertion syntax. Reject invented natural-language properties such as
+    // "result.createServer exports createServer function" during planning.
+    const unsupported=successCriteria.find(c=>/^result\b/i.test(c.trim())&&
+      !(/^result(?:\.[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)?(?:\s*(?:===|==|!==|!=|>=|<=|>|<)\s*(?:"[^"]*"|'[^']*'|true|false|null|-?\d+(?:\.\d+)?)|\s+contains\s+(?:"[^"]*"|'[^']*'|true|false|null|-?\d+(?:\.\d+)?)|\s+(?:exists|is present|is not empty))$/i.test(c.trim())
+        ||/^result\.[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/i.test(c.trim())));
+    if(unsupported)throw new Error("Unsupported planner success criterion: "+unsupported.slice(0,160));
     // Model-supplied mission scope is a proposal, not an authority decision.
     // Derive the minimum scope needed for catalog-approved tools. The catalog is
     // already limited by the agent contract; execution still enforces trust,
