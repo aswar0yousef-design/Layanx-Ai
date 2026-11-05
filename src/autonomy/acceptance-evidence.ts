@@ -11,6 +11,8 @@ export interface AcceptanceProof {
   skipped?:boolean;
   observedAt:string;
   artifact?:string;
+  /** Source revision that was actually tested; prevents stale proof after edits. */
+  revision?:string;
 }
 export interface AcceptanceVerdict {
   status:"verified"|"blocked";
@@ -18,10 +20,11 @@ export interface AcceptanceVerdict {
   blockers:string[];
 }
 /** A requirement passes only with a real, non-skipped, named check and artifact. */
-export function evaluateAcceptance(requirements:readonly AcceptanceRequirement[], proofs:readonly AcceptanceProof[]):AcceptanceVerdict {
+export function evaluateAcceptance(requirements:readonly AcceptanceRequirement[], proofs:readonly AcceptanceProof[],currentRevision?:string):AcceptanceVerdict {
   const blockers:string[]=[];
   const passed:string[]=[];
   const seen=new Set<string>();
+  if(!requirements.length)blockers.push("No acceptance requirements defined.");
   for(const requirement of requirements){
     if(!requirement.id.trim()||seen.has(requirement.id)){
       blockers.push("Invalid or duplicate requirement ID: "+requirement.id);
@@ -30,7 +33,7 @@ export function evaluateAcceptance(requirements:readonly AcceptanceRequirement[]
     seen.add(requirement.id);
     if(!requirement.required)continue;
     const matching=proofs.filter(p=>p.requirementId===requirement.id);
-    const good=matching.some(p=>p.passed&&!p.skipped&&p.checkId.trim()&&p.artifact?.trim()&&Number.isFinite(Date.parse(p.observedAt)));
+    const good=matching.some(p=>p.passed&&!p.skipped&&p.checkId.trim()&&p.artifact?.trim()&&Number.isFinite(Date.parse(p.observedAt))&&(!currentRevision||p.revision===currentRevision));
     if(matching.some(p=>!p.passed&&!p.skipped))blockers.push("Failed required acceptance: "+requirement.id);
     else if(!good)blockers.push("Missing independent acceptance proof: "+requirement.id);
     else passed.push(requirement.id);
