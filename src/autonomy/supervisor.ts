@@ -41,6 +41,10 @@ export interface JobLog{at:string;msg:string;level?:"info"|"warn"|"error"}
 export interface SupervisorJob{
   id:string;projectId:string;goal:string;status:JobStatus;createdAt:string;updatedAt:string;deadline:string;trust:string;
   acceptance:string[];checks:Checks|null;milestones:Milestone[];current:number;rounds:number;maxRounds:number;
+  /** Explicit machine-checkable requirements, persisted with the job. */
+  requiredAcceptance?:AcceptanceRequirement[];
+  /** Independent check receipts, persisted across supervisor restarts. */
+  acceptanceProofs?:AcceptanceProof[];
   baseline?:CheckResult[];lastChecks?:CheckResult[];visual?:{url:string;problems:string[];judgement?:string;screens:string[]};
   /** Machine-observed result of the final delivery gates, persisted with the job. */
   outcome?:OutcomeReport;
@@ -682,12 +686,8 @@ export class Supervisor{
     }
     // Optional strict acceptance contract: never interpret a model claim as proof.
     // Legacy jobs without an explicit contract keep their existing behavior.
-    const acceptanceContract=job as SupervisorJob & {
-      requiredAcceptance?:AcceptanceRequirement[];
-      acceptanceProofs?:AcceptanceProof[];
-    };
-    if(acceptanceContract.requiredAcceptance?.length){
-      const verdict=evaluateAcceptance(acceptanceContract.requiredAcceptance,acceptanceContract.acceptanceProofs??[]);
+    if(job.requiredAcceptance?.length){
+      const verdict=evaluateAcceptance(job.requiredAcceptance,job.acceptanceProofs??[]);
       if(verdict.status!=="verified"){
         const reason="Required acceptance evidence failed: "+verdict.blockers.join("; ");
         job.outcome={...outcome,status:"blocked",blockers:[...outcome.blockers,...verdict.blockers]};
