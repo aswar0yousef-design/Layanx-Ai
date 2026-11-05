@@ -717,6 +717,16 @@ export class Supervisor{
         this.save();this.writeOutcomeReport(job);
         return this.reopen(job,reason);
       }
+      // Persist the actual accepted criteria and their machine-check references.
+      // Without this, the outcome report would only contain generic build/test checks.
+      const accepted=job.requiredAcceptance.filter(r=>r.required).map(r=>{
+        const proof=proofs.find(p=>p.requirementId===r.id&&p.passed&&!p.skipped&&successfulChecks.has(p.checkId)
+          &&Boolean(p.artifact?.trim()));
+        return proof?{kind:"check" as const,name:"acceptance:"+r.id,passed:true,observedAt:proof.observedAt,
+          reference:"project-artifact:"+proof.artifact,detail:"Check "+proof.checkId+" succeeded; artifact present within project"}:undefined;
+      }).filter((entry):entry is NonNullable<typeof entry>=>entry!==undefined);
+      outcome={...outcome,evidence:[...outcome.evidence,...accepted]};
+      job.outcome=outcome;this.save();this.writeOutcomeReport(job);
     }
     writeProjectNotes(job);
     try{refreshKnowledge(projectDir(job.projectId));}catch{}
