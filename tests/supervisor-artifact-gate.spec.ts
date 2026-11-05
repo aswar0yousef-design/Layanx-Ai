@@ -55,6 +55,13 @@ try{
   assert.equal(await until(()=>sup.get(present.id)!.status),"completed",
     "A real existing artifact plus passing checks can satisfy the strict contract");
   assert.equal(sup.get(present.id)!.outcome?.status,"verified");
+  const evidence=sup.get(present.id)!.outcome?.evidence.find(e=>e.name==="acceptance:output");
+  assert.equal(evidence?.passed,true,"Accepted requirement has a recorded independent proof");
+  assert.equal(evidence?.reference,"project-artifact:reports/output.json");
+  const report=JSON.parse(fs.readFileSync(path.join(project,".layanx","outcomes",present.id+".json"),"utf8"));
+  assert.ok(report.evidence.some((e:{name:string;reference:string})=>
+    e.name==="acceptance:output"&&e.reference==="project-artifact:reports/output.json"),
+    "Acceptance evidence survives in the delivery report on disk");
   const forged=sup.create("Generate verifiable output",projectId,{maxRounds:10,requiredAcceptance:[{id:"output",description:"Only independently observed execution counts",required:true}]});
   forged.acceptanceProofs=[{...receipt,checkId:"not-run:e2e"}];
   assert.equal(await until(()=>sup.get(forged.id)!.status),"failed",
