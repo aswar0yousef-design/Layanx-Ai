@@ -3,6 +3,10 @@ export interface AcceptanceRequirement {
   id:string;
   description:string;
   required:boolean;
+  /** Optional independent check to observe during final verification. */
+  checkId?: "test"|"build"|"typecheck"|"lint"|"independent:task-app-http-v1";
+  /** Existing project-relative output file that the check is expected to certify. */
+  artifact?:string;
 }
 export interface AcceptanceProof {
   requirementId:string;
