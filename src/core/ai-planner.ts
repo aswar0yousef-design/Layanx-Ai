@@ -323,9 +323,12 @@ export class AiMissionPlanner{
     // capability tokens, approvals and Sentinel. Never alter a tool's permission.
     const tools=this.parseTools(v.tools,catalog);
     const levels:PermissionLevel[]=["L1_READ","L2_ANALYZE","L3_MODIFY","L4_EXECUTE","L5_CRITICAL"];
-    const requested=v.requiredPermission as PermissionLevel;
-    const requiredPermission=tools.reduce<PermissionLevel>((scope,tool)=>
-      levels.indexOf(tool.permission)>levels.indexOf(scope)?tool.permission:scope,requested);
+    // For explicit tool plans, scope is EXACTLY the highest catalog tool level.
+    // An empty plan retains the declared scope for subsequent adaptive steps.
+    const requiredPermission=tools.length
+      ?tools.reduce<PermissionLevel>((scope,tool)=>
+        levels.indexOf(tool.permission)>levels.indexOf(scope)?tool.permission:scope,"L1_READ")
+      :v.requiredPermission as PermissionLevel;
     return{risk:v.risk as PlannedMission["risk"],requiredPermission,steps,successCriteria,stopCondition:String(v.stopCondition),tools};
   }
   private parseTools(value:unknown,catalog:ToolCatalogEntry[]):PlannedTool[]{
