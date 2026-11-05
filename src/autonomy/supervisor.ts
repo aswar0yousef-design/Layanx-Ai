@@ -142,13 +142,13 @@ export class Supervisor{
   }
 
   // ------------------------------------------------------------ public API
-  create(goal:string,projectId="default",opts:{maxMinutes?:number;maxRounds?:number;openWhenDone?:boolean;acceptanceProfile?:"task-app-http-v1"}={}):SupervisorJob{
+  create(goal:string,projectId="default",opts:{maxMinutes?:number;maxRounds?:number;openWhenDone?:boolean;acceptanceProfile?:"task-app-http-v1";requiredAcceptance?:AcceptanceRequirement[]}={}):SupervisorJob{
     const g=goal.trim();if(g.length<3||g.length>4000)throw new Error("goal_required");
     const minutes=Math.min(Math.max(opts.maxMinutes??120,5),24*60);
     const job:SupervisorJob={id:randomUUID(),projectId,goal:g,status:"planning",createdAt:now(),updatedAt:now(),
       deadline:new Date(Date.now()+minutes*60_000).toISOString(),budgetMinutes:minutes,openWhenDone:Boolean(opts.openWhenDone)||wantsOpenWhenDone(g),
       trust:trustLevel(projectId),acceptance:[],checks:null,milestones:[],current:0,rounds:0,maxRounds:Math.min(Math.max(opts.maxRounds??30,3),200),
-      cloudUsed:false,externalUsed:[],checkpoints:[],log:[],finalRepairs:0,...(opts.acceptanceProfile?{acceptanceProfile:opts.acceptanceProfile}:{})};
+      cloudUsed:false,externalUsed:[],checkpoints:[],log:[],finalRepairs:0,...(opts.acceptanceProfile?{acceptanceProfile:opts.acceptanceProfile}:{}),...(opts.requiredAcceptance?{requiredAcceptance:opts.requiredAcceptance.map(r=>({...r}))}:{})};
     this.jobs.set(job.id,job);this.log(job,"Job created");this.save();
     void this.drive(job.id);
     return job;
