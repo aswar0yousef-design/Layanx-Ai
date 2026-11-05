@@ -38,7 +38,7 @@ const until=async(getStatus:()=>string,timeoutMs=15000)=>{
 };
 const receipt={requirementId:"output",checkId:"test",passed:true,
   artifact:"reports/output.json",observedAt:new Date().toISOString()};
-const requirements=[{id:"output",description:"Output file exists after verification",required:true}];
+const requirements=[{id:"output",description:"Output file exists after verification",required:true,checkId:"test" as const,artifact:"reports/output.json"}];
 const sup=new Supervisor(deps,{file:path.join(root,"jobs.json"),pollMs:5});
 try{
   const missing=sup.create("Generate verifiable output",projectId,{maxRounds:10,requiredAcceptance:requirements});
@@ -51,11 +51,11 @@ try{
   fs.mkdirSync(path.join(project,"reports"),{recursive:true});
   fs.writeFileSync(path.join(project,"reports","output.json"),'{"status":"created"}');
   const present=sup.create("Generate verifiable output",projectId,{maxRounds:10,requiredAcceptance:requirements});
-  present.acceptanceProofs=[{...receipt}];
+  // No manual receipt: the successful final test must generate one.
   assert.equal(await until(()=>sup.get(present.id)!.status),"completed",
     "A real existing artifact plus passing checks can satisfy the strict contract");
   assert.equal(sup.get(present.id)!.outcome?.status,"verified");
-  const forged=sup.create("Generate verifiable output",projectId,{maxRounds:10,requiredAcceptance:requirements});
+  const forged=sup.create("Generate verifiable output",projectId,{maxRounds:10,requiredAcceptance:[{id:"output",description:"Only independently observed execution counts",required:true}]});
   forged.acceptanceProofs=[{...receipt,checkId:"not-run:e2e"}];
   assert.equal(await until(()=>sup.get(forged.id)!.status),"failed",
     "An invented test name cannot certify an existing artifact");
