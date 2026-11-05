@@ -24,7 +24,9 @@ test("symlinked evidence outside the project is rejected",async()=>{
   const outside=mkdtempSync(join(tmpdir(),"lx-acceptance-out-"));
   try{
     writeFileSync(join(outside,"evidence.json"),"{}");
-    symlinkSync(join(outside,"evidence.json"),join(root,"link.json"),"file");
-    assert.equal((await verifyAcceptanceArtifact(root,"link.json")).ok,false);
+    // Windows CI may not permit file symlinks; junction directories do not
+    // require the same privileges and still exercise realpath confinement.
+    symlinkSync(outside,join(root,"linked"),process.platform==="win32"?"junction":"dir");
+    assert.equal((await verifyAcceptanceArtifact(root,"linked/evidence.json")).ok,false);
   }finally{rmSync(root,{recursive:true,force:true});rmSync(outside,{recursive:true,force:true});}
 });
