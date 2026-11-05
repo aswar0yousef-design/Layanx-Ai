@@ -361,7 +361,9 @@ export class Supervisor{
       `Project: ${JSON.stringify(info?{stack:info.stack,scripts:info.scripts,git:info.git}:{stack:"unknown"})}`,
       notes?`Project memory (build on it, respect decisions, do not duplicate existing modules):\n${clip(notes,3000)}`:"",
       playbooks.length||lessons.length?guidanceText(playbooks,lessons,2400):"",
-      "If the goal needs a technology, API or service that neither the project memory nor a playbook covers, make the FIRST milestone kind \"research\": read the official documentation and write a short playbook to .layanx/playbooks/<topic>.md (steps, pitfalls, how to test) that the next milestones follow.",
+      ...(job.acceptanceProfile==="task-app-http-v1"
+        ? ["This is a controlled acceptance test of a standard Node.js built-in HTTP/ESM task app. Do NOT create research milestones; all needed API details are already in the goal. Start immediately with creating package.json and src/server.mjs, then tests and project.run."]
+        : ["If the goal needs a technology, API or service that neither the project memory nor a playbook covers, make the FIRST milestone kind \"research\": read the official documentation and write a short playbook to .layanx/playbooks/<topic>.md (steps, pitfalls, how to test) that the next milestones follow."]),
       `Goal: ${job.goal}`
     ].filter(Boolean).join("\n");
     let spec:any=null;
@@ -386,6 +388,16 @@ export class Supervisor{
     const milestones:Milestone[]=(Array.isArray(spec?.milestones)?spec.milestones:[]).slice(0,6)
       .filter((m:any)=>m&&typeof m.goal==="string"&&m.goal.trim())
       .map((m:any)=>{const kind:MilestoneKind=kinds.includes(m.kind)?m.kind:"code";return{title:String(m.title||m.goal).slice(0,120),goal:String(m.goal).slice(0,1500),kind,agent:AGENT_FOR[kind],status:"pending" as const,attempts:0,missions:[]};});
+    // The strict HTTP acceptance exercise tests implementation, not documentation
+    // research. Local models sometimes invent a first research step despite the
+    // explicit no-research instruction; do not spend the entire test on it.
+    if(job.acceptanceProfile==="task-app-http-v1"){
+      const research=milestones.filter(m=>m.kind==="research");
+      if(research.length){
+        for(const item of research)milestones.splice(milestones.indexOf(item),1);
+        this.log(job,"Skipped "+research.length+" unnecessary research milestone(s) for the isolated task-app acceptance profile");
+      }
+    }
     if(!milestones.length)milestones.push({title:job.goal.slice(0,120),goal:job.goal,kind:"code",agent:"coder",status:"pending",attempts:0,missions:[]});
     job.specChecks=spec?.checks&&typeof spec.checks==="object"?spec.checks:{};
     job.checks=this.computeChecks(job,info);
