@@ -9,6 +9,7 @@ import {buildRepoMap} from "./repo-map.js";
 import {isLocalPreview} from "../platform/open-url.js";
 import {openRequest} from "../tools/open-app.js";
 import {errorSignature,findLessons,guidanceText,listLessons,listPlaybooks,markLessons,matchPlaybooks,recordLesson,recordPlaybookOutcome,savePlaybookCandidate,trustProjectPlaybook} from "./learning.js";
+import {repairMultilineHtmlResponse} from "./js-source-repair.js";
 
 /**
  * Supervisor: finishes a goal without the owner watching.
@@ -468,10 +469,26 @@ export class Supervisor{
    */
   private async afterWork(job:SupervisorJob,m:Milestone,agentStopped?:string){
     const previousFailure=m.attempts>1?m.notes:undefined;
-    const checks=await this.runChecks(job,"milestone");
+    let checks=await this.runChecks(job,"milestone");
     if(checks===undefined)return;
     job.lastChecks=checks;
-    const failed=checks.filter(c=>!c.ok&&!c.skipped);
+    let failed=checks.filter(c=>!c.ok&&!c.skipped);
+    // The acceptance agent can write real source but accidentally put raw
+    // newlines in a single-quoted HTML literal. Repair only this reproducible
+    // syntax error, never fabricate a passing build. A Node syntax check
+    // validates the candidate and rolls back invalid edits; then rerun the
+    // complete active milestone checks to gather independent evidence.
+    if(job.acceptanceProfile==="task-app-http-v1"){
+      const brokenBuild=failed.find(c=>c.name==="build"&&
+        /SyntaxError: Invalid or unexpected token/i.test(c.summary));
+      if(brokenBuild&&repairMultilineHtmlResponse(projectDir(job.projectId),brokenBuild.summary)){
+        this.log(job,"Repaired broken multiline HTML literal; rerunning project checks");
+        const rechecked=await this.runChecks(job,"milestone");
+        if(rechecked===undefined)return;
+        checks=rechecked;job.lastChecks=checks;
+        failed=checks.filter(c=>!c.ok&&!c.skipped);
+      }
+    }
     // A model's completed response is not proof that a requested file exists.
     // For the isolated HTTP-task acceptance, enforce files named by each step.
     if(job.acceptanceProfile==="task-app-http-v1"&&(m.kind==="code"||m.kind==="test")){
