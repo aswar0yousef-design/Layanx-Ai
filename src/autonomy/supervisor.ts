@@ -551,6 +551,10 @@ export class Supervisor{
       let probe:TaskAppProbeResult;
       try{probe=await verifyTaskApp(projectDir(job.projectId));}
       catch(error){probe={ok:false,checks:[],blockers:[String(error)],verificationScope:"real-http-and-restart"};}
+      // Preserve independent HTTP evidence even if the job stops during
+      // the server milestone, before final delivery verification.
+      job.behavior=probe;
+      this.save();
       if(!probe.ok)failed.push({name:"HTTP behavior",ok:false,
         summary:clip(probe.blockers.join("; ")||"HTTP task server failed independent verification.",2000)});
     }
