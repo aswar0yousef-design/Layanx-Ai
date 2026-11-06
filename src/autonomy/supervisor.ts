@@ -508,6 +508,19 @@ export class Supervisor{
     m.status="pending";this.save();
   }
 
+  private syntaxRepairHint(notes?:string):string{
+    if(!notes||!/SyntaxError: Invalid or unexpected token/i.test(notes)||
+       !/src[\\/]server\.mjs/i.test(notes))return"";
+    return [
+      "REPAIR PRIORITY: The existing src/server.mjs failed node --check. This is a syntax error in the actual saved file, not a missing dependency or an HTTP failure.",
+      "Read src/server.mjs and FIX THAT FILE before doing anything else. Do not re-create package.json, install dependencies, or declare completion while node --check fails.",
+      "The failure points to res.end('<html> followed by a physical newline. JavaScript single- and double-quoted strings cannot contain raw line breaks.",
+      "Write the HTML using a backtick template literal, e.g. res.end(`<html>\\n<body>Tasks</body>\\n</html>`), or escape newline characters as \\n in the JavaScript source.",
+      "After saving src/server.mjs, run project.run build (node --check src/server.mjs), inspect its real exit code, and keep fixing the existing file until it passes.",
+      "Do not claim that the HTTP task app works based only on a syntax check: later task/test milestones and independent endpoint probes must still run."
+    ].join("\n");
+  }
+
   private taskText(job:SupervisorJob,m:Milestone):string{
     return[
       `Overall goal: ${job.goal}`,
@@ -515,6 +528,7 @@ export class Supervisor{
       `Current milestone (${job.current+1}/${job.milestones.length}): ${m.goal}`,
       job.notes?.length?`Owner's instructions added during the job (follow them):\n- ${job.notes.slice(-8).join("\n- ")}`:"",
       m.notes?`The previous attempt failed. Fix exactly this, change as little as possible:\n${clip(m.notes,3000)}`:"",
+      this.syntaxRepairHint(m.notes),
       (()=>{const k=knowledgeSummary(job.projectId,1500);return k?`Project memory:\n${k}`:"";})(),
       (()=>{try{const map=buildRepoMap(projectDir(job.projectId),{focus:job.goal+" "+m.goal,tokenBudget:700});return map.text?`Code map (existing functions to reuse; check callers before changing them):\n${map.text}`:"";}catch{return"";}})(),
       (()=>{const pbs=listPlaybooks(job.projectId).filter(p=>(job.playbooks??[]).includes(p.id)||(p.source==="project"&&p.status==="active"));
