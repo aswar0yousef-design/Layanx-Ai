@@ -38,7 +38,10 @@ const deps:SupervisorDeps={
       fs.writeFileSync(path.join(workspace,"src","server.mjs"),
         "export function createServer(){ return {}; }\n");
     }
-    return{completed:true,missionId:"staged-agent-"+invocations};
+    return goal.includes("Current milestone (1/3)")
+      ?{completed:false,missionId:"staged-agent-"+invocations,
+        reason:"Repeated read-only tool blocked: files.read has already succeeded twice with the same arguments and no intervening change."}
+      :{completed:true,missionId:"staged-agent-"+invocations};
   },
   async resumeAgent(){throw Error("Unexpected approval resume");},
   async runTool(_projectId,tool,payload){
@@ -60,7 +63,7 @@ try{
   assert.deepEqual(result.milestones.map(m=>m.kind),["code","code","test"],
     "Only the fixed package/server/test plan is accepted for this strict profile");
   assert.equal(result.milestones[0]?.status,"done",
-    "Valid package.json must pass even if future test file is invalid");
+    "Valid package.json must pass after an observation-only stop, despite invalid future tests");
   assert.equal(result.milestones[0]?.attempts,1,
     "First milestone must not be retried for a future test error");
   assert.equal(result.milestones[1]?.status,"failed");
