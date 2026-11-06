@@ -45,6 +45,37 @@ process.env.GEMINI_ENABLED="false";
 process.env.MT5_AUTO_START="false";
 process.env.LAYANX_OPEN_BROWSER="off";
 
+// CLI acceptance must discover local models just like the Windows host.
+// Without this, it silently runs the general 3B fallback even when an
+// installed coding model is available. Respect owner-pinned model/routing.
+if(process.env.OLLAMA_ENABLED!=="false"){
+  const {discoverOllama,buildModelPlan,currentMachine,recommendNumCtx}=await import("../src/providers/ollama-discovery.js");
+  const discovered=await discoverOllama(process.env.OLLAMA_BASE_URL,{timeoutMs:3000});
+  if(discovered.reachable&&discovered.models.length){
+    const machine=currentMachine();
+    const pinned=process.env.OLLAMA_MODEL?{planning:process.env.OLLAMA_MODEL}:{};
+    const plan=buildModelPlan(discovered,machine,pinned);
+    if(!process.env.OLLAMA_MODEL&&plan.assignments.planning)
+      process.env.OLLAMA_MODEL=plan.assignments.planning;
+    if(!process.env.LAYANX_OLLAMA_MODEL_PLAN)
+      process.env.LAYANX_OLLAMA_MODEL_PLAN=JSON.stringify(plan.assignments);
+    if(!process.env.LAYANX_OLLAMA_CONTEXT){
+      const context:Record<string,number>={};
+      for(const name of new Set(Object.values(plan.assignments).filter((name):name is string=>Boolean(name)))){
+        const profile=discovered.models.find(m=>m.name===name);
+        if(profile)context[name]=recommendNumCtx(profile,machine);
+      }
+      process.env.LAYANX_OLLAMA_CONTEXT=JSON.stringify(context);
+    }
+    if(!process.env.LAYANX_OLLAMA_THINKING_MODELS)
+      process.env.LAYANX_OLLAMA_THINKING_MODELS=discovered.models.filter(m=>m.capabilities.includes("thinking")).map(m=>m.name).join(",");
+    console.log("Ollama model routing: "+JSON.stringify({
+      main:process.env.OLLAMA_MODEL,coding:plan.assignments.coding,
+      planning:plan.assignments.planning,available:discovered.models.map(m=>m.name)
+    }));
+  }
+}
+
 const {setTrust}=await import("../src/autonomy/trust.js");
 const {setIsolation}=await import("../src/autonomy/sandbox.js");
 const {createRuntime,runtimeHealth}=await import("../src/runtime.js");
@@ -121,7 +152,8 @@ if(!ollama?.available){
       ok,
       stage:"real-ollama-agent->generated-app->real-project-run->outcome-verification",
       status:finished.status,
-      model:process.env.OLLAMA_MODEL??"configured Ollama default",
+      model:process.env.OLLAMA_MODEL?.trim()||"llama3.2:3b (default)",
+      modelRouting:process.env.LAYANX_OLLAMA_MODEL_PLAN??null,
       hasProject,hasDelivery,accepted,acceptanceIds,artifactStatus,
       failureReason:finished.result??null,
       deliveryFile,deliveryGuide,missionCount:finished.milestones.flatMap(m=>m.missions).length,
