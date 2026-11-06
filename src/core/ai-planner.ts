@@ -203,6 +203,7 @@ export class AiMissionPlanner{
       "For project.verify use payload {script:\"test\"}, {script:\"typecheck\"}, or {script:\"build\"} according to the goal. For terminal.exec include a safe allowlisted command payload.",
       "For files.list use payload {path:\".\"} to list the current project root (or omit path); for files.read and files.stat supply an existing project-relative file path. Never use an absolute drive path, home folder, leading slash, or path outside the project.",
       "A new project starts as an empty folder: create its files (files.write) or its package.json and packages (project.bootstrap) before project.run or project.verify, which only run an existing project.",
+      "When using files.write, supply payload {path:\"src/server.mjs\",content:\"actual complete nonempty source code\"} (or another required relative file). Do not write empty content, placeholders or just filenames. The tool returns {path,bytes,written:true}; use successCriteria [\"result.written === true\"] for the final files.write call. Never write result.fileExists <filename> or pretend file existence was checked.",
       "When the goal needs outside data (exchange rates, weather, maps, products, email checks, test data), call apis.search first for a free public API (prefer auth No with HTTPS), then read its documentation with http.read before writing code for it; never invent an API.",
       "To open a program or a website use desktop.app.open (payload.app = the program name as the owner said it, or payload.url). For other computer-use goals on Windows, first read the window with desktop.ui.tree and act with desktop.ui.click or desktop.ui.set_text using an element index; use desktop.window.focus to switch apps. Use desktop.screenshot and coordinate-based mouse actions only when the element is missing from the tree or the user supplied exact coordinates.",
       "Do not request secrets or bypass security controls.",
@@ -220,7 +221,7 @@ export class AiMissionPlanner{
         input:[
           "Repair the following LayanX mission plan.",
           "The original plan failed validation: "+(error instanceof Error?error.message:"invalid plan"),
-          "Success criteria must ONLY describe fields in the final selected tool's raw result, never intermediate tools. For a files.write task, describe successful file writing; do not test runtime.system or runtime.ready.",
+          "Success criteria must ONLY describe fields in the final selected tool's raw result, never intermediate tools. For files.write, use exactly result.written === true (a documented receipt), never result.fileExists <filename>. Do not test runtime.system or runtime.ready.",
           "Return ONLY valid JSON. Preserve valid fields exactly except invalid success criteria and add missing required fields.",
           "Required fields: risk, requiredPermission, steps (at least one description), successCriteria (at least one string), stopCondition (non-empty string), tools (array).",
           "Do not invent tools. Only use tools from this catalog. Do not increase permissions.",
