@@ -32,6 +32,12 @@ function currentMilestoneGoal(goal:string):string{
  return milestone?milestone.replace(/^Current milestone \(\d+\/\d+\):\s*/i,"").trim():goal;
 }
 
+/** Route source-code generation to an installed specialised coding model, if any. */
+function codingGoal(goal:string):boolean{
+ const step=currentMilestoneGoal(goal);
+ return /(?:\b(?:javascript|typescript|node\\.js|coding|source code|implement|refactor|server|module|package\\.json|test suite|web app|application)\b|\.(?:mjs|cjs|js|jsx|ts|tsx|py)\b|(?:src|tests)\/)/i.test(step);
+}
+
 /** A window-presence check is deterministic too: ask Windows to focus that exact window title. */
 function deterministicDesktopWindowCheck(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
  const step=currentMilestoneGoal(goal);
@@ -212,7 +218,7 @@ export class AiMissionPlanner{
       "Goal: "+goal
     ].join("\n");
     const responseSchema=missionPlanSchema(scopedTools);
-    const response=await this.models.execute({capability:"reasoning",routing,input:basePrompt,responseSchema});
+    const response=await this.models.execute({capability:codingGoal(goal)?"coding":"reasoning",routing,input:basePrompt,responseSchema});
     try{return this.parse(response.output,scopedTools);}
     catch(error){
       if(!(error instanceof Error)||(!error.message.startsWith("Planner success criteria reference runtime.status fields")&&!error.message.startsWith("Unsupported planner success criterion:")&&error.message!=="Incomplete mission plan."))throw error;
@@ -282,7 +288,7 @@ export class AiMissionPlanner{
       // catalog and permission ceiling; never execute the first, untrusted tool suggestion.
       const reason=firstError instanceof Error?firstError.message:"invalid tool response";
       const repair=await this.models.execute({
-        capability:input.visualContext?"vision":"reasoning",
+        capability:input.visualContext?"vision":codingGoal(input.goal)?"coding":"reasoning",
         routing:input.routing,
         input:[
           "Repair this invalid adaptive tool selection for LayanX.",
