@@ -281,7 +281,38 @@ export function startRuntimeApi(options:RuntimeApiOptions){
      const goal=typeof input.goal==="string"?input.goal:"";
      const projectId=typeof input.projectId==="string"&&input.projectId.trim()?input.projectId.trim():"default";
      if(input.acceptanceProfile!==undefined&&input.acceptanceProfile!=="task-app-http-v1")throw new Error("unsupported_acceptance_profile");
-     json(response,201,{ok:true,job:supervisor.create(goal,projectId,{maxMinutes:typeof input.maxMinutes==="number"?input.maxMinutes:undefined,openWhenDone:input.openWhenDone===true,...(input.acceptanceProfile==="task-app-http-v1"?{acceptanceProfile:"task-app-http-v1" as const}:{})})});return;
+     // Owner-supplied criteria are declarations, not evidence. Only the supervisor's
+     // independent checks may later provide proof; this endpoint never accepts receipts.
+     let requiredAcceptance:undefined|Array<{id:string;description:string;required:boolean;checkId?:"test"|"build"|"typecheck"|"lint"|"independent:task-app-http-v1";artifact?:string}>;
+     if(input.requiredAcceptance!==undefined){
+      const entries=input.requiredAcceptance;
+      if(!Array.isArray(entries)||entries.length<1||entries.length>30)throw new Error("invalid_acceptance_requirements");
+      const ids=new Set<string>();
+      requiredAcceptance=entries.map((item:unknown)=>{
+       if(!item||typeof item!=="object"||Array.isArray(item))throw new Error("invalid_acceptance_requirement");
+       const value=item as Record<string,unknown>;
+       if(typeof value.id!=="string"||!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(value.id)||ids.has(value.id)
+         ||typeof value.description!=="string"||!value.description.trim()||value.description.length>500
+         ||typeof value.required!=="boolean")throw new Error("invalid_acceptance_requirement");
+       const allowedChecks=["test","build","typecheck","lint","independent:task-app-http-v1"] as const;
+       if(value.required===true&&(!allowedChecks.some(id=>id===value.checkId)
+         ||typeof value.artifact!=="string"||!value.artifact.trim()||value.artifact.length>500))
+         throw new Error("acceptance_requires_check_and_artifact");
+       if(value.checkId!==undefined&&!allowedChecks.some(id=>id===value.checkId))
+         throw new Error("invalid_acceptance_check");
+       if(value.artifact!==undefined&&(typeof value.artifact!=="string"||!value.artifact.trim()||value.artifact.length>500))
+         throw new Error("invalid_acceptance_artifact");
+       if(value.checkId==="independent:task-app-http-v1"&&input.acceptanceProfile!=="task-app-http-v1")
+         throw new Error("acceptance_profile_required");
+       ids.add(value.id);
+       return {id:value.id,description:value.description.trim(),required:value.required,
+         ...(value.checkId!==undefined?{checkId:value.checkId as "test"|"build"|"typecheck"|"lint"|"independent:task-app-http-v1"}:{}),
+         ...(value.artifact!==undefined?{artifact:value.artifact as string}:{})};
+      });
+      if(!requiredAcceptance.some(r=>r.required))throw new Error("acceptance_requires_mandatory_check");
+     }
+     if(input.acceptanceProofs!==undefined)throw new Error("acceptance_proofs_are_server_only");
+     json(response,201,{ok:true,job:supervisor.create(goal,projectId,{maxMinutes:typeof input.maxMinutes==="number"?input.maxMinutes:undefined,openWhenDone:input.openWhenDone===true,...(input.acceptanceProfile==="task-app-http-v1"?{acceptanceProfile:"task-app-http-v1" as const}:{}),...(requiredAcceptance?{requiredAcceptance}:{})})});return;
     }
     if(request.method==="GET"&&parts.length===3){
      const projectId=params.get("projectId")?.trim()||undefined;

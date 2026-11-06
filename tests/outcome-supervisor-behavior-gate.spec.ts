@@ -14,6 +14,12 @@ fs.mkdirSync(workspace,{recursive:true});
 fs.writeFileSync(path.join(workspace,"package.json"),JSON.stringify({
   name:"task-app-profile-gate",type:"module",scripts:{test:"node --test",build:"node --check src/server.mjs"}
 }));
+fs.mkdirSync(path.join(workspace,"src"),{recursive:true});
+// Nonempty but nonfunctional output: a mocked successful build is NEVER
+// acceptable proof of a running HTTP server. The independent probe must
+// reject this during stage 2, before delivery.
+fs.writeFileSync(path.join(workspace,"src","server.mjs"),
+  "export function createServer(){return {status:'not-an-http-server'};}\n");
 const deps:SupervisorDeps={
   async think(){return JSON.stringify({
     acceptance:["Create, delete and retain tasks across application restarts"],
@@ -40,13 +46,19 @@ try{
   const status=await until(()=>sup.get(job.id)!.status);
   assert.equal(status,"failed","Never claim completion without the generated app");
   const finished=sup.get(job.id)!;
-  assert.equal(finished.outcome?.status,"blocked");
-  assert.equal(finished.behavior?.ok,false);
-  assert.ok(finished.outcome?.evidence.some(e=>e.reference==="independent:http:task-app"&&!e.passed));
-  assert.ok(finished.finalRepairs<=2,"Behavior failures must terminate after a bounded number of repairs");
+  assert.notEqual(finished.outcome?.status,"verified",
+    "The new early gate must never publish verified delivery for an invalid server");
+  assert.equal(finished.milestones[0]?.status,"done","A real valid package contract passes stage 1");
+  assert.equal(finished.milestones[1]?.status,"failed","Stage 2 rejects a fake HTTP server");
+  assert.equal(finished.behavior?.ok,false,"Independent HTTP behavior probe must run and fail");
+  assert.ok(finished.behavior?.checks.some(c=>c.name==="start"&&!c.ok),
+    "The independent probe must observe that createServer returns no HTTP server");
+  assert.match(finished.milestones[1]?.notes??"",/HTTP behavior failed/,
+    "Actual HTTP failure must be visible in the coding agent's repair feedback");
+  assert.equal(finished.finalRepairs,0,"Do not waste final verification retries for a failed server milestone");
   const recovered=new Supervisor(deps,{file:path.join(root,"jobs.json")});
-  assert.equal(recovered.get(job.id)?.outcome?.status,"blocked","Restart preserves the rejection");
-  assert.equal(recovered.get(job.id)?.behavior?.ok,false);
+  assert.equal(recovered.get(job.id)?.status,"failed","Restart preserves the early rejection");
+  assert.equal(recovered.get(job.id)?.behavior?.ok,false,"Restart preserves independent failure evidence");
   sup.stop();recovered.stop();
-  console.log("outcome-profile-gate: mock agent success cannot override failed real behavior and persisted evidence");
+  console.log("outcome-profile-gate: invalid HTTP server rejected during stage 2; independent behavior evidence persisted");
 }finally{fs.rmSync(root,{recursive:true,force:true});}

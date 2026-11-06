@@ -68,9 +68,14 @@ export function createRuntime(options:RuntimeOptions={}){
   const mt5Scalper=registerMt5TradingTools(core.tools,core.toolAdapters);
   if(process.env.MT5_AUTO_START==="true"&&process.env.MT5_AUTO_SCALPING_ENABLED==="true"&&process.env.MT5_LIVE_TRADING_ENABLED==="true")mt5Scalper.start();
  }
- if(capabilityEnabled("desktop")){registerDesktopControlTools(core);prewarmDesktopHelper();}
- const liveScreen=new LiveScreenObserver({adapter:core.toolAdapters.get("desktop.screenshot"),intervalMs:Number(process.env.LAYANX_LIVE_SCREEN_INTERVAL_MS??500)});
- core.setLiveScreenObserver(liveScreen);
+ // Coding-only, headless and restricted runtimes intentionally omit desktop tools.
+ // Do not resolve an unregistered screenshot adapter in those configurations.
+ const desktopEnabled=capabilityEnabled("desktop");
+ if(desktopEnabled){registerDesktopControlTools(core);prewarmDesktopHelper();}
+ const liveScreen=desktopEnabled
+  ?new LiveScreenObserver({adapter:core.toolAdapters.get("desktop.screenshot"),intervalMs:Number(process.env.LAYANX_LIVE_SCREEN_INTERVAL_MS??500)})
+  :undefined;
+ if(liveScreen)core.setLiveScreenObserver(liveScreen);
  if(capabilityEnabled("business")||capabilityEnabled("ads")||capabilityEnabled("social"))registerBusinessTools(core,business,ads,media,growth);
  if(capabilityEnabled("social"))registerCreatorTools(core,creator);
  if(capabilityEnabled("quran"))registerQuranTools(core);

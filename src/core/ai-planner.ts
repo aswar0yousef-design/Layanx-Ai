@@ -32,6 +32,12 @@ function currentMilestoneGoal(goal:string):string{
  return milestone?milestone.replace(/^Current milestone \(\d+\/\d+\):\s*/i,"").trim():goal;
 }
 
+/** Route source-code generation to an installed specialised coding model, if any. */
+function codingGoal(goal:string):boolean{
+ const step=currentMilestoneGoal(goal);
+ return /(?:\b(?:javascript|typescript|node\.js|coding|source code|implement|refactor|server|module|package\.json|test suite|web app|application)\b|\.(?:mjs|cjs|js|jsx|ts|tsx|py)\b|(?:src|tests)\/)/i.test(step);
+}
+
 /** A window-presence check is deterministic too: ask Windows to focus that exact window title. */
 function deterministicDesktopWindowCheck(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
  const step=currentMilestoneGoal(goal);
@@ -203,6 +209,7 @@ export class AiMissionPlanner{
       "For project.verify use payload {script:\"test\"}, {script:\"typecheck\"}, or {script:\"build\"} according to the goal. For terminal.exec include a safe allowlisted command payload.",
       "For files.list use payload {path:\".\"} to list the current project root (or omit path); for files.read and files.stat supply an existing project-relative file path. Never use an absolute drive path, home folder, leading slash, or path outside the project.",
       "A new project starts as an empty folder: create its files (files.write) or its package.json and packages (project.bootstrap) before project.run or project.verify, which only run an existing project.",
+      "When using files.write, supply payload {path:\"src/server.mjs\",content:\"actual complete nonempty source code\"} (or another required relative file). Do not write empty content, placeholders or just filenames. The tool returns {path,bytes,written:true}; use successCriteria [\"result.written === true\"] for the final files.write call. Never write result.fileExists <filename> or pretend file existence was checked.",
       "When the goal needs outside data (exchange rates, weather, maps, products, email checks, test data), call apis.search first for a free public API (prefer auth No with HTTPS), then read its documentation with http.read before writing code for it; never invent an API.",
       "To open a program or a website use desktop.app.open (payload.app = the program name as the owner said it, or payload.url). For other computer-use goals on Windows, first read the window with desktop.ui.tree and act with desktop.ui.click or desktop.ui.set_text using an element index; use desktop.window.focus to switch apps. Use desktop.screenshot and coordinate-based mouse actions only when the element is missing from the tree or the user supplied exact coordinates.",
       "Do not request secrets or bypass security controls.",
@@ -211,15 +218,17 @@ export class AiMissionPlanner{
       "Goal: "+goal
     ].join("\n");
     const responseSchema=missionPlanSchema(scopedTools);
-    const response=await this.models.execute({capability:"reasoning",routing,input:basePrompt,responseSchema});
+    const response=await this.models.execute({capability:codingGoal(goal)?"coding":"reasoning",routing,input:basePrompt,responseSchema});
     try{return this.parse(response.output,scopedTools);}
     catch(error){
-      if(!(error instanceof Error)||error.message!=="Incomplete mission plan.")throw error;
+      if(!(error instanceof Error)||(!error.message.startsWith("Planner success criteria reference runtime.status fields")&&!error.message.startsWith("Unsupported planner success criterion:")&&error.message!=="Incomplete mission plan."))throw error;
       const repair=await this.models.execute({
         capability:"reasoning",routing,responseSchema,
         input:[
           "Repair the following LayanX mission plan.",
-          "Return ONLY valid JSON. Preserve valid fields exactly and add missing required fields.",
+          "The original plan failed validation: "+(error instanceof Error?error.message:"invalid plan"),
+          "Success criteria must ONLY describe fields in the final selected tool's raw result, never intermediate tools. For files.write, use exactly result.written === true (a documented receipt), never result.fileExists <filename>. Do not test runtime.system or runtime.ready.",
+          "Return ONLY valid JSON. Preserve valid fields exactly except invalid success criteria and add missing required fields.",
           "Required fields: risk, requiredPermission, steps (at least one description), successCriteria (at least one string), stopCondition (non-empty string), tools (array).",
           "Do not invent tools. Only use tools from this catalog. Do not increase permissions.",
           "Original plan: "+response.output,
@@ -279,7 +288,7 @@ export class AiMissionPlanner{
       // catalog and permission ceiling; never execute the first, untrusted tool suggestion.
       const reason=firstError instanceof Error?firstError.message:"invalid tool response";
       const repair=await this.models.execute({
-        capability:input.visualContext?"vision":"reasoning",
+        capability:input.visualContext?"vision":codingGoal(input.goal)?"coding":"reasoning",
         routing:input.routing,
         input:[
           "Repair this invalid adaptive tool selection for LayanX.",
@@ -316,11 +325,61 @@ export class AiMissionPlanner{
     if(!["L1_READ","L2_ANALYZE","L3_MODIFY","L4_EXECUTE","L5_CRITICAL"].includes(String(v.requiredPermission)))throw new Error("Invalid mission permission.");
     const steps=Array.isArray(v.steps)?v.steps.filter(x=>x&&typeof x==="object"&&typeof (x as Record<string,unknown>).description==="string").map(x=>({description:String((x as Record<string,unknown>).description)})):[];
     const successCriteria=Array.isArray(v.successCriteria)?v.successCriteria.filter(x=>typeof x==="string").map(String):[];
+    const tools=this.parseTools(v.tools,catalog);
+    // Small local models repeatedly produce pseudo-criteria like
+    // "result.fileExists package.json". When the final selected tool really
+    // writes a file, use its *actual* documented receipt instead of asking
+    // the model to rewrite a criterion it does not understand. This proves
+    // only the write call; supervisor artifact gates verify files separately.
+    if(tools.at(-1)?.tool==="files.write"){
+      // A file-write result exposes only {path,bytes,written}. A local model
+      // sometimes invents arbitrary result.server.respondsTo* booleans.
+      // Those fields do not exist in the tool receipt. Replace ONLY those
+      // bogus bare-path assertions with the real write receipt; leave any
+      // other unsupported assertions subject to strict validation/repair.
+      for(let i=0;i<successCriteria.length;i++){
+        const criterion=successCriteria[i]!.trim();
+        if(/^result\.fileExists\s+[^\s]+$/i.test(criterion)||
+          (/^result\.[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/i.test(criterion)&&
+            !/^result\.(?:written|bytes|path)$/i.test(criterion)))
+          successCriteria[i]="result.written === true";
+      }
+      // Multiple invented claims reduce to one write receipt. The separately
+      // enforced artifact/behavior gates verify whether the code really works.
+      const unique=[...new Set(successCriteria)];
+      successCriteria.splice(0,successCriteria.length,...unique);
+    }
     if(!steps.length||!successCriteria.length||typeof v.stopCondition!=="string"||!v.stopCondition.trim())throw new Error("Incomplete mission plan.");
-    const tools=this.parseTools(v.tools,catalog,v.requiredPermission as PermissionLevel);
-    return{risk:v.risk as PlannedMission["risk"],requiredPermission:v.requiredPermission as PermissionLevel,steps,successCriteria,stopCondition:String(v.stopCondition),tools};
+    // A criterion beginning with result. must use the verifier's supported
+    // assertion syntax. Reject invented natural-language properties such as
+    // "result.createServer exports createServer function" during planning.
+    const unsupported=successCriteria.find(c=>/^result\b/i.test(c.trim())&&
+      !(/^result(?:\.[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)?(?:\s*(?:===|==|!==|!=|>=|<=|>|<)\s*(?:"[^"]*"|'[^']*'|true|false|null|-?\d+(?:\.\d+)?)|\s+contains\s+(?:"[^"]*"|'[^']*'|true|false|null|-?\d+(?:\.\d+)?)|\s+(?:exists|is present|is not empty))$/i.test(c.trim())
+        ||/^result\.[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/i.test(c.trim())));
+    if(unsupported)throw new Error("Unsupported planner success criterion: "+unsupported.slice(0,160));
+    // Model-supplied mission scope is a proposal, not an authority decision.
+    // Derive the minimum scope needed for catalog-approved tools. The catalog is
+    // already limited by the agent contract; execution still enforces trust,
+    // capability tokens, approvals and Sentinel. Never alter a tool's permission.
+    const levels:PermissionLevel[]=["L1_READ","L2_ANALYZE","L3_MODIFY","L4_EXECUTE","L5_CRITICAL"];
+    // For explicit tool plans, scope is EXACTLY the highest catalog tool level.
+    // An empty plan retains the declared scope for subsequent adaptive steps.
+    const requiredPermission=tools.length
+      ?tools.reduce<PermissionLevel>((scope,tool)=>
+        levels.indexOf(tool.permission)>levels.indexOf(scope)?tool.permission:scope,"L1_READ")
+      :v.requiredPermission as PermissionLevel;
+    // Some local models combine fields from several unrelated tool results in
+    // successCriteria. The verifier evaluates ONLY the final tool's raw data:
+    // checking runtime.status fields after a file/write/research action can
+    // never succeed. Reject that contradictory plan instead of retrying a
+    // correct tool four times or silently marking an unverified task done.
+    const finalTool=tools.at(-1)?.tool;
+    if(finalTool&&finalTool!=="runtime.status"&&successCriteria.some(c=>
+      /^result\.(?:system|ready)(?:\b|\s|\.)/i.test(c.trim())))
+      throw new Error("Planner success criteria reference runtime.status fields but the final tool is "+finalTool+".");
+    return{risk:v.risk as PlannedMission["risk"],requiredPermission,steps,successCriteria,stopCondition:String(v.stopCondition),tools};
   }
-  private parseTools(value:unknown,catalog:ToolCatalogEntry[],missionPermission:PermissionLevel):PlannedTool[]{
+  private parseTools(value:unknown,catalog:ToolCatalogEntry[],missionPermission?:PermissionLevel):PlannedTool[]{
     if(!Array.isArray(value))return[];
     const byName=new Map(catalog.map(tool=>[tool.name,tool]));
     return value.map(item=>{
@@ -335,9 +394,12 @@ export class AiMissionPlanner{
       if(!levels.includes(permission))throw new Error("Planner returned an invalid tool permission.");
       const rank=(x:PermissionLevel)=>levels.indexOf(x);
       if(rank(permission)!==rank(tool.permission))throw new Error("Planner tool permission must match the tool requirement.");
-      if(rank(permission)>rank(missionPermission))throw new Error("Planner tool permission exceeds mission scope.");
+      // Initial mission scope is derived from these catalog-validated tools.
+      // Adaptive tool selections MUST remain inside the existing mission scope.
+      if(missionPermission&&rank(permission)>rank(missionPermission))
+        throw new Error("Planner tool permission exceeds mission scope.");
       const payload=entry.payload&&typeof entry.payload==="object"&&!Array.isArray(entry.payload)?entry.payload as Record<string,unknown>:undefined;
-      if(payload&&JSON.stringify(payload).length>4096)throw new Error("Planner tool payload is too large.");
+      if(payload&&JSON.stringify(payload).length>24576)throw new Error("Planner tool payload is too large.");
       return{tool:tool.name,action,permission,reason:typeof entry.reason==="string"?entry.reason:"",payload};
     });
   }

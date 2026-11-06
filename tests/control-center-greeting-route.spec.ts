@@ -112,7 +112,9 @@ try{
  assert.equal(await autonomy.getAttribute("aria-pressed"),"false");
  await page.locator("#agentInput").fill("ما الذي يمكنك عمله؟");
  await page.locator("#agentInput").press("Enter");
- const until=Date.now()+15000;while(assistantCalls<3&&Date.now()<until)await new Promise(r=>setTimeout(r,40));
+ // Four assistant turns already ran above. Wait for the fifth request rather
+ // than accidentally passing the wait condition before the request is sent.
+ const until=Date.now()+15000;while(assistantCalls<5&&Date.now()<until)await new Promise(r=>setTimeout(r,40));
  assert.equal(assistantCalls,5,"Capability question still conversational with Auto off");
  assert.equal(gatewayCalls,0);
  await page.locator("#agentInput").fill("مرحبا افتح المتصفح");

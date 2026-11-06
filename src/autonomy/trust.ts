@@ -16,9 +16,10 @@ import path from "node:path";
  * A Vercel PREVIEW deploy (vercel.deploy) is trusted work: it never touches the live site; making it
  * the production version (vercel.promote) always waits.
  */
-export type TrustLevel="supervised"|"trusted"|"full";
-export const TRUST_LEVELS:TrustLevel[]=["supervised","trusted","full"];
+export type TrustLevel="supervised"|"balanced"|"trusted"|"full";
+export const TRUST_LEVELS:TrustLevel[]=["supervised","balanced","trusted","full"];
 
+const BALANCED=new Set(["project.verify","browser.test","desktop.app.open","git.branch"]);
 const TRUSTED=new Set(["files.write","project.run","project.verify","project.bootstrap","browser.test","terminal.exec",
   "git.add","git.commit","git.branch","git.rollback","git.checkpoint","agent.external.local","vercel.deploy","desktop.app.open"]);
 const FULL=new Set([...TRUSTED,"git.merge","desktop.mouse.move","desktop.mouse.click","desktop.mouse.scroll","desktop.keyboard.type","desktop.keyboard.press","desktop.ui.click","desktop.ui.set_text","desktop.window.focus","agent.external"]);
@@ -49,7 +50,8 @@ export function trustAllows(tool:string,projectId:string|undefined,env:NodeJS.Pr
   const level=trustLevel(projectId,env);
   if(level==="supervised")return false;
   const key=variant?tool+"."+variant:tool;
-  return (level==="full"?FULL:TRUSTED).has(key)||(level==="full"?FULL:TRUSTED).has(tool);
+  const allowed=level==="full"?FULL:level==="trusted"?TRUSTED:BALANCED;
+  return allowed.has(key)||allowed.has(tool);
 }
 
 export function setTrust(file:string,projectId:string,level:TrustLevel):void{

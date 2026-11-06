@@ -60,6 +60,20 @@ export function createFileWriteToolAdapter(options:{root:string}):ToolAdapter{
   if(content.length>2*1024*1024)throw new Error("File content exceeds the 2 MiB write limit.");
   const target=sandboxPath(workspace,path);
   if(request.action==="write file"||request.action==="modify file"){
+   // An empty source file is never a successful output for an ESM app. Reject
+   // before writing so the caller can retry with actual code (and avoid
+   // overwriting a working module with an empty model response).
+   if(/\.(?:mjs|cjs|js|jsx|ts|tsx)$/i.test(target)&&!content.trim())
+    throw new Error("Source file content must not be empty: "+path);
+   // Reject malformed package manifests BEFORE touching the filesystem. A
+   // local planner may send an empty content string; persisting that turns
+   // every subsequent project.run install into an unrelated EJSONPARSE error.
+   if(target.toLowerCase().endsWith(sep+"package.json")){
+    let manifest:unknown;
+    try{manifest=JSON.parse(content);}catch{throw new Error("package.json must contain valid, non-empty JSON before it can be written.");}
+    if(!manifest||typeof manifest!=="object"||Array.isArray(manifest))
+     throw new Error("package.json must be a JSON object.");
+   }
    await mkdir(resolve(target,".."),{recursive:true});
    await writeFile(target,content,"utf8");
    return{path,bytes:Buffer.byteLength(content,"utf8"),written:true};
