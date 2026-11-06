@@ -31,6 +31,13 @@ const deps:SupervisorDeps={
  },
  async resumeAgent(){throw new Error("Unexpected resume");},
  async runTool(_projectId,tool,payload){
+  if(tool==="files.write"){
+    assert.equal(payload.path,"src/server.mjs","Repairs must stay in this sandboxed source file");
+    const content=String(payload.content??"");
+    assert.ok(content.length>0,"Source repair must provide real code");
+    fs.writeFileSync(path.join(project,"src","server.mjs"),content); // mocked approved adapter
+    return {ok:true,data:{path:"src/server.mjs",bytes:Buffer.byteLength(content),written:true}};
+  }
   if(tool==="project.run"&&payload.task==="build"){
     const result=spawnSync(process.execPath,["--check","src/server.mjs"],
       {cwd:project,encoding:"utf8",timeout:4000,windowsHide:true});
