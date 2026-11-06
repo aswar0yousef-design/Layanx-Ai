@@ -21,7 +21,11 @@ try{
  await assert.rejects(()=>write.execute({...request,payload:{path:"package.json",content:""}}),
   /valid, non-empty JSON/);
  assert.equal(await readFile(file,"utf8"),valid,"Rejected rewrite must preserve last valid manifest");
+ await assert.rejects(()=>write.execute({...request,payload:{path:"src/server.mjs",content:""}}),
+  /Source file content must not be empty/,"A blank ESM module must not be created");
  await write.execute({...request,payload:{path:"src/server.mjs",content:"export const ready=true;\n"}});
+ await assert.rejects(()=>write.execute({...request,payload:{path:"src/server.mjs",content:"  \n"}}),
+  /Source file content must not be empty/,"A whitespace-only rewrite must not replace working code");
  assert.equal(await readFile(join(root,"project","src","server.mjs"),"utf8"),"export const ready=true;\n");
 }finally{await rm(root,{recursive:true,force:true});}
 console.log("Package manifest guard: malformed JSON cannot corrupt generated project");
