@@ -62,5 +62,5 @@ try{
   assert.ok(state.log.some(log=>log.msg.includes("Repaired broken multiline HTML literal")));
   const check=spawnSync(process.execPath,["--check",path.join(project,"src","server.mjs")],{encoding:"utf8"});
   assert.equal(check.status,0,"The produced file must actually pass Node syntax check");
-}finally{if(sup)sup.stop();fs.rmSync(root,{recursive:true,force:true});}
+}finally{if(sup)sup.stop();await new Promise(resolve=>setTimeout(resolve,250));fs.rmSync(root,{recursive:true,force:true,maxRetries:20,retryDelay:100});}
 console.log("Supervisor rechecks real build after bounded local syntax repair, without another model attempt");
