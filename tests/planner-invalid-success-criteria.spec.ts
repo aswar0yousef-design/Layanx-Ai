@@ -19,6 +19,16 @@ const planned=await planner.plan("Create src/server.mjs",catalog);
 assert.equal(calls,2,"Invalid result property prose must be rejected and repaired once");
 assert.deepEqual(planned.successCriteria,["File write completes successfully"]);
 
+const normalized=new AiMissionPlanner({async execute(){return{output:JSON.stringify({
+ ...original,successCriteria:["result.fileExists package.json"]})}}} as never);
+assert.deepEqual((await normalized.plan("Create package.json",catalog)).successCriteria,
+ ["result.written === true"],"File existence pseudo-criteria must use actual final file-write receipt");
+
+const noWrite=new AiMissionPlanner({async execute(){return{output:JSON.stringify({
+ ...original,successCriteria:["result.fileExists package.json"],tools:[]})}}} as never);
+await assert.rejects(()=>noWrite.plan("Check a file without writing",catalog),
+ /Unsupported planner success criterion/,"No write receipt: cannot normalize unsupported result claims");
+
 const stubborn=new AiMissionPlanner({async execute(){return{output:JSON.stringify(original)}}} as never);
 await assert.rejects(()=>stubborn.plan("Create module",catalog),
  /Unsupported planner success criterion/,"Unrepaired invalid criteria cannot run");
