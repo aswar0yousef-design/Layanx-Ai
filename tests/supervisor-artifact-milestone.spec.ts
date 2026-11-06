@@ -39,7 +39,7 @@ try{
  assert.equal(state.milestones[0]?.attempts,4);
  assert.equal(state.finalRepairs,0,"Should not waste time on final verification for missing artifacts");
  assert.match(state.milestones[0]?.notes??"",/Missing or empty package.json/);
- assert.match(state.milestones[0]?.notes??"",/Missing or empty src\/server.mjs/);
+ assert.equal(state.milestones[1]?.status,"pending","The server milestone must not run before a valid manifest exists");
  assert.ok(!fs.existsSync(path.join(root,"projects",id,"src","server.mjs")));
  sup.stop();
  console.log("Strict artifact gate: fake completion cannot pass absent source files");
