@@ -379,6 +379,22 @@ export class Supervisor{
         checks:{install:false,test:false,build:false,typecheck:false,lint:false,security:false,browser:null}
       };
       this.log(job,"Recognised a direct desktop-open request; skipped research and planned opening plus window verification");
+    }else if(job.acceptanceProfile==="task-app-http-v1"){
+      // The isolated acceptance task has an exact, owner-declared contract.
+      // Do NOT let a small local model put a "general" package milestone
+      // before server/test implementation, or test unfinished future files.
+      // This fixes the real-PC failure where a broken tests/tasks.test.mjs
+      // prevented the agent from even finishing package.json creation.
+      spec={
+        acceptance:["Valid Node ESM package manifest","Real HTTP server with durable tasks","Real node:test suite","Independent create/list/delete/restart HTTP behavior"],
+        milestones:[
+          {title:"Create package.json",goal:"Write ONLY package.json now: valid JSON, type module, scripts test exactly 'node --test' and build exactly 'node --check src/server.mjs'. Do not run tests of files that are not yet required.",kind:"code"},
+          {title:"Implement src/server.mjs",goal:"Write a complete src/server.mjs exporting function createServer() that RETURNS a real node:http Server (http.createServer(...)), not an object or placeholder. Implement GET /health returning JSON {ok:true}, GET / bilingual Arabic/English HTML with add/delete controls, POST /tasks accepting JSON {title} and returning id/title, GET /tasks returning {tasks:[...]}, DELETE /tasks/:id. Read/write tasks durably at process.env.LAYANX_TASKS_FILE and preserve created/deleted tasks across restarts. Use built-in Node modules, no external dependencies. Run and repair node --check on this file. Do not write tests in this stage.",kind:"code"},
+          {title:"Create tests/tasks.test.mjs",goal:"Write meaningful tests/tasks.test.mjs with node:test and node:assert/strict (import {test} from 'node:test'; import assert from 'node:assert/strict'). node:test does NOT export expect: do not import expect from node:test. Assert real health, add/list/delete, and restart-persistence behavior of createServer; run node --test and fix failures. Do not introduce placeholder passing tests.",kind:"test"}
+        ],
+        checks:{install:true,test:true,build:true,typecheck:false,lint:false,security:true,browser:null}
+      };
+      this.log(job,"Using deterministic three-stage acceptance plan: manifest, real HTTP server, tests (each verified only when ready)");
     }else{
       try{spec=extractJson(await this.deps.think(prompt));}catch(e){this.log(job,"Local planner failed: "+(e as Error).message,"warn");}
       if(!spec?.milestones?.length&&this.deps.cloudAvailable()){
@@ -509,9 +525,40 @@ export class Supervisor{
           failed.push({name:"required artifact",ok:false,summary:"Missing or empty "+file+". Write the real file before completing this milestone."});
       }
     }
+    if(job.acceptanceProfile==="task-app-http-v1"&&job.current===0){
+      // Real evidence, rather than a model claim: the manifest must be
+      // parseable and contain the exact scripts requested by the owner.
+      try{
+        const manifest=JSON.parse(fs.readFileSync(path.join(projectDir(job.projectId),"package.json"),"utf8")) as
+          {type?:string;scripts?:Record<string,unknown>};
+        if(manifest.type!=="module"||manifest.scripts?.test!=="node --test"||
+          manifest.scripts?.build!=="node --check src/server.mjs")
+          failed.push({name:"package contract",ok:false,
+            summary:"package.json must have type=module and scripts test='node --test', build='node --check src/server.mjs'."});
+      }catch{
+        failed.push({name:"package contract",ok:false,summary:"package.json is missing or contains invalid JSON."});
+      }
+    }
+    if(job.acceptanceProfile==="task-app-http-v1"&&job.current===1&&!failed.length&&
+      (!agentStopped||/^Repeated read-only tool blocked:/i.test(agentStopped))){
+      // Check real server behavior as soon as the server stage is finished,
+      // not 15 minutes later in final verification. Independent test uses
+      // a disposable tasks file and checks restart persistence.
+      let probe:TaskAppProbeResult;
+      try{probe=await verifyTaskApp(projectDir(job.projectId));}
+      catch(error){probe={ok:false,checks:[],blockers:[String(error)],verificationScope:"real-http-and-restart"};}
+      if(!probe.ok)failed.push({name:"HTTP behavior",ok:false,
+        summary:clip(probe.blockers.join("; ")||"HTTP task server failed independent verification.",2000)});
+    }
     const regressions=(job.baseline??[]).filter(b=>b.ok&&!b.skipped&&checks.some(c=>c.name===b.name&&!c.ok&&!c.skipped)).map(b=>b.name);
     const agentFailed=agentStopped!==undefined;
-    if(!failed.length&&!agentFailed){
+    // A repeated read-only observation is not success. However if the agent
+    // already created the exact machine-verified artifact, this particular
+    // stop does not erase that evidence. Other stop reasons remain failures.
+    const evidenceAfterReadStop=job.acceptanceProfile==="task-app-http-v1"&&!failed.length&&
+      /^Repeated read-only tool blocked:/i.test(agentStopped??"");
+    if(!failed.length&&(!agentFailed||evidenceAfterReadStop)){
+      if(evidenceAfterReadStop)this.log(job,"Read-only loop stopped, but current milestone passed independent artifact/check gates","warn");
       const missionId=m.missions.at(-1);
       if(missionId&&!(job.runtimeProofs??[]).some(p=>p.missionId===missionId)){
         (job.runtimeProofs??=[]).push({missionId,milestone:m.title,observedAt:now()});
@@ -550,6 +597,7 @@ export class Supervisor{
       `Overall goal: ${job.goal}`,
       `Acceptance criteria: ${job.acceptance.join(" | ")}`,
       `Current milestone (${job.current+1}/${job.milestones.length}): ${m.goal}`,
+      job.acceptanceProfile==="task-app-http-v1"?"IMPORTANT: Work only on the current acceptance milestone. Do not inspect/rewrite future-stage files and do not repeatedly read the same unchanged file. node:test exports test, NOT expect; use node:assert/strict for assertions. For createServer use real http.createServer(...) and RETURN the server. Avoid repeated read-only actions; after writing a file, use the named verification tool.": "",
       job.notes?.length?`Owner's instructions added during the job (follow them):\n- ${job.notes.slice(-8).join("\n- ")}`:"",
       m.notes?`The previous attempt failed. Fix exactly this, change as little as possible:\n${clip(m.notes,3000)}`:"",
       this.syntaxRepairHint(m.notes),
@@ -654,7 +702,12 @@ export class Supervisor{
   private async runChecks(job:SupervisorJob,purpose:"baseline"|"milestone"|"final"="baseline"):Promise<CheckResult[]|undefined>{
     this.refreshChecks(job);
     const c=job.checks;if(!c)return[];
-    if(job.needsInstall){
+    // In the acceptance profile, package.json is stage 1, the HTTP server
+    // is stage 2, and generated tests are stage 3. Checking future artifacts
+    // at stage 1 causes four futile retries when the model prewrites a broken
+    // test; the final verification still runs ALL checks without exceptions.
+    const acceptancePhase=job.acceptanceProfile==="task-app-http-v1"&&purpose==="milestone"?job.current:-1;
+    if(job.needsInstall&&acceptancePhase!==0){
       const r=await this.tool(job,"project.run",{task:"install"});
       if(r==="waiting")return undefined;
       const d=r.data??{};
@@ -672,6 +725,7 @@ export class Supervisor{
     const out:CheckResult[]=[];
     for(const name of ["typecheck","lint","test","build"] as const){
       if(!c[name])continue;
+      if(acceptancePhase===0||acceptancePhase===1&&name==="test")continue;
       // A job planned before LayanX ignored the `npm init` placeholder still lists "test": it is not a test.
       if(name==="test"&&placeholderTest(projectDir(job.projectId))){out.push({name,ok:true,skipped:true,summary:"no tests yet (npm init placeholder)"});continue;}
       const cached=resumable?job.checkCache?.results[name]:undefined;
