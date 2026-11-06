@@ -49,12 +49,29 @@ process.env.LAYANX_OPEN_BROWSER="off";
 // Without this, it silently runs the general 3B fallback even when an
 // installed coding model is available. Respect owner-pinned model/routing.
 if(process.env.OLLAMA_ENABLED!=="false"){
-  const {discoverOllama,buildModelPlan,currentMachine,recommendNumCtx}=await import("../src/providers/ollama-discovery.js");
+  const {discoverOllama,buildModelPlan,currentMachine,recommendNumCtx,rankModels}=await import("../src/providers/ollama-discovery.js");
   const discovered=await discoverOllama(process.env.OLLAMA_BASE_URL,{timeoutMs:3000});
   if(discovered.reachable&&discovered.models.length){
     const machine=currentMachine();
     const pinned=process.env.OLLAMA_MODEL?{planning:process.env.OLLAMA_MODEL}:{};
     const plan=buildModelPlan(discovered,machine,pinned);
+    // This is an inexpensive end-to-end *acceptance probe*, not a quality
+    // benchmark. The general ranking favours huge 20B/27B models even on a
+    // 6 GiB GPU, causing minutes of silent CPU/RAM offloading before any tool
+    // runs. When the owner has NOT explicitly pinned OLLAMA_MODEL, pick an
+    // installed <=5B planning model that fits in VRAM. Coding remains routed
+    // to the separately discovered specialised coding model.
+    if(!process.env.OLLAMA_MODEL){
+      const gpu=machine.gpuVramBytes??0;
+      const fast=rankModels(discovered.models,"planning",machine,discovered.loaded).find(model=>
+        model.paramsB>0&&model.paramsB<=5&&
+        (!gpu||!model.sizeBytes||model.sizeBytes<=gpu*0.8));
+      if(fast){
+        plan.assignments.planning=fast.name;
+        console.log("Live acceptance: selected smaller local planning model "+fast.name+
+          " (override with OLLAMA_MODEL if preferred)");
+      }
+    }
     // Honour an installed pin; if the named model is unavailable, use the
     // discovery fallback exactly as the local host does.
     if(plan.assignments.planning)
@@ -126,8 +143,22 @@ if(!ollama?.available){
       acceptanceProfile:"task-app-http-v1",requiredAcceptance});
     const deadline=Date.now()+21*60_000;
     const terminal=new Set(["completed","failed","cancelled","budget_exhausted","waiting_approval"]);
+    let lastProgressAt=Date.now();
     while(!terminal.has(supervisor.get(job.id)?.status??"")&&Date.now()<deadline){
       await new Promise(resolve=>setTimeout(resolve,750));
+      if(Date.now()-lastProgressAt>=30000){
+        const current=supervisor.get(job.id);
+        const milestone=current?.milestones[current.current];
+        console.log("Live acceptance progress: "+JSON.stringify({
+          elapsedMinutes:Math.round((Date.now()-(deadline-21*60_000))/60000*10)/10,
+          status:current?.status??"unknown",
+          milestone:milestone?.title??null,
+          attempt:milestone?.attempts??0,
+          completedMilestones:current?.milestones.filter(m=>m.status==="done").length??0,
+          totalMilestones:current?.milestones.length??0
+        }));
+        lastProgressAt=Date.now();
+      }
     }
     const finished=supervisor.get(job.id)!;
     const report=finished.outcome;
