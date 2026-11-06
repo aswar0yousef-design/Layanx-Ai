@@ -515,10 +515,14 @@ export class Supervisor{
     // A model's completed response is not proof that a requested file exists.
     // For the isolated HTTP-task acceptance, enforce files named by each step.
     if(job.acceptanceProfile==="task-app-http-v1"&&(m.kind==="code"||m.kind==="test")){
-      const description=(m.title+" "+m.goal).toLowerCase();
-      const required=description.includes("fix final verification")
-        ?["package.json","src/server.mjs","tests/tasks.test.mjs"]
-        :["package.json","src/server.mjs","tests/tasks.test.mjs"].filter(file=>description.includes(file));
+      // This acceptance contract has an ordered, deterministic three-stage
+      // plan. A stage's goal can *mention* future files (e.g. stage 1's
+      // package.json build script mentions src/server.mjs). Never infer
+      // required artifacts from the goal text: that deadlocked stage 1
+      // for four attempts even when the real manifest was already written.
+      const required=job.current===0?["package.json"]:
+        job.current===1?["package.json","src/server.mjs"]:
+        ["package.json","src/server.mjs","tests/tasks.test.mjs"];
       for(const file of required){
         const target=path.join(projectDir(job.projectId),file);
         if(!fs.existsSync(target)||!fs.statSync(target).isFile()||fs.statSync(target).size===0)
