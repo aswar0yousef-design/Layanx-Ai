@@ -60,8 +60,10 @@ try{
     await new Promise(resolve=>setTimeout(resolve,20));
   const result=sup.get(job.id)!;
   assert.equal(result.status,"failed","Fake HTTP server must not pass acceptance");
-  assert.deepEqual(result.milestones.map(m=>m.kind),["code","code","test"],
-    "Only the fixed package/server/test plan is accepted for this strict profile");
+  assert.deepEqual(result.milestones.map(m=>m.kind),["code","code","code"],
+    "Source-file creation, including tests, must use a coding agent that can write files");
+  assert.equal(result.milestones[2]?.agent,"coder",
+    "The tester agent cannot write tests/tasks.test.mjs: it lacks files.write");
   assert.equal(result.milestones[0]?.status,"done",
     "Valid package.json must pass after an observation-only stop, despite invalid future tests");
   assert.equal(result.milestones[0]?.attempts,1,
