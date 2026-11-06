@@ -17,6 +17,12 @@ export function repairMultilineHtmlResponse(projectRoot:string,buildFailure:stri
   const target=path.join(projectRoot,"src","server.mjs");
   let original:string;
   try{
+    // Never follow a model-created symlink out of its project workspace.
+    const base=fs.realpathSync(projectRoot);
+    const realTarget=fs.realpathSync(target);
+    const relative=path.relative(base,realTarget);
+    if(relative===".."||relative.startsWith(".."+path.sep)||path.isAbsolute(relative)||
+       fs.lstatSync(target).isSymbolicLink())return false;
     const stat=fs.statSync(target);
     if(!stat.isFile()||stat.size===0||stat.size>512*1024)return false;
     original=fs.readFileSync(target,"utf8");
