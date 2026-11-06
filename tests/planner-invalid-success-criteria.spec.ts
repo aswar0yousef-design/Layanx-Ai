@@ -24,6 +24,17 @@ const normalized=new AiMissionPlanner({async execute(){return{output:JSON.string
 assert.deepEqual((await normalized.plan("Create package.json",catalog)).successCriteria,
  ["result.written === true"],"File existence pseudo-criteria must use actual final file-write receipt");
 
+const inventedServerFields=new AiMissionPlanner({async execute(){return{output:JSON.stringify({
+ ...original,successCriteria:[
+  "result.server.respondsToGEThealthwithJSONoktrue",
+  "result.server.respondsToPOSTtaskswithJSONidtitle",
+  "result.server.respondsToGETtaskswithJSONtasks",
+  "result.server.respondsToDeleteTaskstasksid"
+ ]})}}} as never);
+assert.deepEqual((await inventedServerFields.plan("Create src/server.mjs",catalog)).successCriteria,
+ ["result.written === true"],
+ "Nonexistent nested server properties must not mask a successful actual file write");
+
 const noWrite=new AiMissionPlanner({async execute(){return{output:JSON.stringify({
  ...original,successCriteria:["result.fileExists package.json"],tools:[]})}}} as never);
 await assert.rejects(()=>noWrite.plan("Check a file without writing",catalog),
