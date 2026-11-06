@@ -326,10 +326,22 @@ export class AiMissionPlanner{
     // the model to rewrite a criterion it does not understand. This proves
     // only the write call; supervisor artifact gates verify files separately.
     if(tools.at(-1)?.tool==="files.write"){
+      // A file-write result exposes only {path,bytes,written}. A local model
+      // sometimes invents arbitrary result.server.respondsTo* booleans.
+      // Those fields do not exist in the tool receipt. Replace ONLY those
+      // bogus bare-path assertions with the real write receipt; leave any
+      // other unsupported assertions subject to strict validation/repair.
       for(let i=0;i<successCriteria.length;i++){
-        if(/^result\.fileExists\s+[^\s]+$/i.test(successCriteria[i]!.trim()))
+        const criterion=successCriteria[i]!.trim();
+        if(/^result\.fileExists\s+[^\s]+$/i.test(criterion)||
+          (/^result\.[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/i.test(criterion)&&
+            !/^result\.(?:written|bytes|path)$/i.test(criterion)))
           successCriteria[i]="result.written === true";
       }
+      // Multiple invented claims reduce to one write receipt. The separately
+      // enforced artifact/behavior gates verify whether the code really works.
+      const unique=[...new Set(successCriteria)];
+      successCriteria.splice(0,successCriteria.length,...unique);
     }
     if(!steps.length||!successCriteria.length||typeof v.stopCondition!=="string"||!v.stopCondition.trim())throw new Error("Incomplete mission plan.");
     // A criterion beginning with result. must use the verifier's supported
