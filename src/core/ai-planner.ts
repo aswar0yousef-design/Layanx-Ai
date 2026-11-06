@@ -318,6 +318,18 @@ export class AiMissionPlanner{
     if(!["L1_READ","L2_ANALYZE","L3_MODIFY","L4_EXECUTE","L5_CRITICAL"].includes(String(v.requiredPermission)))throw new Error("Invalid mission permission.");
     const steps=Array.isArray(v.steps)?v.steps.filter(x=>x&&typeof x==="object"&&typeof (x as Record<string,unknown>).description==="string").map(x=>({description:String((x as Record<string,unknown>).description)})):[];
     const successCriteria=Array.isArray(v.successCriteria)?v.successCriteria.filter(x=>typeof x==="string").map(String):[];
+    const tools=this.parseTools(v.tools,catalog);
+    // Small local models repeatedly produce pseudo-criteria like
+    // "result.fileExists package.json". When the final selected tool really
+    // writes a file, use its *actual* documented receipt instead of asking
+    // the model to rewrite a criterion it does not understand. This proves
+    // only the write call; supervisor artifact gates verify files separately.
+    if(tools.at(-1)?.tool==="files.write"){
+      for(let i=0;i<successCriteria.length;i++){
+        if(/^result\.fileExists\s+[^\s]+$/i.test(successCriteria[i]!.trim()))
+          successCriteria[i]="result.written === true";
+      }
+    }
     if(!steps.length||!successCriteria.length||typeof v.stopCondition!=="string"||!v.stopCondition.trim())throw new Error("Incomplete mission plan.");
     // A criterion beginning with result. must use the verifier's supported
     // assertion syntax. Reject invented natural-language properties such as
@@ -330,7 +342,6 @@ export class AiMissionPlanner{
     // Derive the minimum scope needed for catalog-approved tools. The catalog is
     // already limited by the agent contract; execution still enforces trust,
     // capability tokens, approvals and Sentinel. Never alter a tool's permission.
-    const tools=this.parseTools(v.tools,catalog);
     const levels:PermissionLevel[]=["L1_READ","L2_ANALYZE","L3_MODIFY","L4_EXECUTE","L5_CRITICAL"];
     // For explicit tool plans, scope is EXACTLY the highest catalog tool level.
     // An empty plan retains the declared scope for subsequent adaptive steps.
@@ -369,7 +380,7 @@ export class AiMissionPlanner{
       if(missionPermission&&rank(permission)>rank(missionPermission))
         throw new Error("Planner tool permission exceeds mission scope.");
       const payload=entry.payload&&typeof entry.payload==="object"&&!Array.isArray(entry.payload)?entry.payload as Record<string,unknown>:undefined;
-      if(payload&&JSON.stringify(payload).length>4096)throw new Error("Planner tool payload is too large.");
+      if(payload&&JSON.stringify(payload).length>24576)throw new Error("Planner tool payload is too large.");
       return{tool:tool.name,action,permission,reason:typeof entry.reason==="string"?entry.reason:"",payload};
     });
   }
