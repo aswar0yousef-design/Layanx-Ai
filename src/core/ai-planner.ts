@@ -35,7 +35,7 @@ function currentMilestoneGoal(goal:string):string{
 /** Route source-code generation to an installed specialised coding model, if any. */
 function codingGoal(goal:string):boolean{
  const step=currentMilestoneGoal(goal);
- return /(?:\b(?:javascript|typescript|node\\.js|coding|source code|implement|refactor|server|module|package\\.json|test suite|web app|application)\b|\.(?:mjs|cjs|js|jsx|ts|tsx|py)\b|(?:src|tests)\/)/i.test(step);
+ return /(?:\b(?:javascript|typescript|node\.js|coding|source code|implement|refactor|server|module|package\.json|test suite|web app|application)\b|\.(?:mjs|cjs|js|jsx|ts|tsx|py)\b|(?:src|tests)\/)/i.test(step);
 }
 
 /** A window-presence check is deterministic too: ask Windows to focus that exact window title. */
