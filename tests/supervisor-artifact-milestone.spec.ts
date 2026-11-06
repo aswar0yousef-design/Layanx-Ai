@@ -25,6 +25,11 @@ const deps:SupervisorDeps={
 };
 try{
  const sup=new Supervisor(deps,{file:path.join(root,"jobs.json"),pollMs:5});
+ const repairHint=(sup as unknown as {syntaxRepairHint:(notes?:string)=>string}).syntaxRepairHint;
+ const syntaxError="build failed:\\nC:\\\\workspace\\\\src\\\\server.mjs:6\\n  res.end('<html>\\nSyntaxError: Invalid or unexpected token";
+ assert.match(repairHint(syntaxError),/template literal/,"A real broken HTML string should trigger targeted repair guidance");
+ assert.match(repairHint(syntaxError),/node --check/);
+ assert.equal(repairHint("Failed test assertion"),"","Unrelated failures must not get speculative syntax fixes");
  const job=sup.create("Create a persistent Node HTTP task app",id,{acceptanceProfile:"task-app-http-v1",maxRounds:12});
  const deadline=Date.now()+12000;
  while(!["failed","completed"].includes(sup.get(job.id)!.status)&&Date.now()<deadline)
