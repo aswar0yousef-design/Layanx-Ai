@@ -55,8 +55,11 @@ if(process.env.OLLAMA_ENABLED!=="false"){
     const machine=currentMachine();
     const pinned=process.env.OLLAMA_MODEL?{planning:process.env.OLLAMA_MODEL}:{};
     const plan=buildModelPlan(discovered,machine,pinned);
-    if(!process.env.OLLAMA_MODEL&&plan.assignments.planning)
+    // Honour an installed pin; if the named model is unavailable, use the
+    // discovery fallback exactly as the local host does.
+    if(plan.assignments.planning)
       process.env.OLLAMA_MODEL=plan.assignments.planning;
+    for(const warning of plan.warnings)console.warn("Ollama routing: "+warning);
     if(!process.env.LAYANX_OLLAMA_MODEL_PLAN)
       process.env.LAYANX_OLLAMA_MODEL_PLAN=JSON.stringify(plan.assignments);
     if(!process.env.LAYANX_OLLAMA_CONTEXT){
