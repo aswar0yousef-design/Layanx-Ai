@@ -29,6 +29,22 @@ try{
   fs.writeFileSync(target,nestedBroken);
   assert.equal(repairMultilineHtmlResponse(root,failure),false,"An unverified repair must not persist");
   assert.equal(fs.readFileSync(target,"utf8"),nestedBroken,"Failed repair must roll back exactly");
+  // A model-generated symlink must never let automatic repair mutate files
+  // outside the isolated project. Symlink tests skip where Windows privileges
+  // disallow creating symbolic links, without weakening the production guard.
+  const outside=fs.mkdtempSync(path.join(os.tmpdir(),"layanx-repair-outside-"));
+  const escaped=path.join(outside,"outside.mjs");
+  try{
+    fs.writeFileSync(escaped,broken);
+    fs.unlinkSync(target);
+    let linked=false;
+    try{fs.symlinkSync(escaped,target,"file");linked=true;}catch{}
+    if(linked){
+      assert.equal(repairMultilineHtmlResponse(root,failure),false,"Symlink must not be repaired");
+      assert.equal(fs.readFileSync(escaped,"utf8"),broken,"Outside file must remain untouched");
+      fs.unlinkSync(target);
+    }
+  }finally{fs.rmSync(outside,{recursive:true,force:true});}
   fs.writeFileSync(target,broken);
   assert.equal(repairMultilineHtmlResponse(root,"test failed: unrelated"),false,"No syntax error signal, no mutation");
   assert.equal(fs.readFileSync(target,"utf8"),broken);
