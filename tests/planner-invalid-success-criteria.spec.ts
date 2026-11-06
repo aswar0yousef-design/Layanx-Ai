@@ -40,6 +40,16 @@ const noWrite=new AiMissionPlanner({async execute(){return{output:JSON.stringify
 await assert.rejects(()=>noWrite.plan("Check a file without writing",catalog),
  /Unsupported planner success criterion/,"No write receipt: cannot normalize unsupported result claims");
 
+const capabilities:string[]=[];
+const routed=new AiMissionPlanner({async execute(request:{capability:string}){
+ capabilities.push(request.capability);
+ return{output:JSON.stringify({...original,successCriteria:["result.written === true"]})};
+}} as never);
+await routed.plan("Create src/server.mjs",catalog);
+await routed.plan("Summarize an invoice",catalog);
+assert.deepEqual(capabilities,["coding","reasoning"],
+ "Source-code missions should prefer installed coder models without changing other planning");
+
 const stubborn=new AiMissionPlanner({async execute(){return{output:JSON.stringify(original)}}} as never);
 await assert.rejects(()=>stubborn.plan("Create module",catalog),
  /Unsupported planner success criterion/,"Unrepaired invalid criteria cannot run");
