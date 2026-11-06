@@ -481,12 +481,19 @@ export class Supervisor{
     if(job.acceptanceProfile==="task-app-http-v1"){
       const brokenBuild=failed.find(c=>c.name==="build"&&
         /SyntaxError: Invalid or unexpected token/i.test(c.summary));
-      if(brokenBuild&&repairMultilineHtmlResponse(projectDir(job.projectId),brokenBuild.summary)){
-        this.log(job,"Repaired broken multiline HTML literal; rerunning project checks");
-        const rechecked=await this.runChecks(job,"milestone");
-        if(rechecked===undefined)return;
-        checks=rechecked;job.lastChecks=checks;
-        failed=checks.filter(c=>!c.ok&&!c.skipped);
+      const proposed=brokenBuild?repairMultilineHtmlResponse(projectDir(job.projectId),brokenBuild.summary):undefined;
+      if(proposed){
+        // All writes must go through the same capability/approval/audit path
+        // used by agents; never apply a filesystem patch inside this helper.
+        const applied=await this.tool(job,"files.write",proposed,"milestone");
+        if(applied==="waiting")return;
+        if(applied.ok&&applied.data?.written===true){
+          this.log(job,"Repaired broken multiline HTML literal; rerunning project checks");
+          const rechecked=await this.runChecks(job,"milestone");
+          if(rechecked===undefined)return;
+          checks=rechecked;job.lastChecks=checks;
+          failed=checks.filter(c=>!c.ok&&!c.skipped);
+        }else this.log(job,"Syntax repair write was rejected or failed; keeping failing build evidence","warn");
       }
     }
     // A model's completed response is not proof that a requested file exists.
@@ -587,6 +594,16 @@ export class Supervisor{
     if(w.kind==="tool"){
       const resumed=await this.deps.runTool(job.projectId,w.tool!,w.payload??{},{missionId:w.missionId,approvalId:w.approvalId});
       if(w.tool==="agent.external"&&m){await this.afterWork(job,m);return;}
+      if(w.tool==="files.write"&&w.continuation==="milestone"&&m){
+        if(resumed.ok&&resumed.data?.written===true){
+          this.log(job,"Approved syntax repair applied through files.write; rerunning checks");
+          await this.afterWork(job,m);
+        }else{
+          m.notes="Approved syntax repair could not be written: "+String(resumed.error??"tool failed");
+          m.status="pending";this.save();
+        }
+        return;
+      }
       // Continue the interrupted verification pass with the approved command's actual result.
       // Re-running the milestone here used to discard this result and launch the coder again.
       const task=w.payload?.task;
