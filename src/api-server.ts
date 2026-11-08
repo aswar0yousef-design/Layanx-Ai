@@ -51,7 +51,7 @@ async function body(request:IncomingMessage,maxBytes:number){let total=0;const c
 function authorized(request:IncomingMessage,token?:string){return !token||request.headers.authorization==="Bearer "+token;}
 function runtimeView(core:LayanXCore,persistence:RuntimePersistence|undefined,business:BusinessManager,ads:AdsManager,media:MediaManager){return {core,models:core.models,providers:core.providers,providerSummary:providerSummary(),persistence,business,ads,media};}
 export function startRuntimeApi(options:RuntimeApiOptions){
- const host=options.host??process.env.LAYANX_API_HOST??"127.0.0.1";const port=options.port??Number(process.env.LAYANX_API_PORT??3000);const max=options.maxBodyBytes??65536;const requireToken=options.requireToken??(process.env.LAYANX_API_REQUIRE_TOKEN==="true");const remoteHost=host!=="127.0.0.1"&&host!=="localhost"&&host!=="::1";if((requireToken||remoteHost)&&!options.token)throw new Error("LAYANX_API_TOKEN is required for remote API access");
+ const host=options.host??process.env.LAYANX_API_HOST??"127.0.0.1";const port=options.port??Number(process.env.LAYANX_API_PORT??3000);const max=options.maxBodyBytes??65536;const remoteHost=host!=="127.0.0.1"&&host!=="localhost"&&host!=="::1";/* Any non-loopback bind is authenticated: not every route checks the token itself. */const requireToken=remoteHost||(options.requireToken??(process.env.LAYANX_API_REQUIRE_TOKEN==="true"));if(requireToken&&!options.token)throw new Error("LAYANX_API_TOKEN is required for remote API access");
  const mcp=new McpGateway(options.core);
  const control=new ControlCenter(options.core);
  const voice=new VoiceService();
