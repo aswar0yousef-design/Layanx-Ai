@@ -203,7 +203,10 @@ export function createProjectRunnerAdapter():ToolAdapter{
       cmd=restrictedCommand(cmd,dir,setup);
       gitBefore=gitSnapshot(dir);prepWarning=setup.gitWarning;
     }
-    const result=await runOnce(cmd,dir,TIMEOUTS[task]??10*60_000,env);
+    // Callers may shorten a task's limit, never extend it.
+    const limit=TIMEOUTS[task]??10*60_000;
+    const requested=Number(input.timeoutMs);
+    const result=await runOnce(cmd,dir,Number.isFinite(requested)&&requested>=1000?Math.min(requested,limit):limit,env);
     const gitWarning=[prepWarning,gitBefore?await verifyGitAfterRun(dir,gitBefore):undefined].filter(Boolean).join(" ")||undefined;
     const ok=result.exitCode===0&&!result.timedOut;
     if(["test","build","lint","typecheck"].includes(task))updateHealth(dir,task,{ok,summary:ok?`${cmd.label} passed`:(result.stderr||result.stdout).slice(-500)});

@@ -3,7 +3,7 @@ import {evaluateLocalAcceptance,summarizeLocalAcceptance,type LocalAcceptanceObs
   type IntegrityObserved,type LocalAcceptanceRecord} from "../src/autonomy/release-batch.js";
 
 const checks=[
-  "start","health","bilingual-home","create-task","list-task","restart",
+  "start","health","bilingual-home","create-task","list-task","home-with-task","restart",
   "persistent-create","delete-task","restart-after-delete","persistent-delete"
 ].map(name=>({name,ok:true}));
 const workspace="C:\\test\\outcome-runs\\first\\projects\\acceptance-12345678";
@@ -16,7 +16,7 @@ const base:LocalAcceptanceObserved={
 const integrity:IntegrityObserved={ok:true,jobId:"valid-job",projectRoot:workspace,checkedFiles:6,blockers:[],warnings:[]};
 const good=evaluateLocalAcceptance(base,integrity,workspace);
 assert.equal(good.ok,true,JSON.stringify(good));
-assert.equal(good.independentChecksPassed,10);
+assert.equal(good.independentChecksPassed,11);
 assert.equal(good.filesVerified,6);
 const missingBuild=evaluateLocalAcceptance({...base,checkRefs:["project.run:test","independent:http:task-app"]},integrity,workspace);
 assert.equal(missingBuild.ok,false);

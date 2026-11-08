@@ -9,6 +9,106 @@ import path from "node:path";
 import {spawn,type ChildProcess} from "node:child_process";
 import {randomUUID} from "node:crypto";
 
+export const taskServerGoal="Write a complete src/server.mjs exporting function createServer() that returns a real Node HTTP server. GET /health returns {ok:true}. GET / serves a bilingual Arabic/English task UI with working add and per-task delete controls. POST /tasks accepts {title} and returns {id,title}; GET /tasks returns {tasks:[...]}; DELETE /tasks/:id deletes that task. Persist additions and deletions across restarts at process.env.LAYANX_TASKS_FILE. Use built-in Node modules and no external dependencies. Write only src/server.mjs.";
+
+/**
+ * Structure handed to the coding model for src/server.mjs. Small local models
+ * kept breaking the same spots when left to choose: backticks nested in an HTML
+ * template, an unclosed createServer call, and a double-wrapped storage shape.
+ * Everything specific to the app (routes and browser code) is still generated.
+ * It deliberately contains no double quote: the model returns the file inside a
+ * JSON string, and an unescaped double quote cuts the file off at that point.
+ */
+export const TASK_SERVER_SKELETON=[
+  "import http from 'node:http';",
+  "import fs from 'node:fs';",
+  "const file=process.env.LAYANX_TASKS_FILE||'tasks.json';",
+  "function loadTasks(){try{return JSON.parse(fs.readFileSync(file,'utf8')).tasks||[];}catch{return [];}}",
+  "function saveTasks(tasks){fs.writeFileSync(file,JSON.stringify({tasks}));}",
+  "function readBody(req){return new Promise(resolve=>{let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>resolve(body));});}",
+  "function json(res,status,value){res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(value));}",
+  "const page=`<!doctype html><html><head><meta charset=utf-8><title>Tasks / المهام</title></head><body>",
+  "<h1>Tasks / المهام</h1>",
+  "<input id=title><button id=add>Add / إضافة</button><ul id=list></ul>",
+  "<script>",
+  "// BROWSER CODE GOES HERE",
+  "</script></body></html>`;",
+  "export function createServer(){",
+  "  return http.createServer(async(req,res)=>{",
+  "    const route=req.url.split('?')[0];",
+  "    if(req.method==='GET'&&route==='/health')return json(res,200,{ok:true});",
+  "    // ROUTES GO HERE, one if statement per route ending in return",
+  "    return json(res,404,{error:'not found'});",
+  "  });",
+  "}"
+].join("\n");
+
+const TASK_TEST_HARNESS_HEAD=[
+  "import {test} from 'node:test';",
+  "import assert from 'node:assert/strict';",
+  "import {mkdtemp,rm} from 'node:fs/promises';",
+  "import {tmpdir} from 'node:os';",
+  "import {join} from 'node:path';",
+  "test('task api',{timeout:30000},async()=>{",
+  "  const dir=await mkdtemp(join(tmpdir(),'tasks-'));",
+  "  process.env.LAYANX_TASKS_FILE=join(dir,'tasks.json');",
+  "  const {createServer}=await import('../src/server.mjs');",
+  "  let server;",
+  "  const open=async()=>{server=await createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));return 'http://127.0.0.1:'+server.address().port;};",
+  "  const close=()=>new Promise(r=>{if(!server?.listening)return r();server.close(r);server.closeAllConnections();});",
+  "  try{",
+  "    let url=await open();"
+].join("\n");
+const TASK_TEST_HARNESS_TAIL=[
+  "  }finally{await close();await rm(dir,{recursive:true,force:true});}",
+  "});"
+].join("\n");
+
+/** The fixed harness, shown to the model so it knows what its statements run inside. */
+export const TASK_TEST_HARNESS=TASK_TEST_HARNESS_HEAD+"\n    // YOUR STATEMENTS RUN HERE\n"+TASK_TEST_HARNESS_TAIL;
+
+/**
+ * Wraps model-written assertion statements in the fixed harness. A reply that
+ * is a whole test file anyway is returned as is, for the contract gate to judge.
+ */
+export function composeTaskTestSource(content:string):string{
+  // Models sometimes echo the whole harness, often dropping its imports: keep only their statements.
+  const echoed=/let\s+url\s*=\s*await\s+open\(\)\s*;?([\s\S]*?)\}\s*finally\b/.exec(content)?.[1];
+  if(echoed===undefined&&/from\s*["']node:test["']|import\(\s*["']node:test["']\s*\)/.test(content))return content;
+  const statements=(echoed??content)
+    .replace(/^\s*import\s.*$/gm,"")
+    .replace(/^\s*(?:let|const|var)\s+url\s*=\s*await\s+open\(\)\s*;?\s*$/m,"")
+    .trim();
+  return TASK_TEST_HARNESS_HEAD+"\n"+statements+"\n"+TASK_TEST_HARNESS_TAIL+"\n";
+}
+
+/**
+ * Cheap static gate for a generated tests/tasks.test.mjs, applied before it is
+ * ever executed. Each rule maps to a way a generated suite produced a false
+ * failure or hung the run: shared storage between tests, importing the server
+ * before its storage path is set, and servers left listening after an assertion.
+ */
+export function taskTestContractViolations(source:string):string[]{
+  const violations:string[]=[];
+  const setsStorage=source.search(/process\.env\.LAYANX_TASKS_FILE\s*=(?!=)/);
+  const loadsServer=source.search(/import\(\s*["'`]\.\.\/src\/server\.mjs["'`]\s*\)/);
+  if(/^\s*import\s[^;]*?from\s*["'][^"']*server\.mjs["']/m.test(source))
+    violations.push("Do not import ../src/server.mjs statically: it reads its storage path when loaded, before the test can set it.");
+  if(setsStorage<0)
+    violations.push("Assign process.env.LAYANX_TASKS_FILE to a new temporary file, or the tests share and pollute the project's tasks.json.");
+  if(loadsServer<0)
+    violations.push("Load the server with await import('../src/server.mjs').");
+  else if(setsStorage>loadsServer)
+    violations.push("Assign process.env.LAYANX_TASKS_FILE before await import('../src/server.mjs').");
+  if(/\brequire\s*\(/.test(source))
+    violations.push("Do not call require(): this is an ES module, and fs, path and assert are imported or not needed.");
+  if(!/\bfinally\b/.test(source)||!/\.close\(/.test(source))
+    violations.push("Close every server inside a finally block, or a failed assertion leaves it listening and the test process never exits.");
+  for(const [pattern,label] of [[/["'`]POST["'`]/,"POST /tasks"],[/["'`]DELETE["'`]/,"DELETE /tasks/:id"],[/\/health/,"GET /health"]] as const)
+    if(!pattern.test(source))violations.push("Exercise "+label+" over real HTTP.");
+  return violations;
+}
+
 export interface TaskAppProbeCheck {name:string;ok:boolean;detail:string}
 export interface TaskAppProbeResult {
   ok:boolean;
@@ -27,7 +127,7 @@ const launcher=[
   'process.on("SIGTERM",()=>server.close(()=>process.exit(0)));'
 ].join("\n");
 
-async function startServer(serverFile:string,workspace:string,storageFile:string):Promise<{child:ChildProcess;url:string}>{
+async function startServer(serverFile:string,workspace:string,storageFile:string):Promise<{child:ChildProcess;url:string;stderr:()=>string}>{
   const env:NodeJS.ProcessEnv={
     PATH:process.env.PATH??process.env.Path??"",
     SystemRoot:process.env.SystemRoot,
@@ -49,11 +149,10 @@ async function startServer(serverFile:string,workspace:string,storageFile:string
       done=true;
       clearTimeout(timer);
       child.stdout?.removeAllListeners("data");
-      child.stderr?.removeAllListeners("data");
       child.removeListener("error",onError);
       child.removeListener("exit",onExit);
       if(error){child.kill();reject(error);}
-      else resolve({child,url:url!});
+      else resolve({child,url:url!,stderr:()=>errors.trim()});
     };
     const onError=(e:Error)=>finish(e);
     const onExit=(code:number|null)=>finish(new Error("Server exited ("+code+"): "+errors.slice(-500)));
@@ -96,9 +195,17 @@ async function parseTasks(response:Response):Promise<Array<Record<string,unknown
 export async function verifyTaskApp(workspace:string):Promise<TaskAppProbeResult>{
   const checks:TaskAppProbeCheck[]=[];
   const blockers:string[]=[];
+  let stderr=()=> "";
   const record=async(name:string,fn:()=>Promise<void>)=>{
     try{await fn();checks.push({name,ok:true,detail:"Observed successfully"});}
-    catch(e){const detail=e instanceof Error?e.message:String(e);checks.push({name,ok:false,detail});blockers.push(name+": "+detail);throw e;}
+    catch(e){
+      const message=e instanceof Error?e.message:String(e);
+      // A crashing server resets the socket before its stack trace reaches our pipe.
+      await new Promise(resolve=>setTimeout(resolve,150));
+      const diagnostic=stderr();
+      const detail=diagnostic?message+"\nServer stderr:\n"+diagnostic:message;
+      checks.push({name,ok:false,detail});blockers.push(name+": "+detail);throw e;
+    }
   };
   const serverFile=path.join(workspace,"src","server.mjs");
   const storageFile=path.join(workspace,".layanx","acceptance-tasks-"+randomUUID()+".json");
@@ -107,7 +214,12 @@ export async function verifyTaskApp(workspace:string):Promise<TaskAppProbeResult
     if(!fs.existsSync(serverFile))throw Error("Missing src/server.mjs");
     fs.mkdirSync(path.dirname(storageFile),{recursive:true});
     let url="";
-    await record("start",async()=>{const started=await startServer(serverFile,workspace,storageFile);child=started.child;url=started.url;});
+    const start=async()=>{
+      stderr=()=> "";
+      const started=await startServer(serverFile,workspace,storageFile);
+      child=started.child;url=started.url;stderr=started.stderr;
+    };
+    await record("start",start);
     await record("health",async()=>{
       const res=await request(url,"/health");
       if(!res.ok||((await res.json()) as {ok?:unknown}).ok!==true)throw Error("GET /health must return {ok:true}");
@@ -115,8 +227,9 @@ export async function verifyTaskApp(workspace:string):Promise<TaskAppProbeResult
     await record("bilingual-home",async()=>{
       const res=await request(url,"/");
       const html=await res.text();
-      if(!res.ok||!/[\u0600-\u06FF]/.test(html)||!/[a-zA-Z]{3,}/.test(html))
-        throw Error("GET / must serve both Arabic and English content");
+      const visibleText=html.replace(/<!--[\s\S]*?-->|<(script|style|head|template)\b[^>]*>[\s\S]*?<\/\1\s*>|<[^>]*>/gi," ");
+      if(!res.ok||!/\p{Script=Arabic}/u.test(visibleText)||!/[a-zA-Z]{3,}/.test(visibleText))
+        throw Error("GET / must include Arabic and English page text, for example Tasks / المهام and Add / إضافة");
     });
     const title="LayanX acceptance "+randomUUID();
     let id:string|undefined;
@@ -132,8 +245,15 @@ export async function verifyTaskApp(workspace:string):Promise<TaskAppProbeResult
       const tasks=await parseTasks(await request(url,"/tasks"));
       if(!tasks.some(t=>String(t.id)===id&&t.title===title))throw Error("Created task missing from GET /tasks");
     });
+    // The empty-list home page proves nothing about rendering rows: server code
+    // that builds them with browser-only APIs crashes only once a task exists.
+    await record("home-with-task",async()=>{
+      const res=await request(url,"/");
+      if(!res.ok)throw Error("GET / HTTP "+res.status+" once a task exists");
+      await res.text();
+    });
     await stopServer(child);child=undefined;
-    await record("restart",async()=>{const started=await startServer(serverFile,workspace,storageFile);child=started.child;url=started.url;});
+    await record("restart",start);
     await record("persistent-create",async()=>{
       const tasks=await parseTasks(await request(url,"/tasks"));
       if(!tasks.some(t=>String(t.id)===id&&t.title===title))throw Error("Task was lost after a server restart");
@@ -145,7 +265,7 @@ export async function verifyTaskApp(workspace:string):Promise<TaskAppProbeResult
       if(tasks.some(t=>String(t.id)===id))throw Error("Deleted task still appears in task list");
     });
     await stopServer(child);child=undefined;
-    await record("restart-after-delete",async()=>{const started=await startServer(serverFile,workspace,storageFile);child=started.child;url=started.url;});
+    await record("restart-after-delete",start);
     await record("persistent-delete",async()=>{
       const tasks=await parseTasks(await request(url,"/tasks"));
       if(tasks.some(t=>String(t.id)===id))throw Error("Deleted task returned after restart");
@@ -156,5 +276,5 @@ export async function verifyTaskApp(workspace:string):Promise<TaskAppProbeResult
     await stopServer(child);
     try{fs.rmSync(storageFile,{force:true});}catch{}
   }
-  return {ok:blockers.length===0&&checks.length===10,checks,blockers,verificationScope:"real-http-and-restart"};
+  return {ok:blockers.length===0&&checks.length===11,checks,blockers,verificationScope:"real-http-and-restart"};
 }

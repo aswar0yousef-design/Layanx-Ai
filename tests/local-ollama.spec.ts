@@ -133,4 +133,11 @@ assert.equal(recommendNumCtx(owned.models[0]!,pc),8192,"9b spills past 6 GB: kee
 assert.equal(recommendNumCtx(owned.models[1]!,pc),16384,"4b fits in VRAM with room for a long context");
 assert.equal(recommendNumCtx(owned.models[2]!,pc),9216,"coder: context sized to what is left of the 6 GB");
 
+// gpt-oss:20b is the default coder only where it is installed and memory allows; a pin still wins.
+const withGptOss={...owned,models:[...owned.models,{name:"gpt-oss:20b",sizeBytes:13e9,family:"gptoss",parameterSize:"20.9B",paramsB:20.9,quantization:"MXFP4",capabilities:["completion","tools","thinking"],capabilitySource:"ollama" as const,contextLength:131072}]};
+assert.equal(buildModelPlan(withGptOss,pc).assignments.coding,"gpt-oss:20b","the proven coder wins coding on the owner's PC");
+assert.equal(buildModelPlan(withGptOss,machine16).assignments.coding,"qwen2.5-coder:7b","too little memory: keep the coder that fits");
+assert.equal(buildModelPlan(withGptOss,pc,{coding:"qwen2.5-coder:7b"}).assignments.coding,"qwen2.5-coder:7b","an owner pin overrides the default");
+assert.equal(recommendNumCtx(withGptOss.models[4]!,pc),8192,"same context window as the 5/5 acceptance batch");
+
 console.log("local-ollama: all assertions passed");

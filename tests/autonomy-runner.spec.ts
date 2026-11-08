@@ -59,6 +59,12 @@ assert.equal(dev.running,true);assert.match(dev.url,/^http:\/\/localhost:\d+/);
 assert.match(await (await fetch(dev.url)).text(),/<h1>hi<\/h1>/);
 assert.equal((await runner.execute(req({task:"dev:stop"})) as any).stopped,true);
 stopAllDevServers();
+const hanging=path.join(dir,"hang");fs.mkdirSync(hanging);
+fs.writeFileSync(path.join(hanging,"package.json"),JSON.stringify({name:"hang",scripts:{test:"node -e \"setInterval(()=>{},1000)\""}}));
+const hangStarted=Date.now();
+const hung=await runner.execute({...req({task:"test",timeoutMs:1500}),projectId:"hang"}) as any;
+assert.equal(hung.timedOut,true);assert.equal(hung.ok,false);
+assert.ok(Date.now()-hangStarted<60_000,"a caller-requested limit must stop a test run that never exits");
 
 // ---------- external coding agents: one argv entry, never a shell
 const aider=externalCommand({name:"aider",kind:"local",path:"/usr/bin/aider",label:""},"--rm -rf / ; fix the login bug",{OLLAMA_BASE_URL:"http://127.0.0.1:11434/"});

@@ -7,9 +7,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {randomUUID} from "node:crypto";
+import {spawnSync} from "node:child_process";
 import {resolveDataPaths} from "../src/platform/paths.js";
 
 const id="acceptance-"+randomUUID().slice(0,8);
+const serverOnly=process.argv.includes("--server-only");
 const parent=path.join(resolveDataPaths().dataDir,"outcome-runs");
 fs.mkdirSync(parent,{recursive:true,mode:0o700});
 const root=path.join(parent,new Date().toISOString().replace(/[:.]/g,"-")+"-"+id);
@@ -116,6 +118,61 @@ if(!ollama?.available){
   write({ok:false,stage:"preflight",reason});
   console.error(JSON.stringify({ok:false,reason,reportFile},null,2));
   process.exitCode=2;
+}else if(serverOnly){
+  const stage="server-only";
+  const workspace=path.join(projects,id);
+  fs.mkdirSync(workspace,{recursive:true});
+  try{
+    const {taskServerGoal,verifyTaskApp}=await import("../src/autonomy/task-app-verifier.js");
+    const {repairMultilineHtmlResponse,repairTaskDeleteAssignment}=await import("../src/autonomy/js-source-repair.js");
+    const deps=coreSupervisorDeps(runtime.core);
+    const target="src/server.mjs";
+    const writeSource=async(content:string)=>{
+      const result=await deps.runTool(id,"files.write",{path:target,content});
+      if(!result.ok||result.data?.written!==true)throw Error(result.error??"Server write did not complete");
+    };
+    const check=()=>spawnSync(process.execPath,["--check",target],{cwd:workspace,encoding:"utf8",timeout:4000,windowsHide:true});
+    let goal=taskServerGoal,previous="";
+    for(let attempt=1;attempt<=2;attempt++){
+      const started=Date.now();
+      console.log(`Server-only acceptance: attempt ${attempt}/2`);
+      const source=await deps.generateTaskServer!(goal,previous);
+      const generationMs=Date.now()-started;
+      await writeSource(source.content);
+      let syntax=check();
+      if(syntax.status!==0){
+        const repair=repairMultilineHtmlResponse(workspace,syntax.stderr??"");
+        if(repair){await writeSource(repair.content);syntax=check();}
+      }
+      let independentBehavior=syntax.status===0?await verifyTaskApp(workspace):null;
+      const deleteRepair=independentBehavior&&!independentBehavior.ok
+        ?repairTaskDeleteAssignment(workspace,independentBehavior.blockers):undefined;
+      if(deleteRepair){
+        await writeSource(deleteRepair);
+        syntax=check();
+        independentBehavior=syntax.status===0?await verifyTaskApp(workspace):null;
+        console.log("Server-only acceptance: checked repair for delete assignment");
+      }
+      const build={ok:syntax.status===0,detail:syntax.error?.message??syntax.stderr};
+      const ok=build.ok&&independentBehavior?.ok===true;
+      if(ok||attempt===2){
+        const result={ok,stage,attempt,model:source.modelId,generationMs,build,independentBehavior};
+        write(result);
+        console.log(JSON.stringify({reportFile,workspace,...result},null,2));
+        if(!ok)process.exitCode=1;
+        break;
+      }
+      const failure=independentBehavior?.blockers.join("\n")??build.detail;
+      console.warn("Server-only acceptance: "+failure);
+      goal=taskServerGoal+"\nPrevious failure: "+failure.slice(0,2000);
+      previous=build.ok?fs.readFileSync(path.join(workspace,target),"utf8").slice(0,6000):"";
+    }
+  }catch(error){
+    const result={ok:false,stage,error:error instanceof Error?error.message:String(error)};
+    write(result);
+    console.error(JSON.stringify({reportFile,workspace,...result},null,2));
+    process.exitCode=1;
+  }
 }else{
   const supervisor=new Supervisor(coreSupervisorDeps(runtime.core),{file:path.join(store,"supervisor-jobs.json"),pollMs:500});
   try{
@@ -161,6 +218,7 @@ if(!ollama?.available){
       }
     }
     const finished=supervisor.get(job.id)!;
+    const timedOut=!terminal.has(finished.status);
     const report=finished.outcome;
     const machineRefs=new Set(report?.evidence.filter(e=>e.passed).map(e=>e.reference)??[]);
     const app=path.join(projects,id);
@@ -177,7 +235,7 @@ if(!ollama?.available){
     const accepted=acceptanceIds.every(id=>report?.evidence.some(e=>
       e.name==="acceptance:"+id&&e.passed&&e.reference.startsWith("project-artifact:")));
     const {verifyTaskApp}=await import("../src/autonomy/task-app-verifier.js");
-    const independent=hasProject?await verifyTaskApp(app):{ok:false,checks:[],blockers:["Generated application files missing."],verificationScope:"real-http-and-restart" as const};
+    const independent=hasProject&&!timedOut?await verifyTaskApp(app):finished.behavior??{ok:false,checks:[],blockers:[timedOut?"Acceptance deadline elapsed.":"Generated application files missing."],verificationScope:"real-http-and-restart" as const};
     const ok=finished.status==="completed"&&report?.status==="verified"
       &&machineRefs.has("project.run:test")&&machineRefs.has("project.run:build")
       &&machineRefs.has("independent:http:task-app")&&hasProject&&hasDelivery&&accepted
@@ -185,11 +243,11 @@ if(!ollama?.available){
     const result={
       ok,
       stage:"real-ollama-agent->generated-app->real-project-run->outcome-verification",
-      status:finished.status,
+      status:timedOut?"timed_out":finished.status,
       model:process.env.OLLAMA_MODEL?.trim()||"llama3.2:3b (default)",
       modelRouting:process.env.LAYANX_OLLAMA_MODEL_PLAN??null,
       hasProject,hasDelivery,accepted,acceptanceIds,artifactStatus,
-      failureReason:finished.result??null,
+      failureReason:ok?null:timedOut?`Acceptance deadline elapsed during ${finished.milestones[finished.current]?.title??"final verification"}.`:finished.result??null,
       deliveryFile,deliveryGuide,missionCount:finished.milestones.flatMap(m=>m.missions).length,
       milestoneFailures:finished.milestones.filter(m=>m.status==="failed"||Boolean(m.notes))
         .map(m=>({title:m.title,kind:m.kind,status:m.status,attempts:m.attempts,

@@ -30,13 +30,15 @@ The output includes:
 An individual run passes only when all of the following independently agree:
 1. Its generated isolated project reports `completed`, `ok:true`, an existing deliverable and app files.
 2. Its test/build result and independent HTTP behavior evidence are present.
-3. Each of ten distinct HTTP/restart checks passed exactly once.
+3. Each of eleven distinct HTTP/restart checks passed exactly once, including loading the home page while a task exists.
 4. The offline manifest verifier confirms file sizes, SHA-256 checksums, the Outcome report and no unlisted project files.
 5. The subprocess exited with code zero.
 
 The five-run gate passes only for **five independent passing runs** with distinct jobs and workspaces, with no warnings or missing attempts. Any failed attempt fails the aggregate release decision. A single passing example is useful for diagnosis, but does **not** establish reliability.
 
 ## Important remaining constraints
+
+Results depend on the coding model. When `gpt-oss:20b` is installed and the machine has enough memory, coding routes to it automatically; on the reference 6 GB GPU / 32 GB RAM PC it measured 5/5, against 2/5 for `qwen2.5-coder:7b`. A pinned coding model overrides this. In this profile the model writes the server's routes and browser code and the test assertions, while the system supplies the file structure and the test harness.
 
 This still verifies a narrow generated bilingual HTTP task-list app. It does **not** show that every natural-language request is reliably fulfilled, that HTML controls are usable by keyboard/screen reader, or that a browser user interaction was independently exercised. Restart testing here restarts the generated app server, not the Windows PC.
 

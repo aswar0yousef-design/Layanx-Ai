@@ -9,7 +9,7 @@ import {buildRepoMap} from "./repo-map.js";
 import {isLocalPreview} from "../platform/open-url.js";
 import {openRequest} from "../tools/open-app.js";
 import {errorSignature,findLessons,guidanceText,listLessons,listPlaybooks,markLessons,matchPlaybooks,recordLesson,recordPlaybookOutcome,savePlaybookCandidate,trustProjectPlaybook} from "./learning.js";
-import {repairMultilineHtmlResponse} from "./js-source-repair.js";
+import {readTaskServerSource,repairMultilineHtmlResponse,repairTaskDeleteAssignment} from "./js-source-repair.js";
 
 /**
  * Supervisor: finishes a goal without the owner watching.
@@ -34,7 +34,7 @@ import {assessOutcome,type OutcomeReport,type OutcomeRuntimeProof} from "./outco
 import {evaluateAcceptance,type AcceptanceRequirement,type AcceptanceProof} from "./acceptance-evidence.js";
 import {verifyAcceptanceArtifact} from "./acceptance-artifact.js";
 import {writeDeliveryManifest} from "./delivery.js";
-import {verifyTaskApp,type TaskAppProbeResult} from "./task-app-verifier.js";
+import {taskServerGoal,verifyTaskApp,type TaskAppProbeResult} from "./task-app-verifier.js";
 
 export interface Milestone{title:string;goal:string;kind:MilestoneKind;agent:string;status:"pending"|"running"|"done"|"failed";attempts:number;missions:string[];notes?:string}
 export interface Checks{install:boolean;test:boolean;build:boolean;typecheck:boolean;lint:boolean;browser:{path:string}|null;security?:boolean}
@@ -79,6 +79,8 @@ export interface ToolRun{ok?:boolean;missionId?:string;approvalId?:string;data?:
 export interface SupervisorDeps{
   think(prompt:string,opts?:{cloud?:boolean;images?:Array<{mimeType:string;base64:string}>}):Promise<string>;
   runAgent(goal:string,projectId:string,agentId:string,routing?:{preferLocal:boolean}):Promise<AgentRun>;
+  generateTaskServer?(goal:string,previous:string,routing?:{preferLocal:boolean}):Promise<{content:string;modelId:string}>;
+  generateTaskTests?:SupervisorDeps["generateTaskServer"];
   resumeAgent(missionId:string,projectId:string,agentId:string,approvals:Record<number,string>,routing?:{preferLocal:boolean}):Promise<AgentRun>;
   runTool(projectId:string,tool:string,payload:Record<string,unknown>,resume?:{missionId:string;approvalId:string}):Promise<ToolRun>;
   isApproved(approvalId:string):boolean;
@@ -123,6 +125,7 @@ function directDesktopOpenGoal(text:string):{app?:string;url?:string;label:strin
 }
 
 const MAX_ATTEMPTS=4;
+const ACCEPTANCE_TEST_TIMEOUT_MS=120_000;
 
 function now(){return new Date().toISOString();}
 function extractJson(raw:string):any{
@@ -389,7 +392,7 @@ export class Supervisor{
         acceptance:["Valid Node ESM package manifest","Real HTTP server with durable tasks","Real node:test suite","Independent create/list/delete/restart HTTP behavior"],
         milestones:[
           {title:"Create package.json",goal:"Write ONLY package.json now: valid JSON, type module, scripts test exactly 'node --test' and build exactly 'node --check src/server.mjs'. Do not run tests of files that are not yet required.",kind:"code"},
-          {title:"Implement src/server.mjs",goal:"Write a complete src/server.mjs exporting function createServer() that RETURNS a real node:http Server (http.createServer(...)), not an object or placeholder. Implement GET /health returning JSON {ok:true}, GET / bilingual Arabic/English HTML with add/delete controls, POST /tasks accepting JSON {title} and returning id/title, GET /tasks returning {tasks:[...]}, DELETE /tasks/:id. Read/write tasks durably at process.env.LAYANX_TASKS_FILE and preserve created/deleted tasks across restarts. Use built-in Node modules, no external dependencies. Run and repair node --check on this file. Do not write tests in this stage.",kind:"code"},
+          {title:"Implement src/server.mjs",goal:taskServerGoal,kind:"code"},
           {title:"Create tests/tasks.test.mjs",goal:"Write meaningful tests/tasks.test.mjs with node:test and node:assert/strict (import {test} from 'node:test'; import assert from 'node:assert/strict'). node:test does NOT export expect: do not import expect from node:test. Assert real health, add/list/delete, and restart-persistence behavior of createServer; run node --test and fix failures. Do not introduce placeholder passing tests.",kind:"code"}
         ],
         checks:{install:true,test:true,build:true,typecheck:false,lint:false,security:true,browser:null}
@@ -455,12 +458,21 @@ export class Supervisor{
   private async runMilestone(job:SupervisorJob,m:Milestone){
     job.rounds++;m.attempts++;m.status="running";
     const escalate=m.attempts>2&&this.deps.cloudAvailable();
-    const external=m.kind==="code"&&m.attempts===3?this.deps.externalAgent():null;
+    const generateServer=job.acceptanceProfile==="task-app-http-v1"&&job.current===1
+      ?this.deps.generateTaskServer:undefined;
+    const generateTests=job.acceptanceProfile==="task-app-http-v1"&&job.current===2
+      ?this.deps.generateTaskTests:undefined;
+    const external=!generateServer&&!generateTests&&m.kind==="code"&&m.attempts===3?this.deps.externalAgent():null;
     this.log(job,`Milestone ${job.current+1}/${job.milestones.length} attempt ${m.attempts}: ${m.title}`+(escalate?" (cloud model)":"")+(external?` (with ${external.name})`:""));
     if(escalate)job.cloudUsed=true;
     // Persist the in-flight state *before* handing a task to an agent.
     // Otherwise a crash leaves the last stored milestone pending and restart may replay it.
     this.save();
+    const generate=generateServer??generateTests;
+    if(generate){
+      await this.generateTaskSource(job,m,generate,generateTests?"tests/tasks.test.mjs":"src/server.mjs",escalate?{preferLocal:false}:undefined);
+      return;
+    }
     if(external){
       const r=await this.tool(job,"agent.external",{agent:external.name,task:this.taskText(job,m)});
       if(r==="waiting")return;
@@ -479,6 +491,30 @@ export class Supervisor{
     await this.afterWork(job,m);
   }
 
+  private async generateTaskSource(job:SupervisorJob,m:Milestone,generate:NonNullable<SupervisorDeps["generateTaskServer"]>,target:string,routing?:{preferLocal:boolean}){
+    const started=Date.now();
+    let candidate:{content:string;modelId:string};
+    try{
+      // A syntactically broken file that survived the narrow repair can contain
+      // several independent defects. Regenerate from the contract and diagnostic
+      // instead of asking the model to reproduce the failed implementation.
+      const syntaxFailed=/^build failed:[\s\S]*SyntaxError:/m.test(m.notes??"");
+      const previous=syntaxFailed&&target==="src/server.mjs"?"":clip(readTaskServerSource(projectDir(job.projectId)),6000);
+      const goal=[m.goal,job.notes?.join("\n"),m.notes&&"Previous failure: "+clip(m.notes,2000)].filter(Boolean).join("\n");
+      candidate=await generate(goal,previous,routing);
+    }catch(error){
+      const reason=(error as Error).message;
+      this.log(job,`${target} generation failed after ${Date.now()-started} ms: ${clip(reason,300)}`,"warn");
+      await this.afterWork(job,m,reason);
+      return;
+    }
+    this.log(job,`${target} generated by ${candidate.modelId} in ${Date.now()-started} ms`);
+    const written=await this.tool(job,"files.write",{path:target,content:candidate.content},"milestone");
+    if(written==="waiting")return;
+    if(written.missionId)m.missions.push(written.missionId);
+    await this.afterWork(job,m,written.ok&&written.data?.written===true?undefined:written.error??`Could not write ${target}`);
+  }
+
   /**
    * After an attempt: the gates decide. `agentStopped` is about THIS attempt only (an earlier attempt that
    * stopped must not fail a later one that finished: that kept jobs failing after one hiccup).
@@ -489,14 +525,12 @@ export class Supervisor{
     if(checks===undefined)return;
     job.lastChecks=checks;
     let failed=checks.filter(c=>!c.ok&&!c.skipped);
-    // The acceptance agent can write real source but accidentally put raw
-    // newlines in a single-quoted HTML literal. Repair only this reproducible
-    // syntax error, never fabricate a passing build. A Node syntax check
+    // Generated HTML can break JavaScript string delimiters. Apply only
+    // the narrow repairs recognized by the helper. A Node syntax check
     // validates the candidate and rolls back invalid edits; then rerun the
     // complete active milestone checks to gather independent evidence.
     if(job.acceptanceProfile==="task-app-http-v1"){
-      const brokenBuild=failed.find(c=>c.name==="build"&&
-        /SyntaxError: Invalid or unexpected token/i.test(c.summary));
+      const brokenBuild=failed.find(c=>c.name==="build");
       const proposed=brokenBuild?repairMultilineHtmlResponse(projectDir(job.projectId),brokenBuild.summary):undefined;
       if(proposed){
         // All writes must go through the same capability/approval/audit path
@@ -555,6 +589,16 @@ export class Supervisor{
       // the server milestone, before final delivery verification.
       job.behavior=probe;
       this.save();
+      const deleteRepair=probe.ok?undefined:repairTaskDeleteAssignment(projectDir(job.projectId),probe.blockers);
+      if(deleteRepair){
+        const applied=await this.tool(job,"files.write",{path:"src/server.mjs",content:deleteRepair},"milestone");
+        if(applied==="waiting")return;
+        if(applied.ok&&applied.data?.written===true){
+          this.log(job,"Repaired delete assignment; rerunning project checks");
+          await this.afterWork(job,m);
+          return;
+        }
+      }
       if(!probe.ok)failed.push({name:"HTTP behavior",ok:false,
         summary:clip(probe.blockers.join("; ")||"HTTP task server failed independent verification.",2000)});
     }
@@ -652,7 +696,8 @@ export class Supervisor{
       if(w.tool==="agent.external"&&m){await this.afterWork(job,m);return;}
       if(w.tool==="files.write"&&w.continuation==="milestone"&&m){
         if(resumed.ok&&resumed.data?.written===true){
-          this.log(job,"Approved syntax repair applied through files.write; rerunning checks");
+          if(!m.missions.includes(w.missionId))m.missions.push(w.missionId);
+          this.log(job,"Approved source write applied; rerunning checks");
           await this.afterWork(job,m);
         }else{
           m.notes="Approved syntax repair could not be written: "+String(resumed.error??"tool failed");
@@ -738,11 +783,18 @@ export class Supervisor{
       if(name==="test"&&placeholderTest(projectDir(job.projectId))){out.push({name,ok:true,skipped:true,summary:"no tests yet (npm init placeholder)"});continue;}
       const cached=resumable?job.checkCache?.results[name]:undefined;
       if(cached){out.push(cached);continue;}
-      const r=await this.tool(job,"project.run",{task:name},resumable?purpose:undefined);
+      // The acceptance suite is a handful of local HTTP calls; a run this long has hung.
+      const limit=job.acceptanceProfile==="task-app-http-v1"&&name==="test"?{timeoutMs:ACCEPTANCE_TEST_TIMEOUT_MS}:{};
+      const r=await this.tool(job,"project.run",{task:name,...limit},resumable?purpose:undefined);
       if(r==="waiting")return undefined;
       const d=r.data??{};
       const ok=Boolean(r.ok&&(d.ok??d.exitCode===0));
-      const result:CheckResult={name,ok,summary:ok?"passed":clip(String(d.stderr||"")+"\n"+String(d.stdout||"")||r.error||"failed",2000)};
+      const output=String(d.stderr||"")+"\n"+String(d.stdout||"");
+      // node --test prints the assertion details last; keep them when clipping.
+      const failingAt=name==="test"?output.indexOf("failing tests:"):-1;
+      const timedOut=d.timedOut?"The process did not exit before its time limit, so these results are incomplete. A server, timer or connection was probably left open: close them in a finally block.\n":"";
+      const detail=timedOut+(failingAt>=0?output.slice(failingAt):output).trim();
+      const result:CheckResult={name,ok,summary:ok?"passed":clip(detail||r.error||"failed",2000)};
       out.push(result);
       if(resumable&&job.checkCache)job.checkCache.results[name]=result;
     }
@@ -989,7 +1041,7 @@ export class Supervisor{
     return"Security check found problems that must be fixed before delivery:\n"+serious.map((f:any)=>`- [${f.severity}] ${f.message}${f.file?` (${f.file}:${f.line??""})`:""} — ${f.fix}`).join("\n");
   }
   private reopen(job:SupervisorJob,problem:string){
-    if(job.finalRepairs>=2){job.result="Final verification keeps failing:\n"+clip(problem,800);this.finished(job,false);this.set(job,"failed","Stopped: final verification keeps failing");return;}
+    if(job.acceptanceProfile==="task-app-http-v1"||job.finalRepairs>=2){job.result="Final verification failed:\n"+clip(problem,800);this.finished(job,false);this.set(job,"failed","Stopped: final verification failed");return;}
     job.finalRepairs++;
     job.milestones.push({title:"Fix final verification",goal:"Fix these problems found during the final verification without breaking anything else.",kind:"code",agent:"coder",status:"pending",attempts:0,missions:[],notes:problem});
     this.set(job,"running","Final verification found problems; added a repair milestone");

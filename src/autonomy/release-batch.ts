@@ -32,7 +32,7 @@ export interface LocalAcceptanceGate {
   filesVerified:number;
 }
 const REQUIRED_BEHAVIOR=[
-  "start","health","bilingual-home","create-task","list-task","restart",
+  "start","health","bilingual-home","create-task","list-task","home-with-task","restart",
   "persistent-create","delete-task","restart-after-delete","persistent-delete"
 ] as const;
 const REQUIRED_REFERENCES=[

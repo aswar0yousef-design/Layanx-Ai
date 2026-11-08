@@ -66,7 +66,10 @@ const RX={
   vision:/llava|vision|moondream|minicpm-v|qwen2\.5-?vl|qwen-?vl|qwen2-vl|gemma3(?!n|:1b|:270m)|llama4|mistral-small3\.[12]/i,
   tools:/llama3\.[1-3]|llama4|qwen2\.5|qwen3|qwq|mistral|mixtral|command-r|hermes|firefunction|granite3|gpt-oss|smollm2|phi4-mini|devstral|nemotron/i,
   thinking:/deepseek-r1|qwq|qwen3|gpt-oss|phi4-reasoning|magistral|cogito|openthinker/i,
-  coder:/coder|codellama|starcoder|codestral|devstral|codegemma|granite-code|codeqwen/i
+  coder:/coder|codellama|starcoder|codestral|devstral|codegemma|granite-code|codeqwen/i,
+  // Measured, not assumed: passed the 5-run task-app acceptance 5/5, against 2/5 for qwen2.5-coder:7b.
+  // Preferred only when installed and when memory allows; a pinned coding model still wins.
+  provenCoder:/^gpt-oss:20b$/i
 };
 
 export function normalizeBaseUrl(url:string|undefined):string{
@@ -194,7 +197,7 @@ export function scoreModel(model:OllamaModelProfile,task:ModelTask,machine:Machi
   switch(task){
     case "general":return size+(tools?12:0)-(coder?6:0)-(thinking?2:0)+fits+bonus;
     case "planning":return size*1.4+(tools?20:0)+(thinking?6:0)-(coder?3:0)+(model.contextLength>=16384?3:0)+fits/3+bonus;
-    case "coding":return (coder?30:0)+size+(tools?6:0)+fits+bonus;
+    case "coding":return (coder?30:0)+size+(tools?6:0)+fits+bonus+(RX.provenCoder.test(model.name)&&memoryPenalty(model,machine)>-25?40:0);
     case "vision":return 20+size+(tools?3:0)+fits+bonus;
     // Thinking is switched off for quick replies, so it only costs a little; coders make poor chat partners.
     case "fast":return 30-Math.min(model.paramsB||8,30)+(tools?6:0)-(thinking?3:0)-(coder?10:0)+fits+bonus;
