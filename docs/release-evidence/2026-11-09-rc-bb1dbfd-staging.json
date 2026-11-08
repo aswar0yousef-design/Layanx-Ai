@@ -1,0 +1,106 @@
+{
+  "startedAt": "2026-11-08T22:03:04.655Z",
+  "scope": "local Docker on the owner's PC",
+  "steps": {
+    "build-candidate": {
+      "image": "layanx-staging:bb1dbfd",
+      "commit": "bb1dbfdefc5c7dcfb4bbf9badbe895df0b86c0d5",
+      "sourceSha256": "888ed37b07df47b4786192254424bb033b9634623349c803ac06ee87adcc5000",
+      "imageId": "sha256:61cb97b27138a648ceac64c0ad3f25cb5c7ee02d1e7c55df6559054c9892dc97",
+      "buildSeconds": 11
+    },
+    "build-previous": {
+      "image": "layanx-staging:f9032ad",
+      "commit": "f9032ad07d8bc7679aac5c09ebc0ec93d5a171a8",
+      "sourceSha256": "b04bff1718fc75c8ef0fd19c4dc94e5bc718a796cf51b3948a9929a130e29c45",
+      "imageId": "sha256:8e3fdf428f72674ed13c0783cbd11c68661490f7823285ce0ea0ad5826e75ffa",
+      "buildSeconds": 1
+    },
+    "postgres": {
+      "ready": true,
+      "version": "postgres (PostgreSQL) 16.15"
+    },
+    "config-preflight": {
+      "passed": true,
+      "output": "Production preflight passed.\n{\"node\":\"v26.12.1\",\"mode\":\"local\",\"databaseConfigured\":true,\"apiTokenConfigured\":true,\"cloudProviderConfigured\":false}"
+    },
+    "config-preflight-rejects-missing-token": {
+      "rejected": true
+    },
+    "candidate-health": {
+      "healthy": true,
+      "status": 200,
+      "body": "{\"system\":\"LayanX AI\",\"ready\":true,\"healthy\":true,\"storage\":{\"healthy\":true,\"writable\":true,\"schemaVersion\":1,\"reason\":\"Runtime persistence is readable and writable.\"},\"providers\":[{\"provider\":\"ollama\",\"available\":true,\"latencyMs\":100,\"updatedAt\":\"2026-11-08T22:03:30.751Z\"}]}"
+    },
+    "runs-as-non-root": {
+      "uid": "10001"
+    },
+    "api-auth": {
+      "noTokenStatus": 401,
+      "wrongTokenStatus": 401,
+      "validTokenStatus": 200,
+      "systemLoadNoToken": 401,
+      "healthNoToken": 200
+    },
+    "api-acceptance": {
+      "passed": true,
+      "output": "{\n  \"accepted\": true,\n  \"productionUrl\": \"http://127.0.0.1:13000\",\n  \"checks\": [\n    \"/v1/health\",\n    \"/v1/status\",\n    \"/v1/control-center\",\n    \"/v1/scheduler\",\n    \"/v1/events/triggers\",\n    \"/v1/approvals?projectId=default\",\n    \"/v1/release\"\n  ],\n  \"timestamp\": \"2026-11-08T22:03:31.403Z\"\n}"
+    },
+    "restart-persistence": {
+      "missionStatus": 201,
+      "missionId": "027e696d-1525-40b1-86b3-12114eb4fdf9",
+      "missionRowsInPostgres": "0",
+      "kvRowsBefore": "1",
+      "kvRowsAfter": "1",
+      "healthyAfterRestart": true,
+      "missionSurvivedRestart": false,
+      "releaseCreateStatus": 201,
+      "releaseRecordSurvivedRestart": false
+    },
+    "container-without-token": {
+      "result": {
+        "unreachable": "Error: connect ECONNREFUSED 127.0.0.1:13000"
+      },
+      "exited": "exited"
+    },
+    "rollback-1-fault-injected": {
+      "fault": "candidate deployed with unreachable database",
+      "probe": {
+        "healthy": false,
+        "results": [
+          {
+            "name": "api-health",
+            "healthy": false
+          }
+        ],
+        "reason": "api-health failed."
+      },
+      "state": "exited",
+      "decision": "rollback",
+      "target": "f9032ad07d8bc7679aac5c09ebc0ec93d5a171a8"
+    },
+    "rollback-2-recovered": {
+      "recovered": true,
+      "seconds": 2,
+      "secondProbe": {
+        "healthy": true,
+        "results": [
+          {
+            "name": "api-health",
+            "healthy": true
+          }
+        ]
+      },
+      "verdict": "keep",
+      "reason": "Rollback target passed post-recovery health verification.",
+      "runningImage": "layanx-staging:f9032ad"
+    },
+    "roll-forward-candidate": {
+      "healthy": true,
+      "runningImage": "layanx-staging:bb1dbfd",
+      "statusAfter": 200
+    }
+  },
+  "finishedAt": "2026-11-08T22:04:27.265Z",
+  "failed": null
+}
