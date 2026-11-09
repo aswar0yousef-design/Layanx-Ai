@@ -56,7 +56,16 @@ type TaskPlan=Partial<Record<"general"|"planning"|"coding"|"vision"|"embedding"|
  *  - embedding -> "embedding"
  * LAYANX_OLLAMA_ROUTING=single keeps one model for everything (fewer model swaps on small GPUs).
  */
-export function ollamaTaskModels(raw:string|undefined,main:string,vision:string):ModelDefinition[]{
+export function ollamaModelLadders(raw:string|undefined):{coding:string[];planning:string[];proven?:string[]}|undefined{
+ try{
+  const value=raw?JSON.parse(raw) as {coding?:unknown;planning?:unknown;proven?:unknown}:undefined;
+  if(!value)return undefined;
+  const names=(v:unknown)=>Array.isArray(v)?v.filter((x):x is string=>typeof x==="string"&&Boolean(x)):[];
+  return{coding:names(value.coding),planning:names(value.planning),...(names(value.proven).length?{proven:names(value.proven)}:{})};
+ }catch{return undefined;}
+}
+const PINNED_CAPABILITIES:ModelCapability[]=["chat","reasoning","coding"];
+export function ollamaTaskModels(raw:string|undefined,main:string,vision:string,ladders?:{coding:string[];planning:string[]}):ModelDefinition[]{
  let plan:TaskPlan={};
  try{plan=raw?JSON.parse(raw) as TaskPlan:{};}catch{return[];}
  const entries=new Map<string,{caps:Set<ModelCapability>;priority:number;latency?:"fast";tags:Set<string>}>();
@@ -72,15 +81,19 @@ export function ollamaTaskModels(raw:string|undefined,main:string,vision:string)
  add(plan.embedding,"embedding",1,"embedding");
  const fast=plan.fast?entries.get(plan.fast):undefined;
  if(fast&&fast.priority===3)fast.caps.add("reasoning"); // only a dedicated small model may answer latency-sensitive planning
- return[...entries].map(([id,e])=>({id,provider:"ollama",capabilities:[...e.caps],local:true,enabled:true,priority:e.priority,tags:[...e.tags,"auto-routed"],...(e.latency?{latencyClass:e.latency}:{})}));
+ const ladderIds=new Set([...(ladders?.coding??[]),...(ladders?.planning??[])]);
+ for(const id of ladderIds)if(id!==main&&id!==vision&&!entries.has(id))entries.set(id,{caps:new Set<ModelCapability>(),priority:5,tags:new Set(["handoff"])});
+ return[...entries].map(([id,e])=>({id,provider:"ollama",capabilities:[...e.caps],...(ladderIds.has(id)?{pinnedCapabilities:PINNED_CAPABILITIES}:{}),local:true,enabled:true,priority:e.priority,tags:[...e.tags,"auto-routed"],...(e.latency?{latencyClass:e.latency}:{})}));
 }
 export function configureProviders(config=loadProviderConfig(),models=new ModelRegistry(),providers=new ModelProviderRegistry()){
  const allowLocal=config.mode==="local"||config.mode==="hybrid";const allowCloud=config.mode==="cloud"||config.mode==="hybrid";
  if(config.ollama.enabled&&allowLocal){providers.register(createOllamaProvider({baseUrl:config.ollama.baseUrl}));
    const mainSeesImages=config.ollama.visionModel===config.ollama.model;
    models.register({id:config.ollama.model,provider:"ollama",capabilities:["chat","reasoning","coding",...(mainSeesImages?["vision" as const]:[])],local:true,enabled:true,priority:1,...(mainSeesImages?{tags:["computer-use","vision"]}:{})});
-   if(config.ollama.visionModel&&!mainSeesImages)models.register({id:config.ollama.visionModel,provider:"ollama",capabilities:["vision"],local:true,enabled:true,priority:2,tags:["computer-use","vision"]});
-   if(process.env.LAYANX_OLLAMA_ROUTING!=="single")for(const extra of ollamaTaskModels(process.env.LAYANX_OLLAMA_MODEL_PLAN,config.ollama.model,config.ollama.visionModel))models.register(extra);}
+   const ladders=ollamaModelLadders(process.env.LAYANX_OLLAMA_MODEL_LADDER);
+   const visionInLadder=[...(ladders?.coding??[]),...(ladders?.planning??[])].includes(config.ollama.visionModel);
+   if(config.ollama.visionModel&&!mainSeesImages)models.register({id:config.ollama.visionModel,provider:"ollama",capabilities:["vision"],...(visionInLadder?{pinnedCapabilities:PINNED_CAPABILITIES}:{}),local:true,enabled:true,priority:2,tags:["computer-use","vision"]});
+   if(process.env.LAYANX_OLLAMA_ROUTING!=="single")for(const extra of ollamaTaskModels(process.env.LAYANX_OLLAMA_MODEL_PLAN,config.ollama.model,config.ollama.visionModel,ladders))models.register(extra);}
  // Cloud models for work the local models cannot do well. Order = LAYANX_CLOUD_ORDER (default openai,anthropic,gemini).
  // Tags let a goal ask for one provider by name ("use Claude"), see cloudRoutingForGoal().
  let priority=10;

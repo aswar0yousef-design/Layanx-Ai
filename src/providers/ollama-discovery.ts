@@ -196,7 +196,7 @@ export function scoreModel(model:OllamaModelProfile,task:ModelTask,machine:Machi
   const fits=(machine.gpuVramBytes??0)>0&&model.sizeBytes>0&&model.sizeBytes<=(machine.gpuVramBytes??0)*0.9?3:0;
   switch(task){
     case "general":return size+(tools?12:0)-(coder?6:0)-(thinking?2:0)+fits+bonus;
-    case "planning":return size*1.4+(tools?20:0)+(thinking?6:0)-(coder?3:0)+(model.contextLength>=16384?3:0)+fits/3+bonus;
+    case "planning":return size*1.4+(tools?20:0)+(thinking?6:0)-(coder?3:0)+(model.contextLength>=16384?3:0)+fits/3+bonus+(RX.provenCoder.test(model.name)&&memoryPenalty(model,machine)>-25?40:0);
     case "coding":return (coder?30:0)+size+(tools?6:0)+fits+bonus+(RX.provenCoder.test(model.name)&&memoryPenalty(model,machine)>-25?40:0);
     case "vision":return 20+size+(tools?3:0)+fits+bonus;
     // Thinking is switched off for quick replies, so it only costs a little; coders make poor chat partners.
@@ -210,6 +210,13 @@ export function rankModels(models:OllamaModelProfile[],task:ModelTask,machine:Ma
     .filter((x):x is {model:OllamaModelProfile;score:number}=>x.score!==null)
     .sort((a,b)=>b.score-a.score||a.model.name.localeCompare(b.model.name))
     .map(x=>x.model);
+}
+
+/** The order in which unfinished work moves between installed models: best first, nothing the machine cannot hold. */
+export function buildModelLadders(discovery:Pick<OllamaDiscovery,"models"|"loaded">,machine:MachineProfile=currentMachine(),limit=3):{coding:string[];planning:string[];proven?:string[]}{
+  const ladder=(task:ModelTask)=>rankModels(discovery.models,task,machine,discovery.loaded).filter(model=>memoryPenalty(model,machine)>-25).slice(0,limit).map(model=>model.name);
+  const coding=ladder("coding"),proven=coding.filter(name=>RX.provenCoder.test(name));
+  return{coding,planning:ladder("planning"),...(proven.length?{proven}:{})};
 }
 
 export function findModel(models:OllamaModelProfile[],wanted:string|undefined):OllamaModelProfile|undefined{

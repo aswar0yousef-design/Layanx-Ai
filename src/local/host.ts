@@ -13,7 +13,7 @@ import {freeLoopbackPort,startGateway,type GatewayHandle} from "../security/loca
 import {ensureLanCertificate,type LanCertificate} from "../security/lan-tls.js";
 import {applySecretsToEnv,ensureGeneratedSecret,openSecretStore,type SecretStore} from "../security/secret-store.js";
 import {AdaptiveOllama} from "../providers/adaptive-ollama.js";
-import {buildModelPlan,currentMachine,detectGpuVramBytes,recommendNumCtx,type ModelTask} from "../providers/ollama-discovery.js";
+import {buildModelLadders,buildModelPlan,currentMachine,detectGpuVramBytes,recommendNumCtx,type ModelTask} from "../providers/ollama-discovery.js";
 import {consoleLogger,installLogTee,type Logger} from "./log.js";
 import {CLOUD_PROVIDERS,loadSettings,saveSettings,type CloudProviderId,type LocalSettings} from "./settings.js";
 import {createSetupRoutes} from "./setup-routes.js";
@@ -168,6 +168,7 @@ export async function bootstrapLocalRuntime(env:NodeJS.ProcessEnv=process.env,lo
   env.LAYANX_OLLAMA_CONTEXT=JSON.stringify(context);
   env.LAYANX_OLLAMA_THINKING_MODELS=discovery.models.filter(m=>m.capabilities.includes("thinking")).map(m=>m.name).join(",");
   env.LAYANX_OLLAMA_MODEL_PLAN=JSON.stringify(plan.assignments);
+  env.LAYANX_OLLAMA_MODEL_LADDER=JSON.stringify(buildModelLadders(discovery,currentMachine()));
   writeFileAtomic(paths.modelsCacheFile,JSON.stringify({discovery,plan},null,2));
   log("info",`ollama: ${discovery.reachable?`${discovery.models.length} models`:"unreachable"}; plan ${JSON.stringify(plan.assignments)}`);
   return{paths,store,installId,apiToken,settings,ollama,appliedModels};

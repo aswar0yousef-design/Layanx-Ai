@@ -4,6 +4,7 @@ import type {LayanXCore} from "../core/orchestrator.js";
 import {normalizeArabic,tokenize} from "../providers/tool-selection.js";
 import {openRequest} from "../tools/open-app.js";
 import {classifyDialogue,directDialogueAnswer,reviewDialogueAnswer} from "./dialogue-brain.js";
+import {asksProjectStatus,classifyProjectWork,needsProjectReply,projectStartedReply,projectStatusReply,type ProjectJobView,type ProjectStart,type ProjectWork} from "./project-intent.js";
 
 /**
  * The "Jarvis" layer: one conversational entry point for voice and text.
@@ -39,6 +40,8 @@ export interface AssistantTurnResult{
   goal?:string;
   task?:AssistantTaskSummary;
   report?:AssistantReport;
+  /** Set when the request became a supervised project. It runs in the background; ask for its status. */
+  job?:{id:string;projectId:string;status:string};
 }
 
 export interface AssistantSnapshot{
@@ -65,6 +68,8 @@ export interface AssistantDeps{
   now?():Date;
   /** What keeps the local model busy right now (a running autonomous job), so a slow reply can say why. */
   busyWith?():string|undefined;
+  startProject?(goal:string,work:ProjectWork,projectId:string):ProjectStart;
+  projectStatus?(projectId:string):ProjectJobView|undefined;
 }
 
 const ARABIC=/[\u0600-\u06FF]/;
@@ -215,6 +220,14 @@ export class VoiceAssistant{
     const dialogue=classifyDialogue(text);
     const direct=directDialogueAnswer(dialogue.topic,lang);
     if(direct)return{ok:true,lang,intent:"answer",reply:direct};
+    if(this.deps.projectStatus&&asksProjectStatus(text))return{ok:true,lang,intent:"report",reply:projectStatusReply(this.deps.projectStatus(projectId),lang)};
+    const projectWork=this.deps.startProject?classifyProjectWork(text):null;
+    if(projectWork){
+      if(input.allowTasks===false)return{ok:true,lang,intent:"task",goal:text,reply:t.tasksOff(text)};
+      const start=this.deps.startProject!(text,projectWork,projectId);
+      if("needsProject" in start)return{ok:true,lang,intent:"answer",reply:needsProjectReply(lang)};
+      return{ok:true,lang,intent:"task",goal:text,job:{id:start.started.id,projectId:start.started.projectId,status:start.started.status},reply:projectStartedReply(start.started,lang,start.alreadyRunning)};
+    }
     // "Open Chrome" is a task already: no model to ask what it means (and the planner opens it in one step).
     const opening=openRequest(text);
     if(opening){

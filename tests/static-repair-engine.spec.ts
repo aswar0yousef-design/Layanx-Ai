@@ -31,6 +31,12 @@ const prompt=buildRepairPrompt(project,"box items-box is empty on list.html",fai
 assert.match(prompt,/function loadState/);assert.match(prompt,/function init/,"callers of the failing code are included");
 assert.match(prompt,/app\.js:2: createDemo\(\);/,"every occurrence of the undefined name is listed");
 
+// A report in plain words still leads to the code: the expected text and the empty elements on the page are evidence.
+write("plain.js","function showNext() {\n  document.getElementById('next-box').textContent = 'nothing due';\n}\nfunction unrelatedThing() {\n  return 1;\n}\n");
+const silent=summarizeObservation([page({missing:["nothing due"],emptyIds:["next-box"]})]);
+assert.ok(evidenceTokens("the box should say «nothing due»",silent).includes("nothing due"));
+assert.ok(evidenceTokens("the box is blank",silent).includes("next-box"));
+
 // A patch is validated against the files on disk and nothing is written.
 const original=fs.readFileSync(path.join(project,"app.js"),"utf8");
 const ok=prepareRepair(project,{cause:"undefined call",edits:[{path:"./app.js",find:"  createDemo();\n",replace:""}]});
@@ -49,6 +55,13 @@ reject([{path:"app.js",find:"loadState();",replace:"loadState();"}],/changes not
 reject([{path:"app.js",find:"function render() {",replace:"function render( {"}],/breaks app\.js/);
 reject([{path:"app.js",find:"  render();",replace:Array(50).fill("//x").join("\n")}],/limit/);
 reject([1,2,3,4],/More than 3/);
+// A patch may not orphan what returning users saved: an empty-profile browser check cannot see that.
+write("store.js","const savedData = localStorage.getItem('appData');\nconst other = localStorage.getItem('keep');\nconst STORAGE_KEY = 'app:v1';\nfunction use() { return savedData; }\n");
+reject([{path:"store.js",find:"localStorage.getItem('appData')",replace:"localStorage.getItem(window.Data.KEY)"}],/saved data/);
+reject([{path:"store.js",find:"const other = localStorage.getItem('keep');\n",replace:""}],/saved data/);
+reject([{path:"store.js",find:"STORAGE_KEY = 'app:v1'",replace:"STORAGE_KEY = 'app:v2'"}],/saved data/);
+assert.ok(prepareRepair(project,{edits:[{path:"store.js",find:"const savedData = localStorage.getItem('appData');",replace:"const savedData = localStorage.getItem( 'appData' ) || '[]';"}]}).files[0]!.content.includes("|| '[]'"),"the same key used differently is fine");
+assert.ok(prepareRepair(project,{edits:[{path:"store.js",find:"return savedData;",replace:"return savedData || [];"}]}),"edits away from storage are unaffected");
 // Windows line endings in the project do not defeat a multi-line find.
 write("crlf.js","function a() {\r\n  return 1;\r\n}\r\n");
 assert.ok(prepareRepair(project,{edits:[{path:"crlf.js",find:"function a() {\n  return 1;",replace:"function a() {\n  return 2;"}]}).files[0]!.content.includes("return 2;\r\n"));
@@ -92,10 +105,44 @@ assert.equal(notReproduced.prompts.length,0,"no model call and no change for a b
 const never=await run({patches:[patch,patch,patch,patch],observe:()=>failing});
 assert.equal(never.job.status,"failed","a fix the browser does not confirm is never reported as success");
 assert.equal(never.prompts.length,4);
-assert.equal(never.writes.filter(p=>p==="app.js").length,8,"every patch that changed nothing was undone");
+assert.equal(never.writes.filter(p=>p==="app.js").length,7,"two patches held, two undone, and the held ones removed when the job gave up");
 assert.match(never.prompts[1]!,/did not change what the browser observes/,"the next attempt is told why the last one failed");
 
 const unusable=await run({patches:["no json here"],observe:()=>failing});
 assert.equal(unusable.job.status,"failed");assert.equal(unusable.writes.length,0);
+
+// A return visit counts on the reported page, and a patch may not break other pages for returning users.
+assert.equal(observe([page({returningErrors:["boom"]})]).ok,false);
+assert.match(observe([page({returningErrors:["boom"]})]).summary,/return visit/);
+assert.equal(observe([page({errors:[{message:"boom",stack:""}],returningErrors:["boom"]})]).summary.match(/boom/g)!.length,1,"the same crash is reported once");
+const otherClean=page({page:"other.html",target:false,returningErrors:[]}),otherBroken=page({page:"other.html",target:false,returningErrors:["x"]});
+assert.match(repairSetback(observe([page({}),otherClean]),observe([page({}),otherBroken]))!,/returning users/);
+assert.equal(repairSetback(observe([page({}),otherBroken]),observe([page({}),otherBroken])),undefined,"older bugs are not blamed on the patch");
+
+// Two causes: a correct fix with no visible effect is held; held patches the final fix does not need are dropped.
+const diskRun=async(patches:string[],works:(source:string)=>boolean)=>{
+  write("app.js","var a=1;\nvar b=1;\nvar z=1;\n");
+  const seeds:unknown[]=[];let baseline=true;
+  const deps:any={think:async()=>"{}",runAgent:async()=>{throw new Error("unused");},resumeAgent:async()=>{throw new Error("unused");},
+    generateRepairPatch:async()=>({content:patches.shift()??"not json",modelId:"fake"}),
+    observeStatic:async(_d:string,_r:string,seed:unknown)=>{seeds.push(seed);const result=works(fs.readFileSync(path.join(project,"app.js"),"utf8"))?clean:failing;if(baseline){baseline=false;return{...result,storage:{key:"saved"}};}return result;},
+    runTool:async(_p:string,tool:string,payload:any)=>{if(tool==="files.write"){fs.writeFileSync(path.join(project,payload.path),payload.content);return{ok:true,data:{written:true}};}return{ok:true,data:{stdout:""}};},
+    isApproved:()=>true,detect:()=>({stack:"unknown",scripts:[],git:false}),cloudAvailable:()=>false,externalAgent:()=>null};
+  const supervisor=new Supervisor(deps,{file:path.join(dir,`jobs-${Math.random()}.json`),pollMs:5});
+  const job=supervisor.create("box items-box is empty on list.html","site",{acceptanceProfile:"static-repair-v1"});
+  for(let i=0;i<400&&!terminal.includes(supervisor.get(job.id)!.status);i++)await new Promise(r=>setTimeout(r,10));
+  supervisor.stop();
+  return{job:supervisor.get(job.id)!,seeds,source:fs.readFileSync(path.join(project,"app.js"),"utf8")};
+};
+const edit=(find:string,replace:string)=>JSON.stringify({cause:find,edits:[{path:"app.js",find,replace}]});
+const bothFixed=(source:string)=>source.includes("a=2")&&source.includes("b=2");
+const twoCauses=await diskRun([edit("var z=1","var z=2"),edit("var a=1","var a=2"),edit("var b=1","var b=2")],bothFixed);
+assert.equal(twoCauses.job.status,"completed",twoCauses.job.result);
+assert.equal(twoCauses.source,"var a=2;\nvar b=2;\nvar z=1;\n","the needed fix stays and the useless patch is gone");
+assert.deepEqual(twoCauses.seeds[0],undefined);assert.deepEqual(twoCauses.seeds[1],{key:"saved"},"what the unpatched app stored is replayed against every patch");
+const gaveUp=await diskRun([edit("var z=1","var z=2"),edit("var a=1","var a=2"),"no json","no json"],bothFixed);
+assert.equal(gaveUp.job.status,"failed");
+assert.equal(gaveUp.source,"var a=1;\nvar b=1;\nvar z=1;\n","held patches do not stay when the fix was not proven");
+
 console.log("static-repair-engine: evidence, patch validation, undo and supervisor gates verified");
 process.exit(0);

@@ -1,13 +1,15 @@
 export type ModelCapability="chat"|"reasoning"|"coding"|"vision"|"embedding"|"audio";
-export interface ModelDefinition{id:string;provider:string;providerModelId?:string;capabilities:ModelCapability[];local:boolean;enabled:boolean;priority:number;qualityScore?:number;costPer1kInputUsd?:number;costPer1kOutputUsd?:number;latencyClass?:"fast"|"balanced"|"slow";tags?:string[];}
+export interface ModelDefinition{id:string;provider:string;providerModelId?:string;capabilities:ModelCapability[];pinnedCapabilities?:ModelCapability[];local:boolean;enabled:boolean;priority:number;qualityScore?:number;costPer1kInputUsd?:number;costPer1kOutputUsd?:number;latencyClass?:"fast"|"balanced"|"slow";tags?:string[];}
 export interface ModelSelectionRequest{capability:ModelCapability;modelId?:string;preferredModelId?:string;preferLocal?:boolean;preferFree?:boolean;latencySensitive?:boolean;maxCostUsd?:number;minQualityScore?:number;tags?:string[];}
 export class ModelRegistry{
  private readonly models=new Map<string,ModelDefinition>();
  register(model:ModelDefinition){if(this.models.has(model.id))throw new Error("Model already registered.");this.models.set(model.id,model);}
  get(id:string){const m=this.models.get(id);if(!m)throw new Error("Unknown model: "+id);return m;}
  find(capability:ModelCapability){return[...this.models.values()].filter(m=>m.enabled&&m.capabilities.includes(capability)).sort((a,b)=>a.priority-b.priority);}
+ /** Models offered only to a request that names them, so a handoff ladder never adds silent failover candidates. */
+ private pinnedOnly(request:ModelSelectionRequest){const m=request.modelId!==undefined?this.models.get(request.modelId):undefined;return m&&m.enabled&&!m.capabilities.includes(request.capability)&&m.pinnedCapabilities?.includes(request.capability)?[m]:[];}
  select(request:ModelSelectionRequest){
-  const candidates=this.find(request.capability).filter(model=>{
+  const candidates=[...this.find(request.capability),...this.pinnedOnly(request)].filter(model=>{
    if(request.modelId!==undefined&&model.id!==request.modelId)return false;
    if(request.minQualityScore!==undefined&&(model.qualityScore??0)<request.minQualityScore)return false;
    if(request.maxCostUsd!==undefined&&(model.costPer1kInputUsd??0)+(model.costPer1kOutputUsd??0)>request.maxCostUsd)return false;

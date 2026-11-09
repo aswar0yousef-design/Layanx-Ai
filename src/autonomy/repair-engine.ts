@@ -13,11 +13,12 @@ export const STATIC_REPAIR_PROFILE="static-repair-v1";
 const MAX_PAGES=8,PROMPT_CODE_BUDGET=9000,MAX_EDIT_LINES=40;
 
 export interface PageError{message:string;stack:string}
-export interface PageObservation{page:string;target:boolean;errors:PageError[];consoleErrors:string[];missing:string[];text:string}
-export interface StaticObservation{ok:boolean;pages:PageObservation[];summary:string;signature:string}
-export type StaticObserver=(dir:string,report:string)=>Promise<StaticObservation>;
+export interface PageObservation{page:string;target:boolean;errors:PageError[];consoleErrors:string[];missing:string[];text:string;returningErrors?:string[];emptyIds?:string[]}
+export interface StaticObservation{ok:boolean;pages:PageObservation[];summary:string;signature:string;storage?:Record<string,string>}
+/** seed: what the unpatched app left in the browser, replayed so a patch is judged against data people already have. */
+export type StaticObserver=(dir:string,report:string,seed?:Record<string,string>)=>Promise<StaticObservation>;
 export interface RepairEdit{path:string;find:string;replace:string}
-export interface PreparedRepair{cause:string;files:Array<{path:string;content:string;original:string}>;changedLines:number}
+export interface PreparedRepair{cause:string;files:Array<{path:string;content:string;original:string}>;changedLines:number;edits:RepairEdit[]}
 
 export function rootPages(dir:string):string[]{
   return fs.readdirSync(dir,{withFileTypes:true}).filter(e=>e.isFile()&&/\.html?$/i.test(e.name)).map(e=>e.name).sort().slice(0,MAX_PAGES);
@@ -38,16 +39,18 @@ export function summarizeObservation(pages:PageObservation[]):StaticObservation{
   const problems=pages.filter(p=>p.target).flatMap(p=>[
     ...p.errors.map(e=>`${p.page}: uncaught error: ${e.message}`),
     ...p.consoleErrors.map(e=>`${p.page}: console error: ${e}`),
-    ...p.missing.map(text=>`${p.page}: expected text is not shown: ${text}`)
+    ...p.missing.map(text=>`${p.page}: expected text is not shown: ${text}`),
+    ...(p.returningErrors??[]).filter(e=>!p.errors.some(first=>first.message===e)).map(e=>`${p.page}: uncaught error on a return visit: ${e}`)
   ]);
   return{ok:pages.some(p=>p.target)&&!problems.length,pages,summary:problems.join("\n").slice(0,2000)||"The reported pages load without errors and show the expected text.",signature:problems.join("|")};
 }
 
 /** A fresh browser profile is the "first visit" the owner reports; nothing is seeded. */
-export const observeStaticProject:StaticObserver=async(dir,report)=>{
+export const observeStaticProject:StaticObserver=async(dir,report,seed)=>{
   const root=path.resolve(dir);
   const mime:Record<string,string>={".html":"text/html; charset=utf-8",".htm":"text/html; charset=utf-8",".js":"text/javascript; charset=utf-8",".css":"text/css; charset=utf-8",".json":"application/json"};
   const server=http.createServer((request,response)=>{
+    if(request.url==="/__layanx_storage__"){response.writeHead(200,{"content-type":"text/html; charset=utf-8"});response.end("<!doctype html>");return;}
     const file=path.resolve(root,"."+decodeURIComponent(new URL(request.url??"/","http://local").pathname));
     if(!file.startsWith(root+path.sep)||!fs.existsSync(file)||!fs.statSync(file).isFile()){response.writeHead(404);response.end();return;}
     response.writeHead(200,{"content-type":mime[path.extname(file).toLowerCase()]??"application/octet-stream"});
@@ -72,10 +75,33 @@ export const observeStaticProject:StaticObserver=async(dir,report)=>{
       await page.goto(base+encodeURIComponent(name),{waitUntil:"load",timeout:20000});
       await page.waitForTimeout(500);
       const text=String(await page.locator("body").innerText().catch(()=>""));
-      observed.push({page:name,target:targets.has(name),errors,consoleErrors,missing:targets.has(name)?phrases.filter(p=>!text.includes(p)):[],text:text.slice(0,600)});
+      const emptyIds=await page.evaluate(()=>[...document.querySelectorAll("[id]")].filter(e=>!e.textContent?.trim()&&!e.matches("input,select,textarea,img,canvas,svg,video,audio,script")).map(e=>e.id).slice(0,12)).catch(()=>[]) as string[];
+      observed.push({page:name,target:targets.has(name),errors,consoleErrors,missing:targets.has(name)?phrases.filter(p=>!text.includes(p)):[],text:text.slice(0,600),emptyIds});
       await context.close();
     }
-    return summarizeObservation(observed);
+    // A return visit: same browser, with what the app stored. Nothing here may depend on the model's description of the data.
+    const returning=await browser.newContext();
+    const visit=async(name:string)=>{
+      const page=await returning.newPage();const errors:string[]=[];
+      page.on("pageerror",(e:Error)=>errors.push(e.message));
+      await page.goto(base+encodeURIComponent(name),{waitUntil:"load",timeout:20000});
+      await page.waitForTimeout(300);
+      await page.close();
+      return errors;
+    };
+    const atOrigin=async<T>(action:(page:any)=>Promise<T>):Promise<T>=>{
+      const page=await returning.newPage();
+      await page.goto(base+"__layanx_storage__",{waitUntil:"load",timeout:20000});
+      const value=await action(page);
+      await page.close();
+      return value;
+    };
+    if(seed&&Object.keys(seed).length)await atOrigin(page=>page.evaluate((items:Record<string,string>)=>{for(const[key,value]of Object.entries(items))localStorage.setItem(key,value);},seed));
+    else for(const name of pages)await visit(name);
+    for(const entry of observed)entry.returningErrors=await visit(entry.page);
+    const storage=await atOrigin(page=>page.evaluate(()=>Object.fromEntries(Object.entries(localStorage)))) as Record<string,string>;
+    await returning.close();
+    return{...summarizeObservation(observed),storage};
   }finally{
     await browser.close().catch(()=>undefined);
     await new Promise<void>(resolve=>server.close(()=>resolve()));
@@ -115,6 +141,9 @@ export function evidenceTokens(report:string,observation:StaticObservation):stri
     }
   }
   for(const match of report.matchAll(/\b[a-z][a-z0-9]*(?:-[a-z0-9]+)+\b|\b[a-z]+[A-Z][A-Za-z0-9]*\b/g))tokens.add(match[0]);
+  // People describe what they see, not element ids. What the page shows, and the text that should be there, lead to the code.
+  for(const phrase of expectedPhrases(report))tokens.add(phrase);
+  for(const page of observation.pages.filter(p=>p.target))for(const id of page.emptyIds??[])tokens.add(id);
   return[...tokens].filter(token=>!/^(?:Object|HTMLDocument|EventTarget)$/.test(token));
 }
 
@@ -130,7 +159,8 @@ export function buildRepairPrompt(dir:string,report:string,observation:StaticObs
     for(const block of blocks)if(names.some(name=>new RegExp("\\b"+name.replace(/\$/g,"\\$")+"\\s*\\(").test(block.text)))relevant.add(block);
   }
   let code="",room=PROMPT_CODE_BUDGET;
-  for(const block of blocks.filter(block=>relevant.has(block))){
+  // With no lead at all, some code beats none: without any, models invent lines that do not exist.
+  for(const block of relevant.size?blocks.filter(block=>relevant.has(block)):blocks){
     if(block.text.length>room)continue;
     room-=block.text.length;code+=`--- ${block.file}\n${block.text}`;
   }
@@ -155,6 +185,14 @@ export function buildRepairPrompt(dir:string,report:string,observation:StaticObs
 }
 
 const lineCount=(text:string)=>text.split("\n").length;
+/** Browser checks start from an empty profile, so they cannot see a patch that orphans what returning users saved. */
+function storageReferences(code:string):string[]{
+  const clean=(value:string)=>value.replace(/\s+/g,"");
+  return[
+    ...[...code.matchAll(/\b(?:localStorage|sessionStorage)\s*\.\s*(?:getItem|setItem|removeItem)\s*\(\s*([^,)]+)/g)].map(match=>clean(match[1]!)),
+    ...[...code.matchAll(/\b\w*STORAGE\w*KEY\w*\s*[:=]\s*(['"`][^'"`]*['"`])/gi)].map(match=>clean(match[1]!))
+  ];
+}
 /** Validates a proposed patch against the files on disk without writing anything. Throws the reason it is unusable. */
 export function prepareRepair(dir:string,proposal:unknown):PreparedRepair{
   const value=proposal as {cause?:unknown;edits?:unknown}|null;
@@ -162,6 +200,7 @@ export function prepareRepair(dir:string,proposal:unknown):PreparedRepair{
   if(value.edits.length>3)throw new Error("More than 3 edits were proposed.");
   const root=path.resolve(dir);
   const files=new Map<string,{content:string;original:string}>();
+  const edits:RepairEdit[]=[];
   let changedLines=0;
   for(const raw of value.edits as RepairEdit[]){
     if(typeof raw?.path!=="string"||typeof raw.find!=="string"||typeof raw.replace!=="string"||!raw.find)throw new Error("An edit is missing path, find or replace.");
@@ -175,9 +214,12 @@ export function prepareRepair(dir:string,proposal:unknown):PreparedRepair{
     const find=raw.find.replace(/\r?\n/g,eol),replace=raw.replace.replace(/\r?\n/g,eol);
     const occurrences=current.content.split(find).length-1;
     if(occurrences!==1)throw new Error(`find must occur exactly once in ${relative}; it occurs ${occurrences} times: ${raw.find.slice(0,120)}`);
+    const lostStorage=storageReferences(find).filter(reference=>!storageReferences(replace).includes(reference));
+    if(lostStorage.length)throw new Error(`The patch changes where saved data is kept (${lostStorage.join(", ")}); data people already saved would disappear. Fix the bug without changing storage keys.`);
     changedLines+=lineCount(raw.find)+lineCount(raw.replace);
     current.content=current.content.replace(find,()=>replace);
     files.set(relative,current);
+    edits.push({path:relative,find,replace});
   }
   if(changedLines>MAX_EDIT_LINES)throw new Error(`The patch changes ${changedLines} lines; the limit is ${MAX_EDIT_LINES}.`);
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),"lx-repair-"));
@@ -190,9 +232,11 @@ export function prepareRepair(dir:string,proposal:unknown):PreparedRepair{
       if(check.status!==0)throw new Error(`The patch breaks ${relative}: ${String(check.stderr).split("\n").find(l=>/Error/.test(l))??"syntax error"}`);
     }
   }finally{fs.rmSync(temp,{recursive:true,force:true});}
-  return{cause:typeof value.cause==="string"?value.cause.slice(0,400):"",files:[...files].map(([p,f])=>({path:p,content:f.content,original:f.original})),changedLines};
+  return{cause:typeof value.cause==="string"?value.cause.slice(0,400):"",files:[...files].map(([p,f])=>({path:p,content:f.content,original:f.original})),changedLines,edits};
 }
 
+export const NO_VISIBLE_EFFECT="The patch did not change what the browser observes:";
+const dataOnlyErrors=(page:PageObservation,earlier:PageObservation)=>(page.returningErrors??[]).filter(error=>!page.errors.some(first=>first.message===error)&&!(earlier.returningErrors??[]).includes(error));
 /**
  * Why a patch must be undone: it changed nothing observable, or another page that was clean now fails.
  * A new error on the reported page is progress: a correct fix often exposes the next cause behind it.
@@ -203,6 +247,23 @@ export function repairSetback(before:StaticObservation,after:StaticObservation):
     return !page.target&&Boolean(earlier)&&page.errors.length>0&&!earlier!.errors.length;
   }).map(page=>page.page+": "+page.errors[0]!.message);
   if(newlyBroken.length)return"The patch broke a page that worked: "+newlyBroken.join("; ");
-  if(!after.ok&&after.signature===before.signature)return"The patch did not change what the browser observes:\n"+after.summary;
+  const brokenOnReturn=after.pages.filter(page=>{
+    const earlier=before.pages.find(p=>p.page===page.page);
+    // A crash that also happens on a first visit is an older bug the fix uncovered; one that needs saved data is about that data.
+    return !page.target&&Boolean(earlier?.returningErrors)&&dataOnlyErrors(page,earlier!).length>0;
+  }).map(page=>page.page+": "+dataOnlyErrors(page,before.pages.find(p=>p.page===page.page)!)[0]!);
+  if(brokenOnReturn.length)return"The patch broke a page for returning users: "+brokenOnReturn.join("; ");
+  if(!after.ok&&after.signature===before.signature)return NO_VISIBLE_EFFECT+"\n"+after.summary;
   return undefined;
+}
+
+/** Undoes one patch inside the current text, or says it can no longer be separated from later work. */
+export function reverseEdits(contents:Map<string,string>,edits:RepairEdit[]):Map<string,string>|undefined{
+  const result=new Map(contents);
+  for(const edit of [...edits].reverse()){
+    const current=result.get(edit.path);
+    if(current===undefined||!edit.replace||current.split(edit.replace).length!==2)return undefined;
+    result.set(edit.path,current.replace(edit.replace,()=>edit.find));
+  }
+  return result;
 }

@@ -2,7 +2,8 @@ import {randomUUID} from "node:crypto";
 import type {LayanXCore} from "../core/orchestrator.js";
 import {cloudPolicy} from "../config/providers.js";
 import {pickExternalAgent} from "./external-agents.js";
-import type {SupervisorDeps,ToolRun} from "./supervisor.js";
+import type {JobRouting,SupervisorDeps,ToolRun} from "./supervisor.js";
+import {ollamaModelLadders} from "../config/providers.js";
 import {openInBrowser} from "../platform/open-url.js";
 import {composeTaskTestSource,TASK_SERVER_SKELETON,TASK_TEST_HARNESS,taskTestContractViolations} from "./task-app-verifier.js";
 
@@ -31,7 +32,7 @@ export async function runSingleTool(core:LayanXCore,projectId:string,tool:string
 
 export function coreSupervisorDeps(core:LayanXCore):SupervisorDeps{
   const cloudReady=()=>cloudPolicy()!=="off"&&core.models.list().some(m=>!m.local&&m.enabled);
-  const generateSource=async(input:string,routing?:{preferLocal:boolean})=>{
+  const generateSource=async(input:string,routing?:JobRouting)=>{
     const response=await core.modelExecution.execute({
       capability:"coding",routing:routing??{preferLocal:true},maxOutputTokens:3000,
       responseSchema:{type:"object",properties:{content:{type:"string"}},required:["content"],additionalProperties:false},
@@ -48,7 +49,7 @@ export function coreSupervisorDeps(core:LayanXCore):SupervisorDeps{
         capability:images.length?"vision":"reasoning",
         input:images.length?[{type:"text",text:prompt},...images.map(image=>({type:"image" as const,image}))]:prompt,
         maxOutputTokens:1500,
-        routing:opts.cloud?{preferLocal:false}:{preferLocal:true}
+        routing:opts.cloud?{preferLocal:false}:opts.model?{preferLocal:true,modelId:opts.model}:{preferLocal:true}
       });
       return r.output;
     },
@@ -75,6 +76,12 @@ export function coreSupervisorDeps(core:LayanXCore):SupervisorDeps{
       const violations=taskTestContractViolations(content);
       if(violations.length)throw new Error("Test contract violation: "+violations.join(" "));
       return {...candidate,content};
+    },
+    modelLadders(){
+      const ladders=ollamaModelLadders(process.env.LAYANX_OLLAMA_MODEL_LADDER);
+      if(!ladders)return undefined;
+      const known=new Set(core.models.list().filter(m=>m.enabled).map(m=>m.id));
+      return{...ladders,coding:ladders.coding.filter(id=>known.has(id)),planning:ladders.planning.filter(id=>known.has(id))};
     },
     async generateRepairPatch(prompt,routing){
       const response=await core.modelExecution.execute({capability:"coding",routing:routing??{preferLocal:true},maxOutputTokens:1500,input:prompt});

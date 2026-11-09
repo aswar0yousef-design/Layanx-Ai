@@ -70,7 +70,10 @@ export function createGitToolAdapter(options:{root:string}):ToolAdapter{
    case "git commit":{
     const message=typeof input.message==="string"?input.message.trim():"";
     if(!message||message.length>200)throw new Error("Commit message is required and must be <= 200 characters.");
-    return run(workspace,["commit","-m",message]);
+    // Without an author git refuses, and every step silently goes uncommitted. The owner's identity always wins, and git config is never changed.
+    const configured=async(key:string)=>((await run(workspace,["config",key])) as {exitCode:number|null}).exitCode===0;
+    const hasIdentity=await configured("user.name")&&await configured("user.email");
+    return run(workspace,[...(hasIdentity?[]:["-c","user.name=LayanX","-c","user.email=layanx@local.invalid"]),"commit","-m",message]);
    }
    case "git rollback": {
     const sha=typeof input.commit==="string"?input.commit.trim():"";

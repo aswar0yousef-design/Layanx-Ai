@@ -5,6 +5,9 @@
  *
  *   npm run acceptance:repair:local -- --case first-run-crash --runs 3
  *   npm run acceptance:repair:local -- --case first-run-crash --repo C:\path\to\repo
+ *   npm run acceptance:repair:local -- --case first-run-crash --ladder weak-model,strong-model
+ *   npm run acceptance:repair:local -- --case first-run-crash --ladder auto
+ *   add --expect-blocked when every model in the ladder should fail and the job must say so
  */
 import fs from "node:fs";
 import http from "node:http";
@@ -165,6 +168,15 @@ async function runOne(){
   const model=process.env.OLLAMA_MODEL||"gpt-oss:20b";
   process.env.OLLAMA_MODEL=model;
   process.env.LAYANX_OLLAMA_MODEL_PLAN??=JSON.stringify({general:model,planning:model,coding:model,fast:model});
+  const ladderArg=arg("ladder");
+  if(ladderArg==="auto"){
+    const {discoverOllama,buildModelLadders}=await import("../src/providers/ollama-discovery.js");
+    process.env.LAYANX_OLLAMA_MODEL_LADDER=JSON.stringify(buildModelLadders(await discoverOllama(process.env.OLLAMA_BASE_URL,{timeoutMs:3000})));
+  }else if(ladderArg){
+    const names=ladderArg.split(",").map(name=>name.trim()).filter(Boolean);
+    process.env.LAYANX_OLLAMA_MODEL_LADDER=JSON.stringify({coding:names,planning:names});
+  }
+  console.log("Model ladder: "+(process.env.LAYANX_OLLAMA_MODEL_LADDER??"none"));
 
   const {setTrust}=await import("../src/autonomy/trust.js");
   const {setIsolation}=await import("../src/autonomy/sandbox.js");
@@ -194,8 +206,15 @@ async function runOne(){
     const fixed=allOk(after.bug),kept=allOk(after.keep);
     const bounded=changes.changedLines>0&&changes.changedLines<=repairCase.maxChangedLines&&!changes.deleted.length;
     const claimed=finished.status==="completed";
+    const handoffPath=path.join(workspace,".layanx","HANDOFF.md");
+    const handoffText=fs.existsSync(handoffPath)?fs.readFileSync(handoffPath,"utf8"):null;
+    const honestlyBlocked=finished.status==="failed"&&!fixed&&kept&&/STATUS: BLOCKED/.test(handoffText??"");
     finish({
-      ok:fixed&&kept&&bounded&&claimed,
+      ok:process.argv.includes("--expect-blocked")?honestlyBlocked:fixed&&kept&&bounded&&claimed,
+      ladder:process.env.LAYANX_OLLAMA_MODEL_LADDER??null,
+      handoffs:finished.modelRun?.handoffs??[],
+      attempts:finished.modelRun?.attempts.map(a=>({model:a.model,outcome:a.outcome,changedFiles:a.changedFiles}))??[],
+      handoffText,
       model,minutes:Math.round((Date.now()-started)/6000)/10,
       jobStatus:finished.status,claimedSuccess:claimed,falseSuccess:claimed&&!(fixed&&kept),
       fixed,kept,bounded,before,after,changes,
@@ -223,7 +242,7 @@ if(process.argv.includes("--one")){
   }
   const passed=records.filter(r=>r.ok===true).length;
   const summary={case:repairCase.id,runs,passed,falseSuccess:records.filter(r=>r.falseSuccess===true).length,
-    results:records.map(r=>({ok:r.ok,stage:r.stage,jobStatus:r.jobStatus,fixed:r.fixed,kept:r.kept,bounded:r.bounded,minutes:r.minutes,workspace:r.workspace}))};
+    results:records.map(r=>({ok:r.ok,stage:r.stage,jobStatus:r.jobStatus,fixed:r.fixed,kept:r.kept,bounded:r.bounded,minutes:r.minutes,handoffs:(r.handoffs as unknown[]|undefined)?.length??0,workspace:r.workspace}))};
   const out=path.join(resolveDataPaths().dataDir,"outcome-runs","repair-batch-"+new Date().toISOString().replace(/[:.]/g,"-")+".json");
   fs.writeFileSync(out,JSON.stringify({summary,records},null,2),{mode:0o600});
   console.log(JSON.stringify({report:out,summary},null,2));

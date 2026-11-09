@@ -249,6 +249,8 @@ if(!ollama?.available){
       hasProject,hasDelivery,accepted,acceptanceIds,artifactStatus,
       failureReason:ok?null:timedOut?`Acceptance deadline elapsed during ${finished.milestones[finished.current]?.title??"final verification"}.`:finished.result??null,
       deliveryFile,deliveryGuide,missionCount:finished.milestones.flatMap(m=>m.missions).length,
+      modelHandoffs:finished.modelRun?.handoffs??[],
+      modelAttempts:finished.modelRun?.attempts.map(a=>({milestone:a.milestone,model:a.model,outcome:a.outcome,changedFiles:a.changedFiles}))??[],
       milestoneFailures:finished.milestones.filter(m=>m.status==="failed"||Boolean(m.notes))
         .map(m=>({title:m.title,kind:m.kind,status:m.status,attempts:m.attempts,
           reason:m.notes?.slice(0,3000)??null,missionIds:m.missions})),
