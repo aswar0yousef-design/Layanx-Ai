@@ -35,6 +35,7 @@ import {evaluateAcceptance,type AcceptanceRequirement,type AcceptanceProof} from
 import {verifyAcceptanceArtifact} from "./acceptance-artifact.js";
 import {writeDeliveryManifest} from "./delivery.js";
 import {taskServerGoal,verifyTaskApp,type TaskAppProbeResult} from "./task-app-verifier.js";
+import {STATIC_REPAIR_PROFILE,buildRepairPrompt,isStaticWebProject,observeStaticProject,prepareRepair,repairSetback,type StaticObservation,type StaticObserver} from "./repair-engine.js";
 
 export interface Milestone{title:string;goal:string;kind:MilestoneKind;agent:string;status:"pending"|"running"|"done"|"failed";attempts:number;missions:string[];notes?:string}
 export interface Checks{install:boolean;test:boolean;build:boolean;typecheck:boolean;lint:boolean;browser:{path:string}|null;security?:boolean}
@@ -50,7 +51,7 @@ export interface SupervisorJob{
   baseline?:CheckResult[];lastChecks?:CheckResult[];visual?:{url:string;problems:string[];judgement?:string;screens:string[]};
   /** Machine-observed result of the final delivery gates, persisted with the job. */
   outcome?:OutcomeReport;
-  acceptanceProfile?:"task-app-http-v1";
+  acceptanceProfile?:"task-app-http-v1"|typeof STATIC_REPAIR_PROFILE;
   behavior?:TaskAppProbeResult;
   delivery?:{manifestPath:string;guidePath:string;fileCount:number};
   runtimeProofs?:OutcomeRuntimeProof[];
@@ -81,6 +82,8 @@ export interface SupervisorDeps{
   runAgent(goal:string,projectId:string,agentId:string,routing?:{preferLocal:boolean}):Promise<AgentRun>;
   generateTaskServer?(goal:string,previous:string,routing?:{preferLocal:boolean}):Promise<{content:string;modelId:string}>;
   generateTaskTests?:SupervisorDeps["generateTaskServer"];
+  generateRepairPatch?(prompt:string,routing?:{preferLocal:boolean}):Promise<{content:string;modelId:string}>;
+  observeStatic?:StaticObserver;
   resumeAgent(missionId:string,projectId:string,agentId:string,approvals:Record<number,string>,routing?:{preferLocal:boolean}):Promise<AgentRun>;
   runTool(projectId:string,tool:string,payload:Record<string,unknown>,resume?:{missionId:string;approvalId:string}):Promise<ToolRun>;
   isApproved(approvalId:string):boolean;
@@ -147,7 +150,7 @@ export class Supervisor{
   }
 
   // ------------------------------------------------------------ public API
-  create(goal:string,projectId="default",opts:{maxMinutes?:number;maxRounds?:number;openWhenDone?:boolean;acceptanceProfile?:"task-app-http-v1";requiredAcceptance?:AcceptanceRequirement[]}={}):SupervisorJob{
+  create(goal:string,projectId="default",opts:{maxMinutes?:number;maxRounds?:number;openWhenDone?:boolean;acceptanceProfile?:"task-app-http-v1"|typeof STATIC_REPAIR_PROFILE;requiredAcceptance?:AcceptanceRequirement[]}={}):SupervisorJob{
     const g=goal.trim();if(g.length<3||g.length>4000)throw new Error("goal_required");
     const minutes=Math.min(Math.max(opts.maxMinutes??120,5),24*60);
     const job:SupervisorJob={id:randomUUID(),projectId,goal:g,status:"planning",createdAt:now(),updatedAt:now(),
@@ -382,6 +385,15 @@ export class Supervisor{
         checks:{install:false,test:false,build:false,typecheck:false,lint:false,security:false,browser:null}
       };
       this.log(job,"Recognised a direct desktop-open request; skipped research and planned opening plus window verification");
+    }else if(job.acceptanceProfile===STATIC_REPAIR_PROFILE){
+      if(!isStaticWebProject(projectDir(job.projectId))){
+        job.result="Evidence-first repair currently supports static HTML projects only; this project is not one.";
+        this.finished(job,false);this.set(job,"failed","Stopped: project type is not supported by this repair path");return;
+      }
+      spec={acceptance:["The bug reported by the owner no longer appears in a real browser","Pages that worked before still work"],
+        milestones:[{title:"Reproduce and repair the reported bug",goal:job.goal,kind:"code"}],
+        checks:{install:false,test:false,build:false,typecheck:false,lint:false,security:false,browser:null}};
+      this.log(job,"Using evidence-first repair: reproduce in a real browser, patch, observe again");
     }else if(job.acceptanceProfile==="task-app-http-v1"){
       // The isolated acceptance task has an exact, owner-declared contract.
       // Do NOT let a small local model put a "general" package milestone
@@ -437,6 +449,10 @@ export class Supervisor{
     job.baseline=await this.runChecks(job);
     if(job.baseline===undefined)return;
     this.log(job,"Baseline: "+job.baseline.map(c=>`${c.name} ${c.skipped?"skip":c.ok?"ok":"FAIL"}`).join(", "));
+    if(job.acceptanceProfile===STATIC_REPAIR_PROFILE&&job.baseline.every(c=>c.ok)){
+      job.result="The reported bug did not reproduce in a real browser, so nothing was changed.";
+      this.finished(job,false);this.set(job,"failed","Stopped: bug did not reproduce");return;
+    }
     if(info?.git&&!job.branch){
       // Never work on main/master directly: one branch per job keeps main intact if something goes wrong.
       const st=await this.deps.runTool(job.projectId,"git.status",{});
@@ -468,6 +484,7 @@ export class Supervisor{
     // Persist the in-flight state *before* handing a task to an agent.
     // Otherwise a crash leaves the last stored milestone pending and restart may replay it.
     this.save();
+    if(job.acceptanceProfile===STATIC_REPAIR_PROFILE){await this.repairAttempt(job,m,escalate?{preferLocal:false}:undefined);return;}
     const generate=generateServer??generateTests;
     if(generate){
       await this.generateTaskSource(job,m,generate,generateTests?"tests/tasks.test.mjs":"src/server.mjs",escalate?{preferLocal:false}:undefined);
@@ -487,6 +504,42 @@ export class Supervisor{
         this.set(job,"waiting_approval","Waiting for your approval to continue");return;
       }
       if(!run.completed){await this.afterWork(job,m,run.reason??run.final?.error??run.status??"unknown");return;}
+    }
+    await this.afterWork(job,m);
+  }
+
+  private staticObserver():StaticObserver{return this.deps.observeStatic??observeStaticProject;}
+  /** One evidence-first attempt. The gates in afterWork, not the model, decide whether the bug is gone. */
+  private async repairAttempt(job:SupervisorJob,m:Milestone,routing?:{preferLocal:boolean}){
+    const dir=projectDir(job.projectId);
+    let before:StaticObservation,candidate:{content:string;modelId:string};
+    try{
+      if(!this.deps.generateRepairPatch)throw new Error("No model is available for repair.");
+      before=await this.staticObserver()(dir,job.goal);
+      if(before.ok){await this.afterWork(job,m);return;}
+      candidate=await this.deps.generateRepairPatch(buildRepairPrompt(dir,job.goal,before,m.notes),routing);
+    }catch(error){await this.afterWork(job,m,(error as Error).message);return;}
+    let repair:ReturnType<typeof prepareRepair>;
+    try{repair=prepareRepair(dir,extractJson(candidate.content));}
+    catch(error){this.log(job,"Patch rejected: "+clip((error as Error).message,300),"warn");await this.afterWork(job,m,"Patch rejected: "+(error as Error).message);return;}
+    this.log(job,`Patch from ${candidate.modelId}: ${repair.changedLines} lines in ${repair.files.map(f=>f.path).join(", ")}. Cause: ${repair.cause}`);
+    for(const file of repair.files){
+      const written=await this.tool(job,"files.write",{path:file.path,content:file.content},"milestone");
+      if(written==="waiting")return;
+      if(written.missionId)m.missions.push(written.missionId);
+      if(!written.ok||written.data?.written!==true){await this.afterWork(job,m,written.error??"Could not write "+file.path);return;}
+    }
+    let setback:string|undefined;
+    try{setback=repairSetback(before,await this.staticObserver()(dir,job.goal));}
+    catch(error){setback="The page could not be observed after the patch: "+(error as Error).message;}
+    if(setback){
+      for(const file of repair.files){
+        const undone=await this.tool(job,"files.write",{path:file.path,content:file.original},"milestone");
+        if(undone==="waiting")return;
+      }
+      this.log(job,"Patch undone: "+clip(setback,300),"warn");
+      await this.afterWork(job,m,"Patch undone. Proposed cause: "+repair.cause+"\n"+setback);
+      return;
     }
     await this.afterWork(job,m);
   }
@@ -753,6 +806,13 @@ export class Supervisor{
   }
 
   private async runChecks(job:SupervisorJob,purpose:"baseline"|"milestone"|"final"="baseline"):Promise<CheckResult[]|undefined>{
+    if(job.acceptanceProfile===STATIC_REPAIR_PROFILE){
+      try{
+        const observed=await this.staticObserver()(projectDir(job.projectId),job.goal);
+        job.visual={url:"temporary local preview of the project",problems:observed.ok?[]:observed.summary.split("\n"),screens:observed.pages.filter(p=>p.target).map(p=>p.page)};
+        return[{name:"static-browser",ok:observed.ok,summary:observed.summary}];
+      }catch(error){return[{name:"static-browser",ok:false,summary:"Browser observation failed: "+(error as Error).message}];}
+    }
     this.refreshChecks(job);
     const c=job.checks;if(!c)return[];
     // In the acceptance profile, package.json is stage 1, the HTTP server
@@ -1041,7 +1101,7 @@ export class Supervisor{
     return"Security check found problems that must be fixed before delivery:\n"+serious.map((f:any)=>`- [${f.severity}] ${f.message}${f.file?` (${f.file}:${f.line??""})`:""} — ${f.fix}`).join("\n");
   }
   private reopen(job:SupervisorJob,problem:string){
-    if(job.acceptanceProfile==="task-app-http-v1"||job.finalRepairs>=2){job.result="Final verification failed:\n"+clip(problem,800);this.finished(job,false);this.set(job,"failed","Stopped: final verification failed");return;}
+    if(job.acceptanceProfile==="task-app-http-v1"||job.acceptanceProfile===STATIC_REPAIR_PROFILE||job.finalRepairs>=2){job.result="Final verification failed:\n"+clip(problem,800);this.finished(job,false);this.set(job,"failed","Stopped: final verification failed");return;}
     job.finalRepairs++;
     job.milestones.push({title:"Fix final verification",goal:"Fix these problems found during the final verification without breaking anything else.",kind:"code",agent:"coder",status:"pending",attempts:0,missions:[],notes:problem});
     this.set(job,"running","Final verification found problems; added a repair milestone");

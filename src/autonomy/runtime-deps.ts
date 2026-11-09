@@ -76,6 +76,10 @@ export function coreSupervisorDeps(core:LayanXCore):SupervisorDeps{
       if(violations.length)throw new Error("Test contract violation: "+violations.join(" "));
       return {...candidate,content};
     },
+    async generateRepairPatch(prompt,routing){
+      const response=await core.modelExecution.execute({capability:"coding",routing:routing??{preferLocal:true},maxOutputTokens:1500,input:prompt});
+      return{content:response.output,modelId:response.modelId};
+    },
     resumeAgent:(missionId,projectId,agentId,approvals,routing)=>core.executeAgentLoop(missionId,projectId,15,approvals,agentId,routing) as never,
     runTool:(projectId,tool,payload,resume)=>runSingleTool(core,projectId,tool,payload,resume).catch(error=>({ok:false,error:(error as Error).message})),
     isApproved:id=>core.executionRuntime.approvals.isApproved(id),

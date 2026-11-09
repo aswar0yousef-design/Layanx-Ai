@@ -95,13 +95,19 @@ export function createOllamaProvider(options:OllamaProviderOptions={}){
   name:"ollama",
   async health(){return baseProvider.health();},
   async generate(model:ModelDefinition,request:ModelRequest):Promise<ModelResponse>{
-   try{return await baseProvider.generate(model,request);}
+   let response:ModelResponse;
+   try{response=await baseProvider.generate(model,request);}
    catch(error){
     const message=error instanceof Error?error.message:"";
     if(!request.responseSchema||!/HTTP (400|422|500)/.test(message))throw error;
     ollamaSchemaStats.fallbacks++;ollamaSchemaStats.lastError=message.slice(0,300);
     return baseProvider.generate(model,withoutSchema(request));
    }
+   // gpt-oss can finish its reasoning under a JSON schema and return no content at all (done_reason "stop").
+   // Callers still validate the plain-JSON answer against the same tool catalog and permissions.
+   if(!request.responseSchema||response.output)return response;
+   ollamaSchemaStats.fallbacks++;ollamaSchemaStats.lastError="empty response under a JSON schema from "+model.id;
+   return baseProvider.generate(model,withoutSchema(request));
   }
  };
  if(!autoSelect)return schemaAware;

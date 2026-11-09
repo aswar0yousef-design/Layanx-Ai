@@ -59,6 +59,18 @@ assert.equal(result.output,"{\"ok\":true}");
 assert.equal(typeof bodies[0].format,"object");
 assert.equal(bodies[1].format,"json");
 assert.equal(bodies.length,2);
+// A thinking model can answer a schema request with empty content: one retry in plain JSON mode, never more.
+const emptyBodies:any[]=[];
+const emptyProvider=createOllamaProvider({fetcher:(async(_url:string,init:any)=>{
+ const body=JSON.parse(init.body);emptyBodies.push(body);
+ return new Response(JSON.stringify({message:{content:typeof body.format==="object"?"":"{\"ok\":true}"},done_reason:"stop"}),{status:200});
+}) as unknown as typeof fetch});
+assert.equal((await emptyProvider.generate({id:"gpt-oss:20b"} as any,{capability:"reasoning",input:"plan",responseSchema:{type:"object"}})).output,"{\"ok\":true}");
+assert.deepEqual(emptyBodies.map(b=>typeof b.format),["object","string"]);
+const stillEmptyBodies:any[]=[];
+const stillEmpty=createOllamaProvider({fetcher:(async(_url:string,init:any)=>{stillEmptyBodies.push(init.body);return new Response(JSON.stringify({message:{content:""}}),{status:200});}) as unknown as typeof fetch});
+assert.equal((await stillEmpty.generate({id:"gpt-oss:20b"} as any,{capability:"reasoning",input:"plan",responseSchema:{type:"object"}})).output,"");
+assert.equal(stillEmptyBodies.length,2,"an empty answer is retried once");
 // Output cap: JSON answers stop at 1024 tokens (small models can loop on whitespace); free text is not capped.
 assert.equal(ollamaNumPredict({capability:"reasoning",input:"x",responseSchema:{type:"object"}} as any,{}),1024);
 assert.equal(ollamaNumPredict({capability:"reasoning",input:"x"} as any,{}),1024,"plain JSON mode is capped too");
