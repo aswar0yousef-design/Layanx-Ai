@@ -79,3 +79,22 @@ assert.ok(screenLookRequest("what's on my screen?"));
 assert.ok(!screenLookRequest("التقط صورة للشاشة ثم افتح كروم"));
 assert.ok(!screenLookRequest("التقط صورة لهذا المنتج"),"no screen named");
 console.log("chat understanding: a screen look is one capture step");
+
+// 8. Internet research works without Agent Reach installed (seen live: "spawn agent-reach ENOENT" ten times).
+const {researchWithFallback,researchQuery}=await import("../src/agent-reach-tools.js");
+assert.equal(researchQuery({topic:"leads for layanx.com"}),"leads for layanx.com");
+const missing={execute:async()=>{throw new Error("Error: spawn agent-reach ENOENT");}};
+const found=await researchWithFallback({payload:{q:"shipping companies Yemen"}} as never,missing,async q=>[{title:"Hit for "+q,url:"https://example.com",snippet:""}]) as {source:string;results:{title:string}[]};
+assert.match(found.source,/web search/);
+assert.equal(found.results[0]!.title,"Hit for shipping companies Yemen");
+await assert.rejects(researchWithFallback({payload:{}} as never,missing,async()=>[]),/needs payload.query/);
+const broken={execute:async()=>{throw new Error("rate limited");}};
+await assert.rejects(researchWithFallback({payload:{query:"x"}} as never,broken,async()=>[]),/rate limited/,"other failures are not hidden");
+console.log("chat understanding: internet research falls back to web search when Agent Reach is missing");
+
+// 9. A reply wrapped in JSON by a small model is shown as words (seen live: { "response":"..." }).
+const {unwrapAnswer}=await import("../src/core/task-answer.js");
+assert.equal(unwrapAnswer('{ "response":"لا توجد نتائج كافية." }'),"لا توجد نتائج كافية.");
+assert.equal(unwrapAnswer("- أولاً\n- ثانياً"),"- أولاً\n- ثانياً");
+assert.equal(unwrapAnswer('{"items":[1]}'),'{"items":[1]}',"other JSON is left as it is");
+console.log("chat understanding: JSON-wrapped replies are unwrapped");

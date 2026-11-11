@@ -46,7 +46,7 @@ export async function composeTaskAnswer(models:Pick<ModelExecutionRouter,"execut
   } as never);
   try{
     const r=await attempt(Boolean(image));
-    const answer=String(r.output??"").replace(/<think>[\s\S]*?<\/think>/gi,"").trim();
+    const answer=unwrapAnswer(String(r.output??""));
     return answer?{text:answer.slice(0,3000),modelId:r.modelId,fromImage:Boolean(image)}:null;
   }catch(error){
     // No model that sees images: answer from the text results, and say the screenshot could not be read.
@@ -54,4 +54,15 @@ export async function composeTaskAnswer(models:Pick<ModelExecutionRouter,"execut
     if(!text)return{text:lang==="Arabic"?"التقطت صورة الشاشة، لكن لا يوجد نموذج يرى الصور الآن لوصفها. فعّل نموذج رؤية من صفحة النماذج.":"I captured the screen, but no model that can see images is available to describe it. Turn on a vision model on the Models page.",fromImage:false};
     try{const r=await attempt(false);return{text:String(r.output??"").trim().slice(0,3000),modelId:r.modelId,fromImage:false};}catch{return null;}
   }
+}
+
+/** Small models sometimes wrap a plain reply in JSON ({"response":"..."}); the owner should see the words. */
+export function unwrapAnswer(raw:string):string{
+  const text=raw.replace(/<think>[\s\S]*?<\/think>/gi,"").replace(/^\s*```(?:json)?/i,"").replace(/```\s*$/,"").trim();
+  if(!/^\{[\s\S]*\}$/.test(text))return text;
+  try{
+    const o=JSON.parse(text) as Record<string,unknown>;
+    const value=["response","reply","answer","text","message","content"].map(k=>o[k]).find(v=>typeof v==="string"&&v.trim());
+    return typeof value==="string"?value.trim():text;
+  }catch{return text;}
 }

@@ -1,6 +1,7 @@
 import type {LayanXCore} from "./core/orchestrator.js";
 import type {ToolRequest} from "./core/types.js";
 import {createAgentReachAdapter,agentReachSupportedChannels} from "./connectors/agent-reach.js";
+import {webSearch} from "./autonomy/task-research.js";
 
 export function registerAgentReachTools(core:LayanXCore):void{
   const raw=createAgentReachAdapter();
@@ -55,13 +56,13 @@ export function registerAgentReachTools(core:LayanXCore):void{
 
   core.tools.register({
     name:"research.internet",
-    description:"automatically choose available Agent Reach channels and collect bounded read-only internet research",
+    description:"search the internet and collect read-only research (Agent Reach channels when installed, otherwise a web search). payload.query = the words to search for.",
     permission:"L2_ANALYZE",
     dangerous:false,
     actions:["research internet","deep research internet","search across internet","بحث شامل في الإنترنت","بحث شامل"],
     tags:["research","internet","agent-reach","search","web","social","github","youtube","leads","customers","market","competitors"]
   });
-  core.toolAdapters.register("research.internet",adapter);
+  core.toolAdapters.register("research.internet",{execute:request=>researchWithFallback(request,adapter)});
 
   core.tools.register({
     name:"agent-reach.setup",
@@ -87,4 +88,27 @@ export function registerAgentReachTools(core:LayanXCore):void{
       return {channels:agentReachSupportedChannels.slice().sort(),readOnlyCollection:true,writeOperations:false};
     }
   });
+}
+
+/** The search words, whatever field the planner put them in ("query", "q", "topic", "search", "prompt"). */
+export function researchQuery(payload:unknown):string{
+  const p=payload&&typeof payload==="object"?payload as Record<string,unknown>:{};
+  for(const key of ["query","q","topic","search","prompt","goal"])if(typeof p[key]==="string"&&(p[key] as string).trim())return (p[key] as string).trim().slice(0,4000);
+  return "";
+}
+/**
+ * Internet research through Agent Reach when it is installed; otherwise a plain web search, so "find leads for my site"
+ * still returns results instead of failing ten times on a program that is not there. The result says which was used.
+ */
+export async function researchWithFallback(request:ToolRequest,adapter:{execute:(r:ToolRequest)=>Promise<unknown>},search:typeof webSearch=webSearch):Promise<unknown>{
+  const query=researchQuery(request.payload);
+  if(!query)throw new Error("research.internet needs payload.query: the words to search for.");
+  const withQuery={...request,payload:{...(request.payload as Record<string,unknown>??{}),query}};
+  try{return await adapter.execute(withQuery);}
+  catch(error){
+    const message=error instanceof Error?error.message:String(error);
+    if(!/ENOENT|not installed|not found|is not recognized/i.test(message))throw error;
+    const hits=await search(query);
+    return{query,source:"web search (Agent Reach is not installed; agent-reach.setup installs it)",results:hits.slice(0,10)};
+  }
 }
