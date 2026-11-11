@@ -56,14 +56,16 @@ export function twinHarnessSource(inputs:TwinInput[],mainFile:string):string{
     "const root=path.join(path.dirname(fileURLToPath(import.meta.url)),'..');",
     "const inputs="+JSON.stringify(inputs)+";",
     "const run=(file,i)=>{const r=spawnSync(process.execPath,[path.join(root,file),...i.args],{input:i.stdin,encoding:'utf8',timeout:5000,windowsHide:true,maxBuffer:1024*1024});return{code:typeof r.status==='number'?r.status:-1,stdout:String(r.stdout??'').slice(0,400),stderr:String(r.stderr??'').slice(0,300)};};",
-    `test('twin comparison',()=>{const out=inputs.map(i=>({...i,main:run(${JSON.stringify(mainFile)},i),twin:run(${JSON.stringify(TWIN_PROGRAM_FILE)},i)}));console.log(${JSON.stringify(TWIN_MARKER)}+JSON.stringify(out));});`,
+    `test('twin comparison',()=>{const out=inputs.map(i=>({...i,main:run(${JSON.stringify(mainFile)},i),twin:run(${JSON.stringify(TWIN_PROGRAM_FILE)},i)}));console.log(${JSON.stringify(TWIN_MARKER)}+Buffer.from(JSON.stringify(out)).toString('base64'));});`,
     ""
   ].join("\n");
 }
 export function parseTwinRun(output:string):TwinRun[]{
   const line=output.split(/\r?\n/).find(text=>text.includes(TWIN_MARKER));
   if(!line)throw new Error("The comparison did not report its results.");
-  const runs=JSON.parse(line.slice(line.indexOf(TWIN_MARKER)+TWIN_MARKER.length)) as TwinRun[];
+  // Base64, because Node 22's TAP reporter escapes tabs and newlines in printed lines and would change the inputs.
+  const payload=line.slice(line.indexOf(TWIN_MARKER)+TWIN_MARKER.length).trim().split(/\s/)[0]??"";
+  const runs=JSON.parse(Buffer.from(payload,"base64").toString("utf8")) as TwinRun[];
   if(!Array.isArray(runs))throw new Error("The comparison results are not a list.");
   return runs;
 }

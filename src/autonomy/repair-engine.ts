@@ -238,10 +238,18 @@ export function prepareRepair(dir:string,proposal:unknown,policy:{editable?:RegE
     for(const[relative,file]of files){
       const extension=/\.[cm]?js$/i.exec(relative)?.[0];
       if(!extension)continue;
-      const candidate=path.join(temp,"candidate"+extension);
-      fs.writeFileSync(candidate,file.content);
-      const check=spawnSync(process.execPath,["--check",candidate],{encoding:"utf8",timeout:8000,windowsHide:true});
-      if(check.status!==0)throw new Error(`The patch breaks ${relative}: ${String(check.stderr).split("\n").find(l=>/Error/.test(l))??"syntax error"}`);
+      // A plain .js file is checked as both module kinds: Node 22 guesses the kind for .js and `--check` then passes even a
+      // syntax error (measured: exit 0 for `x.slice((`). It parses if either kind accepts it.
+      const kinds=extension.toLowerCase()===".js"?[".mjs",".cjs"]:[extension];
+      let failure="";
+      for(const kind of kinds){
+        const candidate=path.join(temp,"candidate"+kind);
+        fs.writeFileSync(candidate,file.content);
+        const check=spawnSync(process.execPath,["--check",candidate],{encoding:"utf8",timeout:8000,windowsHide:true});
+        if(check.status===0){failure="";break;}
+        failure||=String(check.stderr).split("\n").find(l=>/Error/.test(l))??"syntax error";
+      }
+      if(failure)throw new Error(`The patch breaks ${relative}: ${failure}`);
     }
   }finally{fs.rmSync(temp,{recursive:true,force:true});}
   return{cause:typeof value.cause==="string"?value.cause.slice(0,400):"",files:[...files].map(([p,f])=>({path:p,content:f.content,original:f.original})),changedLines,edits};
