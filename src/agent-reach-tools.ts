@@ -59,7 +59,7 @@ export function registerAgentReachTools(core:LayanXCore):void{
     permission:"L2_ANALYZE",
     dangerous:false,
     actions:["research internet","deep research internet","search across internet","بحث شامل في الإنترنت","بحث شامل"],
-    tags:["research","internet","agent-reach","search","web","social","github","youtube"]
+    tags:["research","internet","agent-reach","search","web","social","github","youtube","leads","customers","market","competitors"]
   });
   core.toolAdapters.register("research.internet",adapter);
 

@@ -2,7 +2,7 @@ import type {ModelExecutionRouter} from "./model-execution.js";
 import type {PermissionLevel} from "./types.js";
 import type {ToolCatalogEntry} from "./tool-catalog.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
-import {isDevelopmentGoal as isDevelopmentIntent,selectToolsForGoal} from "../providers/tool-selection.js";
+import {isDevelopmentGoal as isDevelopmentIntent,normalizeArabic,selectToolsForGoal} from "../providers/tool-selection.js";
 import {openRequest} from "../tools/open-app.js";
 
 export interface PlannedTool{
@@ -68,6 +68,28 @@ function deterministicOpenPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMi
   stopCondition:"Stop if the program is not installed or the web address is not valid.",
   tools:[{tool:tool.name,action:tool.actions[0]!,permission:tool.permission,reason:"The owner asked to open "+request.label+".",
    payload:{...(request.app?{app:request.app}:{}),...(request.url?{url:request.url}:{})},final:true}]};
+}
+
+/**
+ * "Take a screenshot and describe what you see" is one step: the capture. The reply describing it is written from the
+ * image afterwards (core/task-answer.ts). Without this the planner added a step that does not exist and the task failed
+ * after a successful capture. Only a pure look-at-the-screen request: anything that also acts goes to the planner.
+ */
+export function screenLookRequest(goal:string):boolean{
+ const v=normalizeArabic(currentMilestoneGoal(goal)).toLowerCase();
+ const screen=/(?:شاشه|screen|desktop|سطح المكتب)/u.test(v);
+ const look=/(?:التقط|لقطه|صوره|صف |وصف|اوصف|ترى|تراه|تشاهد|screenshot|describe|what(?:'s| is) on|what do you see|look at)/u.test(v);
+ const acts=/(?:افتح|اضغط|انقر|اكتب|ارسل|احذف|اغلق|شغل|ثم|بعدها|click|type|open|send|delete|close|then)/u.test(v);
+ return screen&&look&&!acts;
+}
+function deterministicScreenPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
+ const tool=catalog.find(t=>t.name==="desktop.screenshot");
+ if(!tool||!screenLookRequest(goal))return undefined;
+ return{risk:"low",requiredPermission:tool.permission,
+  steps:[{description:"Execute: capture the screen."}],
+  successCriteria:["The screen was captured."],
+  stopCondition:"Stop if the screen cannot be captured.",
+  tools:[{tool:tool.name,action:tool.actions[0]!,permission:tool.permission,reason:"The owner asked what is on the screen; the reply is written from this capture.",payload:{},final:true}]};
 }
 
 function deterministicDevelopmentPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
@@ -187,6 +209,8 @@ export class AiMissionPlanner{
     if(windowCheck)return windowCheck;
     const opening=deterministicOpenPlan(goal,tools);
     if(opening)return opening;
+    const look=deterministicScreenPlan(goal,tools);
+    if(look)return look;
     const scopedTools=filterCatalogForGoal(goal,tools);
     const deterministic=deterministicDevelopmentPlan(goal,scopedTools);
     if(deterministic)return deterministic;

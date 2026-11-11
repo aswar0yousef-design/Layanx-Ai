@@ -45,10 +45,28 @@ export class HttpModelProvider implements ModelProviderAdapter{
     if(response.status===400&&request.responseSchema){clearTimeout(timer);const{responseSchema:_dropped,...plain}=request;return this.generate(model,plain);}
     throw new Error(this.name+" returned HTTP "+response.status+"."+(detail?" "+detail:""));
    }
-   return this.options.parseResponse(await response.json(),model);
+   const body=await response.json() as unknown;
+   const parsed=this.options.parseResponse(body,model);
+   // An error delivered as a normal reply (a quota or rate-limit body) must fail over to the next model, never reach the owner as an answer.
+   const failure=providerError(body)??providerError(parsed.output);
+   if(failure)throw new Error(this.name+" returned an error: "+failure);
+   return parsed;
   }finally{clearTimeout(timer);}
  }
  private headers():Record<string,string>{
   return{...(this.options.apiKey?{"authorization":"Bearer "+this.options.apiKey}:{}),...(this.options.headers??{})};
  }
+}
+
+/** The provider's error text when a reply is really an error object ({"error":{...}}, or a list holding one), else null. */
+export function providerError(value:unknown):string|null{
+ let v=value;
+ if(typeof v==="string"){const t=v.trim();if(!/^[\[{]\s*\{?\s*"error"/.test(t))return null;try{v=JSON.parse(t);}catch{return null;}}
+ if(Array.isArray(v))v=v.find(item=>item&&typeof item==="object"&&"error" in item);
+ if(!v||typeof v!=="object"||!("error" in v))return null;
+ const e=(v as {error:unknown}).error;
+ if(!e)return null;
+ if(typeof e==="string")return e.slice(0,300);
+ if(typeof e==="object"){const o=e as Record<string,unknown>;return [o.code,o.status,o.message].filter(x=>x!==undefined&&x!==null&&x!=="").join(" ").slice(0,300)||"error";}
+ return "error";
 }

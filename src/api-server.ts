@@ -1,4 +1,5 @@
 import {createServer,IncomingMessage,ServerResponse} from "node:http";
+import {composeTaskAnswer} from "./core/task-answer.js";
 import {TesterRuns,scalperAction,tradingOverview} from "./trading/control.js";
 import {gitSafetyArgs} from "./platform/windows-sandbox.js";
 import {readFile} from "node:fs/promises";
@@ -520,7 +521,10 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     const choice=typeof input.model==="string"?input.model.trim().toLowerCase():"auto";
     const routing=choice==="local"?{preferLocal:true}:["openai","anthropic","gemini"].includes(choice)?{preferLocal:false,tags:[choice]}:undefined;
     const result=await options.core.runAgentGateway(goal,projectId,maxSteps,approvalIds,agentId,routing);
-    json(response,result.completed?200:result.paused?202:422,result);
+    // The reply to the owner, written from what the tools found (not while waiting for an approval).
+    const answer=!result.paused&&Array.isArray((result as {results?:unknown}).results)
+      ?await composeTaskAnswer(options.core.modelExecution,goal,(result as unknown as {results:never[]}).results,result.completed===true).catch(()=>null):null;
+    json(response,result.completed?200:result.paused?202:422,answer?{...result,answer}:result);
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"agent gateway failed"});}
    return;
   }

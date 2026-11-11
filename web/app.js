@@ -517,7 +517,7 @@ async function runGoal(goal,model,knownKind){
  const r=await safe(api("/v1/agent/gateway",{method:"POST",body:{goal,projectId:project(),maxSteps:10,model:model||"auto"},allow:[422]}),{ok:false,error:"network"});
  done=true;me.missionId=me.missionId||r.missionId;
  if(me.missionId)me.steps=deriveSteps(await missionDetail(me.missionId));
- me.lines=resultLines(r);
+ me.lines=resultLines(r);me.answer=r.answer&&typeof r.answer.text==="string"?r.answer.text:"";
  const via=r.modelRouting&&r.modelRouting.cloud?t("via",{p:{anthropic:"Claude",openai:"GPT",gemini:"Gemini"}[r.modelRouting.provider]||"cloud"}):"";
  if(r.paused){me.state="wait";me.text=t("pausedApproval");const d=S.details.get(r.missionId);const p=d?.mission?.tools?.[r.nextToolIndex];me.approval={id:r.approvalId,missionId:r.missionId,index:r.nextToolIndex,tool:p?.tool,action:p?.action};}
  else if(r.completed){me.state="done";me.text=t("completedVerified")+via;}
@@ -527,6 +527,7 @@ async function runGoal(goal,model,knownKind){
 function messageView(m){
  if(m.role==="you")return el("div",{class:"msg you"},el("div",{class:"who",text:initials()}),el("div",{class:"bubble",dir:"auto",text:m.text}));
  const body=el("div",{class:"bubble",dir:"auto"},m.text);
+ if(m.answer)body.append(el("div",{class:"answer",dir:"auto",style:"white-space:pre-wrap;margin-top:.5rem",text:m.answer}));
  if(m.steps&&m.steps.length)body.append(el("ul",{class:"checks"},m.steps.map(s=>el("li",{},el("span",{class:"tick "+s.state,text:s.state==="done"?"✓":s.state==="fail"?"!":s.state==="wait"?"…":""}),el("span",{dir:"auto",text:s.label})))));
  if(m.lines&&m.lines.length)body.append(el("div",{class:"term"},m.lines.map(l=>el("div",{class:l.c,text:l.t}))));
  const job=m.job?S.jobs.find(x=>x.id===m.job):null;

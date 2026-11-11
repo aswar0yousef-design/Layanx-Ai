@@ -118,6 +118,25 @@ export function capabilityQuestion(text:string):boolean{
   return /^(?:(?:ما\s*الذي|مالذي)\s+(?:يمكنك|تستطيع)\s+(?:فعله|عمله|ان تفعل|ان تعمل|تعمله)(?: لي)?|ماذا\s+(?:يمكنك|تستطيع)\s+(?:فعله|عمله|ان تفعل|ان تعمل|تعمله)(?: لي)?|(?:ما هي|ماهي|ما)\s+(?:قدراتك|امكانياتك|مهامك)|كيف (?:يمكنك )?(?:مساعدتي|تساعدني)|(?:وش|ايش)\s+(?:تقدر|تعرف|تستطيع)\s+(?:تسوي|تعمل|تفعل)|what can you do(?: for me)?|what are your capabilities|how can you help me|what do you do)$/iu.test(cleaned);
 }
 
+/**
+ * "What can you do, and who are you?": two questions LayanX answers on its own, asked together. Each part is
+ * answered as it would be alone; if any part is not one of these, the whole message goes to the model as usual.
+ */
+export function compoundDirectAnswer(text:string,lang:AssistantLang,tasksEnabled:boolean):string|null{
+  const v=normalizeArabic(text).replace(/[؟?!،,.؛:]/g," ").replace(/\s+/g," ").trim();
+  const parts=v.split(/\s+و\s*(?=(?:من|ما|ماذا|مالذي|ما الذي|هل|كيف)(?:\s|$))|\s+and\s+(?=(?:who|what|how)\s)/iu).map(p=>p.trim()).filter(Boolean);
+  if(parts.length<2||parts.length>3)return null;
+  const answers:string[]=[];
+  for(const part of parts){
+    if(capabilityQuestion(part)){answers.push(T[lang].capabilities(tasksEnabled));continue;}
+    const direct=directDialogueAnswer(classifyDialogue(part).topic,lang);
+    if(!direct)return null;
+    answers.push(direct);
+  }
+  // Who LayanX is reads better first.
+  return [...new Set(answers)].sort((a,b)=>Number(b===directDialogueAnswer("identity",lang))-Number(a===directDialogueAnswer("identity",lang))).join(" ");
+}
+
 /** How long a spoken request waits for the model before LayanX says why it is slow (ms). */
 const DECIDE_TIMEOUT_MS=()=>Math.min(Math.max(Number(process.env.LAYANX_ASSISTANT_TIMEOUT_MS)||30_000,100),300_000);
 
@@ -217,6 +236,8 @@ export class VoiceAssistant{
     const greeting=greetingOf(text);
     if(greeting)return{ok:true,lang,intent:"answer",reply:t.greet[greeting]};
     if(capabilityQuestion(text))return{ok:true,lang,intent:"answer",reply:t.capabilities(input.allowTasks!==false)};
+    const compound=compoundDirectAnswer(text,lang,input.allowTasks!==false);
+    if(compound)return{ok:true,lang,intent:"answer",reply:compound};
     const dialogue=classifyDialogue(text);
     const direct=directDialogueAnswer(dialogue.topic,lang);
     if(direct)return{ok:true,lang,intent:"answer",reply:direct};
@@ -256,7 +277,11 @@ export class VoiceAssistant{
     const reply=clean(typeof decision?.reply==="string"?decision.reply:"",500);
     const goal=clean(typeof decision?.goal==="string"?decision.goal:"",1000);
     // The model never gets to override an informational question into a tool action.
-    if(dialogue.kind==="conversation"&&decision?.intent==="task")return{ok:true,lang,intent:"answer",reply:t.informational};
+    // It is asked once more for an answer only, so a question gets a real reply instead of a refusal.
+    if(dialogue.kind==="conversation"&&decision?.intent==="task"){
+      const answer=await this.answerOnly(text,lang,input.history??[]);
+      return{ok:true,lang,intent:"answer",reply:answer&&reviewDialogueAnswer(text,answer).ok?answer:t.informational};
+    }
     if(decision?.intent!=="task"||!goal){
       const checked=reviewDialogueAnswer(text,reply);
       if(!checked.ok)return{ok:false,lang,intent:"error",reply:t.unhelpful};
@@ -280,6 +305,26 @@ export class VoiceAssistant{
     }catch(error){
       return{ok:false,lang,intent:"task",goal,task:{completed:false,paused:false,reason:clean((error as Error).message,200)},reply:t.failed(clean((error as Error).message,200))};
     }
+  }
+
+  /** An answer in words only, for a message that must not start work: the model may not turn it into a task. */
+  private async answerOnly(text:string,lang:AssistantLang,history:AssistantHistoryItem[]):Promise<string|null>{
+    const recent=history.slice(-6).map(h=>`${h.role==="user"?"Owner":"LayanX"}: ${clean(h.text,300)}`).join("\n");
+    const prompt=[
+      "You are LayanX, a personal assistant that runs on the owner's own Windows computer.",
+      "Answer the owner's last message in words only. Do not start, promise or claim any action on the computer.",
+      "If it asks what you can do, describe it. If it can only be done by acting, say briefly which instruction would do it (for example: \"التقط صورة للشاشة\").",
+      'Answer with ONLY one JSON object: {"reply":"..."}',
+      `"reply" is at most three short sentences, no lists or markdown, written in ${lang==="ar"?"Arabic":"English"}.`,
+      recent?`Conversation so far:\n${recent}`:"",
+      `Owner: ${text}`
+    ].filter(Boolean).join("\n");
+    try{
+      const answer=await Promise.race([this.deps.decide(prompt),new Promise<null>(r=>setTimeout(()=>r(null),DECIDE_TIMEOUT_MS()))]);
+      if(answer===null)return null;
+      const reply=extractObject(answer)?.reply;
+      return typeof reply==="string"&&reply.trim()?clean(reply,500):null;
+    }catch{return null;}
   }
 
   private prompt(text:string,lang:AssistantLang,history:AssistantHistoryItem[]):string{
