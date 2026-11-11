@@ -221,9 +221,13 @@ export function reapOrphanRuns():{stopped:string[];left:string[]}{
     if(!targets.length)continue;
     try{
       // taskkill reports failure for a child that went down with its parent, so what counts is who is still there afterwards.
-      if(process.platform==="win32")for(const pid of targets)if(pidAlive(pid))try{execFileSync("taskkill",["/pid",String(pid),"/t","/f"],{windowsHide:true,stdio:"ignore",timeout:10_000});}catch{}
-      // A task started by LayanX leads its own process group; one that does not (CI: "left" instead of "stopped") is stopped by itself.
-      else try{process.kill(-run.pid,"SIGKILL");}catch{if(rootIsOurs)process.kill(run.pid,"SIGKILL");}
+      // Braces matter here: without them the `else` belonged to `if(pidAlive(pid))`, and on Linux and macOS nothing was ever stopped.
+      if(process.platform==="win32"){
+        for(const pid of targets)if(pidAlive(pid))try{execFileSync("taskkill",["/pid",String(pid),"/t","/f"],{windowsHide:true,stdio:"ignore",timeout:10_000});}catch{}
+      }else{
+        // A task started by LayanX leads its own process group; one that does not is stopped by itself.
+        try{process.kill(-run.pid,"SIGKILL");}catch{if(rootIsOurs)process.kill(run.pid,"SIGKILL");}
+      }
       for(let waited=0;waited<3000&&targets.some(pidAlive);waited+=250)Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,250);
       (targets.some(pidAlive)?left:stopped).push(run.label);
     }catch{left.push(run.label);}
