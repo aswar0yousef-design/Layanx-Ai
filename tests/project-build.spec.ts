@@ -23,6 +23,12 @@ assert.equal(siteSecondOpinionPrompt("g",tip).includes("215"),false);
 assert.match(siteStepConflicts(tip,{results:["230"]})[0]!,/independently gives "230"/);
 assert.deepEqual(siteStepConflicts(tip,{results:["الإجمالي 215"]}),[]);
 assert.throws(()=>siteStepConflicts(tip,{}),/invalid JSON/);
+// Text is worked out blind too: clicking again with the name still filled cannot show "name required".
+const booking=[{action:"fill" as const,selector:"#name",value:"أحمد"},{action:"click" as const,selector:"#book"},{action:"expectText" as const,text:"تم استلام طلبك"},{action:"click" as const,selector:"#book"},{action:"expectText" as const,text:"الاسم مطلوب"}];
+assert.equal(siteSecondOpinionPrompt("g",booking).includes("الاسم مطلوب"),false);
+assert.deepEqual(siteStepConflicts(booking,{results:["رسالة «تم استلام طلبك»","تم استلام طلبك"]}).length,1);
+assert.deepEqual(siteStepConflicts(booking,{results:["تم استلام طلبك!","الاسم مطلوب"]}),[]);
+assert.deepEqual(siteStepConflicts(booking,{results:["تم استلام طلبك",""]}),[]);
 assert.equal(hasBuiltProgram("does-not-exist"),false);
 // The runner's summary is read in both report formats.
 assert.deepEqual(testCounts("ℹ tests 5\nℹ pass 1\nℹ fail 4\n"),{tests:5,pass:1,fail:4});

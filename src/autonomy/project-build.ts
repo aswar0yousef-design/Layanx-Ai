@@ -117,7 +117,7 @@ export function programPrompt(goal:string,dir:string,previous?:string):string{
   return[
     "Write the complete command-line Node.js program. Return only the JavaScript file, no explanation.",
     "The request from the owner:\n"+goal,
-    "It is the ES module src/index.mjs, runs with `node src/index.mjs <args>`, uses only Node built-ins, reads standard input only when the request needs it, prints the result to stdout and sets process.exitCode instead of throwing for bad input.",
+    "It is the ES module src/index.mjs, runs with `node src/index.mjs <args>`, uses only Node built-ins, reads standard input only when the request needs it, prints the result to stdout and sets process.exitCode instead of throwing for bad input. Write process.exitCode = n; never import exitCode from node:process, because an imported binding cannot be assigned and the program then crashes with exit code 1.",
     "These locked tests must pass; do not special-case their values:\n"+fs.readFileSync(path.join(dir,SPEC_TEST_FILE),"utf8").slice(0,5000),
     previous?"The current version failed. For each failing test, compare its input, actual and expected value, and correct every cause:\n"+previous.slice(0,2400):"",
     hasBuiltProgram(dir)?"The current version, to correct and return whole:\n"+fs.readFileSync(path.join(dir,PROGRAM_FILE),"utf8").slice(0,6000):""
@@ -156,14 +156,24 @@ export function parseSiteSteps(raw:unknown):SiteStep[]{
 export function siteSpecFiles(steps:SiteStep[]):Array<{path:string;content:string}>{
   return[{path:SITE_SPEC_FILE,content:JSON.stringify({steps},null,2)+"\n"},{path:SITE_FILE,content:SITE_PLACEHOLDER}];
 }
-/** Numbers are where a model miscalculates or misreads the request; words were copied from the request. */
-const computedSteps=(steps:SiteStep[])=>steps.flatMap((step,index)=>/\d/.test(step.action==="expectText"?step.text??"":step.action==="expectValue"?step.value??"":"")?[index]:[]);
+/**
+ * Every visible result is worked out again blind. Numbers are where a model miscalculates; text is where it forgets the state:
+ * measured 2026-11-11, steps clicked "book" again with the name still filled in and expected "name required", which no correct
+ * page can show, and a correct page was failed for it.
+ */
+// Text shown before anything is clicked is copied from the request; asking for it again only invites a different summary.
+const interacted=(steps:SiteStep[],index:number)=>steps.slice(0,index).some(step=>step.action==="click"||step.action==="press");
+const computedSteps=(steps:SiteStep[])=>steps.flatMap((step,index)=>{
+  const text=step.action==="expectText"?step.text??"":step.action==="expectValue"?step.value??"":"";
+  return /\d/.test(text)||(step.action==="expectText"&&interacted(steps,index))?[index]:[];
+});
 export const hasComputedSteps=(steps:SiteStep[])=>computedSteps(steps).length>0;
 export function siteSecondOpinionPrompt(goal:string,steps:SiteStep[]):string{
   const hidden=steps.map((step,index)=>computedSteps(steps).includes(index)?{action:step.action,selector:step.selector,result:"?"}:step);
   return[
     "A web page must follow this request. Someone uses it as described below. Work out each result marked \"?\" yourself. Return ONLY JSON:",
-    '{"results":["the number or text that must appear for the first ?","for the second ?"]}',
+    '{"results":["the number or exact text that must appear for the first ?","for the second ?"]}',
+    "Steps run in order on the same page, and fields keep what was typed into them until changed. For text, give the exact words the page shows, as the request states them.",
     "The request:\n"+goal,
     "What the person does:\n"+JSON.stringify(hidden)
   ].join("\n\n");
@@ -173,9 +183,11 @@ export function siteStepConflicts(steps:SiteStep[],raw:unknown):string[]{
   const results=(raw as {results?:unknown}|null)?.results;
   if(!Array.isArray(results))throw new Error("Unusable output: invalid JSON, no results array.");
   const numbers=(text:string)=>(text.match(/\d+(?:\.\d+)?/g)??[]).map(Number);
+  const plain=(text:string)=>text.replace(/[«»"'“”.!،,:؛]/g," ").replace(/\s+/g," ").trim().toLowerCase();
+  const agrees=(wrote:string,other:string)=>numbers(wrote).length?numbers(wrote).some(n=>numbers(other).includes(n)):!plain(other)||plain(other).includes(plain(wrote))||plain(wrote).includes(plain(other)); // an empty answer is no opinion, not a different result
   return computedSteps(steps).flatMap((index,position)=>{
     const wrote=steps[index]!.action==="expectText"?steps[index]!.text!:steps[index]!.value!,other=String(results[position]??"");
-    return numbers(wrote).some(n=>numbers(other).includes(n))?[]:[`Step ${index+1} expects "${wrote}", but working it out independently gives "${other}". Read the request again and use the correct result.`];
+    return agrees(wrote,other)?[]:[`Step ${index+1} expects "${wrote}", but working it out independently gives "${other}". Read the request again and use the correct result.`];
   });
 }
 export const readSiteSteps=(dir:string):SiteStep[]=>parseSiteSteps(JSON.parse(fs.readFileSync(path.join(dir,SITE_SPEC_FILE),"utf8")));

@@ -169,6 +169,7 @@ const MAX_REVIEWERS=3,slowReviewers=new Set<string>();
 // Test cases and blind answers are parsed as JSON; an unparseable reply cost whole build runs (csv, wordcount: "no answers array").
 // Ollama constrains decoding to these shapes, so the reply is always well-formed JSON; the content is still checked as before.
 const CASES_SCHEMA={type:"object",properties:{cases:{type:"array",items:{type:"object",properties:{args:{type:"array",items:{type:"string"}},stdin:{type:"string"},code:{type:"integer"},stdout:{type:"string"},why:{type:"string"}},required:["args","stdin","code","stdout","why"]}}},required:["cases"]};
+const RESULTS_SCHEMA={type:"object",properties:{results:{type:"array",items:{type:"string"}}},required:["results"]};
 const ANSWERS_SCHEMA={type:"object",properties:{answers:{type:"array",items:{type:"object",properties:{code:{type:"integer"},stdout:{type:"string"}},required:["code","stdout"]}}},required:["answers"]};
 export class Supervisor{
   private jobs=new Map<string,SupervisorJob>();
@@ -856,7 +857,7 @@ export class Supervisor{
         if(site){
           const steps=parseSiteSteps(extractJson(candidate.content));
           if(hasComputedSteps(steps)){
-            const conflicts=siteStepConflicts(steps,extractJson((await generate(siteSecondOpinionPrompt(job.goal,steps),routing)).content));
+            const conflicts=siteStepConflicts(steps,extractJson((await generate(siteSecondOpinionPrompt(job.goal,steps),routing,RESULTS_SCHEMA)).content));
             if(conflicts.length)throw new Error("Steps refused: "+conflicts.join(" "));
           }
           files=siteSpecFiles(steps);

@@ -54,6 +54,6 @@ export function mergeCases(kept:ReviewCase[],added:ReviewCase[],limit:number):Re
 }
 const inputLabel=(item:ReviewCase)=>`[args=${JSON.stringify(item.args)} stdin=${JSON.stringify(item.stdin).slice(0,120)}]`;
 export function reviewTestSource(cases:ReviewCase[]):string{
-  const body=cases.map((item,i)=>`test(${JSON.stringify(`review ${i+1}: ${(item.why||item.args.join(" ")).slice(0,90)} ${inputLabel(item)}`)},async()=>{\n  const r=await cli(${JSON.stringify(item.args)},${JSON.stringify(item.stdin)});\n  assert.equal(r.code,${item.code});\n${item.code===0?`  same(r.stdout.trim(),${JSON.stringify(item.stdout.trim())});\n`:""}});`).join("\n");
+  const body=cases.map((item,i)=>`test(${JSON.stringify(`review ${i+1}: ${(item.why||item.args.join(" ")).slice(0,90)} ${inputLabel(item)}`)},async()=>{\n  const r=await cli(${JSON.stringify(item.args)},${JSON.stringify(item.stdin)});\n  assert.equal(r.code,${item.code},"exit code; stderr: "+r.stderr.slice(0,600));\n${item.code===0?`  same(r.stdout.trim(),${JSON.stringify(item.stdout.trim())});\n`:""}});`).join("\n");
   return`import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport {cli} from './helpers.mjs';\nconst same=(got,want)=>{let a,b;try{a=JSON.parse(got);b=JSON.parse(want);}catch{assert.equal(got,want);return;}assert.deepEqual(a,b);};\n${body}\n`;
 }
