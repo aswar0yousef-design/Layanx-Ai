@@ -75,4 +75,4 @@ for as_batch in (True, False):
     engine.processor, engine.model = Processor(as_batch), Model()
     text = engine.transcribe(np.zeros(16000, dtype=np.float32), "ar")
     results["batch" if as_batch else "dict"] = {"text": text, "moves": [m[0] for m in moves]}
-print(json.dumps(results, ensure_ascii=False))
+print(json.dumps(results))  # ASCII escapes: reads the same whatever code page Python prints in

@@ -41,6 +41,8 @@ export class HttpModelProvider implements ModelProviderAdapter{
    if(!response.ok){
     // Include the provider's own error text (never contains our key) so "model not found" or "quota" is visible.
     let detail="";try{detail=(await response.text()).replace(/\s+/g," ").slice(0,300);}catch{}
+    // A provider or model that does not accept the answer's JSON shape is asked once more without it.
+    if(response.status===400&&request.responseSchema){clearTimeout(timer);const{responseSchema:_dropped,...plain}=request;return this.generate(model,plain);}
     throw new Error(this.name+" returned HTTP "+response.status+"."+(detail?" "+detail:""));
    }
    return this.options.parseResponse(await response.json(),model);

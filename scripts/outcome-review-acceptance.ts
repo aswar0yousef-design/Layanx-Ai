@@ -11,6 +11,7 @@ import {randomUUID} from "node:crypto";
 import {spawnSync} from "node:child_process";
 import {resolveDataPaths} from "../src/platform/paths.js";
 
+const OWNER_DATA_DIR=resolveDataPaths().dataDir;
 const arg=(name:string)=>{const i=process.argv.indexOf("--"+name);return i>=0?process.argv[i+1]:undefined;};
 const header="import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport {cli} from './helpers.mjs';\n";
 const romanBody=(pairs:string)=>`const n=Number(process.argv[2]);\nif(!Number.isInteger(n)||n<1||n>3999){console.error('out of range');process.exitCode=1;}\nelse{\n  const pairs=[${pairs}];\n  let left=n,out='';\n  for(const [value,symbol] of pairs){while(left>=value){out+=symbol;left-=value;}}\n  console.log(out);\n}\n`;
@@ -43,6 +44,18 @@ async function runOne(selected:Case){
   const projects=path.join(root,"projects"),store=path.join(root,"store"),workspace=path.join(projects,id);
   fs.mkdirSync(store,{recursive:true,mode:0o700});fs.mkdirSync(workspace,{recursive:true,mode:0o700});
   Object.assign(process.env,{LAYANX_WORKSPACE_ROOT:projects,LAYANX_STORE_DIR:store,LAYANX_DATA_DIR:root,LAYANX_DATABASE_URL:"",DATABASE_URL:"",LAYANX_BUSINESS_STORAGE_PATH:path.join(store,"business.json"),LAYANX_RUNTIME_STORAGE_PATH:path.join(store,"runtime.json"),LAYANX_LESSONS_FILE:path.join(store,"lessons.json"),LAYANX_PLAYBOOKS_DIR:path.join(store,"playbooks"),LAYANX_TRUST_FILE:path.join(root,"trust.json"),LAYANX_ISOLATION_FILE:path.join(root,"isolation.json"),LAYANX_SECRET_VAULT_PATH:path.join(store,"secrets.vault"),LAYANX_FREE_POOL_CONFIG:path.join(store,"free-providers.json"),LAYANX_AI_MODE:"local",LAYANX_CAPABILITIES:"coding",LAYANX_FREE_POOL_ENABLED:"false",OPENAI_ENABLED:"false",ANTHROPIC_ENABLED:"false",GEMINI_ENABLED:"false",MT5_AUTO_START:"false",LAYANX_OPEN_BROWSER:"off",OLLAMA_MODEL:process.env.OLLAMA_MODEL||"gpt-oss:20b"});
+  // A cloud reviewer (LAYANX_REVIEW_MODEL=claude-..., gpt-..., gemini-...): only that provider's key is loaded from the
+  // owner's encrypted store; building stays on the local model. The key never appears in output or reports.
+  const reviewer=process.env.LAYANX_REVIEW_MODEL??"";
+  const cloud=/^claude/i.test(reviewer)?"anthropic":/^(gpt|o\d)/i.test(reviewer)?"openai":/^gemini/i.test(reviewer)?"gemini":undefined;
+  if(cloud){
+    const {openSecretStore}=await import("../src/security/secret-store.js");
+    const {CLOUD_PROVIDERS}=await import("../src/local/settings.js");
+    const keyName=CLOUD_PROVIDERS[cloud].keyName,prefix=cloud==="anthropic"?"ANTHROPIC":cloud==="openai"?"OPENAI":"GEMINI";
+    const key=process.env[keyName]||(await openSecretStore(OWNER_DATA_DIR)).get(keyName);
+    if(!key)throw new Error(`${keyName} is not in the secret store; link ${CLOUD_PROVIDERS[cloud].label} first.`);
+    Object.assign(process.env,{[keyName]:key,[prefix+"_ENABLED"]:"true",[prefix+"_MODEL"]:reviewer,LAYANX_AI_MODE:"hybrid"});
+  }
   const model=process.env.OLLAMA_MODEL!;
   process.env.LAYANX_OLLAMA_MODEL_PLAN??=JSON.stringify({general:model,planning:model,coding:model,fast:model});
   const {discoverOllama,buildModelLadders}=await import("../src/providers/ollama-discovery.js");
