@@ -1,9 +1,11 @@
 import {randomBytes} from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import {isTaskListApp,type ProjectJobView,type ProjectStart,type ProjectWork} from "../voice/project-intent.js";
+import {newProjectKind,type ProjectJobView,type ProjectStart,type ProjectWork} from "../voice/project-intent.js";
 import {projectDir} from "./project-dir.js";
 import {STATIC_REPAIR_PROFILE,isStaticWebProject} from "./repair-engine.js";
+import {NODE_REPAIR_PROFILE,hasRealTestScript} from "./node-repair.js";
+import {NODE_TOOL_PROFILE,STATIC_SITE_PROFILE} from "./project-build.js";
 import type {Supervisor,SupervisorJob} from "./supervisor.js";
 
 const ACTIVE=new Set(["queued","planning","running","verifying","waiting_approval"]);
@@ -32,11 +34,12 @@ export function chatProjects(supervisor:Pick<Supervisor,"create"|"list">,env:Nod
       if(work==="repair"){
         const existing=existingProject(goal,projectId,env);
         if(!existing)return{needsProject:true};
-        return{started:jobView(supervisor.create(goal,existing,isStaticWebProject(projectDir(existing,env))?{acceptanceProfile:STATIC_REPAIR_PROFILE}:{}))};
+        return{started:jobView(supervisor.create(goal,existing,isStaticWebProject(projectDir(existing,env))?{acceptanceProfile:STATIC_REPAIR_PROFILE}:hasRealTestScript(projectDir(existing,env))?{acceptanceProfile:NODE_REPAIR_PROFILE}:{}))};
       }
       const slug=(goal.toLowerCase().match(/[a-z0-9]+/g)??[]).slice(0,3).join("-")||"project";
       const folder=`chat-${slug}-${randomBytes(3).toString("hex")}`;
-      return{started:jobView(supervisor.create(goal,folder,isTaskListApp(goal)?{acceptanceProfile:"task-app-http-v1"}:{}))};
+      const kind=newProjectKind(goal);
+      return{started:jobView(supervisor.create(goal,folder,kind==="task-app"?{acceptanceProfile:"task-app-http-v1"}:kind==="static-site"?{acceptanceProfile:STATIC_SITE_PROFILE}:kind==="node-tool"?{acceptanceProfile:NODE_TOOL_PROFILE}:{}))};
     },
     projectStatus(projectId:string):ProjectJobView|undefined{
       const jobs=supervisor.list();

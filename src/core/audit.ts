@@ -16,7 +16,10 @@ function safeEvent(event:AuditEvent):AuditEvent{return structuredClone({...event
 
 export class AuditLog{
  private readonly events:AuditEvent[]=[];
- append(event:AuditEvent){this.events.push(safeEvent(event));}
+ private readonly lastByMission=new Map<string,number>();
+ append(event:AuditEvent){this.events.push(safeEvent(event));const missionId=event.metadata?.missionId;if(typeof missionId==="string")this.lastByMission.set(missionId,Date.now());}
+ /** When the mission last recorded anything in this run (ms), 0 if never. */
+ lastActivity(missionId:string){return this.lastByMission.get(missionId)??0;}
  list(){return this.events.map(safeEvent);}
  forResource(resource:string){return this.events.filter(e=>e.resource===resource).map(safeEvent);}
  forMission(missionId:string){return this.events.filter(e=>e.metadata?.missionId===missionId).map(safeEvent);}

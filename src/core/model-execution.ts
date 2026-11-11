@@ -1,6 +1,7 @@
 import type {ModelRegistry} from "../models/registry.js";
 import {ModelRouter} from "./model-router.js";
 import {CloudBudget} from "../models/cloud-budget.js";
+import {ModelStats} from "./model-stats.js";
 import type {ModelExecutionAttempt,ModelExecutionResult,ModelProviderAdapter,ModelRequest,ModelRoutingOptions} from "../models/inference.js";
 export class ModelProviderRegistry{
  private readonly providers=new Map<string,ModelProviderAdapter>();
@@ -12,6 +13,8 @@ export class ModelExecutionRouter{
  private readonly router:ModelRouter;
  /** Monthly cloud spending cap; replace with CloudBudget.forStore() in the runtime. */
  budget:CloudBudget=new CloudBudget(null);
+ /** What each model did; replace with ModelStats.forStore() in the runtime. */
+ stats:ModelStats=new ModelStats(null);
  constructor(private readonly models:ModelRegistry,private readonly providers:ModelProviderRegistry,private readonly defaultRouting:ModelRoutingOptions={}){this.router=new ModelRouter(models);}
  async execute(request:ModelRequest):Promise<ModelExecutionResult>{
   const routing={...this.defaultRouting,...(request.routing??{})};
@@ -29,12 +32,18 @@ export class ModelExecutionRouter{
    }
    if(health.provider!==provider.name){attempts.push({modelId:model.id,provider:model.provider,ok:false,error:"Provider health identity mismatch."});continue;}
    if(!health.available){attempts.push({modelId:model.id,provider:model.provider,ok:false,error:health.reason??"Provider unavailable"});continue;}
+   const callStarted=Date.now();
    try{
     const response=await provider.generate(model,request);
+    this.stats.record({modelId:model.id,provider:model.provider,ms:Date.now()-callStarted,ok:true,...(response.usage?.inputTokens!==undefined?{inputTokens:response.usage.inputTokens}:{}),...(response.usage?.outputTokens!==undefined?{outputTokens:response.usage.outputTokens}:{})});
     if(response.modelId!==model.id||response.provider!==provider.name){attempts.push({modelId:model.id,provider:model.provider,ok:false,error:"Provider response identity mismatch."});continue;}
     this.budget.record(model,response,typeof request.input==="string"?request.input.length:request.input.reduce((n,p)=>n+(p.type==="text"?p.text.length:1000),0));
     return{...response,attempts:[...attempts,{modelId:model.id,provider:model.provider,ok:true}]};
-   }catch(error){attempts.push({modelId:model.id,provider:model.provider,ok:false,error:error instanceof Error?error.message:"Model execution failed"});}
+   }catch(error){
+    const message=error instanceof Error?error.message:"Model execution failed";
+    this.stats.record({modelId:model.id,provider:model.provider,ms:Date.now()-callStarted,ok:false,error:message});
+    attempts.push({modelId:model.id,provider:model.provider,ok:false,error:message});
+   }
   }
   throw new Error("All candidate model providers failed: "+attempts.map(a=>a.provider+":"+a.error).join(" | "));
  }

@@ -16,6 +16,7 @@ try{
     if(op.op==="uiclick")return "mouse|20|10";
     if(op.op==="uiset")return "value";
     if(op.op==="focuswin")return "ok|1234|Untitled - Notepad";
+    if(op.op==="uiforeground")return "Untitled - Notepad";
     return "ok";}}});
   const req=(action:string,payload:Record<string,unknown>)=>({missionId:"m",agentId:"core",projectId:"p",tool:"t",action,permission:"L4_EXECUTE",idempotencyKey:"k",payload} as any);
   const read=await adapter.execute(req("desktop ui tree",{})) as any;
@@ -24,13 +25,14 @@ try{
   await adapter.execute(req("desktop ui tree",{maxElements:5000}));
   assert.equal(ops.at(-1).max,400,"element budget is capped");
   assert.deepEqual((await adapter.execute(req("desktop ui tree",{scope:"windows"})) as any).windows[0].pid,42);
-  assert.deepEqual(await adapter.execute(req("desktop click element",{index:1})),{index:1,method:"mouse"});
+  assert.deepEqual({...await adapter.execute(req("desktop click element",{index:1})) as any,effect:undefined},{index:1,method:"mouse",effect:undefined});
   await assert.rejects(adapter.execute(req("desktop click element",{index:-1})),/index/);
   await assert.rejects(adapter.execute(req("desktop click element",{index:"1; calc"})),/index/);
   const evil='سلام"; Stop-Computer';
   await adapter.execute(req("desktop set element text",{index:0,text:evil}));
-  assert.equal(Buffer.from(ops.at(-1).text,"base64").toString("utf8"),evil,"text is base64, never PowerShell code");
-  assert.ok(!JSON.stringify(ops.at(-1)).includes("Stop-Computer"));
+  const setOp=ops.filter(op=>op.op==="uiset").at(-1);
+  assert.equal(Buffer.from(setOp.text,"base64").toString("utf8"),evil,"text is base64, never PowerShell code");
+  assert.ok(!JSON.stringify(setOp).includes("Stop-Computer"));
   assert.deepEqual(await adapter.execute(req("desktop focus window",{title:"notepad"})),{focused:true,title:"Untitled - Notepad"});
   await assert.rejects(adapter.execute(req("desktop focus window",{title:""})),/title/);
 }finally{Object.defineProperty(process,"platform",real);}

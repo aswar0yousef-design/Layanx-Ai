@@ -176,6 +176,16 @@ export function setPlaybookStatus(id:string,status:PlaybookStatus,env:NodeJS.Pro
   stats[id]={...(stats[id]??{uses:0,success:0}),status,note:status==="active"?"Approved by the owner.":stats[id]?.note??"",...(status==="active"?{approvedHash:p.hash}:{})};
   writeJson(statsFile(env),stats);
 }
+/** A candidate that passed the safety scan and the benchmark. Recorded as measured, not as approved by the owner. */
+export function activateMeasuredPlaybook(id:string,why:string,env:NodeJS.ProcessEnv=process.env){
+  const p=listPlaybooks(undefined,env).find(x=>x.id===id);
+  if(!p)throw new Error("Playbook not found.");
+  const problems=scanPlaybook(rawForScan(p));
+  if(problems.length)throw new Error("This playbook failed the safety scan: "+problems.join("; "));
+  const stats=readJson<Stats>(statsFile(env),{});
+  stats[id]={...(stats[id]??{uses:0,success:0}),status:"active",note:"Kept after measurement. "+why,approvedHash:p.hash};
+  writeJson(statsFile(env),stats);
+}
 /** Text the scanner checks: for a skill, the whole folder; for a playbook, title + body. */
 function rawForScan(p:Playbook):string{
   if(p.format==="skill"){const again=parseSkill(path.dirname(p.file),p.source);return again?.scanText??p.body;}

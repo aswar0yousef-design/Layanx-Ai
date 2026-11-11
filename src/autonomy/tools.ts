@@ -128,6 +128,6 @@ export function specialisedAgents(base:AgentContract):AgentContract[]{
     make("tester","Run tests, builds, browser and security checks and report precisely what fails.",["project.run","project.verify","project.security","project.knowledge","project.references","project.knowledge.record","browser.test","files.read","files.list","files.stat","git.status","git.diff","terminal.exec","memory.recall","mission.inspect"]),
     make("researcher","Research on the internet (official documentation first) and write playbooks to .layanx/playbooks.",["research.internet","agent-reach.","browser.read","http.read","apis.search","github.","files.write","files.read","memory.recall","learning.","project.knowledge"]),
     make("operator","Operate desktop applications with screenshots, mouse and keyboard.",["desktop.","files.read","files.list","browser.test","memory.recall"]),
-    make("business","Run commerce, content, social, ads, email and growth work.",["commerce.","content.","campaign.create","media.","ads.","growth.","google.","yahoo.","email.invoices.scan","creator.","quran.","memory.recall","mission.inspect"])
+    make("business","Run commerce, content, social, ads, email and growth work.",["commerce.","shipping.","content.","campaign.create","media.","ads.","growth.","google.","yahoo.","email.invoices.scan","creator.","quran.","memory.recall","mission.inspect"])
   ];
 }

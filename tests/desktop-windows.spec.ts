@@ -11,13 +11,14 @@ try{
 
   const evil='مرحبا"; Remove-Item -Recurse C:\\ ; $(calc)';
   await adapter.execute(req("desktop type",{text:evil}));
-  const typed=ops.at(-1);
+  const typed=ops.filter(op=>op.op==="type").at(-1);
   assert.equal(typed.op,"type");
   assert.equal(Buffer.from(typed.text,"base64").toString("utf8"),evil,"typed text travels base64-encoded, never as PowerShell code");
   assert.ok(!JSON.stringify(typed).includes("Remove-Item"));
 
   await adapter.execute(req("desktop click",{x:10,y:20,button:"right",double:true}));
-  assert.deepEqual({op:ops.at(-1).op,right:ops.at(-1).right,double:ops.at(-1).double},{op:"click",right:true,double:true});
+  const clicked=ops.filter(op=>op.op==="click").at(-1);
+  assert.deepEqual({op:clicked.op,right:clicked.right,double:clicked.double},{op:"click",right:true,double:true});
   assert.equal((await adapter.execute(req("desktop press key",{key:"ctrl+shift+esc"})) as any).key,"CTRL+SHIFT+ESC");
   await assert.rejects(adapter.execute(req("desktop press key",{key:"CTRL+;rm"})),/Unsupported keyboard key/);
   await assert.rejects(adapter.execute(req("desktop press key",{key:"A+B+C+D+E"})),/Unsupported keyboard key/);

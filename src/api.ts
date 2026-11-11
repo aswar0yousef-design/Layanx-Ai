@@ -5,7 +5,7 @@ const runtime=createRuntime();
 await restoreRuntime(runtime);
 const host=process.env.LAYANX_API_HOST??"127.0.0.1";
 const port=Number(process.env.LAYANX_API_PORT??3000);
-startRuntimeApi({core:runtime.core,business:runtime.business,ads:runtime.ads,media:runtime.media,growth:runtime.growth,channels:runtime.channels,persistence:runtime.persistence,host,port,token:process.env.LAYANX_API_TOKEN});
+startRuntimeApi({core:runtime.core,business:runtime.business,ads:runtime.ads,media:runtime.media,growth:runtime.growth,shipping:runtime.shipping,channels:runtime.channels,persistence:runtime.persistence,host,port,token:process.env.LAYANX_API_TOKEN});
 const flowHost=process.env.LAYANX_FLOW_HOST??"127.0.0.1";
 const flowPort=Number(process.env.LAYANX_FLOW_PORT??3100);
 startFlowServer(runtime.core,{runtime:runtime.flows,host:flowHost,port:flowPort,token:process.env.LAYANX_API_TOKEN});

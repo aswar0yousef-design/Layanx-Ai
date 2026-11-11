@@ -19,6 +19,8 @@ import {CLOUD_PROVIDERS,loadSettings,saveSettings,type CloudProviderId,type Loca
 import {createSetupRoutes} from "./setup-routes.js";
 import {startDesktopIsland} from "./island.js";
 import type {ChildProcess} from "node:child_process";
+import {applyKeptSettings} from "../autonomy/improvement-cycle.js";
+import {startupHardwareCheck} from "../platform/hardware-plan.js";
 
 export interface LocalContext{
   paths:DataPaths;
@@ -100,6 +102,8 @@ export async function bootstrapLocalRuntime(env:NodeJS.ProcessEnv=process.env,lo
   await ensureVaultKey(store,env,log);
   const applied=applySecretsToEnv(store,env);
   log("info",`secret store: ${store.backend} (${applied.length} values loaded, names only are ever shown)`);
+  const kept=applyKeptSettings(path.join(paths.storeDir,"improvement-ledger.json"),env);
+  if(kept.length)log("info",`measured improvements in use: ${kept.join(", ")}`);
 
   const settings=loadSettings(paths.settingsFile);
   env.LAYANX_CAPABILITIES=serializeCapabilities(settings.capabilities);
@@ -146,6 +150,9 @@ export async function bootstrapLocalRuntime(env:NodeJS.ProcessEnv=process.env,lo
       if(r.ok){env.LAYANX_VOICE_SENSE_URL=`http://127.0.0.1:${sensePort}`;log("info",`speech and end-of-turn detection found on port ${sensePort} (Silero VAD + Smart Turn)`);}
     }catch{}
   }
+  // What this machine can run, rechecked at every start; a changed machine gets a new plan.
+  try{await startupHardwareCheck({store:env.LAYANX_STORE_DIR?.trim()||paths.storeDir,env,log:(level,message)=>log(level,message)});}
+  catch(error){log("warn","hardware check did not finish: "+(error as Error).message);}
   // Models: honour explicit user choices only if they are really installed.
   const pinned:Partial<Record<ModelTask,string>>={...settings.pinnedModels};
   if(env.OLLAMA_MODEL&&!pinned.planning)pinned.planning=env.OLLAMA_MODEL;

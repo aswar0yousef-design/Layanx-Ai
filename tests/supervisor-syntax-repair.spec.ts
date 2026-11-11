@@ -95,23 +95,13 @@ test("real HTTP tasks",{timeout:4000},async()=>{
   }finally{await new Promise(resolve=>{server.close(resolve);server.closeAllConnections();});await rm(dir,{recursive:true,force:true});}
 });`;
     const content=[
-      "createServer();",
+      "import {test} from 'node:test';\ncreateServer();",
       compliantTest('assert.equal("deliberate-failure","expected-value");'),
       compliantTest("")
     ][testGenerations-1]!;
     return {output:JSON.stringify({content}),modelId:"test-coder"};
   }
-  serverGenerations++;
-  if(serverGenerations===2){
-    assert.match(prompt,/Previous failure: HTTP behavior failed:\s+bilingual-home.*timeout/i);
-    assert.ok(prompt.includes(hangingServer));
-  }
-  if(serverGenerations===3){
-    assert.match(prompt,/Identifier 'createServer' has already been declared/);
-    assert.ok(!prompt.includes("Existing source to repair"));
-  }
-  const content=[hangingServer,duplicateBinding,brokenServer][serverGenerations-1];
-  return {output:JSON.stringify({content}),modelId:"test-coder"};
+  throw new Error("Only the task tests go through the model mock");
  }}
 } as unknown as LayanXCore);
 const deps:SupervisorDeps={
@@ -125,7 +115,19 @@ const deps:SupervisorDeps={
   }else throw Error("Only the manifest may use the adaptive agent");
   return {completed:true,missionId:"syntax-gate-"+agentCalls};
  },
- generateTaskServer:runtimeDeps.generateTaskServer,
+ // Whole files on purpose: this spec is about the repair path, and a composed file could not carry these defects.
+ async generateTaskServer(goal,previous){
+  serverGenerations++;
+  if(serverGenerations===2){
+    assert.match(goal,/Previous failure: HTTP behavior failed:\s+bilingual-home.*timeout/i);
+    assert.ok(previous.includes(hangingServer.trim().slice(0,40)));
+  }
+  if(serverGenerations===3){
+    assert.match(goal,/Identifier 'createServer' has already been declared/);
+    assert.equal(previous,"");
+  }
+  return{content:[hangingServer,duplicateBinding,brokenServer][serverGenerations-1]!,modelId:"test-coder"};
+ },
  generateTaskTests:runtimeDeps.generateTaskTests,
  async resumeAgent(){throw Error("Unexpected approval");},
  async runTool(_projectId,tool,payload){

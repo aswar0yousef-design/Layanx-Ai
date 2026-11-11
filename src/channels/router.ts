@@ -1,5 +1,6 @@
 import type {LayanXCore} from "../core/orchestrator.js";
 import type {ChannelMessage,ChannelPolicy,ChannelRole} from "./types.js";
+import {routeGoal} from "../autonomy/domain-coordinator.js";
 
 export class ChannelRouter{
  constructor(private readonly core:LayanXCore,private readonly policy:ChannelPolicy){}
@@ -17,6 +18,7 @@ export class ChannelRouter{
    const result=await this.core.modelExecution.execute({capability:"chat",input:prompt,maxOutputTokens:700,routing:{preferLocal:true}});
    return result.output.trim()||"عذرًا، لم أتمكن من إعداد رد الآن.";
   }
+  if(routeGoal(message.text).needsOwner)return"نقل الأموال بين المتجر والتداول قرارك أنت وتنفذه خارج LayanX. لن أقوم به.";
   const result=await this.core.runAgentGateway(message.text,"default",12,{}, "core",{preferLocal:true});
   if(result.paused)return"توقفت العملية مؤقتًا وتحتاج إلى موافقة من لوحة LayanX.";
   if(result.completed){

@@ -39,6 +39,11 @@ async function browser():Promise<any>{
   browserPromise.catch(()=>{browserPromise=null;});
   return browserPromise;
 }
+// Models often write key names in lower case ("escape", "arrowdown"); Playwright only knows "Escape", "ArrowDown".
+const KEY_NAMES=["Escape","Enter","Tab","Backspace","Delete","Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Home","End","PageUp","PageDown","Insert","Shift","Control","Alt","Meta"];
+export function keyName(key:string):string{
+  return key.split("+").map(part=>{const lower=part.trim().toLowerCase();if(lower==="esc")return"Escape";if(lower===" ")return"Space";if(lower==="ctrl")return"Control";return KEY_NAMES.find(name=>name.toLowerCase()===lower)??(/^f([1-9]|1[0-2])$/.test(lower)?lower.toUpperCase():part);}).join("+");
+}
 export async function closeBrowser(){if(browserPromise){try{(await browserPromise).close();}catch{}browserPromise=null;}}
 process.once("exit",()=>{void closeBrowser();});
 
@@ -61,18 +66,51 @@ async function pageText(page:any):Promise<string|null>{
 async function runSteps(page:any,steps:Step[],snapshots:string[]){
   const done:string[]=[];
   for(const s of steps.slice(0,30)){
+    let effectNote="";
     const target=s.selector?page.locator(s.selector).first():s.text?page.getByText(s.text,{exact:false}).first():null;
     switch(s.action){
       case "goto":await page.goto(checkUrl(s.url),{waitUntil:"load",timeout:30000});break;
-      case "click":if(!target)throw new Error("click needs selector or text");await target.click({timeout:10000});break;
-      case "fill":if(!target)throw new Error("fill needs selector");await target.fill(String(s.value??""),{timeout:10000});break;
-      case "press":await page.keyboard.press(String(s.key??"Enter"));break;
+      case "click":{
+        if(!target)throw new Error("click needs selector or text");
+        const pageState=`location.href+"|"+document.body.innerText+"|"+Array.from(document.querySelectorAll("input,textarea,select")).map(e=>e.value).join("|")`;
+        const before=await page.evaluate(pageState).catch(()=>null);
+        await target.click({timeout:10000});
+        await page.waitForTimeout(250);
+        const after=await page.evaluate(pageState).catch(()=>null);
+        // Said out loud, not failed: some clicks rightly change nothing that can be read.
+        if(before!==null&&before===after)effectNote=" (no visible change)";
+        break;
+      }
+      case "fill":{
+        if(!target)throw new Error("fill needs selector");
+        const wanted=String(s.value??"");
+        await target.fill(wanted,{timeout:10000});
+        const held=await target.inputValue({timeout:3000}).catch(()=>null);
+        if(held!==null&&held!==wanted)throw new Error(`fill did not take effect: the field holds "${String(held).slice(0,120)}"`);
+        break;
+      }
+      case "expectValue":{
+        if(!target)throw new Error("expectValue needs selector");
+        // A value shown in a span or div is still the value the step asks about.
+        const held=await target.inputValue({timeout:10000}).catch(async(error:Error)=>{if(/not an <input/.test(error.message))return String(await target.textContent({timeout:3000})??"").trim();throw error;});
+        if(held!==String(s.value??""))throw new Error(`expected the field to hold "${s.value}", it holds "${String(held).slice(0,120)}"`);
+        break;
+      }
+      case "expectCount":{
+        if(!s.selector)throw new Error("expectCount needs selector");
+        const all=page.locator(s.selector),want=Number(s.value),deadline=Date.now()+Math.min(s.ms??5000,15000);
+        let count=await all.count();
+        while(count!==want&&Date.now()<deadline){await page.waitForTimeout(100);count=await all.count();}
+        if(count!==want)throw new Error(`expected ${want} of ${s.selector??s.text}, found ${count}`);
+        break;
+      }
+      case "press":await page.keyboard.press(keyName(String(s.key??"Enter")));break;
       case "wait":if(target)await target.waitFor({timeout:Math.min(s.ms??10000,30000)});else await page.waitForTimeout(Math.min(Math.max(s.ms??500,0),10000));break;
       case "snapshot":{const text=await pageText(page);if(text!==null&&snapshots.length<5)snapshots.push(text);break;}
-      case "expectText":{const visible=await page.getByText(String(s.text??""),{exact:false}).first().isVisible().catch(()=>false);if(!visible)throw new Error(`Expected text not visible: ${s.text}`);break;}
+      case "expectText":{const shown=await page.getByText(String(s.text??""),{exact:false}).locator("visible=true").first().waitFor({state:"visible",timeout:Math.min(s.ms??5000,15000)}).then(()=>true,()=>false);if(!shown)throw new Error(`Expected text not visible: ${s.text}`);break;}
       default:throw new Error("Unknown step action: "+s.action);
     }
-    done.push(s.action+(s.selector?" "+s.selector:s.text?" "+s.text:""));
+    done.push(s.action+(s.selector?" "+s.selector:s.text?" "+s.text:"")+effectNote);
   }
   return done;
 }
@@ -86,7 +124,8 @@ const A11Y_SOURCE=`(() => ({
   imagesWithoutAlt: Array.from(document.images).filter(i => !i.hasAttribute("alt")).length,
   inputsWithoutLabel: Array.from(document.querySelectorAll("input:not([type=hidden]),select,textarea")).filter(el => { const id = el.getAttribute("id"); return !el.getAttribute("aria-label") && !el.closest("label") && !(id && document.querySelector('label[for="' + CSS.escape(id) + '"]')); }).length,
   buttonsWithoutName: Array.from(document.querySelectorAll("button,a[href]")).filter(el => !(el.textContent || "").trim() && !el.getAttribute("aria-label") && !el.getAttribute("title")).length,
-  horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 2,
+  horizontalOverflow: document.documentElement.scrollWidth > Math.min(window.innerWidth, screen.width || window.innerWidth) + 2,
+  widestElement: (() => { const limit = Math.min(window.innerWidth, screen.width || window.innerWidth) + 2; const el = Array.from(document.body ? document.body.querySelectorAll('*') : []).find(e => e.getBoundingClientRect().right > limit || e.getBoundingClientRect().width > limit); return el ? el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') : null; })(),
   viewportMeta: Boolean(document.querySelector("meta[name=viewport]"))
 }))()`;
 const DIFF_SOURCE=`(async ([x, y]) => {
@@ -143,7 +182,7 @@ export function createBrowserTestAdapter():ToolAdapter{
       const title=await page.title().catch(()=>"");const finalUrl=page.url();
       await ctx.close();
       const problems=[...(stepError?["step: "+stepError]:[]),...(status>=400?["HTTP "+status]:[]),...pageErrors.map(e=>"page error: "+e),...consoleErrors.map(e=>"console: "+e),...failedRequests.map(r=>"request: "+r),
-        ...(a11y?.horizontalOverflow?["layout: page scrolls sideways"]:[]),...(diff!==null&&diff>maxDiff?[`visual change ${(diff*100).toFixed(1)}% vs baseline "${baseline}"`]:[])];
+        ...(a11y?.horizontalOverflow?["layout: page scrolls sideways"+(a11y.widestElement?` (${a11y.widestElement} is wider than the screen)`:"")]:[]),...(diff!==null&&diff>maxDiff?[`visual change ${(diff*100).toFixed(1)}% vs baseline "${baseline}"`]:[])];
       results.push({viewport:vp,status,title,finalUrl,durationMs:Date.now()-started,steps:stepsDone,consoleErrors,pageErrors,failedRequests:failedRequests.slice(0,20),accessibility:a11y,
         visualDiff:diff,baselineSaved,problems,...(text!==null?{pageText:text}:{}),...(snapshots.length?{snapshots}:{}),screenshot:{mimeType:"image/jpeg",base64:shot.length<900_000?shot.toString("base64"):"",bytes:shot.length}});
     }

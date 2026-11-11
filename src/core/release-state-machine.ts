@@ -17,6 +17,7 @@ const allowed:Record<ReleaseStage,ReleaseStage[]>={
 export class ReleaseStateMachine{
  private readonly records=new Map<string,ReleaseRecord>();
  create(input:Omit<ReleaseRecord,"stage"|"createdAt"|"updatedAt"|"blockers">){
+  if(this.records.has(input.id))throw new Error("Release record already exists: "+input.id);
   const now=new Date().toISOString(); const record:ReleaseRecord={...input,stage:"DRAFT",createdAt:now,updatedAt:now,blockers:[]};
   this.records.set(record.id,record); return structuredClone(record);
  }
@@ -29,4 +30,7 @@ export class ReleaseStateMachine{
   r.stage=next;r.blockers=[...blockers];r.updatedAt=new Date().toISOString();return structuredClone(r);
  }
  block(id:string,reason:string){return this.transition(id,"BLOCKED",[reason]);}
+ /** Bring back saved records, or undo a change that could not be saved. */
+ restore(records:ReleaseRecord[]){for(const record of records)this.records.set(record.id,structuredClone(record));}
+ forget(id:string){this.records.delete(id);}
 }

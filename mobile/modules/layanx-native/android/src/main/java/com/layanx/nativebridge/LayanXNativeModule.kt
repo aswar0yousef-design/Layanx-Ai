@@ -76,6 +76,39 @@ class LayanXNativeModule : Module() {
       true
     }
 
+    // Opens the first installed app of the list. Android stops a background app from doing this, so it runs from the open app only.
+    AsyncFunction("openApp") { packages: List<String> ->
+      val launch = packages.firstNotNullOfOrNull { context.packageManager.getLaunchIntentForPackage(it) }
+      if (launch != null) {
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(launch)
+      }
+      launch != null
+    }
+
+    // Prepares a message. Sending stays with the person holding the phone.
+    AsyncFunction("openWhatsApp") { phone: String?, text: String? ->
+      val target = listOf("com.whatsapp", "com.whatsapp.w4b").firstOrNull { context.packageManager.getLaunchIntentForPackage(it) != null }
+      if (target != null) {
+        val query = if (text.isNullOrBlank()) "" else "?text=" + Uri.encode(text)
+        val i = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/" + (phone ?: "") + query))
+        i.setPackage(target)
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(i)
+      }
+      target != null
+    }
+
+    // Notes kept on this phone, encrypted with a key that never leaves the Android Keystore.
+    AsyncFunction("memoryLoad") {
+      LxConfig.loadMemory(context)
+    }
+
+    AsyncFunction("memorySave") { json: String ->
+      LxConfig.saveMemory(context, json)
+      true
+    }
+
     AsyncFunction("ask") {
       val i = Intent(context, VoiceAskActivity::class.java)
       i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

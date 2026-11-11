@@ -18,10 +18,14 @@ import {createHash} from "node:crypto";
 import {ApprovalEngine} from "../security/approval.js";
 import type {RuntimePersistence} from "./runtime-persistence.js";
 import {setLifecycle} from "./lifecycle.js";
+import {crossDomainRefusal} from "../autonomy/domain-coordinator.js";
 
 export interface RuntimeSecurityContext{projectId:string;capabilityId:string;}
 
 export interface RuntimeResult{ok:boolean;missionId:string;verified:boolean;error?:string;data?:unknown;recoverable?:boolean;approvalId?:string;}
+
+/** Identifies this run of the process, to tell a tool started by it from one a previous run never finished. */
+export const PROCESS_RUN_ID=crypto.randomUUID();
 
 export class ExecutionRuntime{
  private readonly persistence:RuntimePersistence|undefined;
@@ -66,10 +70,13 @@ export class ExecutionRuntime{
    this.core.audit.append({timestamp:new Date().toISOString(),actor:request.agentId,action:request.action,resource:request.tool,result:"denied",metadata:{reason:message,missionId:mission.id,projectId:security.projectId}});
    return{ok:false,missionId:mission.id,verified:false,error:message,recoverable:false};
   }
+  if(mission.inFlight&&mission.inFlight.runId!==PROCESS_RUN_ID)return this.block(mission,request,`Interrupted by a restart while ${mission.inFlight.tool} was running (started ${mission.inFlight.startedAt}). It may have taken effect, so it was not run again. Check the result, then start a new task.`);
   const state=this.core.executionStates.get(mission.id)??this.core.executionStates.start(mission.id);
   const started=Date.now();
   const trace=this.core.tracer.start("mission-tool","tool",{missionId:mission.id,projectId:projectId,agentId:request.agentId,tool:request.tool,action:request.action});
   const contract=this.core.agents.get(request.agentId);
+  const crossDomain=crossDomainRefusal(request.agentId,request.tool);
+  if(crossDomain)return this.block(mission,request,crossDomain);
   setLifecycle(mission,this.core.executionStates,"running",true);
   if(state.toolCalls>=contract.maxToolCalls)return this.block(mission,request,"Agent tool-call limit exceeded.");
   const toolDefinition=this.core.tools.get(request.tool);
@@ -109,9 +116,11 @@ export class ExecutionRuntime{
   const executionStep=mission.steps.find(step=>EXECUTION_STEP.test(step.description))??mission.steps.find(step=>step.status==="pending");
   if(executionStep) executionStep.status="running";
   this.core.recovery.checkpoint({missionId:mission.id,stepId:executionStep?.id??"mission",createdAt:new Date().toISOString(),state:{request}});
+  mission.inFlight={tool:request.tool,action:request.action,...(request.planIndex!==undefined?{planIndex:request.planIndex}:{}),startedAt:new Date().toISOString(),runId:PROCESS_RUN_ID};
   await this.persist(mission);
   let result;
-  try{result=await this.core.executor.execute(request,adapter);}catch(error){this.core.tracer.end(trace,"failure",{error:error instanceof Error?error.message:"tool execution failed"});throw error;}
+  try{result=await this.core.executor.execute(request,adapter);}catch(error){mission.inFlight=undefined;await this.persist(mission).catch(()=>undefined);this.core.tracer.end(trace,"failure",{error:error instanceof Error?error.message:"tool execution failed"});throw error;}
+  mission.inFlight=undefined;
   const runtimeMs=Date.now()-started;
   this.core.tracer.end(trace,result.ok?"success":"failure",{runtimeMs,ok:result.ok});
   if(request.tool!=="memory.recall")this.core.memory.remember({

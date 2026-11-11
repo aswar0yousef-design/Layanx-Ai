@@ -68,6 +68,7 @@ import {CodeReviewAgent} from "./code-review-agent.js";
 import {SecurityReviewAgent} from "./security-review-agent.js";
 import {PullRequestGenerator} from "./pr-generator.js";
 import {ReleaseStateMachine} from "./release-state-machine.js";
+import {PROCESS_RUN_ID} from "./runtime.js";
 import {ReleaseManager} from "./release-manager.js";
 import {RuntimeTracer} from "./runtime-tracer.js";
 import {SkillLearningEngine,type LearningTrace} from "../skills/learning.js";
@@ -77,6 +78,9 @@ import {StrategyRegistry,HtfStructureLiquidityStrategy,ScalpingSweepStrategy} fr
 import {ScalpRiskController} from "../trading/scalp-risk.js";
 import {registerPaperTradingAgentTool,registerBinanceMarketDataTool,registerBinanceLiveOrderTool} from "../trading/agent-integration.js";
 import type {LiveScreenObserver} from "../desktop/live-screen.js";
+import {routeGoal} from "../autonomy/domain-coordinator.js";
+
+const RELEASES_KEY="runtime:releases";
 
 export class LayanXCore{
   readonly planner=new MissionPlanner();
@@ -150,6 +154,8 @@ export class LayanXCore{
   readonly skillRuntime:SkillRuntime;
   readonly skillLearning=new SkillLearningEngine();
   private liveScreen?:LiveScreenObserver;
+  private readonly storage?:import("../storage/runtime-storage.js").RuntimeStorage;
+  private releaseWrites:Promise<void>=Promise.resolve();
 
   setLiveScreenObserver(observer:LiveScreenObserver){this.liveScreen=observer;}
   liveScreenStatus(){return {running:this.liveScreen?.isRunning()??false,frameAvailable:Boolean(this.liveScreen?.latest()),lastError:this.liveScreen?.lastErrorMessage()??null,lastFrameAt:this.liveScreen?.latest()?.capturedAt??null};}
@@ -160,6 +166,7 @@ export class LayanXCore{
   constructor(idempotency?:IdempotencyService,persistence?:RuntimePersistence,storage?:import("../storage/runtime-storage.js").RuntimeStorage){
     this.idempotency=idempotency??new IdempotencyStore();
     this.persistence=persistence;
+    this.storage=storage;
     this.executor=new ToolExecutor(this.tools,this.sentinel,this.idempotency);
     this.executionRuntime=new ExecutionRuntime(this);
     this.skillRuntime=new SkillRuntime(this.skills,async(missionId,projectId,toolIndex,payload)=>this.executeMissionTool(missionId,projectId,toolIndex,payload));
@@ -194,6 +201,13 @@ export class LayanXCore{
     if(snapshot.handoffs)this.handoffs.restore(snapshot.handoffs);
     if(snapshot.delegatedTasks)this.delegation.restore(snapshot.delegatedTasks);
     if(snapshot.approvals)this.executionRuntime.approvals.restore(snapshot.approvals);
+    const restored=this.missions.get(snapshot.mission.id)!;
+    // A tool was running when the previous process died: show that, instead of a mission "running" forever.
+    if(restored.inFlight&&restored.inFlight.runId!==PROCESS_RUN_ID&&["running","verifying"].includes(restored.status)){
+      setLifecycle(restored,this.executionStates,"blocked",false);
+      this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"mission.interrupted",resource:restored.id,result:"failure",metadata:{missionId:restored.id,tool:restored.inFlight.tool}});
+      this.missions.save(restored);
+    }
     return this.missions.get(snapshot.mission.id);
   }
 
@@ -230,10 +244,29 @@ export class LayanXCore{
   reviewCurrentCommitSecurity(baseRef="HEAD~1"){return this.securityReview.review(baseRef);}
   commitMissionChanges(options:import("./git-commit-generator.js").GitCommitOptions){return this.gitCommits.commit(options);}
   generatePullRequest(options:import("./pr-generator.js").PullRequestOptions){return this.prGenerator.generate(options);}
-  createReleaseRecord(input:Omit<import("./release-state-machine.js").ReleaseRecord,"stage"|"createdAt"|"updatedAt"|"blockers">){return this.releaseState.create(input);}
+  /** Runs one release change at a time and undoes it in memory if it cannot be saved, so the caller is never told something that a restart would lose. */
+  private changeRelease(change:()=>{record:import("./release-state-machine.js").ReleaseRecord;undo:()=>void}){
+    const run=this.releaseWrites.then(async()=>{
+      const{record,undo}=change();
+      try{await this.storage?.transaction(async tx=>{await tx.set(RELEASES_KEY,this.releaseState.list());});}catch(error){undo();throw error;}
+      return record;
+    });
+    this.releaseWrites=run.then(()=>undefined,()=>undefined);
+    return run;
+  }
+  async hydrateReleases(){
+    const records=await this.storage?.get<import("./release-state-machine.js").ReleaseRecord[]>(RELEASES_KEY);
+    this.releaseState.restore(records??[]);
+    return records?.length??0;
+  }
+  createReleaseRecord(input:Omit<import("./release-state-machine.js").ReleaseRecord,"stage"|"createdAt"|"updatedAt"|"blockers">){return this.changeRelease(()=>({record:this.releaseState.create(input),undo:()=>this.releaseState.forget(input.id)}));}
   releaseRecord(id:string){return this.releaseState.get(id);}
   releaseRecords(){return this.releaseState.list();}
-  transitionRelease(id:string,next:import("./release-state-machine.js").ReleaseStage,blockers:string[]=[]){const record=this.releaseState.transition(id,next,blockers);this.audit.append({timestamp:new Date().toISOString(),actor:"release-manager",action:"release.transition",resource:id,result:"success",metadata:{missionId:record.missionId,projectId:record.projectId,stage:record.stage}});return record;}
+  async transitionRelease(id:string,next:import("./release-state-machine.js").ReleaseStage,blockers:string[]=[]){
+    const record=await this.changeRelease(()=>{const before=this.releaseState.get(id);const changed=this.releaseState.transition(id,next,blockers);return{record:changed,undo:()=>{if(before)this.releaseState.restore([before]);}};});
+    this.audit.append({timestamp:new Date().toISOString(),actor:"release-manager",action:"release.transition",resource:id,result:"success",metadata:{missionId:record.missionId,projectId:record.projectId,stage:record.stage}});
+    return record;
+  }
   prepareRelease(record:import("./release-state-machine.js").ReleaseRecord,pr:import("./pr-generator.js").PullRequestDraft){return this.releaseManager.prepare(record,pr);}
   async applySafeCodeModification(request:import("./safe-code-modifier.js").SafeModificationRequest){return this.safeCodeModifier.apply(request);}
   registerMissionDependencies(missionId:string,dependsOn:string[],projectId="default"){return this.missionDependencies.register(missionId,dependsOn,projectId);}
@@ -583,6 +616,8 @@ export class LayanXCore{
   }
 
   async runAgentGateway(goal:string,projectId="default",maxSteps=10,approvalIds:Record<number,string>={},agentId="core",routing?:ModelRoutingOptions){
+    const domain=routeGoal(goal);
+    if(domain.needsOwner)throw new Error(domain.reason);
     // Cloud escalation: a goal that names Claude/GPT/Gemini, or a complex goal under the "complex" policy,
     // is planned by that cloud model; a local planning failure is retried once on the cloud (no tool has run yet).
     const modelPinned=Boolean(routing?.modelId);
@@ -625,12 +660,31 @@ export class LayanXCore{
         return{...result,status:"failed" as const};
       return result;
     }finally{
-      this.loops.delete(missionId);
+      this.loops.delete(missionId);this.loopStops.delete(missionId);
       // Deleted while it ran: a step that finished afterwards may have saved it again.
       if(this.deletedWhileRunning.delete(missionId)){this.missions.delete(missionId);await this.persistence?.remove(missionId).catch(()=>undefined);}
     }
   }
   private readonly loops=new Set<string>();
+  private readonly loopStops=new Map<string,string>();
+  /** When any running mission of this project last recorded activity (ms). */
+  lastProjectActivity(projectId:string):number{
+    const id=this.projectIsolation.normalize(projectId);
+    return Math.max(0,...this.missions.list().filter(m=>m.projectId===id&&["running","verifying"].includes(m.status)).map(m=>this.audit.lastActivity(m.id)));
+  }
+  /** Ends this project's agent loops at their next step and marks its running missions cancelled. */
+  async stopProjectMissions(projectId:string,reason:string):Promise<string[]>{
+    const id=this.projectIsolation.normalize(projectId),stopped:string[]=[];
+    for(const mission of this.missions.list().filter(m=>m.projectId===id&&["planned","running","verifying"].includes(m.status))){
+      if(this.loops.has(mission.id))this.loopStops.set(mission.id,reason);
+      setLifecycle(mission,this.executionStates,"cancelled",false);
+      this.audit.append({timestamp:new Date().toISOString(),actor:"supervisor",action:"mission.stopped",resource:mission.id,result:"failure",metadata:{missionId:mission.id,reason:reason.slice(0,300)}});
+      this.missions.save(mission);
+      try{await this.executionRuntime.persist(mission);}catch{}
+      stopped.push(mission.id);
+    }
+    return stopped;
+  }
   private readonly deletedWhileRunning=new Set<string>();
   /**
    * The owner deletes a mission made by mistake: it leaves the list, its pending approvals and its saved
@@ -673,6 +727,8 @@ export class LayanXCore{
     let liveScreenAutoStarted=false;
     const cleanupLiveScreen=()=>{if(liveScreenAutoStarted&&!liveScreenWasRunning)this.liveScreen?.stop();};
     while(steps<limit){
+      const stopReason=this.loopStops.get(missionId);
+      if(stopReason){cleanupLiveScreen();return{missionId,completed:false,status:"cancelled" as const,reason:stopReason,steps,results};}
       const current=this.missions.get(missionId);
       if(!current)throw new Error("Mission not found.");
       if(["completed","cancelled"].includes(current.status)){cleanupLiveScreen();return{missionId,completed:current.status==="completed",status:current.status,steps,results};}
@@ -939,6 +995,8 @@ export class LayanXCore{
     this.executionStates.start(m.id);
     this.ledger.append({id:crypto.randomUUID(),missionId:m.id,agentId:"core",action:"mission.create",status:"started",timestamp:new Date().toISOString(),detail:goal});
     this.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"mission.create",resource:m.id,result:"success",metadata:{goal,missionId:m.id}});
+    // Saved before it is listed: if the save fails the caller gets the error and no mission that a restart would lose.
+    await this.executionRuntime.persist(m);
     this.missions.save(m);
     return m;
   }

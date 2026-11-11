@@ -28,6 +28,16 @@ export interface RuntimeSnapshot{
   schemaVersion:number;
 }
 
+/** Running, or stopped part-way with something to continue. A plan with no recorded work has nothing to resume: it waits to be run. */
+function canResume(x:RuntimeSnapshot):boolean{
+  const neverStarted=x.mission.status==="planned"&&!x.checkpoint&&!x.idempotency?.length;
+  return(x.executionState.status==="running"&&!neverStarted)||
+    (x.executionState.status==="failed"&&x.executionState.recoverable===true)||
+    x.mission.status==="running"||
+    x.mission.status==="verifying"||
+    (x.mission.status==="blocked"&&x.approvals?.requests.some(request=>Date.parse(request.expiresAt)>Date.now()&&!x.approvals?.approvedIds.includes(request.id))===true);
+}
+
 export class RuntimePersistence{
   private cleanupTimer?:ReturnType<typeof setInterval>;
   constructor(private readonly storage:RuntimeStorage,private readonly migrations:RuntimeSnapshotMigration[]=[]){
@@ -154,13 +164,7 @@ export class RuntimePersistence{
     return snapshots;
   }
   async resumable():Promise<RuntimeSnapshot[]>{
-    return(await this.list()).filter(x=>
-      x.executionState.status==="running"||
-      (x.executionState.status==="failed"&&x.executionState.recoverable)||
-      x.mission.status==="running"||
-      x.mission.status==="verifying"||
-      (x.mission.status==="blocked"&&x.approvals?.requests.some(request=>Date.parse(request.expiresAt)>Date.now()&&!x.approvals?.approvedIds.includes(request.id)))
-    );
+    return(await this.list()).filter(canResume);
   }
 
   startAutoCleanup(intervalMs=24*60*60*1000,retentionMs=7*24*60*60*1000):void{
@@ -180,15 +184,7 @@ export class RuntimePersistence{
       const snapshots=raw.map(snapshot=>this.migrate(snapshot));
       snapshots.forEach(snapshot=>this.validate(snapshot));
       const cutoff=now-retentionMs;
-      const kept=snapshots.filter(snapshot=>{
-        const resumable=
-          snapshot.executionState.status==="running"||
-          (snapshot.executionState.status==="failed"&&snapshot.executionState.recoverable)||
-          snapshot.mission.status==="running"||
-          snapshot.mission.status==="verifying"||
-          (snapshot.mission.status==="blocked"&&snapshot.approvals?.requests.some(request=>Date.parse(request.expiresAt)>Date.now()&&!snapshot.approvals?.approvedIds.includes(request.id)));
-        return resumable||Date.parse(snapshot.savedAt)>=cutoff;
-      });
+      const kept=snapshots.filter(snapshot=>canResume(snapshot)||Date.parse(snapshot.savedAt)>=cutoff);
       await tx.set("runtime:snapshots",kept);
       return{removed:snapshots.length-kept.length,kept:kept.length};
     });

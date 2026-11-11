@@ -49,6 +49,12 @@ object LxConfig {
     return gen.generateKey()
   }
 
+  fun saveMemory(ctx: Context, json: String) {
+    prefs(ctx).edit().putString("memory", encrypt(json)).apply()
+  }
+
+  fun loadMemory(ctx: Context): String? = prefs(ctx).getString("memory", null)?.let { decrypt(it) }
+
   private fun encrypt(plain: String): String {
     val cipher = Cipher.getInstance("AES/GCM/NoPadding")
     cipher.init(Cipher.ENCRYPT_MODE, key())

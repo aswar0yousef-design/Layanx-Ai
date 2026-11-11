@@ -214,6 +214,16 @@ aside h2{margin-bottom:.5rem}
         <p class="note fp" id="pair-fp" hidden></p>
       </div>
       <p class="note" id="mobile-note"></p>
+      <div class="remote-box">
+        <h2 style="font-size:1.1rem">واتساب</h2>
+        <p class="note" id="wa-cloud"></p>
+        <p class="note">الربط بـ QR طريقة غير رسمية مثل واتساب ويب، وقد يقيّد واتساب الرقم أو يحظره. يُفضل رقم ثانوي. يرد LayanX عليك وعلى الموظفين فقط، ويمكنك أن تكتب له من محادثتك مع نفسك.</p>
+        <label class="switch"><input type="checkbox" id="wa-risk"><span>فهمت الخطر وأريد ربط الرقم</span></label>
+        <button class="primary" id="wa-link" disabled>ربط واتساب برمز QR</button>
+        <img class="qr" id="wa-qr" alt="رمز QR لربط واتساب" hidden>
+        <p class="note" id="wa-state"></p>
+        <button id="wa-unlink" hidden>إلغاء الربط</button>
+      </div>
       <ul class="devices" id="devices"></ul>
       <div class="remote-box">
         <h2 style="font-size:1.1rem">التحكم من أي مكان</h2>
@@ -363,6 +373,22 @@ $("refresh-models").addEventListener("click",async e=>{e.target.disabled=true;tr
 $("secret-form").addEventListener("submit",async e=>{e.preventDefault();const name=$("secret-name").value.trim(),value=$("secret-value").value;try{await api("/v1/setup/secrets","PUT",{name,value});$("secret-value").value="";await load();toast("حُفظ "+name);}catch(err){toast(err.message);}});
 $("mobile-toggle").addEventListener("change",async e=>{try{await api("/v1/setup/settings","PUT",{mobileAccess:e.target.checked});await load();}catch(err){e.target.checked=!e.target.checked;toast(err.message);}});
 $("acp-copy").addEventListener("click",async()=>{try{await navigator.clipboard.writeText($("acp-zed").textContent);toast("نُسخ الإعداد");}catch{toast("انسخ النص يدوياً");}});
+const WA_TEXT={off:"QR: غير مربوط",connecting:"QR: جارٍ الاتصال…",awaiting_scan:"في هاتفك: واتساب ← الأجهزة المرتبطة ← ربط جهاز، ثم امسح الرمز",linked:"QR: مربوط",reconnecting:"QR: يعيد الاتصال…",logged_out:"QR: خرج الرقم من الربط، اربطه من جديد",failed:"QR: فشل الربط"};
+let waTimer;
+async function waRefresh(){
+  try{
+    const w=await api("/v1/channels/whatsapp/qr"),s=w.status;
+    $("wa-state").textContent=(WA_TEXT[s.state]||s.state)+(s.account?" · "+s.account:"")+(s.lastProblem&&s.state!=="linked"?" · "+s.lastProblem:"");
+    const q=$("wa-qr");q.hidden=!w.qrSvg;if(w.qrSvg)q.src="data:image/svg+xml;base64,"+btoa(w.qrSvg);
+    $("wa-unlink").hidden=s.state==="off"&&!s.account;
+    clearTimeout(waTimer);if(["connecting","awaiting_scan","reconnecting"].includes(s.state))waTimer=setTimeout(waRefresh,2500);
+    const c=await api("/v1/channels/status");$("wa-cloud").textContent=c.channels&&c.channels.whatsapp&&c.channels.whatsapp.enabled?"API الرسمي: مفعّل":"API الرسمي: غير مفعّل بعد، وخطواته في دليل ربط الحسابات";
+  }catch(err){$("wa-state").textContent=err.message;}
+}
+$("wa-risk").addEventListener("change",e=>{$("wa-link").disabled=!e.target.checked;});
+$("wa-link").addEventListener("click",async()=>{try{await api("/v1/channels/whatsapp/qr/link","POST",{acceptRisk:true});await waRefresh();}catch(err){toast(err.message);}});
+$("wa-unlink").addEventListener("click",async()=>{if(!confirm("إلغاء ربط هذا الرقم؟ أزل الجهاز أيضا من هاتفك."))return;try{await api("/v1/channels/whatsapp/qr/unlink","POST",{});await waRefresh();}catch(err){toast(err.message);}});
+waRefresh();
 $("pair-start").addEventListener("click",async()=>{
   try{
     const p=await api("/v1/pair/start","POST",{});

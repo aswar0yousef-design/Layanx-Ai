@@ -15,7 +15,12 @@ if(command==="secrets"){try{await runSecrets();}catch(error){console.error(error
 else if(command==="status"){console.log(JSON.stringify(runtimeStatus(),null,2));}
 else if(command==="check"){const status=runtimeStatus();console.log(JSON.stringify(status,null,2));process.exitCode=status.ready?0:1;}
 else if(command==="health"){const health=await runtimeHealth();console.log(JSON.stringify(health,null,2));process.exitCode=health.ready&&health.healthy?0:1;}
-else if(command==="doctor"){const doctor=await providerDoctor();console.log(JSON.stringify(doctor,null,2));process.exitCode=doctor.ok?0:1;}
+else if(command==="doctor"){
+  const doctor=await providerDoctor();console.log(JSON.stringify(doctor,null,2));process.exitCode=doctor.ok?0:1;
+  // What this machine can run and what LayanX would download for it (nothing is downloaded here).
+  const hardware=await import("./platform/hardware-plan.js");
+  console.log("\n"+hardware.describePlan(hardware.planForHardware(hardware.detectHardware(),await hardware.installedModels(process.env.OLLAMA_BASE_URL?.trim()||undefined),hardware.loadCatalog())));
+}
 else if(command==="hooks"){
  // layanx hooks [status|install|uninstall] [claude|codex|all]: Claude Code / Codex permission requests through LayanX (phone + fingerprint).
  const {installAgentHooks,uninstallAgentHooks,agentHooksStatus}=await import("./local/agent-hooks.js");

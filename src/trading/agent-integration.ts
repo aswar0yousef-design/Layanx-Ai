@@ -95,6 +95,14 @@ export function registerBinanceMarketDataTool(tools: ToolRegistry, adapters: Too
 
 export const BINANCE_LIVE_ORDER_TOOL = "trading.binance.order";
 
+/** Enabling orders is not the same decision as using real money. Anything but the test network needs its own switch. */
+export function assertBinanceTarget(env: NodeJS.ProcessEnv = process.env): void {
+  const host = new URL(env.BINANCE_BASE_URL ?? "https://api.binance.com").hostname;
+  if (host !== "testnet.binance.vision" && host !== "127.0.0.1" && host !== "localhost" && env.BINANCE_ALLOW_REAL_MONEY !== "true") {
+    throw new Error("Binance orders are limited to the test network (BINANCE_BASE_URL=https://testnet.binance.vision). Real money needs BINANCE_ALLOW_REAL_MONEY=true.");
+  }
+}
+
 const BINANCE_LIVE_ORDER_DEFINITION: ToolDefinition = {
   name: BINANCE_LIVE_ORDER_TOOL,
   description: "Submit an approved Binance Spot order. L4 execution: requires explicit runtime approval and BINANCE_LIVE_TRADING_ENABLED=true for production.",
@@ -112,6 +120,7 @@ export function createBinanceLiveOrderToolAdapter(
       if (process.env.BINANCE_LIVE_TRADING_ENABLED !== "true") {
         throw new Error("Binance live execution is disabled. Set BINANCE_LIVE_TRADING_ENABLED=true only after approval and deployment readiness checks.");
       }
+      assertBinanceTarget();
       const payload = request.payload as Partial<import("./binance-spot-client.js").BinanceOrderRequest> & { maxNotional?: unknown };
       if (typeof payload.symbol !== "string" || (payload.side !== "BUY" && payload.side !== "SELL") || (payload.type !== "MARKET" && payload.type !== "LIMIT")) throw new Error("Invalid Binance order payload.");
       if (typeof payload.quantity !== "number" || !Number.isFinite(payload.quantity) || payload.quantity <= 0) throw new Error("Order quantity must be positive.");

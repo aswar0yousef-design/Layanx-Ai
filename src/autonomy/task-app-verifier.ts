@@ -43,6 +43,34 @@ export const TASK_SERVER_SKELETON=[
   "}"
 ].join("\n");
 
+const ROUTES_START="    // ROUTES START",ROUTES_END="    // ROUTES END";
+const TASK_PAGE_OPEN="<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Tasks / المهام</title></head><body><h1>Tasks / المهام</h1><input id=title><button id=add>Add / إضافة</button><ul id=list></ul><script>\n";
+const TASK_PAGE_CLOSE="\n</script></body></html>";
+const compiles=(code:string,label:string)=>{
+  const AsyncFunction=(async()=>undefined).constructor as FunctionConstructor;
+  try{new AsyncFunction("req","res","route",code);}catch(error){throw new Error(`Unusable output: the ${label} code does not parse: ${(error as Error).message}`);}
+};
+/**
+ * Node code and browser code never share a string. Models kept breaking the quoting when one was nested in the other, and
+ * browser code leaked into Node where it crashed on `document`. They now come back apart and the page is escaped here.
+ */
+export function composeTaskServer(routes:string,browser:string):string{
+  const node=routes.trim(),script=browser.trim().replace(/<\/?script[^>]*>/gi,"").trim();
+  if(!node||!script)throw new Error("Unusable output: routes or browser code is empty.");
+  if(/\b(?:document|window|localStorage)\s*[.[]/.test(node))throw new Error("Unusable output: routes run in Node and must not use document, window or localStorage.");
+  compiles(node,"routes");compiles(script,"browser");
+  return TASK_SERVER_SKELETON
+    .replace(/const page=`[\s\S]*?<\/html>`;/,()=>"const page="+JSON.stringify(TASK_PAGE_OPEN+script+TASK_PAGE_CLOSE)+";")
+    .replace("    // ROUTES GO HERE, one if statement per route ending in return",()=>ROUTES_START+"\n"+node+"\n"+ROUTES_END)+"\n";
+}
+/** The two parts back out of a composed file, so a repair works on what the model wrote. */
+export function decomposeTaskServer(source:string):{routes:string;browser:string}|undefined{
+  const routes=source.split(ROUTES_START+"\n")[1]?.split("\n"+ROUTES_END)[0];
+  const page=/^const page=(".*");$/m.exec(source)?.[1];
+  if(routes===undefined||!page)return undefined;
+  try{const html=JSON.parse(page) as string;return{routes,browser:html.slice(TASK_PAGE_OPEN.length,html.length-TASK_PAGE_CLOSE.length)};}catch{return undefined;}
+}
+
 const TASK_TEST_HARNESS_HEAD=[
   "import {test} from 'node:test';",
   "import assert from 'node:assert/strict';",

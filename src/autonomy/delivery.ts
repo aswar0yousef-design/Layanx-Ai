@@ -17,13 +17,14 @@ export interface DeliveryManifest {
 }
 const skipDirs=new Set(["node_modules",".git",".layanx",".next",".cache","coverage"]);
 const privateName=/(^\.env(?:\.|$)|secrets?|credentials?|password|token|private[-_.]?key|^id_rsa|\.pem$|\.p12$|\.pfx$|\.key$|\.sqlite$|\.db$)/i;
+const MAX_ARTIFACTS=5000;
 function inventory(root:string):DeliveryArtifact[]{
   const files:DeliveryArtifact[]=[];
   const visit=(dir:string)=>{
-    if(files.length>=500)throw Error("Project file inventory exceeds 500 artifacts; delivery cannot be claimed complete.");
+    if(files.length>=MAX_ARTIFACTS)throw Error("Project file inventory exceeds "+MAX_ARTIFACTS+" artifacts; delivery cannot be claimed complete.");
     const entries=fs.readdirSync(dir,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name));
     for(const entry of entries){
-      if(files.length>=500)throw Error("Project file inventory exceeds 500 artifacts; delivery cannot be claimed complete.");
+      if(files.length>=MAX_ARTIFACTS)throw Error("Project file inventory exceeds "+MAX_ARTIFACTS+" artifacts; delivery cannot be claimed complete.");
       if(privateName.test(entry.name)||entry.isSymbolicLink())continue;
       const abs=path.join(dir,entry.name);
       if(entry.isDirectory()){if(!skipDirs.has(entry.name))visit(abs);continue;}

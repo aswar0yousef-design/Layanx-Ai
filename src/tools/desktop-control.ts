@@ -155,6 +155,16 @@ public static class LxUia{
   throw new Exception("No open window title contains: "+title);
  }
  public static bool Retry(int h){return SetForegroundWindow(new IntPtr(h));}
+ /** One element as it is now, or "gone". */
+ public static string Read(int i){try{return Describe(Get(i),i);}catch(ElementNotAvailableException){return "gone";}}
+ [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr h,StringBuilder s,int n);
+ [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h,uint flags);
+ /** The title Windows itself holds: the accessibility name can briefly be that of a control inside the window. */
+ public static string Foreground(){IntPtr fg=GetForegroundWindow();if(fg==IntPtr.Zero)return "";var s=new StringBuilder(512);GetWindowText(GetAncestor(fg,2),s,512);return s.ToString();}
+ /** What the focused element holds, when it can be read. Null text means it cannot. */
+ public static string Focused(){try{var e=AutomationElement.FocusedElement;object p;if(e!=null&&!e.Current.IsPassword&&e.TryGetCurrentPattern(ValuePattern.Pattern,out p))return "v|"+((ValuePattern)p).Current.Value;}catch(Exception){}return "none";}
+ /** The foreground window's elements, without disturbing the numbered list a caller is working from. */
+ public static string Print(int max){var keptE=last;var keptJ=lastJson;try{last=new List<AutomationElement>();lastJson=new List<string>();IntPtr fg=GetForegroundWindow();if(fg==IntPtr.Zero)return "";bool t=false;Walk(AutomationElement.FromHandle(fg),0,max,Stopwatch.StartNew(),ref t);return string.Join("\n",lastJson.ToArray());}finally{last=keptE;lastJson=keptJ;}}
 }`;
 const WIN_HELPER_PS=[
  "$ErrorActionPreference='Stop'",
@@ -184,6 +194,10 @@ const WIN_HELPER_PS=[
  "   'uitree'{Need-Uia;if([string]$r.scope -eq 'windows'){[LxUia]::Windows()}else{[LxUia]::Tree([int]$r.max)}}",
  "   'uiclick'{Need-Uia;$res=[LxUia]::Click([int]$r.index,[bool]$r.pattern);if($res.StartsWith('mouse|')){$p=$res.Split('|');[LxDesk]::Move([int]$p[1],[int]$p[2]);[LxDesk]::Click([bool]$r.right,[bool]$r.double)};$res}",
  "   'uiset'{Need-Uia;$t=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([string]$r.text));$res=[LxUia]::SetText([int]$r.index,$t);if($res -eq 'focus'){[LxDesk]::Keys('CTRL+A');[LxDesk]::Type($t)};$res}",
+ "   'uiread'{Need-Uia;[LxUia]::Read([int]$r.index)}",
+ "   'uiforeground'{Need-Uia;[LxUia]::Foreground()}",
+ "   'uifocused'{Need-Uia;[LxUia]::Focused()}",
+ "   'uiprint'{Need-Uia;[LxUia]::Print(200)}",
  "   'focuswin'{Need-Uia;$res=[LxUia]::Focus([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([string]$r.title)));if($res.StartsWith('retry|')){$p=$res.Split('|');[LxDesk]::Keys('ALT');Start-Sleep -Milliseconds 50;if(-not [LxUia]::Retry([int]$p[1])){throw 'Windows refused to bring that window to the front.'};$res='ok|'+$p[1]+'|'+$p[2]};$res}",
  // Open a program or a web page. Nothing from the request becomes a command line: a known program is a
  // fixed command here, anything else is matched by name among the Start menu's installed apps, and a web
@@ -319,15 +333,36 @@ export function parseWindowTitleMatch(raw:string,requestedTitle:string):{exists:
  };
 }
 
+/** Position and keyboard focus move on their own; only what an element says or holds counts as an effect. */
+export function printedState(raw:string):string{return raw.replace(/,"rect":\[[^\]]*\]/g,"").replace(/,"focused":true/g,"");}
+/** Text the UI reports can differ from what was sent only in line endings. */
+const sameText=(a:string,b:string)=>a.replace(/\r\n?/g,"\n").trim()===b.replace(/\r\n?/g,"\n").trim();
+
 export function createDesktopControlToolAdapter(options:{runner?:Runner;windows?:WindowsDesktopBackend}={}):ToolAdapter{
  const run=options.runner??runner();
  const win=():WindowsDesktopBackend=>options.windows??(options.runner?runnerBackend(options.runner):(sharedHelper??=new PowerShellDesktopHelper()));
+ /** Mouse and keyboard go to whatever is in front. When the caller names the window, nothing happens unless it is that one. */
+ const requireForeground=async(expected:unknown)=>{
+  if(typeof expected!=="string"||!expected.trim())return;
+  const title=(await win().send({op:"uiforeground"})).trim();
+  if(!title.toLocaleLowerCase("en-US").includes(expected.trim().toLocaleLowerCase("en-US")))throw new Error(`The front window is "${title.slice(0,120)}", not "${expected.trim().slice(0,120)}". Nothing was sent to it.`);
+ };
+ const settle=()=>new Promise(resolve=>setTimeout(resolve,250));
+ const statePrint=async()=>printedState(await win().send({op:"uiprint"},15_000).catch(()=>""));
  return {async execute(request){
   const x=payload(request);
   if(request.action==="desktop status"){const platform=process.platform;const commands=platform==="win32"?["powershell.exe"]:platform==="darwin"?["osascript","screencapture"]:["xdotool","gnome-screenshot"];const available=commands.filter(c=>{try{execFileSync(platform==="win32"?"where":"which",[c],{stdio:"ignore",windowsHide:true});return true;}catch{return false;}});return {platform,ready:platform==="win32"?available.includes("powershell.exe"):platform==="linux"?available.includes("xdotool")&&available.includes("gnome-screenshot"):false,available,features:platform==="win32"?["mouse","double-click","scroll","unicode-typing","key-combinations","screenshot-jpeg","ui-automation-tree","click-element","set-element-text","focus-window"]:undefined};}
   if(request.action==="desktop move mouse"||request.action==="desktop click"){
    const px=numberValue(x.x,"x",20000),py=numberValue(x.y,"y",20000);const button=x.button==="right"?"right":"left";const dbl=x.double===true;
-   if(process.platform==="win32"){await win().send({op:request.action==="desktop click"?"click":"move",x:px,y:py,right:button==="right",double:dbl});return {x:px,y:py,...(request.action==="desktop click"?{button,double:dbl}:{})};}
+   if(process.platform==="win32"){
+    if(request.action==="desktop click")await requireForeground(x.window);
+    const before=request.action==="desktop click"&&!options.runner?await statePrint():"";
+    await win().send({op:request.action==="desktop click"?"click":"move",x:px,y:py,right:button==="right",double:dbl});
+    if(request.action!=="desktop click")return {x:px,y:py};
+    if(options.runner)return {x:px,y:py,button,double:dbl};
+    await settle();
+    return {x:px,y:py,button,double:dbl,effect:{changed:before!==await statePrint()}};
+   }
    if(process.platform==="darwin")throw new Error("macOS desktop control requires an accessibility adapter; install it before enabling desktop actions.");
    const args=request.action==="desktop click"?["mousemove",String(px),String(py),"click",...(dbl?["--repeat","2"]:[]),button==="right"?"3":"1"]:["mousemove",String(px),String(py)];
    const r=await run("xdotool",args);if(r.code!==0)throw new Error(r.stderr||"xdotool is required for Linux desktop control.");return {x:px,y:py,...(request.action==="desktop click"?{button,double:dbl}:{})};
@@ -338,7 +373,18 @@ export function createDesktopControlToolAdapter(options:{runner?:Runner;windows?
    const r=await run("xdotool",["click","--repeat",String(Math.abs(amount)),amount<0?"5":"4"]);if(r.code!==0)throw new Error(r.stderr||"xdotool is required for Linux scrolling.");return {amount};
   }
   if(request.action==="desktop type"){const value=textValue(x.text);
-   if(process.platform==="win32"){await win().send({op:"type",text:Buffer.from(value,"utf8").toString("base64")},20_000);return {characters:value.length};}
+   if(process.platform==="win32"){
+    await requireForeground(x.window);
+    const before=options.runner?"none":await win().send({op:"uifocused"}).catch(()=>"none");
+    await win().send({op:"type",text:Buffer.from(value,"utf8").toString("base64")},20_000);
+    if(options.runner)return {characters:value.length};
+    await settle();
+    const after=await win().send({op:"uifocused"}).catch(()=>"none");
+    if(!after.startsWith("v|"))return {characters:value.length,effect:{verified:null,note:"The focused element's text cannot be read."}};
+    // Typing replaces a selection, so it is the typed text that must be there, not a longer version of what was.
+    if(!after.replace(/\r\n?/g,"\n").includes(value.replace(/\r\n?/g,"\n")))throw new Error(`The typed text did not appear in the focused element. It now holds: "${after.slice(2,200)}"`);
+    return {characters:value.length,effect:{verified:true,changed:before!==after}};
+   }
    if(process.platform==="darwin")throw new Error("macOS desktop control requires an accessibility adapter; install it before enabling desktop actions.");
    const r=await run("xdotool",["type","--delay","0","--",value],15000);if(r.code!==0)throw new Error(r.stderr||"xdotool is required for Linux keyboard control.");return {characters:value.length};}
   if(request.action==="desktop press key"){const k=keyValue(x.key);
@@ -366,14 +412,35 @@ export function createDesktopControlToolAdapter(options:{runner?:Runner;windows?
   if(request.action==="desktop click element"){
    if(process.platform!=="win32")throw new Error("Clicking UI elements by index is available on Windows only.");
    const index=numberValue(x.index,"index",399);
-   const method=await win().send({op:"uiclick",index,pattern:x.pattern===true,right:x.button==="right",double:x.double===true});
-   return {index,method:method.startsWith("mouse|")?"mouse":method};
+   const pattern=x.pattern===true;
+   if(!pattern)await requireForeground(x.window);
+   const beforeState=options.runner?"":await statePrint();
+   const beforeElement=options.runner?"":await win().send({op:"uiread",index}).catch(()=>"");
+   const method=await win().send({op:"uiclick",index,pattern,right:x.button==="right",double:x.double===true});
+   const clicked={index,method:method.startsWith("mouse|")?"mouse":method};
+   if(options.runner)return clicked;
+   await settle();
+   const afterState=await statePrint();
+   const afterElement=await win().send({op:"uiread",index}).catch(()=>"gone");
+   const checkedOf=(json:string)=>/"checked":(true|false)/.exec(json)?.[1];
+   // A check box or toggle has one right answer: its state must have flipped.
+   if(checkedOf(beforeElement)!==undefined&&afterElement!=="gone"&&checkedOf(beforeElement)===checkedOf(afterElement))throw new Error("The element was clicked but its checked state did not change.");
+   return {...clicked,effect:{changed:beforeState!==afterState}};
   }
   if(request.action==="desktop set element text"){
    if(process.platform!=="win32")throw new Error("Setting text by element index is available on Windows only.");
    const index=numberValue(x.index,"index",399);const value=textValue(x.text);
    const method=await win().send({op:"uiset",index,text:Buffer.from(value,"utf8").toString("base64")},20_000);
-   return {index,characters:value.length,method};
+   if(options.runner)return {index,characters:value.length,method};
+   await settle();
+   const element=await win().send({op:"uiread",index}).catch(()=>"gone");
+   if(element==="gone")return {index,characters:value.length,method,effect:{verified:null,note:"The element is gone after the change."}};
+   let described:{value?:string;password?:boolean}={};
+   try{described=JSON.parse(element);}catch{}
+   if(described.password||described.value===undefined)return {index,characters:value.length,method,effect:{verified:null,note:"This element's text cannot be read back."}};
+   // The tree reports at most 200 characters of a value.
+   if(!sameText(described.value,value.slice(0,200)))throw new Error(`The text was not set: the element now holds "${described.value.slice(0,200)}"`);
+   return {index,characters:value.length,method,effect:{verified:true}};
   }
   if(request.action==="desktop open app"){
    const target=resolveOpenTarget(x);
@@ -399,6 +466,7 @@ export function createDesktopControlToolAdapter(options:{runner?:Runner;windows?
    if(!title||title.length>200)throw new Error("title must be 1-200 characters.");
    const out=await win().send({op:"focuswin",title:Buffer.from(title,"utf8").toString("base64")});
    const parts=out.split("|");
+   if(!options.runner)await settle().then(()=>requireForeground(title));
    return {focused:true,title:parts[2]??title};
   }
   throw new Error("Unsupported desktop control action.");

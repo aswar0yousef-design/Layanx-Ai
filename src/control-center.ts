@@ -55,4 +55,10 @@ export class ControlCenter{
   });
   this.core.missions.save(mission);
  }
+ /** Cancels now, then saves it so the mission cannot come back as live after a restart. A failed save is thrown to the caller. */
+ async cancelAndSave(missionId:string,projectId:string):Promise<void>{
+  this.cancel(missionId,projectId);
+  const mission=this.core.missions.get(missionId);
+  if(mission)await this.core.executionRuntime.persist(mission);
+ }
 }

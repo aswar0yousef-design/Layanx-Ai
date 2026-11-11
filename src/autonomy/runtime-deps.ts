@@ -5,7 +5,10 @@ import {pickExternalAgent} from "./external-agents.js";
 import type {JobRouting,SupervisorDeps,ToolRun} from "./supervisor.js";
 import {ollamaModelLadders} from "../config/providers.js";
 import {openInBrowser} from "../platform/open-url.js";
-import {composeTaskTestSource,TASK_SERVER_SKELETON,TASK_TEST_HARNESS,taskTestContractViolations} from "./task-app-verifier.js";
+import {abortProjectRuns} from "./project-runner.js";
+import {projectDir} from "./project-dir.js";
+import {researchTask} from "./task-research.js";
+import {composeTaskServer,composeTaskTestSource,decomposeTaskServer,TASK_TEST_HARNESS,taskTestContractViolations} from "./task-app-verifier.js";
 
 /**
  * Run ONE tool as its own small mission, through the full runtime (permissions, approval or
@@ -53,16 +56,28 @@ export function coreSupervisorDeps(core:LayanXCore):SupervisorDeps{
       });
       return r.output;
     },
+    researchTask(goal,projectId,stack){
+      const think=async(prompt:string)=>(await core.modelExecution.execute({capability:"reasoning",input:prompt,maxOutputTokens:1500,routing:{preferLocal:true}})).output;
+      return researchTask({goal,projectId,...(stack?{stack}:{})},{think});
+    },
     runAgent:(goal,projectId,agentId,routing)=>core.runAgentGateway(goal,projectId,15,{},agentId,routing) as never,
     async generateTaskServer(goal,previous,routing){
-      return generateSource([
-          "Return a JSON object with one content string containing the complete runnable JavaScript file. No markdown, tool calls, stubs or TODOs.",
+      const parts=previous?decomposeTaskServer(previous):undefined;
+      const response=await core.modelExecution.execute({
+        capability:"coding",routing:routing??{preferLocal:true},maxOutputTokens:3000,
+        responseSchema:{type:"object",properties:{routes:{type:"string"},browser:{type:"string"}},required:["routes","browser"],additionalProperties:false},
+        input:[
+          "Return a JSON object with two strings: routes and browser. No markdown, imports, HTML, stubs or TODOs. Write normal multi-line code in each.",
           goal,
-          "Only src/server.mjs is written. Copy this structure exactly, keep every helper unchanged, and fill in only the two commented places. loadTasks returns a plain array and saveTasks takes that plain array; never wrap it in {tasks} yourself:\n"+TASK_SERVER_SKELETON,
-          "Routes to add, each one if statement ending in return: GET / sends page with Content-Type text/html; charset=utf-8. GET /tasks returns json(res,200,{tasks:loadTasks()}). POST /tasks parses await readBody(req), pushes {id:String(Date.now()),title} and saves, then returns the task with status 201. DELETE when route starts with /tasks/: id is decodeURIComponent(route.slice(7)), keep tasks whose String(task.id) differs, save, return json(res,200,{deleted:true}).",
-          "Browser code goes between the script tags as normal multi-line JavaScript. The whole file must never contain a double-quote character: use single quotes everywhere and leave HTML attributes unquoted. Never write a backtick or a dollar-brace in browser code. Build URLs with +, for example fetch('/tasks/'+task.id,{method:'DELETE'}). Load rows from GET /tasks, set titles with textContent, give each row a button labelled Delete / حذف, and make the Add / إضافة button POST the title. document, window and location exist only in that browser code, never in Node code.",
-          previous?"Existing source to repair (replace it with the complete corrected file):\n"+previous:""
-      ].filter(Boolean).join("\n\n"),routing);
+          "LayanX writes the rest of src/server.mjs. Already defined: req, res, route (the path without the query), page (the finished HTML), loadTasks() returning a plain array, saveTasks(array), readBody(req) returning a promise of the text, json(res,status,value). GET /health is already handled.",
+          "routes: Node statements inside the async request handler, each an if statement ending in return. GET / : res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});return res.end(page). GET /tasks returns json(res,200,{tasks:loadTasks()}). POST /tasks parses await readBody(req), pushes {id:String(Date.now()),title} and saves, then returns the task with status 201. DELETE when route starts with /tasks/: id is decodeURIComponent(route.slice(7)), keep tasks whose String(task.id) differs, save, return json(res,200,{deleted:true}). document and window do not exist here.",
+          "browser: the JavaScript of the page, which already has input#title, button#add and ul#list. Load rows from GET /tasks, set titles with textContent, give each row a button labelled Delete / حذف that sends fetch('/tasks/'+task.id,{method:'DELETE'}), and make #add POST the title as JSON and reload the rows.",
+          parts?"Your previous parts, which failed; return them corrected and complete:\nroutes:\n"+parts.routes+"\nbrowser:\n"+parts.browser:""
+        ].filter(Boolean).join("\n\n")
+      });
+      const output=JSON.parse(response.output) as {routes?:unknown;browser?:unknown}|null;
+      if(typeof output?.routes!=="string"||typeof output?.browser!=="string")throw new Error("Unusable output: routes or browser code is missing.");
+      return{content:composeTaskServer(output.routes,output.browser),modelId:response.modelId};
     },
     async generateTaskTests(goal,server,routing){
       const candidate=await generateSource([
@@ -87,6 +102,10 @@ export function coreSupervisorDeps(core:LayanXCore):SupervisorDeps{
       const response=await core.modelExecution.execute({capability:"coding",routing:routing??{preferLocal:true},maxOutputTokens:1500,input:prompt});
       return{content:response.output,modelId:response.modelId};
     },
+    async generateFile(prompt,routing){
+      const response=await core.modelExecution.execute({capability:"coding",routing:routing??{preferLocal:true},maxOutputTokens:4000,input:prompt});
+      return{content:response.output,modelId:response.modelId};
+    },
     resumeAgent:(missionId,projectId,agentId,approvals,routing)=>core.executeAgentLoop(missionId,projectId,15,approvals,agentId,routing) as never,
     runTool:(projectId,tool,payload,resume)=>runSingleTool(core,projectId,tool,payload,resume).catch(error=>({ok:false,error:(error as Error).message})),
     isApproved:id=>core.executionRuntime.approvals.isApproved(id),
@@ -94,6 +113,8 @@ export function coreSupervisorDeps(core:LayanXCore):SupervisorDeps{
     forgetApprovalsForMissions:missionIds=>{void core.executionRuntime.forgetApprovalsForMissions(missionIds).catch(()=>undefined);},
     cloudAvailable:cloudReady,
     externalAgent:()=>{const a=pickExternalAgent("auto");return a&&(a.kind==="local"||cloudReady())?{name:a.name,kind:a.kind}:null;},
-    openUrl:url=>{if(process.env.LAYANX_OPEN_BROWSER!=="off")openInBrowser(url);}
+    openUrl:url=>{if(process.env.LAYANX_OPEN_BROWSER!=="off")openInBrowser(url);},
+    activity:projectId=>core.lastProjectActivity(projectId),
+    async abortProject(projectId,reason){abortProjectRuns(projectDir(projectId));await core.stopProjectMissions(projectId,reason);}
   };
 }

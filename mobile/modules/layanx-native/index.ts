@@ -20,6 +20,13 @@ interface LayanXNativeModule{
   openBatterySettings():Promise<boolean>;
   /** "Ask LayanX" by voice (same screen as the Quick Settings tile). */
   ask():Promise<boolean>;
+  /** Opens the first of these apps that is installed; false when none is. */
+  openApp(packages:string[]):Promise<boolean>;
+  /** Opens WhatsApp with a prepared message. The owner presses send. */
+  openWhatsApp(phone:string|null,text:string|null):Promise<boolean>;
+  /** Notes kept on the phone, encrypted with the Android Keystore. */
+  memoryLoad():Promise<string|null>;
+  memorySave(json:string):Promise<boolean>;
 }
 
 /** Android only; null on iOS and in Expo Go, where the app falls back to plain fetch. */

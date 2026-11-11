@@ -1,3 +1,7 @@
+import {join as joinPath} from "node:path";
+import {ShippingDesk} from "./business/shipping.js";
+import {registerShippingTools} from "./business/shipping-tools.js";
+import {registerIntakeTools} from "./autonomy/intake-tools.js";
 import {LayanXCore} from "./core/orchestrator.js";
 import type {AgentContract} from "./core/contracts.js";
 import {configureProviders,providerSummary} from "./config/providers.js";
@@ -5,9 +9,11 @@ import {prewarmDesktopHelper} from "./tools/desktop-control.js";
 import {registerBuiltinTools,registerHttpReadTool,registerGitHubReadTools,registerToolFabric,registerDesktopControlTools,registerTradingTools} from "./tools/builtin.js";
 import {registerMt5TradingTools,MT5_TOOLS} from "./trading/mt5-agent-integration.js";
 import {RuntimePersistence} from "./core/runtime-persistence.js";
+import {reapOrphanRuns} from "./autonomy/project-runner.js";
 import {RuntimeStorage} from "./storage/runtime-storage.js";
 import {createOllamaEmbedder,embeddingModelFromEnv} from "./memory/embedder.js";
 import {VectorStore} from "./memory/vector-store.js";
+import {ModelStats} from "./core/model-stats.js";
 import {CloudBudget} from "./models/cloud-budget.js";
 import {McpManager,setMcpManager} from "./mcp/manager.js";
 import {registerMcpTools} from "./mcp/tools.js";
@@ -45,6 +51,7 @@ export function createRuntime(options:RuntimeOptions={}){
  const persistence=storage?new RuntimePersistence(storage):undefined;
  const core=new LayanXCore(undefined,persistence,storage);
  core.modelExecution.budget=CloudBudget.forStore();
+ core.modelExecution.stats=ModelStats.forStore();
  const embeddingModel=embeddingModelFromEnv();
  if(embeddingModel)core.memory.setEmbedder(createOllamaEmbedder(embeddingModel,{baseUrl:process.env.OLLAMA_BASE_URL}),VectorStore.forStore());
  // One writer for every text meant for people (posts, scripts, website and app copy): the local model first.
@@ -77,6 +84,9 @@ export function createRuntime(options:RuntimeOptions={}){
   :undefined;
  if(liveScreen)core.setLiveScreenObserver(liveScreen);
  if(capabilityEnabled("business")||capabilityEnabled("ads")||capabilityEnabled("social"))registerBusinessTools(core,business,ads,media,growth);
+ const shipping=new ShippingDesk(joinPath(process.env.LAYANX_STORE_DIR?.trim()||".layanx","shipping.json"));
+ if(capabilityEnabled("business"))registerShippingTools(core,shipping);
+ registerIntakeTools(core,{intakeRoot:joinPath(process.env.LAYANX_STORE_DIR?.trim()||".layanx","intake"),ledgerFile:joinPath(process.env.LAYANX_STORE_DIR?.trim()||".layanx","improvement-ledger.json")});
  if(capabilityEnabled("social"))registerCreatorTools(core,creator);
  if(capabilityEnabled("quran"))registerQuranTools(core);
  if(capabilityEnabled("email")){
@@ -95,13 +105,15 @@ export function createRuntime(options:RuntimeOptions={}){
  void mcp.start().catch(()=>undefined);
  if(capabilityEnabled("research"))registerAgentReachTools(core);
  let channels!: MessagingChannels;
- const flows=new FlowRuntime(core,async(channel,chatId,text)=>{if(channel==="whatsapp")await channels.whatsapp.sendText(chatId,text);else if(channel==="telegram")await channels.telegram.sendText(chatId,text);});
+ const flows=new FlowRuntime(core,async(channel,chatId,text)=>{if(channel==="whatsapp")await channels.sendWhatsApp(chatId,text);else if(channel==="telegram")await channels.telegram.sendText(chatId,text);});
  channels=new MessagingChannels(core,async message=>{const raw=message.raw&&typeof message.raw==="object"?message.raw as Record<string,unknown>:{};const projectId=process.env.LAYANX_CHANNEL_PROJECT_ID??"default"; /* never taken from the inbound message itself */const result=await flows.handleInbound({id:message.messageId,projectId,channel:message.channel,senderId:message.senderId,chatId:message.chatId,text:message.text,timestamp:new Date().toISOString(),metadata:{...raw,eventType:"message"}});return result.matched>0;});
  const agent:AgentContract={
   agentId:"core",
   purpose:"Safely orchestrate LayanX missions.",
   allowedTools:["runtime.status","mission.inspect","memory.recall","http.read","github.repo.read","github.issues.list","github.prs.list","browser.read","files.read","files.list","files.stat","files.write","project.bootstrap","project.verify","terminal.exec","git.status","git.diff","git.log","git.checkpoint","git.branch","git.add","git.commit","git.rollback","git.push","project.inspect","project.verify","development.prepare","desktop.status","desktop.mouse.move","desktop.mouse.click","desktop.mouse.scroll","desktop.keyboard.type","desktop.keyboard.press","desktop.screenshot","desktop.ui.tree","desktop.ui.click","desktop.ui.set_text","desktop.window.find","desktop.window.focus","desktop.app.open","ads.snapshot","ads.account.create","ads.campaign.create","ads.adgroup.create","ads.creative.create","ads.ad.create","ads.campaign.launch","ads.campaign.pause","ads.insights.sync","commerce.snapshot","commerce.store.create","commerce.product.create","commerce.product.update","commerce.product.publish","commerce.orders.sync","media.add","media.inspect","content.generate","content.humanize","content.publish","content.schedule","content.process_scheduled","commerce.analytics","campaign.create","growth.snapshot","growth.dashboard","growth.experiment.create","growth.plan_cycle","growth.metric.record","growth.action.complete","creator.doctor","creator.plan","creator.generate_assets","creator.render","quran.doctor","quran.prepare_next","quran.publish_next","google.gmail.search","google.gmail.read","google.gmail.send","google.drive.list","google.drive.folder.create","google.sheets.create","google.sheets.append","google.calendar.upcoming","google.merchant.accounts","google.merchant.products","email.invoices.scan","yahoo.mail.search","yahoo.mail.read","yahoo.mail.send","skill.learn","skill.pending","skill.approve","skill.enable","skill.execute","trading.paper.backtest","trading.binance.market-data","trading.binance.order",
    // Registered by their subsystems but previously missing here, so the agent could never choose them.
+   "shipping.carriers","shipping.carrier.save","shipping.quote","shipping.create","shipping.list","shipping.book","shipping.update","shipping.refresh","shipping.cod.collected","shipping.invoice","shipping.reconcile","shipping.report",
+   "integration.intake.request","integration.intake.list","improvement.ledger",
    // Dangerous ones (orders, MT5 auto-scalper, setup) still stop for explicit approval.
    "research.internet","agent-reach.status","agent-reach.channels","agent-reach.collect","agent-reach.capabilities","agent-reach.update.check","agent-reach.setup",
    "trading.strategy.list","trading.strategy.backtest","trading.strategy.optimize","trading.strategy.walk_forward","trading.strategy.monte_carlo",
@@ -125,13 +137,17 @@ export function createRuntime(options:RuntimeOptions={}){
  core.registerAgent(agent);
  for(const specialised of specialisedAgents(agent))core.registerAgent(specialised);
  const configured=configureProviders(undefined,core.models,core.providers);
- return{core,business,ads,media,growth,creator,writer,liveScreen,channels,flows,...configured,providerSummary:providerSummary(),persistence};
+ return{core,business,ads,media,growth,shipping,creator,writer,liveScreen,channels,flows,...configured,providerSummary:providerSummary(),persistence};
 }
 
 export async function restoreRuntime(runtime:ReturnType<typeof createRuntime>):Promise<{restored:number}>{
  await runtime.business.hydrate();
  await runtime.core.scheduler.hydrate();
+ // Before anything is resumed: a task from a crashed run must not keep running beside its retry.
+ const orphans=reapOrphanRuns();
+ if(orphans.stopped.length||orphans.left.length)runtime.core.audit.append({timestamp:new Date().toISOString(),actor:"core",action:"runs.reaped",resource:"project-runner",result:orphans.left.length?"failure":"success",metadata:orphans});
  if(process.env.LAYANX_QURAN_AUTOSCHEDULE==="true"&&capabilityEnabled("quran"))configureQuranDailySchedules(runtime.core);
+ await runtime.core.hydrateReleases();
  if(!runtime.persistence)return{restored:0};
  const snapshots=await runtime.persistence.list();
  for(const snapshot of snapshots)runtime.core.restoreRuntimeSnapshot(snapshot);

@@ -16,11 +16,12 @@ class MemoryStorage implements StorageAdapter{
  }
 }
 export class RuntimeStorage{
- private writeQueue:Promise<void>=Promise.resolve();
+ // One transaction at a time: they read, change and write back whole values, and a failed one must not block the next.
+ private queue:Promise<unknown>=Promise.resolve();
  constructor(private readonly storage:StorageAdapter=new MemoryStorage(),private readonly keys:RuntimeStorageKeys={snapshot:"runtime:snapshots"}){}
- async transaction<T>(work:(tx:Transaction)=>Promise<T>):Promise<T>{await this.writeQueue;return this.storage.transaction(work);}
- async get<T>(key=this.keys.snapshot):Promise<T|undefined>{await this.writeQueue;return this.storage.transaction(async tx=>tx.get<T>(key));}
- async set<T>(value:T,key=this.keys.snapshot):Promise<void>{this.writeQueue=this.writeQueue.then(()=>this.storage.transaction(async tx=>{await tx.set(key,value);}));await this.writeQueue;}
+ async transaction<T>(work:(tx:Transaction)=>Promise<T>):Promise<T>{const run=this.queue.then(()=>this.storage.transaction(work));this.queue=run.catch(()=>undefined);return run;}
+ async get<T>(key=this.keys.snapshot):Promise<T|undefined>{return this.transaction(async tx=>tx.get<T>(key));}
+ async set<T>(value:T,key=this.keys.snapshot):Promise<void>{await this.transaction(async tx=>{await tx.set(key,value);});}
  static json(path:string):RuntimeStorage{return new RuntimeStorage(new JsonStorageAdapter(path));}
  /** SQLite when available (importing the old JSON file once), otherwise JSON. LAYANX_STORAGE=json forces JSON. */
  static local(jsonPath:string,env:NodeJS.ProcessEnv=process.env):RuntimeStorage{

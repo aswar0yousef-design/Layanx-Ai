@@ -1,4 +1,4 @@
-import {spawn,execFile,type ChildProcess} from "node:child_process";
+import {spawn,execFile,execFileSync,type ChildProcess} from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type {ToolAdapter} from "../tools/executor.js";
@@ -9,6 +9,7 @@ import {updateHealth} from "./knowledge.js";
 import {dockerRun,dockerVersion,isolationLevel,restrictedAvailable,withoutInstallScripts,type Isolation} from "./sandbox.js";
 import {gitSnapshot,prepareRestricted,restrictedCommand,restrictedEnv,verifyGitAfterRun} from "../platform/windows-sandbox.js";
 import net from "node:net";
+import os from "node:os";
 
 /**
  * project.run: everything needed to build and check a project without a free-form shell.
@@ -106,22 +107,143 @@ export function commandFor(info:ProjectInfo,task:string,script?:string):Cmd{
 
 function childEnv(){return safeChildEnv({allow:["PYTHONPATH","VIRTUAL_ENV","JAVA_HOME","ANDROID_HOME","FLUTTER_ROOT","DOTNET_ROOT","NVM_HOME","NVM_SYMLINK"],extra:{CI:"1",FORCE_COLOR:"0",NO_COLOR:"1",npm_config_update_notifier:"false"}});}
 
+/** The output of a task, kept in files: with pipes, npm and its shell die with LayanX and their children can no longer be found. */
+function outputFiles(){
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),"layanx-run-"));
+  const out=fs.openSync(path.join(dir,"out"),"w"),err=fs.openSync(path.join(dir,"err"),"w");
+  const tail=(name:string)=>{
+    let handle:number|undefined;
+    try{
+      handle=fs.openSync(path.join(dir,name),"r");
+      const size=fs.fstatSync(handle).size,length=Math.min(size,MAX_OUT),buffer=Buffer.alloc(length);
+      fs.readSync(handle,buffer,0,length,size-length);
+      return buffer.toString("utf8");
+    }catch{return"";}finally{if(handle!==undefined)try{fs.closeSync(handle);}catch{}}
+  };
+  return{out,err,tail,close(){for(const fd of[out,err])try{fs.closeSync(fd);}catch{}},remove(){try{fs.rmSync(dir,{recursive:true,force:true});}catch{}}};
+}
 export function runOnce(cmd:Cmd,cwd:string,timeoutMs:number,env?:NodeJS.ProcessEnv):Promise<{command:string;cwd:string;exitCode:number|null;timedOut:boolean;stdout:string;stderr:string;durationMs:number}>{
   const started=Date.now();
   return new Promise(resolve=>{
-    let stdout="",stderr="",timedOut=false;
-    const child=spawn(cmd.command,cmd.args,{cwd,shell:false,windowsHide:true,env:env??childEnv(),detached:process.platform!=="win32"});
+    let timedOut=false,done=false;
+    const output=outputFiles();
+    const child=spawn(cmd.command,cmd.args,{cwd,shell:false,windowsHide:true,env:env??childEnv(),detached:process.platform!=="win32",stdio:["ignore",output.out,output.err]});
+    output.close();
     const timer=setTimeout(()=>{timedOut=true;killTree(child);},timeoutMs);
-    child.stdout?.setEncoding("utf8").on("data",(c:string)=>{stdout=(stdout+c).slice(-MAX_OUT);});
-    child.stderr?.setEncoding("utf8").on("data",(c:string)=>{stderr=(stderr+c).slice(-MAX_OUT);});
-    child.on("error",e=>{clearTimeout(timer);resolve({command:cmd.label,cwd,exitCode:null,timedOut,stdout,stderr:stderr+String(e.message),durationMs:Date.now()-started});});
-    child.on("close",code=>{clearTimeout(timer);resolve({command:cmd.label,cwd,exitCode:code,timedOut,stdout,stderr,durationMs:Date.now()-started});});
+    activeRuns.set(child,cwd);child.once("close",()=>activeRuns.delete(child));child.once("error",()=>activeRuns.delete(child));
+    trackRun(child,cwd,cmd.label);
+    const finish=(exitCode:number|null,extra="")=>{
+      if(done)return;done=true;clearTimeout(timer);
+      const result={command:cmd.label,cwd,exitCode,timedOut,stdout:output.tail("out"),stderr:output.tail("err")+extra,durationMs:Date.now()-started};
+      output.remove();resolve(result);
+    };
+    child.on("error",e=>finish(null,String(e.message)));
+    child.on("close",code=>finish(code));
   });
+}
+const activeRuns=new Map<ChildProcess,string>();
+/** Ends every task still running in this project folder. Returns how many were told to stop. */
+export function abortProjectRuns(dir:string):number{
+  const root=path.resolve(dir)+path.sep;let stopped=0;
+  for(const[child,cwd]of activeRuns)if((path.resolve(cwd)+path.sep).startsWith(root)){killTree(child);stopped++;}
+  return stopped;
 }
 function killTree(child:ChildProcess){
   if(!child.pid)return;
   if(process.platform==="win32")execFile("taskkill",["/pid",String(child.pid),"/t","/f"],{windowsHide:true},()=>undefined);
   else{try{process.kill(-child.pid,"SIGTERM");}catch{try{child.kill("SIGTERM");}catch{}}}
+}
+
+// ---------------------------------------------------------------- runs that outlive a crash
+export interface TrackedRun{pid:number;owner:number;cwd:string;label:string;startedAt:string;family?:number[]}
+const runsFile=()=>path.join(path.resolve(process.env.LAYANX_STORE_DIR?.trim()||".layanx"),"active-runs.json");
+function readRuns():TrackedRun[]{try{const list=JSON.parse(fs.readFileSync(runsFile(),"utf8"));return Array.isArray(list)?list:[];}catch{return[];}}
+function writeRuns(runs:TrackedRun[]){try{const file=runsFile();fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file+".tmp",JSON.stringify(runs));fs.renameSync(file+".tmp",file);}catch{}}
+function trackRun(child:ChildProcess,cwd:string,label:string){
+  const pid=child.pid;if(!pid)return;
+  writeRuns([...readRuns(),{pid,owner:process.pid,cwd,label,startedAt:new Date().toISOString()}]);
+  const forget=()=>writeRuns(readRuns().filter(run=>!(run.pid===pid&&run.owner===process.pid)));
+  child.once("close",forget);child.once("error",forget);
+  scheduleFamilySample(1500);
+}
+/**
+ * On Windows npm and its shell die with LayanX while the program they started keeps running, and the link to it is lost.
+ * So the processes under each running task are noted while LayanX is alive.
+ */
+let familyTimer:ReturnType<typeof setTimeout>|undefined;
+function scheduleFamilySample(ms:number){
+  if(process.platform!=="win32"||familyTimer)return;
+  familyTimer=setTimeout(()=>{
+    execFile("powershell",["-NoProfile","-Command",PROCESS_TABLE_COMMAND],{encoding:"utf8",windowsHide:true,timeout:20_000,maxBuffer:16*1024*1024},(error,stdout)=>{
+      familyTimer=undefined;
+      const mine=readRuns().filter(run=>run.owner===process.pid);
+      if(!mine.length)return;
+      if(!error)try{
+        const table=parseProcessTable(stdout);
+        writeRuns(readRuns().map(run=>run.owner!==process.pid?run:{...run,family:[...new Set([...(run.family??[]),...descendants(table,[run.pid,...(run.family??[])],Date.parse(run.startedAt))])]}));
+      }catch{}
+      // New tasks settle in their first seconds, so they are looked at more often.
+      scheduleFamilySample(mine.some(run=>Date.now()-Date.parse(run.startedAt)<12_000)?2000:10_000);
+    });
+  },ms);
+  familyTimer.unref?.();
+}
+const pidAlive=(pid:number)=>{try{process.kill(pid,0);return true;}catch(error){return(error as NodeJS.ErrnoException).code==="EPERM";}};
+function processStartMs(pid:number):number|undefined{
+  try{
+    const text=process.platform==="win32"
+      ?execFileSync("powershell",["-NoProfile","-Command",`(Get-Process -Id ${pid}).StartTime.ToUniversalTime().ToString('o')`],{encoding:"utf8",windowsHide:true,timeout:10_000})
+      :execFileSync("ps",["-o","lstart=","-p",String(pid)],{encoding:"utf8",timeout:10_000});
+    const ms=Date.parse(text.trim());return Number.isFinite(ms)?ms:undefined;
+  }catch{return undefined;}
+}
+/**
+ * After a crash, a task LayanX started can still be running, unattended and possibly beside its own retry. It is only
+ * stopped if the process that owned it is gone and the id still belongs to that same process (ids get reused).
+ */
+export function reapOrphanRuns():{stopped:string[];left:string[]}{
+  const stopped:string[]=[],left:string[]=[],keep:TrackedRun[]=[];
+  const abandoned:TrackedRun[]=[];
+  for(const run of readRuns()){if(run.owner===process.pid||pidAlive(run.owner))keep.push(run);else abandoned.push(run);}
+  const table=abandoned.length&&process.platform==="win32"?processTable():[];
+  for(const run of abandoned){
+    const began=Date.parse(run.startedAt);
+    const seeds=[run.pid,...(run.family??[])];
+    // Noted ids count only if that process is still the same one, and whatever they started is found through them.
+    const known=(run.family??[]).filter(pid=>table.some(row=>row.ProcessId===pid&&Date.parse(row.Created)>=began-2000));
+    const family=process.platform==="win32"?[...new Set([...known,...descendants(table,seeds,began)])]:[];
+    const started=pidAlive(run.pid)?processStartMs(run.pid):undefined;
+    const rootIsOurs=started!==undefined&&Math.abs(started-began)<=15_000;
+    if(pidAlive(run.pid)&&!rootIsOurs&&!family.length){left.push(run.label);continue;}
+    const targets=[...(rootIsOurs?[run.pid]:[]),...family];
+    if(!targets.length)continue;
+    try{
+      // taskkill reports failure for a child that went down with its parent, so what counts is who is still there afterwards.
+      if(process.platform==="win32")for(const pid of targets)if(pidAlive(pid))try{execFileSync("taskkill",["/pid",String(pid),"/t","/f"],{windowsHide:true,stdio:"ignore",timeout:10_000});}catch{}
+      else process.kill(-run.pid,"SIGKILL");
+      for(let waited=0;waited<3000&&targets.some(pidAlive);waited+=250)Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,250);
+      (targets.some(pidAlive)?left:stopped).push(run.label);
+    }catch{left.push(run.label);}
+  }
+  writeRuns(keep);
+  return{stopped,left};
+}
+interface ProcessRow{ProcessId:number;ParentProcessId:number;Created:string;Name?:string}
+const PROCESS_TABLE_COMMAND="Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,@{n='Created';e={$_.CreationDate.ToUniversalTime().ToString('o')}} | ConvertTo-Json -Compress";
+function parseProcessTable(text:string):ProcessRow[]{const rows=JSON.parse(text);return Array.isArray(rows)?rows:[rows];}
+function processTable():ProcessRow[]{
+  try{return parseProcessTable(execFileSync("powershell",["-NoProfile","-Command",PROCESS_TABLE_COMMAND],{encoding:"utf8",windowsHide:true,timeout:20_000,maxBuffer:16*1024*1024}));}
+  catch{return[];}
+}
+/** Only processes created after the run began can be its children: a parent id alone may have been reused. The console helper goes by itself. */
+function descendants(table:ProcessRow[],seeds:number[],began:number):number[]{
+  const found=new Set(seeds);
+  for(let grew=true;grew;){
+    grew=false;
+    for(const row of table)if(!found.has(row.ProcessId)&&found.has(row.ParentProcessId)&&Date.parse(row.Created)>=began-2000&&!/conhost/i.test(row.Name??"")){found.add(row.ProcessId);grew=true;}
+  }
+  for(const seed of seeds)found.delete(seed);
+  return[...found];
 }
 
 // ---------------------------------------------------------------- dev servers (one per project)
@@ -150,6 +272,7 @@ async function devStart(dir:string,key:string,info:ProjectInfo,script:string|und
   const server:DevServer={child,command:cmd.label,log:prepWarning?prepWarning+"\n":"",startedAt:new Date().toISOString(),...(container?{container}:{})};
   child.on("error",e=>{server.log+=`\n${e.message}`;if(server.exitCode===undefined)server.exitCode=-1;});
   servers.set(key,server);
+  trackRun(child,dir,cmd.label);
   const onData=(c:Buffer|string)=>{server.log=(server.log+String(c)).slice(-16*1024);const m=URL_RX.exec(server.log);if(m&&!server.url&&!fixedUrl)server.url=m[0].replace("0.0.0.0","localhost").replace(/[).,]+$/,"");};
   child.stdout?.on("data",onData);child.stderr?.on("data",onData);
   child.on("close",code=>{server.exitCode=code;if(gitBefore)void verifyGitAfterRun(dir,gitBefore).then(w=>{if(w)server.log+="\n"+w;}).catch(()=>undefined);});

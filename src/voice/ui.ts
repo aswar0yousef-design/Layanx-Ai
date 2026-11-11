@@ -64,6 +64,9 @@ button.act.primary{background:var(--teal);border-color:var(--teal);color:#06231C
 .log li.me{align-self:flex-end}
 .log li small{display:block;color:var(--soft);font-size:.8rem;margin-top:.25rem}
 .log li.err{border-color:var(--rose)}
+.log li button.read{display:block;margin-top:.3rem;font:inherit;font-size:.8rem;color:var(--soft);background:transparent;border:1px solid var(--line);border-radius:.4rem;padding:.1rem .55rem;cursor:pointer}
+.log li button.read:hover{color:var(--ink);border-color:var(--soft)}
+.readbox textarea{width:100%;min-height:7rem;font:inherit;padding:.6rem .7rem;border-radius:.45rem;border:1px solid var(--line);background:var(--panel);color:var(--ink);margin:.7rem 0 .5rem;resize:vertical}
 form.say{display:flex;gap:.5rem;position:sticky;bottom:0;padding:.75rem 0;background:linear-gradient(transparent,var(--bg) 30%)}
 form.say input{flex:1;font:inherit;padding:.75rem .9rem;border-radius:.55rem;border:1px solid var(--line);background:var(--panel);color:var(--ink)}
 details{margin-top:2rem;border-top:1px solid var(--line);padding-top:1rem;color:var(--soft)}
@@ -116,6 +119,11 @@ details input,details select{width:100%;font:inherit;padding:.5rem .7rem;border-
     <button class="act primary" type="submit" id="sendBtn">إرسال</button>
   </form>
 
+  <details class="readbox">
+    <summary id="l-readBox">قراءة نص بصوت</summary>
+    <textarea id="readText" dir="auto" aria-labelledby="l-readBox"></textarea>
+    <button class="act primary" id="readGo" type="button">اقرأ</button>
+  </details>
   <details>
     <summary id="l-settings">إعدادات المساعد</summary>
     <label for="wakeWords" id="l-wake">كلمات الاستدعاء (افصل بفاصلة)</label>
@@ -148,6 +156,7 @@ var L={
   report:"تقرير الآن",stop:"إيقاف الكلام",always:"الاستماع طوال الوقت",speakL:"الرد بالصوت",tasks:"تنفيذ المهام",
   send:"إرسال",placeholder:"اكتب أمرك هنا أو تحدّث…",settings:"إعدادات المساعد",wakeL:"كلمات الاستدعاء (افصل بفاصلة)",projectL:"المشروع",voiceL:"صوت الرد",
   noVoice:"لا يوجد صوت عربي مثبت. في Windows: الإعدادات ← الوقت واللغة ← الكلام ← إضافة أصوات، أو استخدم Microsoft Edge.",
+  readBtn:"🔊 اقرأ",readBox:"قراءة نص بصوت",readGo:"اقرأ",
   approvals:"افتح الموافقات",mission:"المهمة",brief:"تقرير اليوم",briefPlay:"اسمع التقرير",netErr:"تعذر الاتصال بـ LayanX: ",
   engineFree:"التعرف على الكلام من المتصفح (مجاني؛ يعالجه Microsoft أو Google). العقل: النموذج المحلي في LayanX.",
   realtime:"محادثة مباشرة (OpenAI)",realtimeStop:"إنهاء المحادثة المباشرة",auto:"تلقائي",
@@ -163,6 +172,7 @@ var L={
   report:"Report now",stop:"Stop speaking",always:"Listen all the time",speakL:"Speak replies",tasks:"Run tasks",
   send:"Send",placeholder:"Type a request or speak…",settings:"Assistant settings",wakeL:"Wake words (comma separated)",projectL:"Project",voiceL:"Reply voice",
   noVoice:"No English voice is installed. In Windows: Settings → Time & language → Speech → Add voices.",
+  readBtn:"🔊 Read",readBox:"Read text aloud",readGo:"Read",
   approvals:"Open approvals",mission:"Task",brief:"Today's briefing",briefPlay:"Play briefing",netErr:"Could not reach LayanX: ",
   engineFree:"Speech recognition by the browser (free; processed by Microsoft or Google). Brain: the local LayanX model.",
   realtime:"Live conversation (OpenAI)",realtimeStop:"End live conversation",auto:"Automatic",
@@ -226,6 +236,7 @@ function api(path,opts){opts=opts||{};var headers={"content-type":"application/j
 
 function addLog(who,text,meta,cls){var li=document.createElement("li");li.dir="auto";li.className=(who==="you"?"you":"me")+(cls?" "+cls:"");li.textContent=text;
  if(meta){var sm=document.createElement("small");if(meta.href){var a=document.createElement("a");a.href=meta.href;a.textContent=meta.text;sm.appendChild(a)}else sm.textContent=meta.text;li.appendChild(sm)}
+ if(who!=="you"&&!cls){var rb=document.createElement("button");rb.type="button";rb.className="read";rb.textContent=t("readBtn");rb.onclick=function(){readAloud(text)};li.appendChild(rb)}
  $("log").appendChild(li);li.scrollIntoView({block:"end",behavior:"smooth"})}
 
 // ---------------------------------------------------------------- speech out
@@ -236,28 +247,43 @@ function loadVoices(){voices=("speechSynthesis" in window)?speechSynthesis.getVo
  sel.value=S.voice;var has=voices.some(function(v){return v.lang.toLowerCase().indexOf(S.lang)===0});$("voiceNote").hidden=has||!voices.length;$("voiceNote").textContent=t("noVoice")}
 function pickVoice(lang){if(S.voice){var chosen=voices.find(function(v){return v.name===S.voice});if(chosen&&chosen.lang.toLowerCase().indexOf(lang)===0)return chosen}
  var list=voices.filter(function(v){return v.lang.toLowerCase().indexOf(lang)===0});
- return list.find(function(v){return /natural|online/i.test(v.name)})||list.find(function(v){return /microsoft/i.test(v.name)})||list[0]||null}
+ return list.find(function(v){return /natural/i.test(v.name)&&/^(ar-sa|en-us)/i.test(v.lang)})||list.find(function(v){return /natural|online/i.test(v.name)})||list.find(function(v){return /microsoft/i.test(v.name)})||list[0]||null}
 var localTts=false,player=null,sayDone=null,interrupted=false;
 /** Piper on this computer when it runs (natural Arabic voice); otherwise the browser's own voices. */
 function say(text,lang){
  if(!S.speak||!text)return Promise.resolve();
  return soundReady().then(function(){return sayNow(text,lang)})}
-function sayNow(text,lang){
- if(!localTts)return sayBrowser(text,lang);
+/** The server splits the text into sentences; if it cannot, the text is read as one piece. */
+function planSpeech(text,lang){var one=[{text:text,lang:(lang||S.lang)==="en"?"en":"ar",pauseMs:0}];
+ return api("/v1/voice/prepare",{method:"POST",body:{text:text,lang:lang||S.lang}}).then(function(d){return d&&d.segments?d.segments:one}).catch(function(){return one})}
+function sayNow(text,lang){return planSpeech(text,lang).then(function(parts){if(!parts.length)return;return localTts?sayLocal(parts,text,lang):sayBrowser(parts,text,lang)})}
+/** One sentence at a time. Sound starts with the first one, and the next ones are already being made while it plays. */
+function sayLocal(parts,text,lang){
  return new Promise(function(done){
   speaking=true;setState("speak");startBargeIn();
-  var finished=false;var finish=function(){if(finished)return;finished=true;speaking=false;stopBargeIn();unwatchReply();if(player){try{player.pause()}catch(e){}player=null}sayDone=null;done()};
+  var finished=false,clips=[],pauseTimer=0;
+  var release=function(){clips.forEach(function(c){if(c)c.then(function(u){URL.revokeObjectURL(u)},function(){})})};
+  var finish=function(){if(finished)return;finished=true;speaking=false;stopBargeIn();unwatchReply();clearTimeout(pauseTimer);if(player){try{player.pause()}catch(e){}player=null}release();if(sayDone===finish)sayDone=null;done()};
   sayDone=finish;
-  fetch("/v1/voice/speak",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify({text:text,format:"wav",lang:lang||S.lang})})
-   .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.blob()})
-   .then(function(blob){if(finished)return;var url=URL.createObjectURL(blob);player=new Audio(url);var p=player;p.onplaying=function(){if(p===player)watchReply(p)};
-    player.onended=function(){URL.revokeObjectURL(url);finish()};player.onerror=function(){URL.revokeObjectURL(url);finish()};
-    return player.play()})
-   .catch(function(e){if(finished)return;finished=true;speaking=false;stopBargeIn();sayDone=null;
-    // The browser blocked sound (no click yet on this page): ask for one click and say it then.
-    if(e&&e.name==="NotAllowedError"){needSound(text,lang);done();return}
-    localTts=false;sayBrowser(text,lang).then(done)});
+  function make(i,retried){return fetch("/v1/voice/speak",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify({text:parts[i].text,format:"wav",lang:parts[i].lang})})
+   .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.blob()}).then(function(b){return URL.createObjectURL(b)})
+   .catch(function(e){if(retried)throw e;return make(i,true)})}
+  function clip(i){return clips[i]||(clips[i]=make(i))}
+  function fail(i,e){if(finished)return;finished=true;speaking=false;stopBargeIn();unwatchReply();if(sayDone===finish)sayDone=null;
+   // The browser blocked sound (no click yet on this page): ask for one click and say it then.
+   if(e&&e.name==="NotAllowedError"){needSound(text,lang);done();return}
+   // The rest of the text is still read, by the browser's voice.
+   localTts=false;sayBrowser(parts.slice(i),text,lang).then(done)}
+  function play(i){if(finished)return;if(i>=parts.length){finish();return}
+   for(var k=i;k<Math.min(i+3,parts.length);k++)clip(k).catch(function(){});
+   clip(i).then(function(url){if(finished)return;var p=new Audio(url);player=p;p.onplaying=function(){if(p===player)watchReply(p)};
+    p.onended=function(){if(finished)return;pauseTimer=setTimeout(function(){play(i+1)},parts[i].pauseMs||0)};
+    p.onerror=function(){fail(i,new Error("audio"))};
+    return p.play()}).catch(function(e){fail(i,e)})}
+  play(0);
  })}
+/** Read any written text aloud, even with spoken replies switched off; pressing again stops it. */
+function readAloud(text){if(!text)return;if(speaking){stopSpeaking();return}pauseListening();sayNow(text).then(function(){if(!busy)resumeListening()})}
 /**
  * Interrupting (barge-in): while LayanX speaks, the microphone keeps listening for the owner. Its own
  * voice reaches the microphone too (echo); loudness alone cannot tell a late echo from the owner
@@ -321,16 +347,27 @@ function tapHold(){
   node.onaudioprocess=function(e){if(barge.on&&speaking&&bargeFrame(e.inputBuffer.getChannelData(0),c.sampleRate)){interruptReply();startRec("command")}};
   src.connect(node);node.connect(c.destination);if(c.state==="suspended")c.resume().catch(function(){});tap={ctx:c,node:node}}catch(e){tap=null}}
 function untap(){if(tap){try{tap.node.disconnect();tap.ctx.close()}catch(e){}tap=null}}
-function sayBrowser(text,lang){return new Promise(function(done){
- if(!S.speak||!("speechSynthesis" in window)||!text){done();return}
- pauseListening();speechSynthesis.cancel();
- var u=new SpeechSynthesisUtterance(text);u.lang=lang==="en"?"en-US":"ar-SA";var v=pickVoice(lang==="en"?"en":"ar");if(v)u.voice=v;u.rate=1.02;
- speaking=true;setState("speak");startBargeIn();var finished=false;
- var finish=function(){if(finished)return;finished=true;speaking=false;stopBargeIn();if(sayDone===finish)sayDone=null;done()};
+/**
+ * One utterance per sentence: browsers can stop a long utterance part way through. Each sentence uses a voice of its
+ * own language. If an utterance never reports its end, the poll moves on so the reading cannot hang.
+ */
+function groupForVoice(parts){var out=[];parts.forEach(function(p){var last=out[out.length-1],v=pickVoice(p.lang==="en"?"en":"ar");
+  // Measured in Edge: a natural voice reads 1190 characters (two minutes) to the last word, with its own pauses between sentences.
+  if(last&&v&&/natural/i.test(v.name)&&last.lang===p.lang&&last.text.length+p.text.length<1000)last.text+=" "+p.text;else out.push({text:p.text,lang:p.lang,pauseMs:p.pauseMs})});return out}
+function sayBrowser(parts,text,lang){return new Promise(function(done){
+ if(!("speechSynthesis" in window)||!parts.length){done();return}
+ pauseListening();speechSynthesis.cancel();parts=groupForVoice(parts);
+ speaking=true;setState("speak");startBargeIn();
+ var finished=false,index=0,current=null,idle=0,poll=0;
+ var finish=function(){if(finished)return;finished=true;clearInterval(poll);speechSynthesis.cancel();speaking=false;stopBargeIn();if(sayDone===finish)sayDone=null;done()};
  sayDone=finish;
- u.onend=finish;u.onerror=function(e){if(e&&e.error==="not-allowed")needSound(text,lang);finish()};
- speechSynthesis.speak(u);
- setTimeout(function(){if(!speechSynthesis.speaking)finish()},Math.max(5000,text.length*130));
+ function next(){if(finished)return;if(index>=parts.length){finish();return}idle=0;
+  var p=parts[index++],u=new SpeechSynthesisUtterance(p.text);current=u;u.lang=p.lang==="en"?"en-US":"ar-SA";var v=pickVoice(p.lang==="en"?"en":"ar");if(v)u.voice=v;u.rate=1.02;
+  u.onend=function(){if(u===current)next()};
+  u.onerror=function(e){if(u!==current)return;if(e&&e.error==="not-allowed"){needSound(text,lang);finish();return}if(e&&(e.error==="canceled"||e.error==="interrupted")){finish();return}next()};
+  speechSynthesis.speak(u)}
+ poll=setInterval(function(){if(speechSynthesis.speaking||speechSynthesis.pending){idle=0;return}if(++idle>=3)next()},1000);
+ next();
 })}
 /**
  * Browsers play sound only after the user clicked the page, or while the page is using the microphone.
@@ -548,7 +585,7 @@ function stopRealtime(){if(realtime){try{realtime.dc.close();realtime.pc.close()
 function setLang(lang){S.lang=lang;save();document.documentElement.lang=lang;document.documentElement.dir=lang==="ar"?"rtl":"ltr";
  document.querySelectorAll(".seg button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.lang===lang))});
  $("l-always").textContent=t("always");$("l-speak").textContent=t("speakL");$("l-tasks").textContent=t("tasks");$("reportBtn").textContent=t("report");$("stopBtn").textContent=t("stop");
- $("sendBtn").textContent=t("send");$("sayInput").placeholder=t("placeholder");$("l-settings").textContent=t("settings");$("l-wake").textContent=t("wakeL");$("l-project").textContent=t("projectL");$("l-voice").textContent=t("voiceL");
+ $("sendBtn").textContent=t("send");$("sayInput").placeholder=t("placeholder");$("l-settings").textContent=t("settings");$("l-wake").textContent=t("wakeL");$("l-project").textContent=t("projectL");$("l-voice").textContent=t("voiceL");$("l-readBox").textContent=t("readBox");$("readGo").textContent=t("readGo");
  $("hint").textContent=S.always?t("hintWake"):t("hintTap");$("engineNote").textContent=useLocal()?t("engineLocal"):(S.engine==="local"?t("noLocal"):(SR?t("engineFree"):t("noSR")));
  $("l-engine").textContent=t("engineL");$("eng-auto").textContent=t("engAuto");$("eng-local").textContent=t("engLocal");$("eng-browser").textContent=t("engBrowser");$("briefTitle").textContent=t("brief");$("briefPlay").textContent=t("briefPlay");
  $("l-pause").textContent=t("pauseL");$("p-short").textContent=t("pShort");$("p-normal").textContent=t("pNormal");$("p-long").textContent=t("pLong");$("l-barge").textContent=t("bargeL");$("l-follow").textContent=t("followL");
@@ -576,6 +613,7 @@ document.addEventListener("pointerdown",function(e){if(e.target&&e.target.id!=="
 document.addEventListener("keydown",function(){setTimeout(soundUnlocked,0)},true);
 $("realtimeBtn").onclick=function(){if(realtime)stopRealtime();else startRealtime()};
 $("sayForm").onsubmit=function(e){e.preventDefault();var v=$("sayInput").value;$("sayInput").value="";handle(v)};
+$("readGo").onclick=function(){readAloud($("readText").value.trim())};
 $("briefPlay").onclick=function(){say($("briefText").textContent,S.lang)};
 if("speechSynthesis" in window)speechSynthesis.onvoiceschanged=loadVoices;
 document.addEventListener("visibilitychange",function(){if(!document.hidden&&S.always&&!rec)resumeListening()});

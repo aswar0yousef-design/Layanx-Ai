@@ -8,6 +8,8 @@ export interface ChannelMessage{
  text:string;
  role:ChannelRole;
  timestamp?:number;
+ /** Which WhatsApp path it came through, so the reply leaves the same way. */
+ transport?:"cloud"|"qr";
  raw?:unknown;
 }
 export interface ChannelReply{

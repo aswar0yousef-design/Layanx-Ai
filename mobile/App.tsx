@@ -1,4 +1,5 @@
 import React,{useCallback,useEffect,useMemo,useRef,useState}from"react";
+import {runPhoneCommand} from "./src/phone-commands";
 import{Alert,Image,Modal,PermissionsAndroid,Platform,Pressable,RefreshControl,SafeAreaView,ScrollView,StyleSheet,Switch,Text,TextInput,View}from"react-native";
 import*as SecureStore from"expo-secure-store";
 import{CameraView,useCameraPermissions}from"expo-camera";
@@ -140,7 +141,10 @@ export default function App(){
  }
 
  async function send(asTask:boolean,text?:string){
-  const q=(text??ask).trim();if(!q)return;const client=api??await connect();if(!client)return;
+  const q=(text??ask).trim();if(!q)return;
+  const local=await runPhoneCommand(q,LayanXNative);
+  if(local){setAsk("");setAnswers(a=>[...a,{q,a:local}]);return}
+  const client=api??await connect();if(!client)return;
   setAsk("");setBusy(true);
   try{
    if(asTask&&toEnd&&!text){const r=await client.createJob(q,project.trim()||"default");setAnswers(a=>[...a,{q,a:"بدأت مهمة مستقلة: يخطط وينفّذ ويختبر حتى النهاية. تابعها في «المهام»."}]);setJobs(j=>[r.job,...j]);}

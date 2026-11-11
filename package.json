@@ -39,16 +39,17 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
+    "@types/pg": "^8.15.5",
     "tsx": "^4.19.2",
-    "typescript": "^7.0.2",
-    "@types/pg": "^8.15.5"
+    "typescript": "^7.0.2"
   },
   "dependencies": {
-    "pg": "^8.23.1",
     "imapflow": "^2.2.1",
-    "nodemailer": "^10.0.13"
+    "nodemailer": "^10.0.13",
+    "pg": "^8.23.1"
   },
   "optionalDependencies": {
+    "@whiskeysockets/baileys": "7.0.0-rc14",
     "playwright-core": "^1.55.0"
   }
 }

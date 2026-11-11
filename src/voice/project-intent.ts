@@ -11,12 +11,23 @@ export type ProjectStart={started:ProjectJobView;alreadyRunning?:boolean}|{needs
 const command=(text:string)=>normalizeArabic(String(text||"")).replace(/[؟?!،,.؛:]+/g," ").replace(/\s+/g," ").trim().replace(/^(?:(?:يا )?(?:ليان|layanx|layan x|جارفيس|jarvis)\s+)/u,"");
 const BUILD=/^(?:(?:قم|ابدا)\s+(?:ب)?(?:بناء|انشاء|عمل|تطوير|تصميم)|(?:اريد|اريدك|اريد منك)(?:\s+ان)?\s+(?:تبني|تنشئ|تعمل|تطور|تصمم|تسوي)|ابن|انشئ|انشي|اصنع|صمم|طور|اعمل|سوي|build|create|make|develop|scaffold)(?:\s|$)/iu;
 const REPAIR=/^(?:(?:قم|ابدا)\s+(?:ب)?(?:اصلاح|معالجه)|(?:اريد|اريدك|اريد منك)(?:\s+ان)?\s+(?:تصلح|تعالج)|اصلح|عالج|صلح|fix|repair|debug)(?:\s|$)/iu;
-const PROJECT=/(?:^|[\sب])(?:ال)?(?:مشروع|تطبيق|موقع|برنامج|لعبه|متجر|منصه|خادم|سيرفر)(?:ي|نا|ه)?(?:\s|$)|\bلوحه تحكم\b|\b(?:project|app|application|website|site|web app|game|store|dashboard|server|api|program)\b/iu;
+const PROJECT=/(?:^|[\sب])(?:ال)?(?:مشروع|تطبيق|موقع|برنامج|لعبه|متجر|منصه|خادم|سيرفر|صفحه|حاسبه|اداه|سكربت)(?:ي|نا|ه)?(?:\s|$)|\bلوحه تحكم\b|\b(?:project|app|application|website|site|web app|game|store|dashboard|server|api|program|calculator|landing page|web page|script|command[- ]line tool|cli)\b/iu;
 const FAULT=/(?:^|[\sب])(?:ال)?(?:عطل|خطا|مشكله)(?:\s|$)|\b(?:bug|error|crash)\b/iu;
 const QUESTION=/^(?:هل|من|ما|ماذا|ماهي|مالذي|لماذا|ليش|كيف|متي|اين|وين|كم|اي|ايش|وش|who|what|why|how|where|when|which|can|could|do|are|is|does|will|would)(?:\s|$)/iu;
 const STATUS=/(?:(?:وين|اين|الي اين|لوين)\s+وصل|ما\s+حاله|ماهي\s+حاله|ماذا\s+حدث\s+(?:في|ل|بال)|شو\s+صار\s+(?:في|ب|بال)).{0,12}(?:مشروع|تطبيق|موقع)|\b(?:project status|status of the project|how is the project|how's the project)\b/iu;
 const TASK_APP=/(?:قا[ئي]مه|تطبيق|موقع)\s+(?:ال)?مهام|\b(?:task[- ]?list|todo|to-do|tasks? app)\b/iu;
 
+/** Kept to what the test-first paths can prove. Anything with a backend or another platform takes the general path. */
+const OTHER_PLATFORM=/خادم|سيرفر|قاعده بيانات|تسجيل دخول|حسابات|دفع|متجر|منصه|اندرويد|ايفون|جوال|بايثون|\b(?:server|backend|database|login|payment|store|api|android|ios|mobile app|flutter|react|next\.?js|python)\b/iu;
+const SITE_KIND=/موقع|صفحه|حاسبه|لعبه|\b(?:website|web ?page|landing page|site|calculator|game|web app)\b/iu;
+const TOOL_KIND=/برنامج|اداه|سكربت|سطر الاوامر|\b(?:program|tool|script|command[- ]line|cli)\b/iu;
+export type NewProjectKind="task-app"|"static-site"|"node-tool"|"general";
+export function newProjectKind(text:string):NewProjectKind{
+  const value=command(text);
+  if(TASK_APP.test(value))return"task-app";
+  if(OTHER_PLATFORM.test(value))return"general";
+  return SITE_KIND.test(value)?"static-site":TOOL_KIND.test(value)?"node-tool":"general";
+}
 export function classifyProjectWork(text:string):ProjectWork|null{
   const value=command(text);
   if(!value||QUESTION.test(value))return null;

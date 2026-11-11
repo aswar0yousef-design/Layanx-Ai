@@ -6,6 +6,7 @@ import {join} from "node:path";
 
 import type {LayanXCore} from "./core/orchestrator.js";
 import type {RuntimePersistence} from "./core/runtime-persistence.js";
+import {splitForSpeech} from "./voice/speech-text.js";
 import {runtimeHealth,runtimeStatus} from "./runtime.js";
 import {providerSummary} from "./config/providers.js";
 import {McpGateway} from "./mcp-gateway.js";
@@ -19,10 +20,18 @@ import {OAuthConnectionCenter} from "./business/oauth.js";
 import {MediaManager} from "./business/media.js";
 import {GrowthEngine} from "./business/growth-engine.js";
 import {MessagingChannels} from "./channels/service.js";
+import {ShippingDesk} from "./business/shipping.js";
+import {ImprovementRunner} from "./autonomy/improvement-runner.js";
+import {createOwnerRoutes,improvementJobFiles,isOwnerRoute} from "./owner-routes.js";
+import {resolveDataPaths} from "./platform/paths.js";
 import {deviceIdentity} from "./device-identity.js";
 import {VoiceAssistant,DailyBriefing,coreAssistantDeps,type AssistantHistoryItem} from "./voice/assistant.js";
 import {classifyDialogue} from "./voice/dialogue-brain.js";
 import {chatProjects} from "./autonomy/chat-projects.js";
+import {isBuildProfile} from "./autonomy/project-build.js";
+import {jobNotifier} from "./platform/desktop-notify.js";
+import {dashboardOverview} from "./dashboard-overview.js";
+import {mergeModels} from "./core/model-merge.js";
 import {Supervisor} from "./autonomy/supervisor.js";
 import {coreSupervisorDeps,runSingleTool} from "./autonomy/runtime-deps.js";
 import {detectExternalAgents,cloudAgentsAllowed} from "./autonomy/external-agents.js";
@@ -45,7 +54,7 @@ import {safeChildEnv} from "./platform/safe-env.js";
 import {modelWriter,runHumanize} from "./business/humanizer-tool.js";
 import {loadVoice,saveVoice} from "./business/humanizer.js";
 import {ApprovalDecisionError,approvalViews,createExternalApproval,decideApproval,externalStatus,waitExternal,waitForFeed,withdrawExternal} from "./remote/companion.js";
-export interface RuntimeApiOptions{core:LayanXCore;business:BusinessManager;ads?:AdsManager;media?:MediaManager;growth?:GrowthEngine;channels?:MessagingChannels;persistence?:RuntimePersistence;host?:string;port?:number;maxBodyBytes?:number;token?:string;requireToken?:boolean;}
+export interface RuntimeApiOptions{core:LayanXCore;business:BusinessManager;ads?:AdsManager;media?:MediaManager;growth?:GrowthEngine;channels?:MessagingChannels;shipping?:ShippingDesk;persistence?:RuntimePersistence;host?:string;port?:number;maxBodyBytes?:number;token?:string;requireToken?:boolean;}
 function json(response:ServerResponse,status:number,body:unknown){response.statusCode=status;response.setHeader("content-type","application/json; charset=utf-8");response.end(JSON.stringify(body));}
 async function rawBody(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}return Buffer.concat(chunks);}
 async function body(request:IncomingMessage,maxBytes:number){let total=0;const chunks:Buffer[]=[];for await(const chunk of request){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=part.length;if(total>maxBytes)throw new Error("request_too_large");chunks.push(part);}const raw=Buffer.concat(chunks).toString("utf8");if(!raw)return{};try{return JSON.parse(raw) as Record<string,unknown>;}catch{throw new Error("invalid_json");}}
@@ -57,11 +66,19 @@ export function startRuntimeApi(options:RuntimeApiOptions){
  const control=new ControlCenter(options.core);
  const voice=new VoiceService();
  // Autonomous supervisor: finishes goals end to end; resumes unfinished jobs after a restart.
- const supervisor=new Supervisor(coreSupervisorDeps(options.core),{file:joinPath(process.env.LAYANX_STORE_DIR?.trim()||".layanx","supervisor-jobs.json")});
+ const supervisor=new Supervisor({...coreSupervisorDeps(options.core),notify:jobNotifier()},{file:joinPath(process.env.LAYANX_STORE_DIR?.trim()||".layanx","supervisor-jobs.json")});
  const assistant=new VoiceAssistant({...coreAssistantDeps(options.core),...chatProjects(supervisor),busyWith:()=>supervisor.list().find(j=>["planning","running","verifying"].includes(j.status))?.goal.split("\n")[0]});
  const briefing=process.env.LAYANX_BRIEFING_TIME?.trim()?new DailyBriefing(assistant,{time:process.env.LAYANX_BRIEFING_TIME.trim(),projectId:process.env.LAYANX_BRIEFING_PROJECT?.trim()||"default"}):undefined;
  briefing?.start();
  supervisor.start();
+ const ownerStore=process.env.LAYANX_STORE_DIR?.trim()||".layanx",ownerRunsRoot=joinPath(resolveDataPaths().dataDir,"outcome-runs"),improvementLedger=joinPath(ownerStore,"improvement-ledger.json");
+ const improvement=new ImprovementRunner({ledgerFile:improvementLedger,logFile:joinPath(ownerStore,"improvement-run.log"),busy:()=>supervisor.list().some(job=>["queued","planning","running","verifying"].includes(job.status))});
+ // Learns every night unless the owner sets another time, or "off".
+ improvement.schedule(process.env.LAYANX_IMPROVE_TIME?.trim()||"03:00",60_000,()=>improvement.startDaily(ownerStore));
+ const ownerRoutes=createOwnerRoutes({channels:options.channels,desk:options.shipping??new ShippingDesk(joinPath(ownerStore,"shipping.json")),domains:{
+  store:async()=>{if(!(options.business.snapshot() as {stores?:unknown[]}).stores?.length)throw new Error("no store connected");return options.business.analytics() as unknown as Record<string,unknown>;},
+  trading:async()=>await tradingOverview(options.core,{connect:false,days:7}) as unknown as Record<string,unknown>
+ },intakeRoot:joinPath(ownerStore,"intake"),ledgerFile:improvementLedger,jobFiles:()=>improvementJobFiles(ownerStore,ownerRunsRoot),improvement,learningFile:joinPath(ownerStore,"learning-ledger.json"),hardwareStore:ownerStore,startLearning:()=>improvement.startDaily(ownerStore)});
  const testerRuns=new TesterRuns();
  const oauth=new OAuthConnectionCenter();
  const business=options.business??new BusinessManager(); const ads=options.ads??new AdsManager(business.store); const media=options.media??new MediaManager(); const growth=options.growth;
@@ -76,6 +93,10 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   const caller=String(request.headers["x-layanx-principal"]??"");
   if(caller==="hook"&&!/^\/v1\/external\/approvals(\/|$|\?)/.test(request.url??"")){json(response,403,{ok:false,error:"forbidden"});return;}
   if(requireToken&&!authorized(request,options.token)&&!publicWebhook&&request.url!=="/v1/health"&&request.url?.split("?")[0]!=="/voice"){json(response,401,{ok:false,error:"unauthorized"});return;}
+  if(isOwnerRoute(request.url)){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   if(await ownerRoutes(request.method??"GET",new URL(request.url??"/","http://localhost"),()=>body(request,max),(status,value)=>json(response,status,value)))return;
+  }
   if(request.method==="GET"&&request.url==="/v1/device/identity"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    try{json(response,200,{ok:true,device:await deviceIdentity()});}
@@ -281,7 +302,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
      const input=await body(request,max);
      const goal=typeof input.goal==="string"?input.goal:"";
      const projectId=typeof input.projectId==="string"&&input.projectId.trim()?input.projectId.trim():"default";
-     if(input.acceptanceProfile!==undefined&&input.acceptanceProfile!=="task-app-http-v1")throw new Error("unsupported_acceptance_profile");
+     if(input.acceptanceProfile!==undefined&&input.acceptanceProfile!=="task-app-http-v1"&&!isBuildProfile(input.acceptanceProfile))throw new Error("unsupported_acceptance_profile");
      // Owner-supplied criteria are declarations, not evidence. Only the supervisor's
      // independent checks may later provide proof; this endpoint never accepts receipts.
      let requiredAcceptance:undefined|Array<{id:string;description:string;required:boolean;checkId?:"test"|"build"|"typecheck"|"lint"|"independent:task-app-http-v1";artifact?:string}>;
@@ -313,7 +334,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
       if(!requiredAcceptance.some(r=>r.required))throw new Error("acceptance_requires_mandatory_check");
      }
      if(input.acceptanceProofs!==undefined)throw new Error("acceptance_proofs_are_server_only");
-     json(response,201,{ok:true,job:supervisor.create(goal,projectId,{maxMinutes:typeof input.maxMinutes==="number"?input.maxMinutes:undefined,openWhenDone:input.openWhenDone===true,...(input.acceptanceProfile==="task-app-http-v1"?{acceptanceProfile:"task-app-http-v1" as const}:{}),...(requiredAcceptance?{requiredAcceptance}:{})})});return;
+     json(response,201,{ok:true,job:supervisor.create(goal,projectId,{maxMinutes:typeof input.maxMinutes==="number"?input.maxMinutes:undefined,openWhenDone:input.openWhenDone===true,...(input.acceptanceProfile==="task-app-http-v1"?{acceptanceProfile:"task-app-http-v1" as const}:isBuildProfile(input.acceptanceProfile)?{acceptanceProfile:input.acceptanceProfile}:{}),...(requiredAcceptance?{requiredAcceptance}:{})})});return;
     }
     if(request.method==="GET"&&parts.length===3){
      const projectId=params.get("projectId")?.trim()||undefined;
@@ -401,6 +422,24 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   }
   // How busy the PC is (CPU, RAM, GPU, loaded Ollama models), for the dashboard.
   if(request.method==="GET"&&request.url==="/v1/system/load"){json(response,200,{ok:true,...await systemLoad()});return;}
+  if(request.method==="GET"&&request.url==="/v1/dashboard/overview"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const core=options.core;
+   json(response,200,{ok:true,load:await systemLoad(),...dashboardOverview({models:core.models.list(),usage:core.modelExecution.stats.list(),price:model=>core.modelExecution.budget.price(model as never),cloud:core.modelExecution.budget.status(),tools:core.toolCatalog.list(core.agents.get("core"),"L4_EXECUTE") as never,connections:oauth.list() as never,jobs:supervisor.list() as never,audit:core.audit.list() as never})});return;
+  }
+  if(request.method==="POST"&&request.url==="/v1/models/merge"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   const input=await body(request,max);
+   const question=typeof input.question==="string"?input.question.trim():"";
+   if(!question){json(response,400,{ok:false,error:"question_required"});return;}
+   const core=options.core;
+   // Local models unless the caller names others: a named cloud model still passes the provider's own budget and policy.
+   const named=Array.isArray(input.models)?input.models.filter((m):m is string=>typeof m==="string"):[];
+   const models=(named.length?named:core.models.list().filter(m=>m.enabled&&m.local&&m.capabilities.includes("chat")).sort((a,b)=>(b.qualityScore??0)-(a.qualityScore??0)).map(m=>m.id)).slice(0,4);
+   try{json(response,200,{ok:true,...await mergeModels({question,models,...(typeof input.merger==="string"?{merger:input.merger}:{}),ask:(text,modelId,maxOutputTokens)=>core.modelExecution.execute({capability:"chat",input:text,maxOutputTokens,routing:{preferLocal:true,modelId}})})});}
+   catch(error){json(response,503,{ok:false,error:(error as Error).message});}
+   return;
+  }
   if(request.method==="GET"&&request.url==="/v1/cloud/usage"){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    json(response,200,{ok:true,usage:options.core.modelExecution.budget.status()});return;
@@ -430,6 +469,14 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     if(!result){json(response,404,{ok:false,error:"voice_sense_unavailable"});return;}
     json(response,200,{ok:true,...result});
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"turn detection failed"});}
+   return;
+  }
+  if(request.method==="POST"&&request.url==="/v1/voice/prepare"){
+   if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+   try{
+    const input=await body(request,max);
+    json(response,200,{ok:true,segments:splitForSpeech(typeof input.text==="string"?input.text:"",typeof input.lang==="string"?input.lang:undefined)});
+   }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"voice preparation failed"});}
    return;
   }
   if(request.method==="POST"&&request.url==="/v1/voice/speak"){
@@ -638,7 +685,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     const input=await body(request,max);
     const projectId=typeof input.projectId==="string"?input.projectId.trim():"";
     if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
-    control.cancel(id,projectId);
+    await control.cancelAndSave(id,projectId);
     json(response,200,{ok:true,missionId:id});
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"mission cancellation failed"});}
    return;
@@ -776,7 +823,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     const projectId=typeof input.projectId==="string"?input.projectId.trim():"";
     if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
     const control=new ControlCenter(options.core);
-    control.cancel(missionId,projectId);
+    await control.cancelAndSave(missionId,projectId);
     json(response,200,{ok:true,mission:options.core.missions.get(missionId)});
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"mission cancellation failed"});}
    return;
@@ -971,7 +1018,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     const input=await body(request,max);
     const required=["id","missionId","projectId","branch","baseBranch","commit","title"];
     if(required.some(key=>typeof input[key]!=="string"||!(input[key] as string).trim())){json(response,400,{ok:false,error:"id, missionId, projectId, branch, baseBranch, commit, and title are required"});return;}
-    const release=options.core.createReleaseRecord({id:input.id as string,missionId:input.missionId as string,projectId:input.projectId as string,branch:input.branch as string,baseBranch:input.baseBranch as string,commit:input.commit as string,title:input.title as string});
+    const release=await options.core.createReleaseRecord({id:input.id as string,missionId:input.missionId as string,projectId:input.projectId as string,branch:input.branch as string,baseBranch:input.baseBranch as string,commit:input.commit as string,title:input.title as string});
     json(response,201,{ok:true,release});
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"release creation failed"});}
    return;
@@ -983,7 +1030,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     const input=await body(request,max);
     const next=typeof input.stage==="string"?input.stage as import("./core/release-state-machine.js").ReleaseStage:"BLOCKED";
     const blockers=Array.isArray(input.blockers)?input.blockers.filter((v):v is string=>typeof v==="string"): [];
-    const release=options.core.transitionRelease(id,next,blockers);
+    const release=await options.core.transitionRelease(id,next,blockers);
     json(response,200,{ok:true,release});
    }catch(error){json(response,409,{ok:false,error:error instanceof Error?error.message:"release transition failed"});}
    return;

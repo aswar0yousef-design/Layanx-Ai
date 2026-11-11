@@ -1,6 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import {randomUUID} from "node:crypto";
+import {createHash,randomUUID} from "node:crypto";
+import {AsyncLocalStorage} from "node:async_hooks";
+import {REVIEW_TEST_FILE,agreedCases,mergeCases,parseReviewCases,reviewPrompt,reviewTestSource,secondOpinionPrompt,type ReviewCase} from "./peer-review.js";
+import {MAX_SPEC_CASES,MIN_SPEC_CASES,hasComputedSteps,parseSiteSteps,siteSecondOpinionPrompt,siteStepConflicts,SPEC_TEST_FILE,testCounts,NODE_TOOL_PROFILE,PROGRAM_FILE,PROGRAM_PLACEHOLDER,RUNTIME_FAILURE,SITE_FILE,SITE_PLACEHOLDER,STATIC_SITE_PROFILE,buildPlan,buildRuntimePatchPrompt,buildSitePatchPrompt,extractHtml,extractProgram,isBuildProfile,nodeSpecFiles,nodeSpecPrompt,observeSite,programPrompt,readSiteSteps,siteSpecFiles,sitePrompt,siteSpecPrompt,vacuousTests,type BuildProfile} from "./project-build.js";
+import {NODE_EDITABLE,NODE_REPAIR_PROFILE,buildNodeRepairPrompt,isTestFile,needsDependencies,nodeRepairSetback,observeTestRun,type NodeTestObservation} from "./node-repair.js";
+import {StallError,describeDuration,stallLimits,withStallLimit,type StallKind,type StallLimits} from "./stall-guard.js";
 import {detectProject,placeholderTest,type ProjectInfo} from "./project-runner.js";
 import {projectDir} from "./project-dir.js";
 import {trustLevel} from "./trust.js";
@@ -8,6 +13,7 @@ import {ensureLayanxIgnore,knowledgeSummary,recordIssue,refreshKnowledge,updateH
 import {buildRepoMap} from "./repo-map.js";
 import {isLocalPreview} from "../platform/open-url.js";
 import {openRequest} from "../tools/open-app.js";
+import type {TaskBrief} from "./task-research.js";
 import {errorSignature,findLessons,guidanceText,listLessons,listPlaybooks,markLessons,matchPlaybooks,recordLesson,recordPlaybookOutcome,savePlaybookCandidate,trustProjectPlaybook} from "./learning.js";
 import {applySyntaxPatch,buildSyntaxPatchPrompt,locateSyntaxError,readTaskServerSource,repairMultilineHtmlResponse,repairTaskDeleteAssignment} from "./js-source-repair.js";
 
@@ -38,11 +44,11 @@ import {taskServerGoal,verifyTaskApp,type TaskAppProbeResult} from "./task-app-v
 import {classifyFailure,decideAfterFailure,diffFingerprints,failureSignature,firstUsableRung,projectFingerprint,renderHandoff,writeHandoff,type ModelAttempt,type ModelLadders,type ModelRunState} from "./model-handoff.js";
 import {NO_VISIBLE_EFFECT,STATIC_REPAIR_PROFILE,buildRepairPrompt,isStaticWebProject,observeStaticProject,prepareRepair,repairSetback,reverseEdits,type RepairEdit,type StaticObservation,type StaticObserver} from "./repair-engine.js";
 
-export interface Milestone{title:string;goal:string;kind:MilestoneKind;agent:string;status:"pending"|"running"|"done"|"failed";attempts:number;missions:string[];notes?:string;rung?:number;tentative?:Array<{cause:string;edits:RepairEdit[]}>;tentativeOriginals?:Record<string,string>}
+export interface Milestone{confirmedCases?:ReviewCase[];title:string;goal:string;kind:MilestoneKind;agent:string;status:"pending"|"running"|"done"|"failed";attempts:number;missions:string[];notes?:string;rung?:number;tentative?:Array<{cause:string;edits:RepairEdit[]}>;tentativeOriginals?:Record<string,string>;runtimePatched?:boolean;buildStage?:"spec"|"code"|"review"}
 export interface Checks{install:boolean;test:boolean;build:boolean;typecheck:boolean;lint:boolean;browser:{path:string}|null;security?:boolean}
 export interface CheckResult{name:string;ok:boolean;skipped?:boolean;summary:string}
 export interface JobLog{at:string;msg:string;level?:"info"|"warn"|"error"}
-export interface SupervisorJob{
+export interface SupervisorJob{brief?:TaskBrief;
   id:string;projectId:string;goal:string;status:JobStatus;createdAt:string;updatedAt:string;deadline:string;trust:string;
   acceptance:string[];checks:Checks|null;milestones:Milestone[];current:number;rounds:number;maxRounds:number;
   /** Explicit machine-checkable requirements, persisted with the job. */
@@ -52,7 +58,9 @@ export interface SupervisorJob{
   baseline?:CheckResult[];lastChecks?:CheckResult[];visual?:{url:string;problems:string[];judgement?:string;screens:string[]};
   /** Machine-observed result of the final delivery gates, persisted with the job. */
   outcome?:OutcomeReport;
-  acceptanceProfile?:"task-app-http-v1"|typeof STATIC_REPAIR_PROFILE;
+  acceptanceProfile?:"task-app-http-v1"|typeof STATIC_REPAIR_PROFILE|typeof NODE_REPAIR_PROFILE|BuildProfile;
+  /** What the independent review did: objections, those a second model confirmed, and those the program really failed. */
+  review?:{status:string;by?:string;cases:number;agreed:number;failedFirst:number};
   repairSeed?:Record<string,string>;
   modelRun?:ModelRunState;
   behavior?:TaskAppProbeResult;
@@ -76,7 +84,11 @@ export interface SupervisorJob{
   budgetMinutes?:number;
   resumed?:number;
   /** A step was in flight when LayanX restarted. Never repeat unknown side effects automatically. */
-  recoveryHold?:{kind:"interrupted-milestone"|"missing-approval";milestone:number;at:string;description:string};
+  recoveryHold?:{kind:"interrupted-milestone"|"missing-approval"|"stalled-operation";milestone:number;at:string;description:string};
+  /** Why the job was stopped for not moving: what was running and for how long. */
+  stall?:{kind:"model"|"action"|"no-progress"|"repeating-error";what:string;limitMs?:number;at:string};
+  /** The last time anything observable changed: a milestone, the project's files or the checks. */
+  progress?:{at:string;key:string};
 }
 export interface AgentRun{completed?:boolean;paused?:boolean;missionId?:string;nextToolIndex?:number;approvalId?:string;reason?:string;status?:string;final?:{ok?:boolean;error?:string;verified?:boolean};results?:unknown[]}
 export interface ToolRun{ok?:boolean;missionId?:string;approvalId?:string;data?:any;error?:string}
@@ -87,8 +99,11 @@ export interface SupervisorDeps{
   /** Ordered models for each kind of work; with two or more coding models, unfinished work moves between them. */
   modelLadders?():ModelLadders|undefined;
   generateTaskServer?(goal:string,previous:string,routing?:JobRouting):Promise<{content:string;modelId:string}>;
+  researchTask?(goal:string,projectId:string,stack?:string):Promise<TaskBrief>;
   generateTaskTests?:SupervisorDeps["generateTaskServer"];
   generateRepairPatch?(prompt:string,routing?:JobRouting):Promise<{content:string;modelId:string}>;
+  /** A whole file written from a prompt: no JSON wrapper, so quotes in the code cannot cut it short. */
+  generateFile?(prompt:string,routing?:JobRouting):Promise<{content:string;modelId:string}>;
   observeStatic?:StaticObserver;
   resumeAgent(missionId:string,projectId:string,agentId:string,approvals:Record<number,string>,routing?:JobRouting):Promise<AgentRun>;
   runTool(projectId:string,tool:string,payload:Record<string,unknown>,resume?:{missionId:string;approvalId:string}):Promise<ToolRun>;
@@ -103,6 +118,10 @@ export interface SupervisorDeps{
   notify?(job:SupervisorJob,event:string):void;
   /** Open a local address (the finished site) in the browser on this PC. */
   openUrl?(url:string):void;
+  /** When the runtime last did anything for this project (ms); while it keeps moving, a long agent run is not stalled. */
+  activity?(projectId:string):number;
+  /** Stop what is still running for this project: its child processes and agent loops. */
+  abortProject?(projectId:string,reason:string):Promise<void>|void;
 }
 
 const ACTIVE:JobStatus[]=["queued","planning","running","waiting_approval","verifying"];
@@ -146,18 +165,27 @@ function extractJson(raw:string):any{
 }
 const clip=(s:unknown,n=1500)=>{const t=typeof s==="string"?s:JSON.stringify(s??"");return t.length>n?t.slice(0,n)+"…":t;};
 
+const MAX_REVIEWERS=3,slowReviewers=new Set<string>();
 export class Supervisor{
   private jobs=new Map<string,SupervisorJob>();
   private running=new Set<string>();
   private readonly sleep:(ms:number)=>Promise<void>;
   private stopped=false;
-  constructor(private readonly deps:SupervisorDeps,private readonly options:{file?:string;pollMs?:number;sleep?:(ms:number)=>Promise<void>;maxConcurrent?:number}={}){
+  private readonly deps:SupervisorDeps;
+  private readonly limits:StallLimits;
+  private readonly jobContext=new AsyncLocalStorage<string>();
+  /** Jobs with an action that stopped responding: nothing more runs for them, and the job ends at the next boundary. */
+  private readonly stalledActions=new Map<string,StallError>();
+  private readonly repeatedErrors=new Map<string,{signature:string;count:number}>();
+  constructor(private readonly rawDeps:SupervisorDeps,private readonly options:{file?:string;pollMs?:number;sleep?:(ms:number)=>Promise<void>;maxConcurrent?:number;stall?:Partial<StallLimits>}={}){
+    this.limits=stallLimits(process.env,options.stall);
+    this.deps=this.guardDeps(rawDeps);
     this.sleep=options.sleep??(ms=>new Promise(r=>setTimeout(r,ms)));
     this.load();
   }
 
   // ------------------------------------------------------------ public API
-  create(goal:string,projectId="default",opts:{maxMinutes?:number;maxRounds?:number;openWhenDone?:boolean;acceptanceProfile?:"task-app-http-v1"|typeof STATIC_REPAIR_PROFILE;requiredAcceptance?:AcceptanceRequirement[]}={}):SupervisorJob{
+  create(goal:string,projectId="default",opts:{maxMinutes?:number;maxRounds?:number;openWhenDone?:boolean;acceptanceProfile?:"task-app-http-v1"|typeof STATIC_REPAIR_PROFILE|typeof NODE_REPAIR_PROFILE|BuildProfile;requiredAcceptance?:AcceptanceRequirement[]}={}):SupervisorJob{
     const g=goal.trim();if(g.length<3||g.length>4000)throw new Error("goal_required");
     const minutes=Math.min(Math.max(opts.maxMinutes??120,5),24*60);
     const job:SupervisorJob={id:randomUUID(),projectId,goal:g,status:"planning",createdAt:now(),updatedAt:now(),
@@ -222,6 +250,7 @@ export class Supervisor{
     this.discardStaleNotepadFocusVerification(job);
     job.deadline=new Date(Date.now()+(job.budgetMinutes??120)*60_000).toISOString();
     job.rounds=0;job.finalRepairs=0;job.result=undefined;job.waiting=undefined;job.outcome=undefined;job.behavior=undefined;job.delivery=undefined;job.resumed=(job.resumed??0)+1;
+    job.stall=undefined;job.progress=undefined;this.stalledActions.delete(id);this.repeatedErrors.delete(id);
     const m=job.milestones[job.current];
     if(m&&m.status!=="done"){m.status="pending";m.attempts=0;m.rung=undefined;}
     if(job.modelRun)job.modelRun.unresponsive=[];
@@ -316,6 +345,70 @@ export class Supervisor{
   private log(job:SupervisorJob,msg:string,level:JobLog["level"]="info"){job.log.push({at:now(),msg:msg.slice(0,600),level});if(job.log.length>300)job.log.splice(0,job.log.length-300);job.updatedAt=now();}
   private set(job:SupervisorJob,status:JobStatus,msg?:string){job.status=status;if(msg)this.log(job,msg,status==="failed"?"error":"info");this.save();this.deps.notify?.(job,status);}
 
+  // ------------------------------------------------------------ stall detection
+  /** Inside a job's step every outside call has a limit. Outside a step (status, UI) nothing changes. */
+  private guardDeps(raw:SupervisorDeps):SupervisorDeps{
+    const guarded:Record<string,unknown>={...raw};
+    const add=(name:keyof SupervisorDeps,kind:StallKind,what:(args:any[])=>string)=>{
+      const original=raw[name] as unknown as ((...args:any[])=>Promise<unknown>)|undefined;
+      if(typeof original==="function")guarded[name]=(...args:any[])=>this.limited(kind,what(args),()=>original.apply(raw,args));
+    };
+    add("think","model",()=>"the model (planning or review)");
+    add("generateTaskServer","model",()=>"the model writing the server");
+    add("generateTaskTests","model",()=>"the model writing the tests");
+    add("generateRepairPatch","model",()=>"the model writing a repair");
+    add("generateFile","model",()=>"the model writing a project file");
+    add("observeStatic","model",()=>"the browser check");
+    add("runTool","action",args=>`the tool ${args[1]}`);
+    add("runAgent","action",args=>`the ${args[2]} agent`);
+    add("resumeAgent","action",args=>`the ${args[2]} agent`);
+    return guarded as unknown as SupervisorDeps;
+  }
+  private limited<T>(kind:StallKind,what:string,call:()=>Promise<T>):Promise<T>{
+    const jobId=this.jobContext.getStore();
+    const job=jobId?this.jobs.get(jobId):undefined;
+    if(!job)return call();
+    const held=this.stalledActions.get(job.id);
+    if(held)return Promise.reject(held);
+    return withStallLimit(call,{what,kind,limitMs:kind==="model"?this.limits.modelMs:this.limits.actionMs,
+      ...(kind==="action"?{activity:()=>this.rawDeps.activity?.(job.projectId)??0}:{})}).catch(error=>{
+        // A model answer has no effects, so the ladder may move on. An action may be half done, so nothing is retried.
+        if(error instanceof StallError&&error.kind==="action")this.stalledActions.set(job.id,error);
+        throw error;
+      });
+  }
+  /** Has anything observable changed since the job was last seen moving? */
+  private stillMoving(job:SupervisorJob):boolean{
+    if(job.status==="waiting_approval"||job.status==="queued"){job.progress=undefined;return true;}
+    let files:Record<string,string>={};
+    try{files=projectFingerprint(projectDir(job.projectId));}catch{}
+    const key=createHash("sha1").update(JSON.stringify({status:job.status,current:job.current,done:job.milestones.filter(m=>m.status==="done").length,checks:(job.lastChecks??[]).map(c=>[c.name,c.ok]),files})).digest("hex");
+    if(job.progress?.key!==key){job.progress={at:now(),key};return true;}
+    return Date.now()-Date.parse(job.progress.at)<this.limits.noProgressMs;
+  }
+  private async haltStalled(job:SupervisorJob,stall:NonNullable<SupervisorJob["stall"]>,detail:string){
+    job.stall=stall;
+    const m=job.milestones[job.current];
+    if(stall.kind==="action"){
+      try{await withStallLimit(async()=>this.rawDeps.abortProject?.(job.projectId,detail),{what:"stopping the work",kind:"action",limitMs:15_000});}
+      catch(error){this.log(job,"Could not stop everything that was running: "+(error as Error).message,"warn");}
+      job.recoveryHold={kind:"stalled-operation",milestone:job.current,at:now(),description:detail+" It was stopped and not repeated; it may have changed some files first. Check them before allowing a retry."};
+    }
+    if(m&&m.status!=="done")m.status="failed";
+    const hold=stall.kind==="action"?" Review required before any retry.":"";
+    job.result=`Stopped because the work was not moving: ${detail}${hold}`;
+    const run=job.modelRun,ladder=m?this.ladderFor(job,m):undefined;
+    if(run&&ladder?.length&&m){
+      try{
+        const model=ladder[this.rungOf(job,m,ladder)]!;
+        const file=writeHandoff(projectDir(job.projectId),job.id,run.handoffs.length+1,this.buildHandoff(job,"blocked",model,undefined,detail,m.notes??detail));
+        run.handoffs.push({at:now(),milestone:job.current,from:model,reason:detail,file});
+      }catch{}
+    }
+    this.finished(job,false);
+    this.set(job,"failed","Stopped, no progress: "+detail);
+  }
+
   // ------------------------------------------------------------ main loop
   private async drive(id:string){
     if(this.running.has(id))return;
@@ -333,8 +426,23 @@ export class Supervisor{
         if(job.status==="queued"){this.set(job,job.queuedFrom??"planning","Starting: the earlier job on this project finished");job.queuedFrom=undefined;}
         if(Date.now()>Date.parse(job.deadline)){job.result="Time budget used up.";this.set(job,"budget_exhausted","Stopped: time budget used up");break;}
         if(job.rounds>=job.maxRounds){job.result="Round budget used up.";this.set(job,"budget_exhausted","Stopped: round budget used up");break;}
-        try{await this.step(job);}
-        catch(error){this.log(job,"Error: "+(error as Error).message,"error");job.rounds++;this.save();await this.sleep(this.options.pollMs??2000);}
+        if(!this.stillMoving(job)){
+          const title=job.milestones[job.current]?.title??job.status;
+          await this.haltStalled(job,{kind:"no-progress",what:title,limitMs:this.limits.noProgressMs,at:now()},`nothing changed in the files, the checks or the plan for ${describeDuration(this.limits.noProgressMs)} while working on "${title}".`);
+          break;
+        }
+        let failure:Error|undefined;
+        try{await this.jobContext.run(job.id,()=>this.step(job));}
+        catch(error){failure=error as Error;}
+        const stalled=this.stalledActions.get(job.id);
+        if(stalled){this.stalledActions.delete(job.id);await this.haltStalled(job,{kind:"action",what:stalled.what,limitMs:stalled.limitMs,at:now()},`${stalled.what} made no progress for ${describeDuration(stalled.limitMs)}.`);break;}
+        if(!failure){this.repeatedErrors.delete(job.id);continue;}
+        this.log(job,"Error: "+failure.message,"error");job.rounds++;this.save();
+        const signature=failureSignature(failure.message),seen=this.repeatedErrors.get(job.id);
+        const count=seen?.signature===signature?seen.count+1:1;
+        this.repeatedErrors.set(job.id,{signature,count});
+        if(count>=3){this.repeatedErrors.delete(job.id);await this.haltStalled(job,{kind:"repeating-error",what:clip(failure.message,200),at:now()},`the same error happened ${count} times in a row: ${clip(failure.message,300)}`);break;}
+        await this.sleep(this.options.pollMs??2000);
       }
     }finally{this.running.delete(id);}
   }
@@ -364,6 +472,12 @@ export class Supervisor{
     if(ladders&&ladders.coding.length>1&&!job.modelRun){
       job.modelRun={ladders,unresponsive:[],attempts:[],handoffs:[],baseFiles:projectFingerprint(projectDir(job.projectId))};
       this.log(job,"Model ladder: "+ladders.coding.join(" -> "));
+    }
+    if(this.deps.researchTask&&!job.brief){
+      try{
+        job.brief=await this.deps.researchTask(job.goal,job.projectId,info?.stack);
+        this.log(job,`Task research: ${job.brief.status}, ${job.brief.sources.length} source(s), ${job.brief.playbooks.length} guide(s), ${job.brief.lessons.length} lesson(s)`+(job.brief.problem?". "+clip(job.brief.problem,160):""));
+      }catch(error){this.log(job,"Task research did not finish: "+clip((error as Error).message,200),"warn");}
     }
     // Playbooks/skills that came with the project files are not "discovered by research": they stay quarantined.
     if(!job.discovered)job.discovered=listPlaybooks(job.projectId).filter(p=>p.source==="project").map(p=>p.id);
@@ -407,6 +521,14 @@ export class Supervisor{
         milestones:[{title:"Reproduce and repair the reported bug",goal:job.goal,kind:"code"}],
         checks:{install:false,test:false,build:false,typecheck:false,lint:false,security:false,browser:null}};
       this.log(job,"Using evidence-first repair: reproduce in a real browser, patch, observe again");
+    }else if(job.acceptanceProfile===NODE_REPAIR_PROFILE){
+      spec={acceptance:["The project's own test command passes","No test was changed to make that happen"],
+        milestones:[{title:"Reproduce and repair the reported bug",goal:job.goal,kind:"code"}],
+        checks:{install:false,test:false,build:false,typecheck:false,lint:false,security:false,browser:null}};
+      this.log(job,"Using evidence-first repair: run the project's tests, patch, run them again");
+    }else if(isBuildProfile(job.acceptanceProfile)){
+      spec=buildPlan(job.acceptanceProfile,job.goal,projectDir(job.projectId));
+      this.log(job,"Using test-first build: write the checks, lock them, build against them, repair with small patches");
     }else if(job.acceptanceProfile==="task-app-http-v1"){
       // The isolated acceptance task has an exact, owner-declared contract.
       // Do NOT let a small local model put a "general" package milestone
@@ -446,6 +568,7 @@ export class Supervisor{
         this.log(job,"Skipped "+research.length+" unnecessary research milestone(s) for the isolated task-app acceptance profile");
       }
     }
+    if(isBuildProfile(job.acceptanceProfile))milestones.forEach((item,index)=>{item.buildStage=spec.milestones[index]?.stage;});
     if(!milestones.length)milestones.push({title:job.goal.slice(0,120),goal:job.goal,kind:"code",agent:"coder",status:"pending",attempts:0,missions:[]});
     job.specChecks=spec?.checks&&typeof spec.checks==="object"?spec.checks:{};
     job.checks=this.computeChecks(job,info);
@@ -465,6 +588,10 @@ export class Supervisor{
     job.baseline=await this.runChecks(job);
     if(job.baseline===undefined)return;
     this.log(job,"Baseline: "+job.baseline.map(c=>`${c.name} ${c.skipped?"skip":c.ok?"ok":"FAIL"}`).join(", "));
+    if(job.acceptanceProfile===NODE_REPAIR_PROFILE&&job.baseline.every(c=>c.ok)){
+      job.result="All of the project's tests already pass, so the reported bug did not reproduce and nothing was changed. A failing test that shows the bug is needed.";
+      this.finished(job,false);this.set(job,"failed","Stopped: bug did not reproduce");return;
+    }
     if(job.acceptanceProfile===STATIC_REPAIR_PROFILE&&job.baseline.every(c=>c.ok)){
       job.result="The reported bug did not reproduce in a real browser, so nothing was changed.";
       this.finished(job,false);this.set(job,"failed","Stopped: bug did not reproduce");return;
@@ -503,7 +630,8 @@ export class Supervisor{
     // Persist the in-flight state *before* handing a task to an agent.
     // Otherwise a crash leaves the last stored milestone pending and restart may replay it.
     this.save();
-    if(job.acceptanceProfile===STATIC_REPAIR_PROFILE){await this.repairAttempt(job,m,routing);return;}
+    if(job.acceptanceProfile===STATIC_REPAIR_PROFILE||job.acceptanceProfile===NODE_REPAIR_PROFILE){await this.repairAttempt(job,m,routing);return;}
+    if(isBuildProfile(job.acceptanceProfile)){await this.buildAttempt(job,m,job.acceptanceProfile,routing);return;}
     const generate=generateServer??generateTests;
     if(generate){
       await this.generateTaskSource(job,m,generate,generateTests?"tests/tasks.test.mjs":"src/server.mjs",routing);
@@ -516,7 +644,7 @@ export class Supervisor{
     }else{
       let run:AgentRun;
       try{run=await this.deps.runAgent(this.taskText(job,m),job.projectId,m.agent,routing);}
-      catch(error){run={completed:false,reason:(error as Error).message};}
+      catch(error){if(this.stalledActions.has(job.id))return;run={completed:false,reason:(error as Error).message};}
       if(run.missionId)m.missions.push(run.missionId);
       if(run.paused&&run.approvalId&&run.missionId){
         job.waiting={approvalId:run.approvalId,missionId:run.missionId,index:run.nextToolIndex??0,kind:"agent",agentId:m.agent,milestone:job.current};
@@ -599,17 +727,57 @@ export class Supervisor{
   }
   private staticObserver():StaticObserver{return this.deps.observeStatic??observeStaticProject;}
   /** One evidence-first attempt. The gates in afterWork, not the model, decide whether the bug is gone. */
-  private async repairAttempt(job:SupervisorJob,m:Milestone,routing?:JobRouting){
+  /** Runs the project's own tests through the normal tool path. "waiting" means the owner has to approve it first. */
+  private async observeNodeTests(job:SupervisorJob):Promise<NodeTestObservation|"waiting">{
+    if(needsDependencies(projectDir(job.projectId))){
+      const installed=await this.tool(job,"project.run",{task:"install"},"milestone");
+      if(installed==="waiting")return"waiting";
+      if(!installed.ok||installed.data?.ok===false)return observeTestRun({exitCode:1,stderr:"Installing the project's dependencies failed:\n"+clip(installed.error??installed.data?.stderr??installed.data?.stdout??"",1500)});
+    }
+    const run=await this.tool(job,"project.run",{task:"test"},"milestone");
+    if(run==="waiting")return"waiting";
+    return observeTestRun({...(run.data??{}),...(run.error?{error:run.error}:{}),ok:run.ok&&run.data?.ok!==false});
+  }
+  /** The steps that differ between kinds of repair; the loop around them is the same. */
+  private repairPath(job:SupervisorJob){
     const dir=projectDir(job.projectId);
-    let before:StaticObservation,candidate:{content:string;modelId:string};
+    if(job.acceptanceProfile===STATIC_SITE_PROFILE)return{
+      observe:():Promise<StaticObservation|"waiting">=>observeSite(dir,job.goal),
+      prompt:(before:any,previous:string)=>buildSitePatchPrompt(dir,job.goal,before,previous),
+      prepare:(proposal:unknown)=>prepareRepair(dir,proposal,{editable:/^index\.html$/i}),
+      setback:(before:any,after:any)=>repairSetback(before,after)
+    };
+    if(job.acceptanceProfile===NODE_REPAIR_PROFILE||job.acceptanceProfile===NODE_TOOL_PROFILE)return{
+      observe:()=>this.observeNodeTests(job),
+      prompt:(before:any,previous:string)=>buildNodeRepairPrompt(dir,job.goal,before,previous),
+      prepare:(proposal:unknown)=>prepareRepair(dir,proposal,{editable:NODE_EDITABLE,forbidden:file=>isTestFile(file)?`Tests must not be changed to make them pass: ${file}`:undefined}),
+      setback:(before:any,after:any)=>nodeRepairSetback(before,after)
+    };
+    return{
+      observe:():Promise<StaticObservation|"waiting">=>this.staticObserver()(dir,job.goal,job.repairSeed),
+      prompt:(before:any,previous:string)=>buildRepairPrompt(dir,job.goal,before,previous),
+      prepare:(proposal:unknown)=>prepareRepair(dir,proposal),
+      setback:(before:any,after:any)=>repairSetback(before,after)
+    };
+  }
+  /**
+   * The research reaches the model doing the work as advice, and only once an attempt has failed. Measured here: given from the
+   * first attempt, web examples pulled small local models off the request (CommonJS in an ES module, 3/5 task apps against 5/5
+   * without it), so the first try works from the request alone and the research helps the repair. The checks never see it.
+   */
+  private briefed(job:SupervisorJob,goal:string,m:Milestone){return job.brief?.text&&m.attempts>1?`${goal}\n\nBackground research, as advice only; the request and the tests decide:\n${job.brief.text}`.trim():goal;}
+  private async repairAttempt(job:SupervisorJob,m:Milestone,routing?:JobRouting){
+    const dir=projectDir(job.projectId),repairPath=this.repairPath(job);
+    let before:any,candidate:{content:string;modelId:string};
     try{
       if(!this.deps.generateRepairPatch)throw new Error("No model is available for repair.");
-      before=await this.staticObserver()(dir,job.goal,job.repairSeed);
+      before=await repairPath.observe();
+      if(before==="waiting")return;
       if(before.ok){await this.afterWork(job,m);return;}
-      candidate=await this.deps.generateRepairPatch(buildRepairPrompt(dir,job.goal,before,[this.handoffBrief(job,m),m.notes].filter(Boolean).join("\n\n")),routing);
+      candidate=await this.deps.generateRepairPatch(repairPath.prompt(before,[this.briefed(job,"",m),this.handoffBrief(job,m),m.notes].filter(Boolean).join("\n\n")),routing);
     }catch(error){await this.afterWork(job,m,(error as Error).message);return;}
     let repair:ReturnType<typeof prepareRepair>;
-    try{repair=prepareRepair(dir,extractJson(candidate.content));}
+    try{repair=repairPath.prepare(extractJson(candidate.content));}
     catch(error){this.log(job,"Patch rejected: "+clip((error as Error).message,300),"warn");await this.afterWork(job,m,"Patch rejected: "+(error as Error).message);return;}
     this.log(job,`Patch from ${candidate.modelId}: ${repair.changedLines} lines in ${repair.files.map(f=>f.path).join(", ")}. Cause: ${repair.cause}`);
     for(const file of repair.files){
@@ -618,9 +786,12 @@ export class Supervisor{
       if(written.missionId)m.missions.push(written.missionId);
       if(!written.ok||written.data?.written!==true){await this.afterWork(job,m,written.error??"Could not write "+file.path);return;}
     }
-    let setback:string|undefined,after:StaticObservation|undefined;
-    try{after=await this.staticObserver()(dir,job.goal,job.repairSeed);setback=repairSetback(before,after);}
-    catch(error){setback="The page could not be observed after the patch: "+(error as Error).message;}
+    let setback:string|undefined,after:any;
+    try{
+      after=await repairPath.observe();
+      if(after==="waiting")return;
+      setback=repairPath.setback(before,after);
+    }catch(error){setback="The result could not be observed after the patch: "+(error as Error).message;}
     // With two causes, the first correct fix changes nothing visible until the second one lands. Hold it, and decide once the page works.
     if(setback?.startsWith(NO_VISIBLE_EFFECT)&&(m.tentative?.length??0)<MAX_TENTATIVE_PATCHES){
       m.tentativeOriginals??={};
@@ -652,7 +823,8 @@ export class Supervisor{
       if(!without)continue;
       const writeAll=async(contents:Map<string,string>)=>{for(const[file,content]of contents)if(await this.tool(job,"files.write",{path:file,content},"milestone")==="waiting")return true;return false;};
       if(await writeAll(without))return"waiting";
-      const observed=await this.staticObserver()(dir,job.goal,job.repairSeed).catch(()=>undefined);
+      const observed:any=await this.repairPath(job).observe().catch(()=>undefined);
+      if(observed==="waiting")return"waiting";
       if(observed?.ok){this.log(job,"Dropped a held patch the fix did not need: "+clip(held.cause,160));continue;}
       if(await writeAll(current))return"waiting";
     }
@@ -665,6 +837,117 @@ export class Supervisor{
     for(const[file,content]of Object.entries(m.tentativeOriginals))await this.tool(job,"files.write",{path:file,content},"milestone");
     this.log(job,"Removed the held patches: the fix was not proven");
     m.tentative=undefined;m.tentativeOriginals=undefined;
+  }
+  /** Checks first and locked; then a whole file, then small patches. A fresh rewrite only when patching has not worked. */
+  private async buildAttempt(job:SupervisorJob,m:Milestone,profile:BuildProfile,routing?:JobRouting){
+    const dir=projectDir(job.projectId),site=profile===STATIC_SITE_PROFILE,previous=[this.handoffBrief(job,m),m.notes].filter(Boolean).join("\n\n");
+    const generate=this.deps.generateFile;
+    if(!generate){await this.afterWork(job,m,"No model is available for building.");return;}
+    if(m.buildStage==="review"){await this.reviewAttempt(job,m,routing);return;}
+    let files:Array<{path:string;content:string}>;
+    try{
+      if(m.buildStage==="spec"){
+        const candidate=await generate(site?siteSpecPrompt(job.goal,previous):nodeSpecPrompt(job.goal,previous),routing);
+        // Written checks can be wrong too. A separate call, which does not see the expected results, has to reach the same ones.
+        if(site){
+          const steps=parseSiteSteps(extractJson(candidate.content));
+          if(hasComputedSteps(steps)){
+            const conflicts=siteStepConflicts(steps,extractJson((await generate(siteSecondOpinionPrompt(job.goal,steps),routing)).content));
+            if(conflicts.length)throw new Error("Steps refused: "+conflicts.join(" "));
+          }
+          files=siteSpecFiles(steps);
+        }else{
+          const cases=parseReviewCases(extractJson(candidate.content),MAX_SPEC_CASES);
+          const opinion=async()=>agreedCases(cases,extractJson((await generate(secondOpinionPrompt(job.goal,cases),routing)).content));
+          const agreed=await opinion().catch(error=>{if(/invalid JSON|No JSON|incomplete JSON/i.test((error as Error).message))return opinion();throw error;});
+          const confirmed=mergeCases(m.confirmedCases??[],agreed,MAX_SPEC_CASES);
+          m.confirmedCases=confirmed;
+          if(confirmed.length<MIN_SPEC_CASES)throw new Error(`Tests refused: only ${confirmed.length} cases are confirmed so far; ${MIN_SPEC_CASES} are needed. Write different cases with short inputs whose results are easy to work out exactly. Already confirmed, do not repeat: ${JSON.stringify(confirmed.map(item=>({args:item.args,stdin:item.stdin}))).slice(0,500)}`);
+          if(agreed.length<cases.length)this.log(job,`${cases.length-agreed.length} of ${cases.length} cases dropped: a separate reading gave a different result`,"warn");
+          files=nodeSpecFiles(job.goal,reviewTestSource(confirmed));
+        }
+        this.log(job,`Acceptance checks written by ${candidate.modelId} and confirmed separately`);
+      }else{
+        const target=site?SITE_FILE:PROGRAM_FILE,placeholder=site?SITE_PLACEHOLDER:PROGRAM_PLACEHOLDER;
+        const existing=fs.readFileSync(path.join(dir,target),"utf8");
+        // A model that could not even produce an applicable patch will not on the next try; a whole corrected file works more often.
+        if(existing!==placeholder&&(m.attempts-1)%3!==0&&!/Patch rejected/.test(m.notes??"")){await this.repairAttempt(job,m,routing);return;}
+        const briefedGoal=this.briefed(job,job.goal,m);
+        const candidate=await generate(site?sitePrompt(briefedGoal,dir,previous):programPrompt(briefedGoal,dir,previous),routing);
+        files=[{path:target,content:site?extractHtml(candidate.content):extractProgram(candidate.content)}];
+        this.log(job,`${target} written by ${candidate.modelId}`);
+      }
+    }catch(error){await this.afterWork(job,m,(error as Error).message);return;}
+    for(const file of files){
+      const written=await this.tool(job,"files.write",{path:file.path,content:file.content},"milestone");
+      if(written==="waiting")return;
+      if(written.missionId)m.missions.push(written.missionId);
+      if(!written.ok||written.data?.written!==true){await this.afterWork(job,m,written.error??"Could not write "+file.path);return;}
+    }
+    await this.afterWork(job,m);
+  }
+  /** Another model looks for what the tests missed. Only a case two models agree on, and the program then fails, sends the work back. */
+  private async reviewAttempt(job:SupervisorJob,m:Milestone,routing?:JobRouting){
+    const dir=projectDir(job.projectId),generate=this.deps.generateFile!;
+    if(fs.existsSync(path.join(dir,REVIEW_TEST_FILE))){await this.repairAttempt(job,m,routing);return;}
+    const run=job.modelRun,gone=run?.unresponsive??[];
+    const builder=run?.attempts.filter(a=>a.outcome==="passed").at(-1)?.model??run?.ladders.coding[0];
+    // Measured on this hardware: the strongest model reading the code afresh caught 2 of 3 planted bugs in under 2 minutes, while the
+    // others timed out or returned nothing usable. Its objections are still checked blind, by a reading that never sees the code.
+    // A model too large for this machine times out on every review, so one that did is tried last from then on.
+    const available=process.env.LAYANX_REVIEW_MODEL?[process.env.LAYANX_REVIEW_MODEL]:[...new Set([...(builder?[builder]:[]),...(run?[...run.ladders.planning,...run.ladders.coding]:[])])].filter(model=>!gone.includes(model));
+    const reviewers=[...available.filter(model=>!slowReviewers.has(model)),...available.filter(model=>slowReviewers.has(model))].slice(0,MAX_REVIEWERS);
+    let reviewer=reviewers[0];
+    const conclude=async(status:string,cases=0,agreed=0)=>{job.review={status,...(reviewer?{by:reviewer}:{}),cases,agreed,failedFirst:0};this.log(job,"Review: "+status);await this.afterWork(job,m);};
+    if(!reviewer||!builder){await conclude("skipped: only one model is available, and it built the program");return;}
+    let found:ReviewCase[]|undefined,problem="";
+    const read=(file:string)=>fs.readFileSync(path.join(dir,file),"utf8");
+    for(const candidate of reviewers){
+      reviewer=candidate;
+      try{
+        const objection=await generate(reviewPrompt(job.goal,read(PROGRAM_FILE),read(SPEC_TEST_FILE)),{preferLocal:true,modelId:candidate});
+        found=parseReviewCases(extractJson(objection.content));
+        break;
+      }catch(error){
+        problem=(error as Error).message;
+        if(/abort|timeout|timed out/i.test(problem))slowReviewers.add(candidate);
+        this.log(job,`Review by ${candidate} did not finish: ${clip(problem,200)}`,"warn");
+      }
+    }
+    if(!found){await conclude("could not run: "+clip(problem,200));return;}
+    if(!found.length){await conclude("no objection");return;}
+    const cases=found;
+    let agreed:ReviewCase[];
+    try{
+      const opinion=await generate(secondOpinionPrompt(job.goal,cases),{preferLocal:true,modelId:builder});
+      agreed=agreedCases(cases,extractJson(opinion.content));
+    }catch(error){await conclude("could not run: "+clip((error as Error).message,200));return;}
+    if(!agreed.length){await conclude("no objection confirmed by a second model",cases.length);return;}
+    const written=await this.tool(job,"files.write",{path:REVIEW_TEST_FILE,content:reviewTestSource(agreed)},"milestone");
+    if(written==="waiting")return;
+    if(written.missionId)m.missions.push(written.missionId);
+    if(!written.ok||written.data?.written!==true){await conclude("could not save the review tests",cases.length);return;}
+    const observed=await this.observeNodeTests(job);
+    if(observed==="waiting")return;
+    const failedFirst=observed.ok?0:Math.max(1,testCounts(observed.raw).fail);
+    job.review={status:failedFirst?"objection confirmed: the program failed it":"objections checked: the program passed them",by:reviewer,cases:cases.length,agreed:agreed.length,failedFirst};
+    this.log(job,`Review by ${reviewer}: ${cases.length} objection(s), ${agreed.length} confirmed by ${builder}, ${failedFirst} failing`);
+    await this.afterWork(job,m);
+  }
+  /** The file ran and misbehaved: most of it is right, so one small patch is tried before rewriting it. */
+  private async patchRuntimeError(job:SupervisorJob,m:Milestone,routing?:JobRouting):Promise<"applied"|"waiting"|undefined>{
+    const dir=projectDir(job.projectId),source=readTaskServerSource(dir);
+    if(!source||!this.deps.generateRepairPatch)return undefined;
+    let repair:ReturnType<typeof prepareRepair>;
+    try{
+      const candidate=await this.deps.generateRepairPatch(buildRuntimePatchPrompt("src/server.mjs",source,m.notes??""),routing);
+      repair=prepareRepair(dir,extractJson(candidate.content),{editable:/^src\/server\.mjs$/});
+      this.log(job,`Runtime patch from ${candidate.modelId}: ${repair.changedLines} lines. Cause: ${clip(repair.cause,200)}`);
+    }catch(error){this.log(job,"Runtime patch not usable, generating the file again: "+clip((error as Error).message,240),"warn");return undefined;}
+    const written=await this.tool(job,"files.write",{path:"src/server.mjs",content:repair.files[0]!.content},"milestone");
+    if(written==="waiting")return"waiting";
+    if(written.missionId)m.missions.push(written.missionId);
+    return written.ok&&written.data?.written===true?"applied":undefined;
   }
   /** One targeted correction of a parse error, so a nearly right file is not thrown away and rewritten. */
   private async patchSyntaxError(job:SupervisorJob,m:Milestone,routing?:JobRouting):Promise<"applied"|"waiting"|undefined>{
@@ -691,6 +974,13 @@ export class Supervisor{
       if(patched==="waiting")return;
       if(patched==="applied"){await this.afterWork(job,m);return;}
     }
+    if(target==="src/server.mjs"&&!m.runtimePatched&&RUNTIME_FAILURE.test(m.notes??"")&&!/SyntaxError:/.test(m.notes??"")){
+      // Once per failure streak: a patch that did not help must not stop the rewrite that follows it.
+      m.runtimePatched=true;
+      const patched=await this.patchRuntimeError(job,m,routing);
+      if(patched==="waiting")return;
+      if(patched==="applied"){await this.afterWork(job,m);return;}
+    }else m.runtimePatched=false;
     let candidate:{content:string;modelId:string};
     try{
       // A syntactically broken file that survived the narrow repair can contain
@@ -698,7 +988,7 @@ export class Supervisor{
       // instead of asking the model to reproduce the failed implementation.
       const syntaxFailed=/^build failed:[\s\S]*SyntaxError:/m.test(m.notes??"");
       const previous=syntaxFailed&&target==="src/server.mjs"?"":clip(readTaskServerSource(projectDir(job.projectId)),6000);
-      const goal=[m.goal,job.notes?.join("\n"),this.handoffBrief(job,m),m.notes&&"Previous failure: "+clip(m.notes,2000)].filter(Boolean).join("\n");
+      const goal=[this.briefed(job,m.goal,m),job.notes?.join("\n"),this.handoffBrief(job,m),m.notes&&"Previous failure: "+clip(m.notes,2000)].filter(Boolean).join("\n");
       candidate=await generate(goal,previous,routing);
     }catch(error){
       const reason=(error as Error).message;
@@ -855,6 +1145,7 @@ export class Supervisor{
       this.handoffBrief(job,m),
       job.acceptanceProfile==="task-app-http-v1"?"IMPORTANT: Work only on the current acceptance milestone. Do not inspect/rewrite future-stage files and do not repeatedly read the same unchanged file. node:test exports test, NOT expect; use node:assert/strict for assertions. For createServer use real http.createServer(...) and RETURN the server. Avoid repeated read-only actions; after writing a file, use the named verification tool.": "",
       job.notes?.length?`Owner's instructions added during the job (follow them):\n- ${job.notes.slice(-8).join("\n- ")}`:"",
+      job.brief?.text&&m.attempts>1?"Background research, as advice only:\n"+job.brief.text:"",
       m.notes?`The previous attempt failed. Fix exactly this, change as little as possible:\n${clip(m.notes,3000)}`:"",
       this.syntaxRepairHint(m.notes),
       (()=>{const k=knowledgeSummary(job.projectId,1500);return k?`Project memory:\n${k}`:"";})(),
@@ -958,6 +1249,28 @@ export class Supervisor{
   }
 
   private async runChecks(job:SupervisorJob,purpose:"baseline"|"milestone"|"final"="baseline"):Promise<CheckResult[]|undefined>{
+    if(isBuildProfile(job.acceptanceProfile)){
+      if(purpose==="baseline")return[];
+      const writingChecks=purpose==="milestone"&&job.milestones[job.current]?.buildStage==="spec";
+      if(job.acceptanceProfile===NODE_TOOL_PROFILE){
+        const observed=await this.observeNodeTests(job);
+        if(observed==="waiting")return undefined;
+        if(!writingChecks)return[{name:"test",ok:observed.ok,summary:observed.summary}];
+        const refused=vacuousTests(observed);
+        return[{name:"spec",ok:!refused,summary:refused??"The tests fail against an empty program, as they should."}];
+      }
+      try{
+        if(writingChecks){readSiteSteps(projectDir(job.projectId));return[{name:"spec",ok:true,summary:"Acceptance steps locked."}];}
+        const observed=await observeSite(projectDir(job.projectId),job.goal);
+        job.visual={url:"temporary local preview of the project",problems:observed.ok?[]:observed.summary.split("\n"),screens:["desktop","mobile"]};
+        return[{name:"static-browser",ok:observed.ok,summary:observed.summary}];
+      }catch(error){return[{name:"static-browser",ok:false,summary:"Browser observation failed: "+(error as Error).message}];}
+    }
+    if(job.acceptanceProfile===NODE_REPAIR_PROFILE){
+      const observed=await this.observeNodeTests(job);
+      if(observed==="waiting")return undefined;
+      return[{name:"test",ok:observed.ok,summary:observed.summary}];
+    }
     if(job.acceptanceProfile===STATIC_REPAIR_PROFILE){
       try{
         const observed=await this.staticObserver()(projectDir(job.projectId),job.goal,job.repairSeed);
@@ -1145,7 +1458,7 @@ export class Supervisor{
         return this.reopen(job,reason);
       }
     }
-    job.result=`Automated verification passed (${outcome.evidence.length} recorded evidence items; human acceptance criteria remain separately reviewable). ${job.milestones.length} milestone(s), checks ${final.map(f=>f.name).join(", ")||"none"} passing`+(job.visual?`, visual check ${job.visual.problems.length?"with issues":"clean"}`:"")+((job as SupervisorJob).security?`, security score ${(job as SupervisorJob).security!.score}/100`:"")+(job.branch?`, branch ${job.branch}`:"");
+    job.result=`Automated verification passed (${outcome.evidence.length} recorded evidence items; human acceptance criteria remain separately reviewable). ${job.milestones.length} milestone(s), checks ${final.map(f=>f.name).join(", ")||"none"} passing`+(job.visual?`, visual check ${job.visual.problems.length?"with issues":"clean"}`:"")+((job as SupervisorJob).security?`, security score ${(job as SupervisorJob).security!.score}/100`:"")+(job.review?`, second-model review: ${job.review.status}`:"")+(job.branch?`, branch ${job.branch}`:"");
     this.finished(job,true);
     await this.learnPlaybook(job);
     this.set(job,"completed","Automated gates passed; descriptive acceptance criteria are not separately certified");
@@ -1254,7 +1567,7 @@ export class Supervisor{
     return"Security check found problems that must be fixed before delivery:\n"+serious.map((f:any)=>`- [${f.severity}] ${f.message}${f.file?` (${f.file}:${f.line??""})`:""} — ${f.fix}`).join("\n");
   }
   private reopen(job:SupervisorJob,problem:string){
-    if(job.acceptanceProfile==="task-app-http-v1"||job.acceptanceProfile===STATIC_REPAIR_PROFILE||job.finalRepairs>=2){job.result="Final verification failed:\n"+clip(problem,800);this.finished(job,false);this.set(job,"failed","Stopped: final verification failed");return;}
+    if(job.acceptanceProfile==="task-app-http-v1"||job.acceptanceProfile===STATIC_REPAIR_PROFILE||job.acceptanceProfile===NODE_REPAIR_PROFILE||isBuildProfile(job.acceptanceProfile)||job.finalRepairs>=2){job.result="Final verification failed:\n"+clip(problem,800);this.finished(job,false);this.set(job,"failed","Stopped: final verification failed");return;}
     job.finalRepairs++;
     job.milestones.push({title:"Fix final verification",goal:"Fix these problems found during the final verification without breaking anything else.",kind:"code",agent:"coder",status:"pending",attempts:0,missions:[],notes:problem});
     this.set(job,"running","Final verification found problems; added a repair milestone");

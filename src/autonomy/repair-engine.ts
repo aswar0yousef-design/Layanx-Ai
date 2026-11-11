@@ -45,19 +45,26 @@ export function summarizeObservation(pages:PageObservation[]):StaticObservation{
   return{ok:pages.some(p=>p.target)&&!problems.length,pages,summary:problems.join("\n").slice(0,2000)||"The reported pages load without errors and show the expected text.",signature:problems.join("|")};
 }
 
-/** A fresh browser profile is the "first visit" the owner reports; nothing is seeded. */
-export const observeStaticProject:StaticObserver=async(dir,report,seed)=>{
+/** Serves a folder on a free local port, for as long as the browser needs it. */
+export async function serveStatic(dir:string):Promise<{base:string;close():Promise<void>}>{
   const root=path.resolve(dir);
   const mime:Record<string,string>={".html":"text/html; charset=utf-8",".htm":"text/html; charset=utf-8",".js":"text/javascript; charset=utf-8",".css":"text/css; charset=utf-8",".json":"application/json"};
   const server=http.createServer((request,response)=>{
     if(request.url==="/__layanx_storage__"){response.writeHead(200,{"content-type":"text/html; charset=utf-8"});response.end("<!doctype html>");return;}
+    if(request.url==="/favicon.ico"){response.writeHead(204);response.end();return;}
     const file=path.resolve(root,"."+decodeURIComponent(new URL(request.url??"/","http://local").pathname));
     if(!file.startsWith(root+path.sep)||!fs.existsSync(file)||!fs.statSync(file).isFile()){response.writeHead(404);response.end();return;}
     response.writeHead(200,{"content-type":mime[path.extname(file).toLowerCase()]??"application/octet-stream"});
     response.end(fs.readFileSync(file));
   });
   await new Promise<void>(resolve=>server.listen(0,"127.0.0.1",()=>resolve()));
-  const base=`http://127.0.0.1:${(server.address() as {port:number}).port}/`;
+  return{base:`http://127.0.0.1:${(server.address() as {port:number}).port}/`,close:()=>new Promise<void>(resolve=>{server.closeAllConnections();server.close(()=>resolve());})};
+}
+
+/** A fresh browser profile is the "first visit" the owner reports; nothing is seeded. */
+export const observeStaticProject:StaticObserver=async(dir,report,seed)=>{
+  const root=path.resolve(dir);
+  const served=await serveStatic(root),base=served.base;
   const pw:any=await import(process.env.LAYANX_PLAYWRIGHT_MODULE??"playwright-core");
   const chromium=pw.chromium??pw.default?.chromium;
   const browser=await chromium.launch({headless:true,channel:"msedge"}).catch(()=>chromium.launch({headless:true,channel:"chrome"}));
@@ -104,7 +111,7 @@ export const observeStaticProject:StaticObserver=async(dir,report,seed)=>{
     return{...summarizeObservation(observed),storage};
   }finally{
     await browser.close().catch(()=>undefined);
-    await new Promise<void>(resolve=>server.close(()=>resolve()));
+    await served.close();
   }
 };
 
@@ -194,7 +201,7 @@ function storageReferences(code:string):string[]{
   ];
 }
 /** Validates a proposed patch against the files on disk without writing anything. Throws the reason it is unusable. */
-export function prepareRepair(dir:string,proposal:unknown):PreparedRepair{
+export function prepareRepair(dir:string,proposal:unknown,policy:{editable?:RegExp;forbidden?:(file:string)=>string|undefined}={}):PreparedRepair{
   const value=proposal as {cause?:unknown;edits?:unknown}|null;
   if(!value||!Array.isArray(value.edits)||!value.edits.length)throw new Error("The model returned no edits.");
   if(value.edits.length>3)throw new Error("More than 3 edits were proposed.");
@@ -205,9 +212,13 @@ export function prepareRepair(dir:string,proposal:unknown):PreparedRepair{
   for(const raw of value.edits as RepairEdit[]){
     if(typeof raw?.path!=="string"||typeof raw.find!=="string"||typeof raw.replace!=="string"||!raw.find)throw new Error("An edit is missing path, find or replace.");
     if(raw.find===raw.replace)throw new Error("An edit changes nothing.");
-    const relative=raw.path.replace(/^\.?[\\/]/,"");
+    const named=raw.path.replace(/^\.?[\\/]/,"");
+    // TypeScript sources are imported as .js, so a model reading an import or a stack trace names a file that is really .ts.
+    const relative=/\.js$/.test(named)&&!fs.existsSync(path.resolve(root,named))&&fs.existsSync(path.resolve(root,named.replace(/\.js$/,".ts")))?named.replace(/\.js$/,".ts"):named;
     const full=path.resolve(root,relative);
-    if(!full.startsWith(root+path.sep)||relative.startsWith(".layanx")||!/\.(?:js|html?|css)$/i.test(relative))throw new Error("Edit target is not allowed: "+raw.path);
+    if(!full.startsWith(root+path.sep)||relative.startsWith(".layanx")||!(policy.editable??/\.(?:js|html?|css)$/i).test(relative))throw new Error("Edit target is not allowed: "+raw.path);
+    const refused=policy.forbidden?.(relative);
+    if(refused)throw new Error(refused);
     if(!fs.existsSync(full))throw new Error("Edit target does not exist: "+raw.path);
     const current=files.get(relative)??{content:fs.readFileSync(full,"utf8"),original:fs.readFileSync(full,"utf8")};
     const eol=current.content.includes("\r\n")?"\r\n":"\n";
@@ -225,8 +236,9 @@ export function prepareRepair(dir:string,proposal:unknown):PreparedRepair{
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),"lx-repair-"));
   try{
     for(const[relative,file]of files){
-      if(!/\.js$/i.test(relative))continue;
-      const candidate=path.join(temp,"candidate.js");
+      const extension=/\.[cm]?js$/i.exec(relative)?.[0];
+      if(!extension)continue;
+      const candidate=path.join(temp,"candidate"+extension);
       fs.writeFileSync(candidate,file.content);
       const check=spawnSync(process.execPath,["--check",candidate],{encoding:"utf8",timeout:8000,windowsHide:true});
       if(check.status!==0)throw new Error(`The patch breaks ${relative}: ${String(check.stderr).split("\n").find(l=>/Error/.test(l))??"syntax error"}`);
