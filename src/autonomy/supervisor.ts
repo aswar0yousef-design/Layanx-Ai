@@ -103,7 +103,7 @@ export interface SupervisorDeps{
   generateTaskTests?:SupervisorDeps["generateTaskServer"];
   generateRepairPatch?(prompt:string,routing?:JobRouting):Promise<{content:string;modelId:string}>;
   /** A whole file written from a prompt: no JSON wrapper, so quotes in the code cannot cut it short. */
-  generateFile?(prompt:string,routing?:JobRouting):Promise<{content:string;modelId:string}>;
+  generateFile?(prompt:string,routing?:JobRouting,schema?:Record<string,unknown>):Promise<{content:string;modelId:string}>;
   observeStatic?:StaticObserver;
   resumeAgent(missionId:string,projectId:string,agentId:string,approvals:Record<number,string>,routing?:JobRouting):Promise<AgentRun>;
   runTool(projectId:string,tool:string,payload:Record<string,unknown>,resume?:{missionId:string;approvalId:string}):Promise<ToolRun>;
@@ -166,6 +166,10 @@ function extractJson(raw:string):any{
 const clip=(s:unknown,n=1500)=>{const t=typeof s==="string"?s:JSON.stringify(s??"");return t.length>n?t.slice(0,n)+"…":t;};
 
 const MAX_REVIEWERS=3,slowReviewers=new Set<string>();
+// Test cases and blind answers are parsed as JSON; an unparseable reply cost whole build runs (csv, wordcount: "no answers array").
+// Ollama constrains decoding to these shapes, so the reply is always well-formed JSON; the content is still checked as before.
+const CASES_SCHEMA={type:"object",properties:{cases:{type:"array",items:{type:"object",properties:{args:{type:"array",items:{type:"string"}},stdin:{type:"string"},code:{type:"integer"},stdout:{type:"string"},why:{type:"string"}},required:["args","stdin","code","stdout","why"]}}},required:["cases"]};
+const ANSWERS_SCHEMA={type:"object",properties:{answers:{type:"array",items:{type:"object",properties:{code:{type:"integer"},stdout:{type:"string"}},required:["code","stdout"]}}},required:["answers"]};
 export class Supervisor{
   private jobs=new Map<string,SupervisorJob>();
   private running=new Set<string>();
@@ -847,7 +851,7 @@ export class Supervisor{
     let files:Array<{path:string;content:string}>;
     try{
       if(m.buildStage==="spec"){
-        const candidate=await generate(site?siteSpecPrompt(job.goal,previous):nodeSpecPrompt(job.goal,previous),routing);
+        const candidate=await generate(site?siteSpecPrompt(job.goal,previous):nodeSpecPrompt(job.goal,previous),routing,site?undefined:CASES_SCHEMA);
         // Written checks can be wrong too. A separate call, which does not see the expected results, has to reach the same ones.
         if(site){
           const steps=parseSiteSteps(extractJson(candidate.content));
@@ -858,7 +862,7 @@ export class Supervisor{
           files=siteSpecFiles(steps);
         }else{
           const cases=parseReviewCases(extractJson(candidate.content),MAX_SPEC_CASES);
-          const opinion=async()=>agreedCases(cases,extractJson((await generate(secondOpinionPrompt(job.goal,cases),routing)).content));
+          const opinion=async()=>agreedCases(cases,extractJson((await generate(secondOpinionPrompt(job.goal,cases),routing,ANSWERS_SCHEMA)).content));
           const agreed=await opinion().catch(error=>{if(/invalid JSON|No JSON|incomplete JSON/i.test((error as Error).message))return opinion();throw error;});
           const confirmed=mergeCases(m.confirmedCases??[],agreed,MAX_SPEC_CASES);
           m.confirmedCases=confirmed;
@@ -905,7 +909,7 @@ export class Supervisor{
     for(const candidate of reviewers){
       reviewer=candidate;
       try{
-        const objection=await generate(reviewPrompt(job.goal,read(PROGRAM_FILE),read(SPEC_TEST_FILE)),{preferLocal:true,modelId:candidate});
+        const objection=await generate(reviewPrompt(job.goal,read(PROGRAM_FILE),read(SPEC_TEST_FILE)),{preferLocal:true,modelId:candidate},CASES_SCHEMA);
         found=parseReviewCases(extractJson(objection.content));
         break;
       }catch(error){
@@ -919,7 +923,7 @@ export class Supervisor{
     const cases=found;
     let agreed:ReviewCase[];
     try{
-      const opinion=await generate(secondOpinionPrompt(job.goal,cases),{preferLocal:true,modelId:builder});
+      const opinion=await generate(secondOpinionPrompt(job.goal,cases),{preferLocal:true,modelId:builder},ANSWERS_SCHEMA);
       agreed=agreedCases(cases,extractJson(opinion.content));
     }catch(error){await conclude("could not run: "+clip((error as Error).message,200));return;}
     if(!agreed.length){await conclude("no objection confirmed by a second model",cases.length);return;}

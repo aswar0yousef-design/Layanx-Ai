@@ -102,8 +102,8 @@ export function coreSupervisorDeps(core:LayanXCore):SupervisorDeps{
       const response=await core.modelExecution.execute({capability:"coding",routing:routing??{preferLocal:true},maxOutputTokens:1500,input:prompt});
       return{content:response.output,modelId:response.modelId};
     },
-    async generateFile(prompt,routing){
-      const response=await core.modelExecution.execute({capability:"coding",routing:routing??{preferLocal:true},maxOutputTokens:4000,input:prompt});
+    async generateFile(prompt,routing,schema){
+      const response=await core.modelExecution.execute({capability:"coding",routing:routing??{preferLocal:true},maxOutputTokens:4000,input:prompt,...(schema?{responseSchema:schema}:{})});
       return{content:response.output,modelId:response.modelId};
     },
     resumeAgent:(missionId,projectId,agentId,approvals,routing)=>core.executeAgentLoop(missionId,projectId,15,approvals,agentId,routing) as never,
