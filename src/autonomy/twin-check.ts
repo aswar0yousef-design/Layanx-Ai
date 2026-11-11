@@ -11,16 +11,17 @@ export const TWIN_PROGRAM_FILE=".layanx/twin/program.mjs";
 export const TWIN_MARKER="LAYANX_TWIN ";
 const MAX_INPUTS=24,MAX_CASES=3;
 export interface TwinInput{args:string[];stdin:string}
-export interface TwinRun extends TwinInput{main:{code:number;stdout:string};twin:{code:number;stdout:string}}
+export interface TwinRun extends TwinInput{main:{code:number;stdout:string;stderr?:string};twin:{code:number;stdout:string;stderr?:string}}
 
 export const TWIN_INPUTS_SCHEMA={type:"object",properties:{inputs:{type:"array",items:{type:"object",properties:{args:{type:"array",items:{type:"string"}},stdin:{type:"string"}},required:["args","stdin"]}}},required:["inputs"]};
 
-export function twinPrompt(goal:string):string{
+export function twinPrompt(goal:string,failure?:string):string{
   return[
     "Write the complete command-line Node.js program for this request. Return only the JavaScript file, no explanation.",
     "The request from the owner:\n"+goal,
     "It is an ES module run as `node program.mjs <args>`, uses only Node built-ins, reads standard input only when the request needs it, prints the result to stdout and sets process.exitCode (never import exitCode) instead of throwing for bad input.",
-    "Follow the request exactly, including every edge case it mentions. Prefer a plain, careful approach: handle the input character by character or step by step rather than with clever shortcuts."
+    "Follow the request exactly, including every edge case it mentions. Prefer a plain, careful approach: handle the input character by character or step by step rather than with clever shortcuts.",
+    ...(failure?["An earlier version of this program failed to run on ordinary inputs. Avoid the same mistake:\n"+failure.slice(0,600)]:[])
   ].join("\n\n");
 }
 export function twinInputsPrompt(goal:string,tests:string):string{
@@ -54,7 +55,7 @@ export function twinHarnessSource(inputs:TwinInput[],mainFile:string):string{
     "import {fileURLToPath} from 'node:url';",
     "const root=path.join(path.dirname(fileURLToPath(import.meta.url)),'..');",
     "const inputs="+JSON.stringify(inputs)+";",
-    "const run=(file,i)=>{const r=spawnSync(process.execPath,[path.join(root,file),...i.args],{input:i.stdin,encoding:'utf8',timeout:5000,windowsHide:true,maxBuffer:1024*1024});return{code:typeof r.status==='number'?r.status:-1,stdout:String(r.stdout??'').slice(0,400)};};",
+    "const run=(file,i)=>{const r=spawnSync(process.execPath,[path.join(root,file),...i.args],{input:i.stdin,encoding:'utf8',timeout:5000,windowsHide:true,maxBuffer:1024*1024});return{code:typeof r.status==='number'?r.status:-1,stdout:String(r.stdout??'').slice(0,400),stderr:String(r.stderr??'').slice(0,300)};};",
     `test('twin comparison',()=>{const out=inputs.map(i=>({...i,main:run(${JSON.stringify(mainFile)},i),twin:run(${JSON.stringify(TWIN_PROGRAM_FILE)},i)}));console.log(${JSON.stringify(TWIN_MARKER)}+JSON.stringify(out));});`,
     ""
   ].join("\n");
@@ -73,10 +74,17 @@ export function disagree(run:TwinRun):boolean{
   return run.main.code===0&&normal(run.main.stdout)!==normal(run.twin.stdout);
 }
 /** The twin's answer for each disagreement, as a candidate case; a blind reading still has to confirm it before it is locked. */
+/** A twin that crashes or times out on most inputs is broken, and its disagreements say nothing about the main program. */
+export function twinBroken(runs:TwinRun[]):boolean{
+  return runs.filter(run=>run.twin.code!==0&&run.main.code===0).length>runs.length/2;
+}
+/** What the broken twin printed on failure, so a rewrite can avoid the same mistake. */
+export function twinFailure(runs:TwinRun[]):string{
+  const failed=runs.find(run=>run.twin.code!==0&&run.main.code===0);
+  return failed?`input ${JSON.stringify({args:failed.args,stdin:failed.stdin.slice(0,80)})}: exit ${failed.twin.code}${failed.twin.stderr?", stderr: "+failed.twin.stderr:""}`:"";
+}
 export function twinCases(runs:TwinRun[],limit=MAX_CASES):ReviewCase[]{
-  // A twin that crashes or times out on most inputs is broken, and its disagreements say nothing about the main program.
-  const twinBroken=runs.filter(run=>run.twin.code!==0&&run.main.code===0).length>runs.length/2;
-  if(twinBroken)return[];
+  if(twinBroken(runs))return[];
   return runs.filter(run=>disagree(run)&&run.twin.code!==-1).slice(0,limit).map(run=>({
     args:run.args,stdin:run.stdin,code:run.twin.code===0?0:1,stdout:run.twin.code===0?run.twin.stdout.trim():"",
     why:`a separately written program gives ${run.twin.code===0?JSON.stringify(run.twin.stdout.trim().slice(0,60)):"a failure"} where this one gives ${run.main.code===0?JSON.stringify(run.main.stdout.trim().slice(0,60)):"a failure"}`

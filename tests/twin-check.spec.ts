@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
-import {TWIN_PROGRAM_FILE,disagree,parseTwinInputs,parseTwinRun,twinCases,twinHarnessSource} from "../src/autonomy/twin-check.js";
+import {TWIN_PROGRAM_FILE,disagree,parseTwinInputs,parseTwinRun,twinBroken,twinCases,twinFailure,twinHarnessSource,twinPrompt} from "../src/autonomy/twin-check.js";
 import {patientCall,patientTimeoutMs} from "../src/core/patient-call.js";
 
 // Inputs: duplicates dropped, odd shapes cleaned, an unusable reply refused.
@@ -33,6 +33,14 @@ const r=(main:[number,string],twin:[number,string])=>({args:[],stdin:"",main:{co
 assert.equal(disagree(r([1,"x"],[2,"y"])),false);
 assert.equal(disagree(r([0,'{"a":1}'],[0,'{ "a": 1 }'])),false);
 assert.deepEqual(twinCases([r([0,"1"],[1,""]),r([0,"2"],[1,""]),r([0,"3"],[0,"4"])]),[]);
+// A broken twin is reported with its error, so it can be written once more instead of silently comparing nothing.
+const broken=[r([0,"1"],[1,""]),r([0,"2"],[1,""]),r([0,"3"],[0,"4"])];
+broken[0]!.twin.stderr="SyntaxError: Unexpected token";
+assert.equal(twinBroken(broken),true);
+assert.match(twinFailure(broken),/exit 1, stderr: SyntaxError/);
+assert.equal(twinBroken([r([0,"1"],[0,"1"]),r([0,"2"],[1,""])]),false);
+assert.match(twinPrompt("goal","exit 1, stderr: boom"),/earlier version[\s\S]*boom/);
+assert.doesNotMatch(twinPrompt("goal"),/earlier version/);
 
 // A timeout gets one more try with the same call and a longer limit; other errors are not retried.
 const limits:Array<number|undefined>=[];

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {createHash,randomUUID} from "node:crypto";
 import {AsyncLocalStorage} from "node:async_hooks";
-import {TWIN_INPUTS_SCHEMA,TWIN_PROGRAM_FILE,disagree,parseTwinInputs,parseTwinRun,twinCases,twinHarnessSource,twinInputsPrompt,twinPrompt} from "./twin-check.js";
+import {TWIN_INPUTS_SCHEMA,TWIN_PROGRAM_FILE,disagree,parseTwinInputs,parseTwinRun,twinBroken,twinCases,twinFailure,twinHarnessSource,twinInputsPrompt,twinPrompt,type TwinRun} from "./twin-check.js";
 import {REVIEW_TEST_FILE,agreedCases,mergeCases,parseReviewCases,reviewPrompt,reviewTestSource,secondOpinionPrompt,type ReviewCase} from "./peer-review.js";
 import {MAX_SPEC_CASES,MIN_SPEC_CASES,hasComputedSteps,parseSiteSteps,siteSecondOpinionPrompt,siteStepConflicts,SPEC_TEST_FILE,testCounts,NODE_TOOL_PROFILE,PROGRAM_FILE,PROGRAM_PLACEHOLDER,RUNTIME_FAILURE,SITE_FILE,SITE_PLACEHOLDER,STATIC_SITE_PROFILE,buildPlan,buildRuntimePatchPrompt,buildSitePatchPrompt,extractHtml,extractProgram,isBuildProfile,nodeSpecFiles,nodeSpecPrompt,observeSite,programPrompt,readSiteSteps,siteSpecFiles,sitePrompt,siteSpecPrompt,vacuousTests,type BuildProfile} from "./project-build.js";
 import {NODE_EDITABLE,NODE_REPAIR_PROFILE,buildNodeRepairPrompt,isTestFile,needsDependencies,nodeRepairSetback,observeTestRun,type NodeTestObservation} from "./node-repair.js";
@@ -904,8 +904,10 @@ export class Supervisor{
     const available=process.env.LAYANX_REVIEW_MODEL?[process.env.LAYANX_REVIEW_MODEL]:[...new Set([...(builder?[builder]:[]),...(run?[...run.ladders.planning,...run.ladders.coding]:[])])].filter(model=>!gone.includes(model));
     const reviewers=[...available.filter(model=>!slowReviewers.has(model)),...available.filter(model=>slowReviewers.has(model))].slice(0,MAX_REVIEWERS);
     let reviewer=reviewers[0];
-    let twin:{compared:number;differed:number;cases:ReviewCase[]}|undefined;
+    let twin:{compared:number;differed:number;broken:boolean;cases:ReviewCase[]}|undefined;
     const twinFacts=()=>twin?{compared:twin.compared,differed:twin.differed,fromTwin:twin.cases.length}:{};
+    // Say what the comparison really showed: agreement only on inputs where both programs gave the same result.
+    const twinNote=()=>!twin?"":twin.broken?"the separately written program did not work, so nothing was compared":`a separately written program agreed on ${twin.compared-twin.differed} of ${twin.compared} inputs`;
     const conclude=async(status:string,cases=0,agreed=0)=>{job.review={status,...(reviewer?{by:reviewer}:{}),cases,agreed,failedFirst:0,...twinFacts()};this.log(job,"Review: "+status);await this.afterWork(job,m);};
     if(!builder){await conclude("skipped: no model is available");return;}
     // Running a second, separately written program against this one does not depend on a second model being available.
@@ -914,7 +916,7 @@ export class Supervisor{
       if(compared==="waiting")return;
       twin=compared;
     }
-    if(!reviewer&&!twin?.cases.length){await conclude(twin?`no objection: a separately written program agreed on ${twin.compared} inputs`:"skipped: only one model is available, and it built the program");return;}
+    if(!reviewer&&!twin?.cases.length){await conclude(twin?`no objection: ${twinNote()}`:"skipped: only one model is available, and it built the program");return;}
     let found:ReviewCase[]|undefined,problem="";
     const read=(file:string)=>fs.readFileSync(path.join(dir,file),"utf8");
     for(const candidate of reviewers){
@@ -932,7 +934,7 @@ export class Supervisor{
     }
     const fromTwin=twin?.cases??[];
     if(!found&&!fromTwin.length){await conclude("could not run: "+clip(problem,200));return;}
-    if(!found?.length&&!fromTwin.length){await conclude(twin?`no objection, and a separately written program agreed on ${twin.compared} inputs`:"no objection");return;}
+    if(!found?.length&&!fromTwin.length){await conclude(twin?`no objection; ${twinNote()}`:"no objection");return;}
     const cases=mergeCases(found??[],fromTwin,MAX_REVIEW_CASES);
     let agreed:ReviewCase[];
     try{
@@ -952,21 +954,28 @@ export class Supervisor{
     await this.afterWork(job,m);
   }
   /** Writes a second program from the request alone, runs both on many inputs through the normal test task, and returns the twin's answers where they differ. */
-  private async twinCheck(job:SupervisorJob,builder:string):Promise<{compared:number;differed:number;cases:ReviewCase[]}|undefined|"waiting">{
+  private async twinCheck(job:SupervisorJob,builder:string):Promise<{compared:number;differed:number;broken:boolean;cases:ReviewCase[]}|undefined|"waiting">{
     const dir=projectDir(job.projectId),generate=this.deps.generateFile!,harness=path.join(dir,TWIN_HARNESS_FILE);
     try{
-      const program=extractProgram((await generate(twinPrompt(job.goal),{preferLocal:true,modelId:builder})).content);
       const inputs=parseTwinInputs(extractJson((await generate(twinInputsPrompt(job.goal,fs.readFileSync(path.join(dir,SPEC_TEST_FILE),"utf8")),{preferLocal:true,modelId:builder},TWIN_INPUTS_SCHEMA)).content));
       if(inputs.length<4)throw new Error(`only ${inputs.length} inputs were given`);
-      for(const file of [{path:TWIN_PROGRAM_FILE,content:program},{path:TWIN_HARNESS_FILE,content:twinHarnessSource(inputs,PROGRAM_FILE)}]){
-        const written=await this.tool(job,"files.write",file,"milestone");
-        if(written==="waiting")return"waiting";
-        if(!written.ok||written.data?.written!==true)throw new Error(written.error??"could not write "+file.path);
+      // A twin that fails on most inputs compares nothing (measured: wordcount twins failed on 17 of 17 and 20 of 20), so it is written once more with its error shown.
+      let runs:TwinRun[]=[],failure:string|undefined;
+      for(let round=0;round<2;round++){
+        const program=extractProgram((await generate(twinPrompt(job.goal,failure),{preferLocal:true,modelId:builder})).content);
+        for(const file of [{path:TWIN_PROGRAM_FILE,content:program},{path:TWIN_HARNESS_FILE,content:twinHarnessSource(inputs,PROGRAM_FILE)}]){
+          const written=await this.tool(job,"files.write",file,"milestone");
+          if(written==="waiting")return"waiting";
+          if(!written.ok||written.data?.written!==true)throw new Error(written.error??"could not write "+file.path);
+        }
+        const run=await this.tool(job,"project.run",{task:"test"},"milestone");
+        if(run==="waiting")return"waiting";
+        runs=parseTwinRun(String(run.data?.stdout??"")+"\n"+String(run.data?.stderr??""));
+        if(!twinBroken(runs))break;
+        failure=twinFailure(runs);
+        this.log(job,`The separately written program failed on most inputs${round?" again; it is not used":", writing it once more"}: ${clip(failure,200)}`,"warn");
       }
-      const run=await this.tool(job,"project.run",{task:"test"},"milestone");
-      if(run==="waiting")return"waiting";
-      const runs=parseTwinRun(String(run.data?.stdout??"")+"\n"+String(run.data?.stderr??""));
-      const result={compared:runs.length,differed:runs.filter(disagree).length,cases:twinCases(runs)};
+      const result={compared:runs.length,differed:runs.filter(disagree).length,broken:twinBroken(runs),cases:twinCases(runs)};
       this.log(job,`Compared with a separately written program on ${result.compared} inputs: ${result.differed} gave different results, ${result.cases.length} sent for a blind check`);
       return result;
     }catch(error){
