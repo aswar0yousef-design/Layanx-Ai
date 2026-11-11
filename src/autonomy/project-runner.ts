@@ -188,7 +188,9 @@ function scheduleFamilySample(ms:number){
   },ms);
   familyTimer.unref?.();
 }
-const pidAlive=(pid:number)=>{try{process.kill(pid,0);return true;}catch(error){return(error as NodeJS.ErrnoException).code==="EPERM";}};
+// On Linux a killed process stays a zombie until its parent collects it, and signal 0 still reaches it; it is not running.
+const zombie=(pid:number)=>{if(process.platform!=="linux")return false;try{return/^\d+ \(.*\) Z/.test(fs.readFileSync(`/proc/${pid}/stat`,"utf8"));}catch{return false;}};
+const pidAlive=(pid:number)=>{try{process.kill(pid,0);return!zombie(pid);}catch(error){return(error as NodeJS.ErrnoException).code==="EPERM";}};
 function processStartMs(pid:number):number|undefined{
   try{
     const text=process.platform==="win32"
