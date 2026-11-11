@@ -2,6 +2,9 @@
 # Stops the LayanX background process for the current Windows user.
 $DataDir = if ($env:LAYANX_DATA_DIR) { $env:LAYANX_DATA_DIR } else { Join-Path $env:LOCALAPPDATA 'LayanX' }
 $pidFile = Join-Path $DataDir 'layanx.pid'
+# Tells the always-on watchdog not to start LayanX again until it is started by hand.
+New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
+Set-Content -Path (Join-Path $DataDir 'stopped.flag') -Value (Get-Date).ToString('o')
 if (-not (Test-Path $pidFile)) { Write-Host '[LayanX] LayanX is not running.'; Start-Sleep -Seconds 2; exit 0 }
 $procId = [int]((Get-Content $pidFile -Raw).Trim())
 try {

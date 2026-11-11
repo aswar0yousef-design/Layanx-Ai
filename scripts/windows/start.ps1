@@ -12,7 +12,8 @@
   Console messages are in English on purpose: the classic Windows console does
   not shape Arabic text correctly. The control page in the browser is Arabic.
 #>
-param([switch]$NoBrowser)
+param([switch]$NoBrowser,[switch]$Unattended)
+# -Unattended: started by the always-on watchdog. Nothing waits for a key press, and nothing is installed or downloaded without the owner.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
@@ -21,6 +22,8 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $DataDir = if ($env:LAYANX_DATA_DIR) { $env:LAYANX_DATA_DIR } else { Join-Path $env:LOCALAPPDATA 'LayanX' }
 New-Item -ItemType Directory -Force -Path (Join-Path $DataDir 'logs') | Out-Null
 $LogFile = Join-Path $DataDir 'logs\layanx.log'
+# Starting LayanX by hand lifts a stop made with LayanX-Stop.cmd, so the watchdog keeps it running again.
+Remove-Item (Join-Path $DataDir 'stopped.flag') -ErrorAction SilentlyContinue
 
 $Port = 3000
 if ($env:LAYANX_PUBLIC_PORT) { $Port = [int]$env:LAYANX_PUBLIC_PORT }
@@ -38,11 +41,10 @@ function Say($m)  { Write-Host "[LayanX] $m" -ForegroundColor Cyan }
 function Warn($m) { Write-Host "[LayanX] $m" -ForegroundColor Yellow }
 function Fail($m) {
   Write-Host "[LayanX] $m" -ForegroundColor Red
-  Write-Host ''
-  Read-Host 'Press Enter to close' | Out-Null
+  if (-not $Unattended) { Write-Host ''; Read-Host 'Press Enter to close' | Out-Null }
   exit 1
 }
-function Ask($q) { $a = Read-Host "$q [Y/n]"; return ($a -eq '' -or $a -match '^(y|yes)$') }
+function Ask($q) { if ($Unattended) { return $false }; $a = Read-Host "$q [Y/n]"; return ($a -eq '' -or $a -match '^(y|yes)$') }
 function Refresh-Path {
   $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
 }
@@ -278,5 +280,5 @@ if ($stale -or -not (Test-Path $lnk)) {
   }
 }
 Say "Ready. Control page: $Base/setup"
-Start-Sleep -Seconds 2
+if (-not $Unattended) { Start-Sleep -Seconds 2 }
 exit 0
