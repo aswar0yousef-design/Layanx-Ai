@@ -1,5 +1,6 @@
 import {randomUUID} from "node:crypto";
 import type {LayanXCore} from "../core/orchestrator.js";
+import {patientCall} from "../core/patient-call.js";
 import {cloudPolicy} from "../config/providers.js";
 import {pickExternalAgent} from "./external-agents.js";
 import type {JobRouting,SupervisorDeps,ToolRun} from "./supervisor.js";
@@ -99,11 +100,11 @@ export function coreSupervisorDeps(core:LayanXCore):SupervisorDeps{
       return{...ladders,coding:ladders.coding.filter(id=>known.has(id)),planning:ladders.planning.filter(id=>known.has(id))};
     },
     async generateRepairPatch(prompt,routing){
-      const response=await core.modelExecution.execute({capability:"coding",routing:routing??{preferLocal:true},maxOutputTokens:1500,input:prompt});
+      const response=await patientCall(timeoutMs=>core.modelExecution.execute({capability:"coding",routing:routing??{preferLocal:true},maxOutputTokens:1500,input:prompt,...(timeoutMs?{timeoutMs}:{})}));
       return{content:response.output,modelId:response.modelId};
     },
     async generateFile(prompt,routing,schema){
-      const response=await core.modelExecution.execute({capability:"coding",routing:routing??{preferLocal:true},maxOutputTokens:4000,input:prompt,...(schema?{responseSchema:schema}:{})});
+      const response=await patientCall(timeoutMs=>core.modelExecution.execute({capability:"coding",routing:routing??{preferLocal:true},maxOutputTokens:4000,input:prompt,...(schema?{responseSchema:schema}:{}),...(timeoutMs?{timeoutMs}:{})}));
       return{content:response.output,modelId:response.modelId};
     },
     resumeAgent:(missionId,projectId,agentId,approvals,routing)=>core.executeAgentLoop(missionId,projectId,15,approvals,agentId,routing) as never,

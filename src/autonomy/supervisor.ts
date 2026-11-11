@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {createHash,randomUUID} from "node:crypto";
 import {AsyncLocalStorage} from "node:async_hooks";
+import {TWIN_INPUTS_SCHEMA,TWIN_PROGRAM_FILE,disagree,parseTwinInputs,parseTwinRun,twinCases,twinHarnessSource,twinInputsPrompt,twinPrompt} from "./twin-check.js";
 import {REVIEW_TEST_FILE,agreedCases,mergeCases,parseReviewCases,reviewPrompt,reviewTestSource,secondOpinionPrompt,type ReviewCase} from "./peer-review.js";
 import {MAX_SPEC_CASES,MIN_SPEC_CASES,hasComputedSteps,parseSiteSteps,siteSecondOpinionPrompt,siteStepConflicts,SPEC_TEST_FILE,testCounts,NODE_TOOL_PROFILE,PROGRAM_FILE,PROGRAM_PLACEHOLDER,RUNTIME_FAILURE,SITE_FILE,SITE_PLACEHOLDER,STATIC_SITE_PROFILE,buildPlan,buildRuntimePatchPrompt,buildSitePatchPrompt,extractHtml,extractProgram,isBuildProfile,nodeSpecFiles,nodeSpecPrompt,observeSite,programPrompt,readSiteSteps,siteSpecFiles,sitePrompt,siteSpecPrompt,vacuousTests,type BuildProfile} from "./project-build.js";
 import {NODE_EDITABLE,NODE_REPAIR_PROFILE,buildNodeRepairPrompt,isTestFile,needsDependencies,nodeRepairSetback,observeTestRun,type NodeTestObservation} from "./node-repair.js";
@@ -60,7 +61,7 @@ export interface SupervisorJob{brief?:TaskBrief;
   outcome?:OutcomeReport;
   acceptanceProfile?:"task-app-http-v1"|typeof STATIC_REPAIR_PROFILE|typeof NODE_REPAIR_PROFILE|BuildProfile;
   /** What the independent review did: objections, those a second model confirmed, and those the program really failed. */
-  review?:{status:string;by?:string;cases:number;agreed:number;failedFirst:number};
+  review?:{status:string;by?:string;cases:number;agreed:number;failedFirst:number;compared?:number;differed?:number;fromTwin?:number};
   repairSeed?:Record<string,string>;
   modelRun?:ModelRunState;
   behavior?:TaskAppProbeResult;
@@ -165,7 +166,7 @@ function extractJson(raw:string):any{
 }
 const clip=(s:unknown,n=1500)=>{const t=typeof s==="string"?s:JSON.stringify(s??"");return t.length>n?t.slice(0,n)+"…":t;};
 
-const MAX_REVIEWERS=3,slowReviewers=new Set<string>();
+const MAX_REVIEWERS=3,MAX_REVIEW_CASES=5,TWIN_HARNESS_FILE="tests/zz-layanx-twin.test.mjs",slowReviewers=new Set<string>();
 // Test cases and blind answers are parsed as JSON; an unparseable reply cost whole build runs (csv, wordcount: "no answers array").
 // Ollama constrains decoding to these shapes, so the reply is always well-formed JSON; the content is still checked as before.
 const CASES_SCHEMA={type:"object",properties:{cases:{type:"array",items:{type:"object",properties:{args:{type:"array",items:{type:"string"}},stdin:{type:"string"},code:{type:"integer"},stdout:{type:"string"},why:{type:"string"}},required:["args","stdin","code","stdout","why"]}}},required:["cases"]};
@@ -903,11 +904,21 @@ export class Supervisor{
     const available=process.env.LAYANX_REVIEW_MODEL?[process.env.LAYANX_REVIEW_MODEL]:[...new Set([...(builder?[builder]:[]),...(run?[...run.ladders.planning,...run.ladders.coding]:[])])].filter(model=>!gone.includes(model));
     const reviewers=[...available.filter(model=>!slowReviewers.has(model)),...available.filter(model=>slowReviewers.has(model))].slice(0,MAX_REVIEWERS);
     let reviewer=reviewers[0];
-    const conclude=async(status:string,cases=0,agreed=0)=>{job.review={status,...(reviewer?{by:reviewer}:{}),cases,agreed,failedFirst:0};this.log(job,"Review: "+status);await this.afterWork(job,m);};
-    if(!reviewer||!builder){await conclude("skipped: only one model is available, and it built the program");return;}
+    let twin:{compared:number;differed:number;cases:ReviewCase[]}|undefined;
+    const twinFacts=()=>twin?{compared:twin.compared,differed:twin.differed,fromTwin:twin.cases.length}:{};
+    const conclude=async(status:string,cases=0,agreed=0)=>{job.review={status,...(reviewer?{by:reviewer}:{}),cases,agreed,failedFirst:0,...twinFacts()};this.log(job,"Review: "+status);await this.afterWork(job,m);};
+    if(!builder){await conclude("skipped: no model is available");return;}
+    // Running a second, separately written program against this one does not depend on a second model being available.
+    if(process.env.LAYANX_TWIN_CHECK!=="off"){
+      const compared=await this.twinCheck(job,builder);
+      if(compared==="waiting")return;
+      twin=compared;
+    }
+    if(!reviewer&&!twin?.cases.length){await conclude(twin?`no objection: a separately written program agreed on ${twin.compared} inputs`:"skipped: only one model is available, and it built the program");return;}
     let found:ReviewCase[]|undefined,problem="";
     const read=(file:string)=>fs.readFileSync(path.join(dir,file),"utf8");
     for(const candidate of reviewers){
+      if(!candidate)break;
       reviewer=candidate;
       try{
         const objection=await generate(reviewPrompt(job.goal,read(PROGRAM_FILE),read(SPEC_TEST_FILE)),{preferLocal:true,modelId:candidate},CASES_SCHEMA);
@@ -919,9 +930,10 @@ export class Supervisor{
         this.log(job,`Review by ${candidate} did not finish: ${clip(problem,200)}`,"warn");
       }
     }
-    if(!found){await conclude("could not run: "+clip(problem,200));return;}
-    if(!found.length){await conclude("no objection");return;}
-    const cases=found;
+    const fromTwin=twin?.cases??[];
+    if(!found&&!fromTwin.length){await conclude("could not run: "+clip(problem,200));return;}
+    if(!found?.length&&!fromTwin.length){await conclude(twin?`no objection, and a separately written program agreed on ${twin.compared} inputs`:"no objection");return;}
+    const cases=mergeCases(found??[],fromTwin,MAX_REVIEW_CASES);
     let agreed:ReviewCase[];
     try{
       const opinion=await generate(secondOpinionPrompt(job.goal,cases),{preferLocal:true,modelId:builder},ANSWERS_SCHEMA);
@@ -935,9 +947,35 @@ export class Supervisor{
     const observed=await this.observeNodeTests(job);
     if(observed==="waiting")return;
     const failedFirst=observed.ok?0:Math.max(1,testCounts(observed.raw).fail);
-    job.review={status:failedFirst?"objection confirmed: the program failed it":"objections checked: the program passed them",by:reviewer,cases:cases.length,agreed:agreed.length,failedFirst};
-    this.log(job,`Review by ${reviewer}: ${cases.length} objection(s), ${agreed.length} confirmed by ${builder}, ${failedFirst} failing`);
+    job.review={status:failedFirst?"objection confirmed: the program failed it":"objections checked: the program passed them",...(reviewer?{by:reviewer}:{}),cases:cases.length,agreed:agreed.length,failedFirst,...twinFacts()};
+    this.log(job,`Review by ${reviewer??"comparison"}: ${cases.length} objection(s) (${fromTwin.length} from a separately written program), ${agreed.length} confirmed by ${builder}, ${failedFirst} failing`);
     await this.afterWork(job,m);
+  }
+  /** Writes a second program from the request alone, runs both on many inputs through the normal test task, and returns the twin's answers where they differ. */
+  private async twinCheck(job:SupervisorJob,builder:string):Promise<{compared:number;differed:number;cases:ReviewCase[]}|undefined|"waiting">{
+    const dir=projectDir(job.projectId),generate=this.deps.generateFile!,harness=path.join(dir,TWIN_HARNESS_FILE);
+    try{
+      const program=extractProgram((await generate(twinPrompt(job.goal),{preferLocal:true,modelId:builder})).content);
+      const inputs=parseTwinInputs(extractJson((await generate(twinInputsPrompt(job.goal,fs.readFileSync(path.join(dir,SPEC_TEST_FILE),"utf8")),{preferLocal:true,modelId:builder},TWIN_INPUTS_SCHEMA)).content));
+      if(inputs.length<4)throw new Error(`only ${inputs.length} inputs were given`);
+      for(const file of [{path:TWIN_PROGRAM_FILE,content:program},{path:TWIN_HARNESS_FILE,content:twinHarnessSource(inputs,PROGRAM_FILE)}]){
+        const written=await this.tool(job,"files.write",file,"milestone");
+        if(written==="waiting")return"waiting";
+        if(!written.ok||written.data?.written!==true)throw new Error(written.error??"could not write "+file.path);
+      }
+      const run=await this.tool(job,"project.run",{task:"test"},"milestone");
+      if(run==="waiting")return"waiting";
+      const runs=parseTwinRun(String(run.data?.stdout??"")+"\n"+String(run.data?.stderr??""));
+      const result={compared:runs.length,differed:runs.filter(disagree).length,cases:twinCases(runs)};
+      this.log(job,`Compared with a separately written program on ${result.compared} inputs: ${result.differed} gave different results, ${result.cases.length} sent for a blind check`);
+      return result;
+    }catch(error){
+      this.log(job,"Comparison with a separately written program did not run: "+clip((error as Error).message,200),"warn");
+      return undefined;
+    }finally{
+      // The harness only reports; it is not one of the project's tests and must not stay behind.
+      try{fs.rmSync(harness,{force:true});}catch{}
+    }
   }
   /** The file ran and misbehaved: most of it is right, so one small patch is tried before rewriting it. */
   private async patchRuntimeError(job:SupervisorJob,m:Milestone,routing?:JobRouting):Promise<"applied"|"waiting"|undefined>{

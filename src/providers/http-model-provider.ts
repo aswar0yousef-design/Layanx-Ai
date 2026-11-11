@@ -35,7 +35,7 @@ export class HttpModelProvider implements ModelProviderAdapter{
  }
  async generate(model:ModelDefinition,request:ModelRequest):Promise<ModelResponse>{
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),Math.max(1,this.options.timeoutMs??30000));
+  const timer=setTimeout(()=>controller.abort(),Math.max(1,request.timeoutMs??this.options.timeoutMs??30000));
   try{
    const response=await this.fetcher(this.options.buildUrl?.(model,request)??this.options.baseUrl,{method:"POST",redirect:"error",signal:controller.signal,headers:{"content-type":"application/json",...this.headers()},body:JSON.stringify(this.options.buildBody(model,request))});
    if(!response.ok){
