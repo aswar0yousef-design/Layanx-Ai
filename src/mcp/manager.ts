@@ -227,14 +227,62 @@ export class McpManager{
 }
 
 // ---------------------------------------------------------------------------- registry search
-export interface RegistryEntry{name:string;description:string;version:string;suggested:Partial<McpServerConfig>|null;secrets:string[];remote?:string}
+export interface RegistryEntry{name:string;description:string;version:string;suggested:Partial<McpServerConfig>|null;secrets:string[];remote?:string;trust?:McpTrust}
+/**
+ * How far a search result can be trusted, shown before the owner adds it. The registry is open to anyone and lists
+ * results by name, so a well-known server can sit under several unknown ones. Signals: the publisher's namespace (which
+ * the registry verified: a GitHub account or a domain), an exact version, and how many people install the package.
+ */
+export interface McpTrust{publisher:string;pinned:boolean;weeklyDownloads:number|null;level:"high"|"medium"|"low";warnings:string[]}
+const LEVEL={high:0,medium:1,low:2} as const;
+
+export function publisherOf(registryName:string):string{
+  const ns=registryName.split("/")[0]??"";
+  const gh=/^io\.github\.([\w-]+)$/i.exec(ns);if(gh)return "github.com/"+gh[1];
+  const parts=ns.split(".");return parts.length>=2?parts.slice(1).reverse().join(".")+"."+parts[0]:ns;
+}
+async function weeklyDownloads(entry:RegistryEntry,fetcher:typeof fetch):Promise<number|null>{
+  const pkg=entry.suggested?.source?.package;if(!pkg)return null;
+  const url=entry.suggested?.command==="npx"?`https://api.npmjs.org/downloads/point/last-week/${pkg}`
+    :entry.suggested?.command==="uvx"?`https://pypistats.org/api/packages/${encodeURIComponent(pkg.toLowerCase())}/recent`:null;
+  if(!url)return null;
+  try{
+    const r=await fetcher(url,{redirect:"error",signal:AbortSignal.timeout(6000),headers:{accept:"application/json"}});
+    if(!r.ok)return null;
+    const d=await r.json() as {downloads?:unknown;data?:{last_week?:unknown}};
+    const n=typeof d.downloads==="number"?d.downloads:typeof d.data?.last_week==="number"?d.data.last_week:null;
+    return n!==null&&Number.isFinite(n)?n:null;
+  }catch{return null;}
+}
+export function trustOf(entry:RegistryEntry,downloads:number|null):McpTrust{
+  const remote=entry.suggested?.transport==="http";
+  const pinned=Boolean(entry.suggested)&&pinnedSpec(entry.suggested as McpServerConfig)!==null;
+  const warnings:string[]=[];
+  if(!entry.suggested)warnings.push("not-installable");
+  else if(!pinned)warnings.push("no-exact-version");
+  if(entry.secrets.length)warnings.push("needs-keys");
+  if(remote)warnings.push("runs-on-their-server");
+  if(downloads!==null&&downloads<500)warnings.push("few-users");
+  const level=!pinned?"low":downloads!==null&&downloads>=10_000?"high":downloads!==null&&downloads>=500?"medium":"low";
+  return{publisher:publisherOf(entry.name),pinned,weeklyDownloads:downloads,level,warnings};
+}
 const REGISTRY=(process.env.LAYANX_MCP_REGISTRY_URL?.trim()||"https://registry.modelcontextprotocol.io").replace(/\/+$/,"");
 
 /** Search the official MCP Registry and propose a pinned, Windows-safe config for each result. */
-export async function searchRegistry(query:string,options:{fetcher?:typeof fetch;limit?:number}={}):Promise<RegistryEntry[]>{
+export async function searchRegistry(query:string,options:{fetcher?:typeof fetch;limit?:number;trust?:boolean}={}):Promise<RegistryEntry[]>{
+  const limit=Math.min(Math.max(options.limit??15,1),50);
+  // Ask for more than shown: the registry orders by name, so ranking by trust needs a wider pool.
+  const found=await registryPage(query,options.trust===false?limit:Math.min(limit*3,50),options.fetcher??fetch);
+  if(options.trust===false)return found.slice(0,limit);
+  const fetcher=options.fetcher??fetch;
+  const ranked=await Promise.all(found.map(async e=>({...e,trust:trustOf(e,await weeklyDownloads(e,fetcher))})));
+  ranked.sort((a,b)=>LEVEL[a.trust.level]-LEVEL[b.trust.level]||Number(b.trust.pinned)-Number(a.trust.pinned)||(b.trust.weeklyDownloads??-1)-(a.trust.weeklyDownloads??-1));
+  return ranked.slice(0,limit);
+}
+async function registryPage(query:string,limit:number,fetcher:typeof fetch):Promise<RegistryEntry[]>{
   const q=query.trim().slice(0,100);if(!q)throw new Error("query is required.");
-  const url=`${REGISTRY}/v0.1/servers?search=${encodeURIComponent(q)}&version=latest&limit=${Math.min(Math.max(options.limit??15,1),50)}`;
-  const response=await (options.fetcher??fetch)(url,{redirect:"error",signal:AbortSignal.timeout(15_000),headers:{accept:"application/json"}});
+  const url=`${REGISTRY}/v0.1/servers?search=${encodeURIComponent(q)}&version=latest&limit=${limit}`;
+  const response=await fetcher(url,{redirect:"error",signal:AbortSignal.timeout(15_000),headers:{accept:"application/json"}});
   if(!response.ok)throw new Error("MCP registry returned HTTP "+response.status+".");
   const data=await response.json() as {servers?:Array<{server?:Record<string,unknown>}>};
   return (data.servers??[]).map(item=>item.server??{}).filter(s=>typeof s.name==="string").map(s=>{

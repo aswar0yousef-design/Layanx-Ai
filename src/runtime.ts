@@ -102,7 +102,6 @@ export function createRuntime(options:RuntimeOptions={}){
  registerMcpTools(core,mcp);
  registerPlatformTools(core,()=>({mcp,toolNames:()=>core.tools.list().map(t=>t.name)}));
  process.once("exit",()=>mcp.killAll());
- void mcp.start().catch(()=>undefined);
  if(capabilityEnabled("research"))registerAgentReachTools(core);
  let channels!: MessagingChannels;
  const flows=new FlowRuntime(core,async(channel,chatId,text)=>{if(channel==="whatsapp")await channels.sendWhatsApp(chatId,text);else if(channel==="telegram")await channels.telegram.sendText(chatId,text);});
@@ -136,6 +135,8 @@ export function createRuntime(options:RuntimeOptions={}){
  };
  core.registerAgent(agent);
  for(const specialised of specialisedAgents(agent))core.registerAgent(specialised);
+ // After the agents exist: each approved server's tools are granted to them as it connects (a grant to an unregistered agent is lost).
+ void mcp.start().catch(()=>undefined);
  const configured=configureProviders(undefined,core.models,core.providers);
  return{core,business,ads,media,growth,shipping,creator,writer,liveScreen,channels,flows,...configured,providerSummary:providerSummary(),persistence};
 }
