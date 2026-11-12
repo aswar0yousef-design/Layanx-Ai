@@ -1,7 +1,7 @@
 /**
  * Email invoices to Google Sheets from the owner's words, judged from outside. Stand-in Gmail/Drive/Sheets
  * (tests/fixtures/fake-google.ts) hold five realistic emails: an English carrier invoice, an Arabic one in HTML only, a
- * newsletter, a PDF-only invoice (nothing to read: must not be guessed) and a resent duplicate. LayanX's live model reads them;
+ * newsletter, a resent duplicate, and invoices that are only in PDF attachments: English, Arabic, and a scanned one (an image). LayanX's live model reads them;
  * the judge reads the sheets afterwards. No real Google account is used.
  *
  *   npx tsx scripts/outcome-mail-invoices-acceptance.ts --runs 3
@@ -41,14 +41,17 @@ async function runOne(){
   const answer=result?.results?await composeTaskAnswer(core.modelExecution,goal,result.results,result.completed===true).catch(()=>null):null;
   const reply=answer?.text??"";
   const books=[...google.sheets.values()];
-  const rows=(prefix:string)=>books.filter(b=>b.title.startsWith(prefix)).flatMap(b=>(b.tabs.get("Invoices")??[]).slice(1));
+  const rowsOf=(re:RegExp)=>books.filter(b=>re.test(b.title)).flatMap(b=>(b.tabs.get("Invoices")??[]).slice(1));
   const all=books.flatMap(b=>[...b.tabs.values()].flatMap(t=>t.slice(1)));
-  const smsa=rows("SMSA"),aramex=books.filter(b=>/أرامكس|aramex/i.test(b.title)).flatMap(b=>(b.tabs.get("Invoices")??[]).slice(1));
+  const once=(re:RegExp,number:string,total:number)=>{const r=rowsOf(re).filter(x=>x[0]===number);return r.length===1&&Math.abs(Number(r[0]![2])-total)<0.005;};
   const verdict=[
-    {check:"SMSA invoice INV-55821 written once with total 1250.50",ok:smsa.length===1&&smsa[0]![0]==="INV-55821"&&Number(smsa[0]![2])===1250.5,detail:JSON.stringify(smsa)},
-    {check:"Aramex invoice ARX-7731 (Arabic, HTML only) written once with total 345",ok:aramex.length===1&&aramex[0]![0]==="ARX-7731"&&Number(aramex[0]![2])===345,detail:JSON.stringify(aramex)},
-    {check:"nothing else was written (no newsletter, no guessed DHL row, no duplicate)",ok:all.length===2,detail:JSON.stringify(all)},
-    {check:"the reply says the DHL invoice was not written and why",ok:/DHL|Invoice available/.test(reply)&&/(ليس في الرسالة|مرفق|attachment|not in the email)/.test(reply),detail:reply.slice(0,600)}];
+    {check:"SMSA INV-55821 (email text) once, 1250.50",ok:once(/SMSA/i,"INV-55821",1250.5),detail:JSON.stringify(rowsOf(/SMSA/i))},
+    {check:"Aramex ARX-7731 (Arabic HTML email) once, 345",ok:once(/أرامكس|aramex/i,"ARX-7731",345),detail:JSON.stringify(rowsOf(/أرامكس|aramex/i))},
+    {check:"DHL DHL-2026-88417 (English PDF) once, 460",ok:once(/DHL/i,"DHL-2026-88417",460),detail:JSON.stringify(rowsOf(/DHL/i))},
+    {check:"Aramex ARX-90012 (Arabic PDF) once, 275.50",ok:once(/أرامكس|aramex/i,"ARX-90012",275.5)},
+    {check:"SMSA SM-30566 (scanned PDF, vision model) once, 1830.25, marked to check",ok:once(/SMSA/i,"SM-30566",1830.25)&&/scanned/.test(String(rowsOf(/SMSA/i).find(x=>x[0]==="SM-30566")?.[10]??"")),detail:JSON.stringify(rowsOf(/SMSA/i).find(x=>x[0]==="SM-30566")??null)},
+    {check:"nothing else was written (no newsletter, no guessed row, no duplicate)",ok:all.length===5,detail:JSON.stringify(all.map(r=>r[0]))},
+    {check:"the reply lists the five invoices",ok:["INV-55821","ARX-7731","DHL-2026-88417","ARX-90012","SM-30566"].every(n=>reply.includes(n)),detail:reply.slice(0,800)}];
   await google.close();
   const works=verdict.every(v=>v.ok),claimed=result?.completed===true;
   const file=path.join(root,"mail-invoices-result.json");

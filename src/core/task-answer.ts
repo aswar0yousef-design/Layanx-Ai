@@ -176,13 +176,13 @@ export function socialReply(tool:string,data:unknown,A:boolean):string|null{
   return null;
 }
 
-const INVOICE_AR:Array<[RegExp,string]>=[[/the invoice is in an attachment \((.*)\), which is not read yet/,"الفاتورة في مرفق ($1) ولا أقرأ المرفقات بعد"],[/the email has no readable text/,"الرسالة بلا نص مقروء"],[/invoice number "([^"]*)" is not in the email/g,"رقم الفاتورة «$1» ليس في الرسالة"],[/company "([^"]*)" is not in the email/g,"الشركة «$1» ليست في الرسالة"],[/amount "([^"]*)" is not in the email/g,"المبلغ «$1» ليس في الرسالة"],[/no invoice number/,"لا رقم فاتورة"],[/no amount/,"لا مبلغ"],[/no company/,"لا اسم شركة"],[/(shipmentNumber|orderNumber) "([^"]*)" is not in the email/g,"الرقم «$2» ليس في الرسالة"]];
+const INVOICE_AR:Array<[RegExp,string]>=[[/the invoice is in an attachment \((.*)\), which is not read yet/,"الفاتورة في مرفق ($1) ولا أقرأ المرفقات بعد"],[/the email has no readable text/,"الرسالة بلا نص مقروء"],[/the PDF is a scanned image and no vision model is available/,"الـPDF صورة ممسوحة ولا يوجد نموذج رؤية لقراءتها"],[/the scanned PDF could not be read/,"تعذّرت قراءة الـPDF الممسوح"],[/could not be downloaded/,"تعذّر تنزيله"],[/the attachment is not a PDF/,"المرفق ليس PDF"],[/invoice number "([^"]*)" is not in the email/g,"رقم الفاتورة «$1» ليس في الرسالة"],[/company "([^"]*)" is not in the email/g,"الشركة «$1» ليست في الرسالة"],[/amount "([^"]*)" is not in the email/g,"المبلغ «$1» ليس في الرسالة"],[/no invoice number/,"لا رقم فاتورة"],[/no amount/,"لا مبلغ"],[/no company/,"لا اسم شركة"],[/(shipmentNumber|orderNumber) "([^"]*)" is not in the email/g,"الرقم «$2» ليس في الرسالة"]];
 /** The email-invoice report, written by code: what went into which sheet, and why anything was left out. */
 export function mailInvoiceReply(data:unknown,A:boolean):string|null{
   const d=data as any;if(!d||typeof d!=="object"||!Array.isArray(d.written)||typeof d.scanned!=="number")return null;
   const ar=(t:string)=>A?INVOICE_AR.reduce((s,[re,to])=>s.replace(re,to),t):t;
   const lines=[A?`قرأتُ ${d.scanned} رسالة. سجّلتُ ${d.written.length} فاتورة جديدة في Google Sheets${d.duplicates.length?`، و${d.duplicates.length} مسجلة من قبل`:""}${d.notInvoices?`، و${d.notInvoices} ليست فواتير`:""}.`:`Read ${d.scanned} emails. Wrote ${d.written.length} new invoices to Google Sheets${d.duplicates.length?`, ${d.duplicates.length} already there`:""}${d.notInvoices?`, ${d.notInvoices} were not invoices`:""}.`];
-  for(const w of d.written)lines.push(`- ${w.company}: ${w.invoiceNumber} — ${w.amount}${w.currency?" "+w.currency:""} — ${w.sheet}`);
+  for(const w of d.written)lines.push(`- ${w.company}: ${w.invoiceNumber} — ${w.amount}${w.currency?" "+w.currency:""} — ${w.sheet}${w.source&&w.source!=="email"?(A?(/scanned/.test(w.source)?" (من PDF ممسوح قرأه نموذج الرؤية: راجعه)":" (من مرفق PDF)"):` (${w.source})`):""}`);
   if(d.skipped.length){lines.push(A?"لم أسجّلها (لم أخمّن):":"Not written (nothing was guessed):");for(const s of d.skipped)lines.push(`- ${s.subject||"—"}: ${ar(s.reason)}`);}
   if(d.errors.length){lines.push(A?"أخطاء:":"Errors:");for(const e of d.errors.slice(0,5))lines.push("- "+e);}
   return lines.join("\n");

@@ -33,36 +33,53 @@ const google=await startFakeGoogle(SAMPLE_MAILS);
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),"mail-inv-"));
 try{
   // A careful extractor: what a good model returns for each sample (the DHL one fills blanks, to prove the check).
-  const answers:Record<string,unknown>={
-    "Your invoice INV-55821":{isInvoice:true,company:"SMSA Express",invoiceNumber:"INV-55821",date:"2026-11-10",amount:"1250.50",currency:"SAR",shipmentNumber:"290011223"},
-    "فاتورة شحن رقم ARX-7731":{isInvoice:true,company:"أرامكس",invoiceNumber:"ARX-7731",amount:"345.00",currency:"ريال",shipmentNumber:"44552211"},
-    "5 ways to grow your store this winter":{isInvoice:false},
-    "Invoice available":{isInvoice:true,company:"DHL",invoiceNumber:"DHL-2026-001",amount:"480"},
-    "Reminder: invoice INV-55821":{isInvoice:true,company:"SMSA Express",invoiceNumber:"INV-55821",amount:"1250.50",currency:"SAR"}};
-  const think=async(prompt:string)=>{const subject=/Subject: (.*)/.exec(prompt)![1]!;return JSON.stringify(answers[subject]);};
-  const agent=new GoogleInvoiceAgent({} as any,{google:createGoogleWorkspaceAdapter({accessToken:"google_test_token",fetcher:google.fetcher}),registryPath:path.join(dir,"registry.json"),think});
+  // A careful extractor: what a good model returns, from what it is shown. Before the PDF is read, the DHL answer fills the
+  // blanks (to prove the check); once the PDF text is in the prompt it copies the real values.
+  const answer=(prompt:string):unknown=>{
+    const subject=/Subject: (.*)/.exec(prompt)![1]!;
+    if(subject==="Your invoice INV-55821")return{isInvoice:true,company:"SMSA Express",invoiceNumber:"INV-55821",date:"2026-11-10",amount:"1,250.50",currency:"SAR",shipmentNumber:"290011223"};
+    if(subject==="فاتورة شحن رقم ARX-7731")return{isInvoice:true,company:"أرامكس",invoiceNumber:"ARX-7731",amount:"345.00",currency:"ريال",shipmentNumber:"44552211"};
+    if(subject==="5 ways to grow your store this winter")return{isInvoice:false};
+    if(subject==="Invoice available")return prompt.includes("DHL-2026-88417")?{isInvoice:true,company:"DHL Express",invoiceNumber:"DHL-2026-88417",date:"2026-11-12",amount:"460.00",currency:"SAR",shipmentNumber:"7723019456"}:{isInvoice:true,company:"DHL",invoiceNumber:"DHL-2026-001",amount:"480"};
+    if(subject==="فاتورتكم الضريبية")return prompt.includes("ARX-90012")?{isInvoice:true,company:"أرامكس",invoiceNumber:"ARX-90012",date:"2026-11-11",amount:"275.50",currency:"ريال",shipmentNumber:"55120098"}:{isInvoice:true,company:"أرامكس",invoiceNumber:"",amount:""};
+    if(subject==="Scanned invoice")return prompt.includes("SM-30566")?{isInvoice:true,company:"SMSA Express",invoiceNumber:"SM-30566",amount:"1,830.25",currency:"SAR"}:{isInvoice:true,company:"SMSA Express",invoiceNumber:"",amount:""};
+    if(subject==="Reminder: invoice INV-55821")return{isInvoice:true,company:"SMSA Express",invoiceNumber:"INV-55821",amount:"1,250.50",currency:"SAR"};
+    return{isInvoice:false};
+  };
+  const think=async(prompt:string)=>JSON.stringify(answer(prompt));
+  // The vision model's reading of the scanned page.
+  const seen:string[]=[];
+  const see=async(png:string)=>{seen.push(png);return"SMSA Express\nTax Invoice\nInvoice No SM-30566\nDate 2026-11-09\nAWB 290044781\nGrand Total SAR 1,830.25";};
+  const make=()=>new GoogleInvoiceAgent({} as any,{google:createGoogleWorkspaceAdapter({accessToken:"google_test_token",fetcher:google.fetcher}),registryPath:path.join(dir,"registry.json"),think,see});
+  const agent=make();
   const report=await agent.scan({provider:"google"});
-  assert.deepEqual(report.written.map(w=>[w.company,w.invoiceNumber,w.amount]),[["SMSA Express","INV-55821","1250.50"],["أرامكس","ARX-7731","345.00"]]);
+  assert.deepEqual(report.written.map(w=>[w.company,w.invoiceNumber,w.amount,w.source]),[
+    ["SMSA Express","INV-55821","1250.50","email"],["أرامكس","ARX-7731","345.00","email"],
+    ["DHL Express","DHL-2026-88417","460.00","PDF"],["أرامكس","ARX-90012","275.50","PDF"],
+    ["SMSA Express","SM-30566","1830.25","PDF (scanned, read from the image: check it)"]],JSON.stringify(report,null,1));
+  assert.equal(seen.length,1,"only the scanned PDF went to the vision model");
+  assert.ok(Buffer.from(seen[0]!,"base64").subarray(1,4).toString()==="PNG","its page was rendered to a PNG image");
   assert.deepEqual(report.duplicates.map(d=>d.invoiceNumber),["INV-55821"],"the reminder is the same invoice");
   assert.equal(report.notInvoices,1);
-  assert.equal(report.skipped.length,1);assert.match(report.skipped[0]!.reason,/not in the email/);
-  assert.deepEqual(report.errors,[]);
-  // What Google holds: one sheet per company, created with its Invoices tab, header then the row.
+  assert.deepEqual(report.skipped,[]);assert.deepEqual(report.errors,[]);
+  // What Google holds: one sheet per company, created with its Invoices tab, header then the rows.
   const books=[...google.sheets.values()];
-  assert.deepEqual(books.map(b=>b.title).sort(),["SMSA Express - Invoices","أرامكس - Invoices"].sort());
+  assert.deepEqual(books.map(b=>b.title).sort(),["DHL Express - Invoices","SMSA Express - Invoices","أرامكس - Invoices"].sort());
   const smsa=books.find(b=>b.title.startsWith("SMSA"))!.tabs.get("Invoices")!;
-  assert.equal(smsa[0]![0],"Invoice Number");assert.deepEqual(smsa.slice(1).map(r=>[r[0],r[2],r[5]]),[["INV-55821","1250.50","290011223"]]);
+  assert.equal(smsa[0]![10],"Source");
+  assert.deepEqual(smsa.slice(1).map(r=>[r[0],r[2],r[10]]),[["INV-55821","1250.50","email"],["SM-30566","1830.25","PDF (scanned, read from the image: check it)"]]);
+  assert.equal(books.find(b=>b.title.startsWith("أرامكس"))!.tabs.get("Invoices")!.length,3,"two Aramex invoices in one sheet");
   assert.deepEqual(google.folders.map(f=>f.name).slice(0,2),["LayanX Business","Shipping Companies"]);
   // Running again writes nothing new.
   const again=await agent.scan({provider:"google"});
-  assert.equal(again.written.length,0);assert.equal(again.duplicates.length,3);
+  assert.equal(again.written.length,0);assert.equal(again.duplicates.length,6);
   // The registry lost: the sheet itself still stops a duplicate.
   fs.rmSync(path.join(dir,"registry.json"));
-  const fresh=new GoogleInvoiceAgent({} as any,{google:createGoogleWorkspaceAdapter({accessToken:"google_test_token",fetcher:google.fetcher}),registryPath:path.join(dir,"registry.json"),think});
-  await fresh.scan({provider:"google"});
-  assert.equal(books.find(b=>b.title.startsWith("SMSA"))!.tabs.get("Invoices")!.length,2,"still header + one row");
+  await make().scan({provider:"google"});
+  assert.equal(books.find(b=>b.title.startsWith("SMSA"))!.tabs.get("Invoices")!.length,3,"still header + two rows");
   const text=mailInvoiceReply(report,true)!;
-  assert.match(text,/سجّلتُ 2 فاتورة جديدة/);assert.match(text,/أرامكس: ARX-7731 — 345.00 ريال/);assert.match(text,/Invoice available: رقم الفاتورة «DHL-2026-001» ليس في الرسالة/);
+  assert.match(text,/سجّلتُ 5 فاتورة جديدة/);assert.match(text,/DHL Express: DHL-2026-88417 — 460.00 SAR — .* \(من مرفق PDF\)/);
+  assert.match(text,/SM-30566 — 1830.25 SAR — .* \(من PDF ممسوح قرأه نموذج الرؤية: راجعه\)/);
 }finally{await google.close();}
 {
   const {routeRequest}=await import("../src/voice/request-router.js");
@@ -71,7 +88,7 @@ try{
   const plan=await new AiMissionPlanner({execute:async()=>{throw new Error("no model");}} as any).plan("اقرأ فواتير الشحن من بريدي وسجلها في Sheets",[{name:"email.invoices.scan",description:"",permission:"L3_MODIFY",dangerous:false,actions:["scan invoices"],tags:[]}] as any);
   assert.deepEqual(plan.tools.map(t=>[t.tool,t.payload]),[["email.invoices.scan",{provider:"google",limit:20}]]);
 }
-console.log("mail-invoices: emails decoded, every value checked against the email, one sheet per company, never twice");
+console.log("mail-invoices: emails and PDF attachments (text and scanned) read, every value checked, one sheet per company, never twice");
 {
   // Seen live: a value not in the email gets one more, specific question; the check stays strict.
   const {readInvoice}=await import("../src/business/mail-invoices.js");

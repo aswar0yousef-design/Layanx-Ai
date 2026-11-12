@@ -6,7 +6,8 @@ import {extractJson} from "../providers/adaptive-ollama.js";
  * and nothing checked that what it returned was in the email. Here the email is decoded to plain text first, and every
  * extracted value must appear in that text, or the email is skipped with the reason.
  */
-export interface MailText{from:string;subject:string;date:string;text:string;attachments:Array<{filename:string;mimeType:string}>}
+export interface MailAttachment{filename:string;mimeType:string;attachmentId?:string;data?:Buffer}
+export interface MailText{from:string;subject:string;date:string;text:string;attachments:MailAttachment[]}
 export interface MailInvoice{company:string;invoiceNumber:string;date:string;amount:string;currency:string;shipmentNumber:string;orderNumber:string}
 
 const b64url=(s:string)=>Buffer.from(s.replace(/-/g,"+").replace(/_/g,"/"),"base64");
@@ -23,7 +24,7 @@ export function gmailText(message:any):MailText{
   const plain:string[]=[],html:string[]=[],attachments:MailText["attachments"]=[];
   const walk=(part:any)=>{
     if(!part)return;
-    if(part.filename){attachments.push({filename:part.filename,mimeType:part.mimeType??""});}
+    if(part.filename){attachments.push({filename:part.filename,mimeType:part.mimeType??"",...(part.body?.attachmentId?{attachmentId:String(part.body.attachmentId)}:{}),...(part.body?.data?{data:b64url(part.body.data)}:{})});}
     else if(part.body?.data&&/^text\/plain/i.test(part.mimeType??""))plain.push(decodeWith(b64url(part.body.data)));
     else if(part.body?.data&&/^text\/html/i.test(part.mimeType??""))html.push(htmlText(decodeWith(b64url(part.body.data))));
     for(const p of part.parts??[])walk(p);
@@ -46,7 +47,11 @@ export function mimeText(source:string):MailText{
     if(/^multipart\//i.test(type)&&boundary){for(const part of body.split("--"+boundary).slice(1)){if(part.startsWith("--"))break;walk(part.replace(/^\r?\n/,""),depth+1);}return;}
     const disposition=headerOf(head,"content-disposition");
     const filename=/filename="?([^";]+)"?/i.exec(disposition)?.[1]??/name="?([^";]+)"?/i.exec(type)?.[1];
-    if(filename||/attachment/i.test(disposition)){attachments.push({filename:decodeHeader(filename??"attachment"),mimeType:type.split(";")[0]!.trim()});return;}
+    if(filename||/attachment/i.test(disposition)){
+      const enc=headerOf(head,"content-transfer-encoding").toLowerCase();
+      const data=enc==="base64"?Buffer.from(body.replace(/\s+/g,""),"base64"):enc==="quoted-printable"?qp(body):Buffer.from(body,"latin1");
+      attachments.push({filename:decodeHeader(filename??"attachment"),mimeType:type.split(";")[0]!.trim(),data});return;
+    }
     const enc=headerOf(head,"content-transfer-encoding").toLowerCase();
     const charset=/charset="?([^";]+)"?/i.exec(type)?.[1]??"utf-8";
     const bytes=enc==="base64"?Buffer.from(body.replace(/\s+/g,""),"base64"):enc==="quoted-printable"?qp(body):Buffer.from(body,"latin1");
@@ -59,6 +64,7 @@ export function mimeText(source:string):MailText{
 }
 
 const SCHEMA={type:"object",properties:{isInvoice:{type:"boolean"},company:{type:"string"},invoiceNumber:{type:"string"},date:{type:"string"},amount:{type:"string"},currency:{type:"string"},shipmentNumber:{type:"string"},orderNumber:{type:"string"}},required:["isInvoice"]};
+export const isPdf=(a:MailAttachment)=>/pdf/i.test(a.mimeType)||/\.pdf$/i.test(a.filename);
 export function invoicePrompt(mail:MailText,retryNote=""):string{
   return["Is this email an invoice or bill (from a shipping company, a supplier or a store)? Return ONLY JSON:",
     '{"isInvoice":true|false,"company":"the company that issued it","invoiceNumber":"","date":"YYYY-MM-DD","amount":"the total due exactly as written, with its decimal point, e.g. 1,250.50","currency":"","shipmentNumber":"","orderNumber":""}',
