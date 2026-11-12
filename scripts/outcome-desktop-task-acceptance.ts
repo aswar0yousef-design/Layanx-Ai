@@ -19,6 +19,21 @@ const userIdleMs=()=>Number(ps("Add-Type -TypeDefinition 'using System;using Sys
 const pids=(names:string[])=>new Set(ps(`@(Get-Process -Name ${names.join(",")} -ErrorAction SilentlyContinue) | ForEach-Object { $_.Id }; exit 0`).split(/\s+/).filter(Boolean).map(Number));
 // A trading terminal with a real account may be open: a keystroke that lands in the wrong window must never reach it.
 const TRADING=["terminal64","terminal","metatrader","mt5"];
+/** Every text in the top-level windows whose title is exactly one of these names. Store apps such as Calculator draw their
+ * window in ApplicationFrameHost, not in their own process, so looking them up by process finds nothing. */
+function windowTextsByTitle(titles:string[]):string{
+  return ps(`Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes
+$out=@()
+$names=@(${titles.map(t=>"'"+t.replace(/'/g,"''")+"'").join(",")})
+foreach($w in [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,[System.Windows.Automation.Condition]::TrueCondition)){
+  $n=($w.Current.Name -replace '[\u200e\u200f]','').Trim()
+  if($names -notcontains $n){continue}
+  $out+=$w.Current.Name
+  foreach($e in $w.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)){$out+=$e.Current.Name}
+}
+[Console]::OutputEncoding=[Text.Encoding]::UTF8
+$out -join "\`n"`);
+}
 /** Every text UI Automation can read in the windows of these processes. */
 function windowTexts(ids:number[]):string{
   if(!ids.length)return"";
@@ -43,7 +58,8 @@ const CASES:Case[]=[
   {id:"notepad",processes:["notepad"],goal:m=>`افتح المفكرة واكتب فيها هذا السطر بالضبط: تقرير LayanX ${m}`,
    judge:(t,m)=>[{check:"Notepad shows the line",ok:t.includes(`تقرير LayanX ${m}`)||t.includes(`LayanX ${m}`),detail:t.slice(0,300)}]},
   {id:"calculator",processes:["CalculatorApp","calc"],goal:()=>"افتح الحاسبة واحسب 125 × 8",
-   judge:t=>[{check:"Calculator shows 1000",ok:/(?:^|\D)1[,٬]?000(?:\D|$)/.test(t)||/Display is 1[,٬]?000/.test(t),detail:t.replace(/\s+/g," ").slice(0,300)}]}
+   // An Arabic Windows Calculator shows Arabic-Indic digits ("Display is ١,٠٠٠"), seen live 2026-11-13.
+   judge:raw=>{const t=raw.replace(/[٠-٩]/g,d=>String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));return[{check:"Calculator shows 1000",ok:/(?:^|\D)1[,٬]?000(?:\D|$)/.test(t)||/Display is 1[,٬]?000/.test(t),detail:t.replace(/\s+/g," ").slice(0,300)}];}}
 ];
 
 async function runOne(selected:Case){
@@ -76,12 +92,16 @@ async function runOne(selected:Case){
   }catch(error){result={error:String((error as Error).message).slice(0,400)};}
   await new Promise(r=>setTimeout(r,1500));
   const opened=[...pids(selected.processes)].filter(p=>!before.has(p));
-  const text=windowTexts(opened);
+  // Notepad restores the owner's own tabs into whatever process shows them: read every Notepad window, close none of them.
+  const notepad=selected.id==="notepad";
+  // Calculator can reuse a process that was already running: read all its windows too (closing only new processes).
+  const text=notepad?windowTexts([...pids(selected.processes)]):windowTextsByTitle(["Calculator","الحاسبة"]);
   const verdict=selected.judge(text,marker);
-  for(const p of opened)spawnSync("taskkill",["/PID",String(p),"/F"],{windowsHide:true});
+  if(!notepad)for(const p of opened)spawnSync("taskkill",["/PID",String(p),"/F"],{windowsHide:true});
+  if(!notepad&&!before.size)spawnSync("taskkill",["/IM","CalculatorApp.exe","/F"],{windowsHide:true});
   const works=verdict.every(v=>v.ok),claimed=result?.completed===true;
   finish({ok:works&&claimed,falseSuccess:claimed&&!works,works,claimed,minutes:Math.round((Date.now()-started)/6000)/10,approved,opened:opened.length,verdict,
-    tools:(result?.results??[]).map((r:any)=>`${r.tool}:${r.ok?"ok":"fail"}`),reason:result?.reason??result?.error,workspace:path.join(projects,id)});
+    tools:(result?.results??[]).map((r:any)=>`${r.tool}:${r.ok?"ok":"fail: "+String(r.error??"").slice(0,200)}`),reason:result?.reason??result?.error,workspace:path.join(projects,id)});
 }
 
 if(process.argv.includes("--one")){await runOne(CASES.find(c=>c.id===arg("one"))!);process.exit(0);}

@@ -1,4 +1,5 @@
 import type {ModelExecutionRouter} from "./model-execution.js";
+import {calculatorDisplay,openAndDoRequest} from "../tools/open-and-do.js";
 
 /**
  * The owner asked for something ("find leads for layanx.com", "take a screenshot and describe it"); the agent ran tools.
@@ -122,7 +123,35 @@ export function shippingReply(tool:string,data:unknown,A:boolean):string|null{
   return null;
 }
 
+/** "Open Notepad and write ..." / "open Calculator and compute ...": what the window really shows, written by code. */
+export function openAndDoReply(goal:string,results:ToolResult[],A:boolean):string|null{
+  const request=openAndDoRequest(goal);
+  if(!request)return null;
+  if(request.kind==="write"){
+    const note=results.filter(r=>r?.ok&&r.tool==="desktop.notepad.write").at(-1)?.data as {file?:string;text?:string}|undefined;
+    if(note?.file)return A?`فتحتُ المفكرة بملف جديد فيه: ${note.text}
+الملف: ${note.file}
+(لم أكتب في أي تبويب آخر مفتوح.)`:`Opened Notepad with a new file containing: ${note.text}
+File: ${note.file}
+(Nothing was typed into other open tabs.)`;
+  }
+  const typed=results.filter(r=>r?.ok&&r.tool==="desktop.keyboard.type").at(-1);
+  if(!typed)return null;
+  if(request.kind==="write"){
+    const verified=(typed.data as {effect?:{verified?:boolean|null}}|undefined)?.effect?.verified===true;
+    return A?`فتحتُ ${request.label==="Notepad"?"المفكرة":request.label} وكتبتُ فيها: ${request.text}${verified?"\nوقرأتُ النافذة بعد الكتابة: النص ظاهر فيها.":"\nلم أستطع قراءة النص من النافذة للتأكد."}`
+      :`Opened ${request.label} and typed: ${request.text}${verified?"\nRead the window afterwards: the text is there.":"\nThe window's text could not be read back to confirm."}`;
+  }
+  const tree=results.filter(r=>r?.ok&&r.tool==="desktop.ui.tree").at(-1);
+  const shown=tree?calculatorDisplay(tree.data):null;
+  if(shown===null)return A?`كتبتُ ${request.keys} في الحاسبة، لكن لم أستطع قراءة ما تعرضه.`:`Typed ${request.keys} into the Calculator, but could not read its display.`;
+  const ok=Math.abs(shown-(request.expected??NaN))<1e-6;
+  return A?`الحاسبة تعرض: ${shown}${ok?"":` (المتوقع ${request.expected}؛ راجع الحاسبة)`}`:`The Calculator shows: ${shown}${ok?"":` (expected ${request.expected}; check the Calculator)`}`;
+}
+
 export async function composeTaskAnswer(models:Pick<ModelExecutionRouter,"execute">,goal:string,results:ToolResult[],completed:boolean):Promise<TaskAnswer|null>{
+  const desk=openAndDoReply(goal,results,arabic(goal));
+  if(desk)return{text:desk,fromImage:false};
   for(const name of ["shipping.from_store","shipping.invoice.document","shipping.store.close","shipping.report"]){
     const r=results.filter(x=>x?.ok&&x.tool===name).at(-1);
     const text=r?shippingReply(name,r.data,arabic(goal)):null;

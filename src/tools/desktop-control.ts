@@ -342,10 +342,23 @@ export function createDesktopControlToolAdapter(options:{runner?:Runner;windows?
  const run=options.runner??runner();
  const win=():WindowsDesktopBackend=>options.windows??(options.runner?runnerBackend(options.runner):(sharedHelper??=new PowerShellDesktopHelper()));
  /** Mouse and keyboard go to whatever is in front. When the caller names the window, nothing happens unless it is that one. */
- const requireForeground=async(expected:unknown)=>{
+ // "Notepad|المفكرة": any of the names (the title depends on the Windows language). A window that was just opened may take a
+ // moment to come to the front, so the caller can wait for it (waitMs); nothing is sent until it is there.
+ const requireForeground=async(expected:unknown,waitMs=0)=>{
   if(typeof expected!=="string"||!expected.trim())return;
-  const title=(await win().send({op:"uiforeground"})).trim();
-  if(!title.toLocaleLowerCase("en-US").includes(expected.trim().toLocaleLowerCase("en-US")))throw new Error(`The front window is "${title.slice(0,120)}", not "${expected.trim().slice(0,120)}". Nothing was sent to it.`);
+  const names=expected.split("|").map(n=>n.trim().toLocaleLowerCase("en-US")).filter(Boolean);
+  const deadline=Date.now()+Math.max(0,Math.min(10_000,waitMs));let askedFront=false,lastAsk=0;
+  for(;;){
+   const title=(await win().send({op:"uiforeground"})).trim();
+   // Arabic window titles carry invisible direction marks (U+200E/200F, seen live: "\u200f\u200fالحاسبة").
+   const t=title.replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,"").trim().toLocaleLowerCase("en-US");
+   if(names.some(n=>n.startsWith("=")?t===n.slice(1).trim():t.includes(n)))return;
+   if(Date.now()>=deadline)throw new Error(`The front window is "${title.slice(0,120)}", not "${expected.trim().slice(0,120)}". Nothing was sent to it.`);
+   // A window that was just opened can stay behind another one (seen live: Calculator behind Notepad). Ask once to bring
+   // it forward; typing still waits until the front window's title matches.
+   if(waitMs>0&&(!askedFront||Date.now()-lastAsk>1200)){askedFront=true;lastAsk=Date.now();for(const n of expected.split("|").map(x=>x.trim()).filter(Boolean)){await win().send({op:"focuswin",title:Buffer.from(n.replace(/^=/,""),"utf8").toString("base64")}).catch(()=>undefined);}}
+   await new Promise(resolve=>setTimeout(resolve,400));
+  }
  };
  const settle=()=>new Promise(resolve=>setTimeout(resolve,250));
  const statePrint=async()=>printedState(await win().send({op:"uiprint"},15_000).catch(()=>""));
@@ -374,7 +387,7 @@ export function createDesktopControlToolAdapter(options:{runner?:Runner;windows?
   }
   if(request.action==="desktop type"){const value=textValue(x.text);
    if(process.platform==="win32"){
-    await requireForeground(x.window);
+    await requireForeground(x.window,typeof x.waitMs==="number"?x.waitMs:0);
     const before=options.runner?"none":await win().send({op:"uifocused"}).catch(()=>"none");
     await win().send({op:"type",text:Buffer.from(value,"utf8").toString("base64")},20_000);
     if(options.runner)return {characters:value.length};

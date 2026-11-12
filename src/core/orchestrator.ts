@@ -723,6 +723,16 @@ export class LayanXCore{
     const failedCalls:FailedCall[]=[];
     let latest:unknown={status:"not_started"};
     let steps=0;
+    // Resumed after an approval: the steps that already succeeded are not run again. Seen live 2026-11-13: every resume
+    // started at step 0, so "open Calculator, then type" opened Calculator again and asked for its approval again, forever.
+    {
+      const start=this.missions.get(missionId);
+      for(const done of start?.tools??[]){
+        if(!done.done)break;
+        results.push({ok:true,tool:done.tool,data:done.doneData,replayed:true});
+        latest=done.doneData;steps++;
+      }
+    }
     let visualContext:{mimeType:string;base64:string}|undefined;
     let uiTreeFresh=false;
     let lastDesktopMutation=false;
@@ -802,6 +812,8 @@ export class LayanXCore{
         const tree={tool:"desktop.ui.tree",action:"desktop ui tree",permission:"L2_ANALYZE" as const,reason:"Read the window's elements before acting on one by index."};
         const missionTools=current.tools??[];
         const replaceAt=index>=0?index:missionTools.length;
+        // Replaces the planned step on purpose: an element index chosen before reading the window is meaningless, so the
+        // next step is chosen again from the fresh tree.
         if(replaceAt>=missionTools.length)missionTools.push(tree);
         else missionTools[replaceAt]=tree;
         current.tools=missionTools;
@@ -809,11 +821,18 @@ export class LayanXCore{
         plan=tree;
         planIndex=replaceAt;
       }
-      if(plan&&/^desktop\.(mouse|keyboard)/.test(plan.tool)&&!visualContext){
+      // Typing that names its window needs no coordinates: the tool itself waits for that window and sends nothing elsewhere.
+      const namedWindowTyping=plan?.tool==="desktop.keyboard.type"&&typeof (plan.payload as {window?:unknown}|undefined)?.window==="string";
+      if(plan&&/^desktop\.(mouse|keyboard)/.test(plan.tool)&&!visualContext&&!namedWindowTyping){
         const screenshot={tool:"desktop.screenshot",action:"desktop screenshot",permission:"L2_ANALYZE" as const,reason:"Observe the current desktop before choosing a coordinate or keyboard action."};
         const missionTools=current.tools??[];
         const replaceAt=index>=0?index:missionTools.length;
+        // Seen live 2026-11-13: overwriting the planned typing step with this screenshot dropped the typing, and the mission
+        // then "completed" without typing anything. The screenshot goes before the step.
         if(replaceAt>=missionTools.length)missionTools.push(screenshot);
+        // Coordinates planned blind are replaced (chosen again from the screenshot); typed text does not go stale, so a
+        // keyboard step is kept and the screenshot goes before it.
+        else if(missionTools[replaceAt]===plan&&plan.tool.startsWith("desktop.keyboard"))missionTools.splice(replaceAt,0,screenshot);
         else missionTools[replaceAt]=screenshot;
         current.tools=missionTools;
         this.missions.save(current);
@@ -841,6 +860,17 @@ export class LayanXCore{
         :await this.executeMissionTool(missionId,projectId,actualIndex,plan.payload??{},approvalIds[actualIndex],agentId,{deferVerification:true});
       results.push(result);
       steps++;
+      if(result.ok){
+        const saved=this.missions.get(missionId);
+        const step=saved?.tools?.[actualIndex];
+        if(saved&&step){
+          step.done=true;
+          const data=(result as {data?:unknown}).data;
+          let small:unknown;try{small=JSON.stringify(data??null).length<=20_000?data:undefined;}catch{small=undefined;}
+          if(small!==undefined)step.doneData=small;
+          this.missions.save(saved);
+        }
+      }
       const observationSignature=plan?readSignature(plan):null;
       if(result.ok&&observationSignature)successfulObservations.push(observationSignature);
       else successfulObservations.length=0;
@@ -854,6 +884,18 @@ export class LayanXCore{
       if(result.ok&&plan.tool==="desktop.ui.tree")uiTreeFresh=true;
       else if(result.ok&&/^desktop\.(mouse|keyboard|ui\.click|ui\.set_text|window|app)/.test(plan.tool))uiTreeFresh=false;
       // A one-step plan made without the model ("open Chrome"): done when its step succeeds, no model call after it.
+      // The last planned step finishes the mission only when every step before it succeeded. Seen live 2026-11-13: typing into
+      // the Calculator failed, the final "read the window" step still ran, and the mission reported success.
+      if(result.ok&&plan.final){
+        const before=(this.missions.get(missionId)?.tools??[]).slice(0,actualIndex);
+        const failedBefore=before.findIndex(t=>!t.done);
+        if(failedBefore>=0){
+          const done=this.missions.get(missionId);
+          if(done){setLifecycle(done,this.executionStates,"failed",true);this.missions.save(done);await this.executionRuntime.persist(done);}
+          cleanupLiveScreen();
+          return{missionId,completed:false,status:"failed",steps,results,reason:`Step ${failedBefore+1} (${before[failedBefore]!.tool}) did not succeed, so the task is not done.`};
+        }
+      }
       if(result.ok&&plan.final){
         const done=this.missions.get(missionId);
         if(done){const step=done.steps.find(s=>EXECUTION_STEP.test(s.description));if(step)step.status="completed";setLifecycle(done,this.executionStates,"completed",false);this.missions.save(done);await this.executionRuntime.persist(done);}

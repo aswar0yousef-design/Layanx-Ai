@@ -4,6 +4,7 @@ import type {ToolCatalogEntry} from "./tool-catalog.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
 import {isDevelopmentGoal as isDevelopmentIntent,normalizeArabic,selectToolsForGoal} from "../providers/tool-selection.js";
 import {openRequest} from "../tools/open-app.js";
+import {openAndDoRequest} from "../tools/open-and-do.js";
 import {leadRequest,siteFrom} from "../business/lead-research.js";
 import {webFormRequest} from "../tools/web-form.js";
 import {storeChangeRequest,storeReportRequest} from "../business/woocommerce.js";
@@ -59,6 +60,32 @@ function deterministicDesktopWindowCheck(goal:string,catalog:ToolCatalogEntry[])
   stopCondition:"Stop and report the window-verification result; do not use a window-focus action just to verify visibility.",
   tools:[{tool:tool.name,action:"desktop find window",permission:tool.permission,reason:"The owner asked to confirm that the Notepad window is open; this read-only check does not change focus.",payload:{title:"Notepad"}}]
  };
+}
+
+/** "Open Notepad and write ...", "open Calculator and compute ...": open, type into that window only, then read it. */
+function deterministicOpenAndDoPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
+ const request=openAndDoRequest(currentMilestoneGoal(goal));
+ const open=catalog.find(t=>t.name==="desktop.app.open"),type=catalog.find(t=>t.name==="desktop.keyboard.type"),read=catalog.find(t=>t.name==="desktop.ui.tree");
+ if(!request)return undefined;
+ // Writing in Notepad never types (the front tab may be the owner's own file): a new file of LayanX's opens with the text.
+ if(request.kind==="write"){
+  const note=catalog.find(t=>t.name==="desktop.notepad.write");
+  if(!note||request.label!=="Notepad")return undefined;
+  return{risk:"low",requiredPermission:note.permission,steps:[{description:"Execute: open Notepad with the owner's text in a new file."}],
+   successCriteria:["Notepad shows the new file."],stopCondition:"Stop if Notepad does not show the file.",
+   tools:[{tool:note.name,action:note.actions[0]!,permission:note.permission,reason:"The owner asked to write in Notepad; nothing is typed into other tabs.",payload:{text:request.text},final:true}]};
+ }
+ if(!open||!type||!read)return undefined;
+ const calc=request.kind==="calculate";
+ return{risk:"low",requiredPermission:"L4_EXECUTE",
+  steps:[{description:"Execute: open "+request.label+"."},{description:calc?"Execute: type the calculation into the "+request.label+" window.":"Execute: type the owner's text into the "+request.label+" window."},...(calc?[{description:"Read what the "+request.label+" window shows."}]:[])],
+  successCriteria:[calc?"The Calculator shows the result.":"The text appears in the window."],
+  stopCondition:"Stop if the program does not open or another window is in front.",
+  tools:[
+   {tool:open.name,action:open.actions[0]!,permission:open.permission,reason:"The owner asked to open "+request.label+".",payload:{app:request.app}},
+   {tool:type.name,action:type.actions[0]!,permission:type.permission,reason:"Typed only into the "+request.label+" window.",payload:{text:request.keys,window:request.window,waitMs:8000},...(calc?{}:{final:true})},
+   ...(calc?[{tool:read!.name,action:read!.actions[0]!,permission:read!.permission,reason:"Read the result the Calculator shows.",payload:{},final:true}]:[])
+  ]};
 }
 
 function deterministicOpenPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
@@ -288,6 +315,8 @@ export class AiMissionPlanner{
     if(!goal.trim())throw new Error("Mission goal is empty.");
     const windowCheck=deterministicDesktopWindowCheck(goal,tools);
     if(windowCheck)return windowCheck;
+    const openAndDo=deterministicOpenAndDoPlan(goal,tools);
+    if(openAndDo)return openAndDo;
     const opening=deterministicOpenPlan(goal,tools);
     if(opening)return opening;
     const look=deterministicScreenPlan(goal,tools);
