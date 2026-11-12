@@ -1,4 +1,5 @@
 import {routeRequest} from "./request-router.js";
+import {MONEY_REFUSAL,movesMoney} from "../autonomy/domain-coordinator.js";
 import {existsSync,mkdirSync,readFileSync,writeFileSync} from "node:fs";
 import {dirname,join} from "node:path";
 import type {LayanXCore} from "../core/orchestrator.js";
@@ -234,6 +235,8 @@ export class VoiceAssistant{
     const projectId=input.projectId?.trim()||"default";
     if(!text)return{ok:false,lang,intent:"error",reply:t.empty};
 
+    // Money is never moved by LayanX, and no model is asked (one claimed a transfer it never made, 2026-11-13).
+    if(movesMoney(text))return{ok:true,lang,intent:"answer",reply:lang==="ar"?MONEY_REFUSAL:"Moving, paying or withdrawing money is your decision, done by you outside LayanX. I will not do it, and no money was moved."};
     const normalized=normalizeArabic(text);
     if(TIME_AR.test(normalized)||TIME_EN.test(text))return{ok:true,lang,intent:"time",reply:t.time(this.now())};
     const greeting=greetingOf(text);

@@ -7,15 +7,28 @@ export type Domain="store"|"trading"|"other";
 export interface Routing{domain:Domain;agentId:string;needsOwner:boolean;reason?:string}
 export interface DomainReader{store():Promise<Record<string,unknown>>;trading():Promise<Record<string,unknown>>}
 
-const plain=(text:string)=>text.toLowerCase().replace(/[أإآ]/g,"ا").replace(/ى/g,"ي");
+// Diacritics out first: «حوّل» (with a shadda) did not match «حول» (found 2026-11-13).
+const plain=(text:string)=>text.toLowerCase().replace(/[\u064B-\u0652\u0640]/g,"").replace(/[أإآ]/g,"ا").replace(/ى/g,"ي").replace(/ة/g,"ه");
 const STORE=/متجر|طلبات|منتج|شحن|فاتور|عميل|عملاء|woocommerce|\bstore\b|\borders?\b|\bproducts?\b|shipping|invoice|customers?/;
 const TRADING=/تداول|صفق|ذهب|فوركس|بينانس|عملات رقميه|سكالب|\bmt5\b|binance|\btrad(?:e|es|ing)\b|xauusd|scalp/;
 const MONEY_MOVE=/حول|انقل|استخدم|ادخل|خذ|اسحب|ضع|استثمر|transfer|move|use|invest|put|withdraw/;
 const MONEY=/ارباح|فلوس|مال|اموال|رصيد|ايرادات|مبلغ|profit|money|funds?|balance|revenue/;
 export const STORE_AGENT="business",TRADING_AGENT="trading-executor";
+/**
+ * Moving, sending, paying or withdrawing money, anywhere: the owner does it, never LayanX. Found 2026-11-13 on WhatsApp:
+ * "transfer 500 from the store profits to the trading account" reached a chat model that answered as if it had done it.
+ */
+const TRANSFER=/(?:^|\s)(?:حول|حولي|انقل|ارسل|اسحب|اودع|ابعث|transfer|send|wire|withdraw|deposit|move)(?=\s|$)/;
+const PAY=/(?:^|\s)(?:ادفع|سدد|pay|settle)(?=\s|$)/;
+const CASH=/ارباح|فلوس|مال(?:\s|$)|اموال|رصيد|مبلغ|ريال|دولار|درهم|دينار|يورو|جنيه|usdt|usdc|btc|\$|\busd\b|\bsar\b|\beur\b|profits?|money|funds?|balance|cash/;
+const BILL=/فاتوره|فواتير|invoice|bill|مستحق|due/;
+const ACCOUNT=/حساب|محفظ|بنك|بطاقه|account|wallet|bank|card/;
+export const MONEY_REFUSAL="تحويل الأموال أو دفعها أو سحبها قرارك أنت، وتنفذه بنفسك خارج LayanX. لن أقوم به، ولم يُنقل أي مال.";
+export function movesMoney(goal:string):boolean{const t=plain(goal);return TRANSFER.test(t)&&(CASH.test(t)||/\d/.test(t)&&ACCOUNT.test(t))||PAY.test(t)&&(BILL.test(t)||CASH.test(t)||ACCOUNT.test(t));}
 
 export function routeGoal(goal:string):Routing{
   const text=plain(goal),store=STORE.test(text),trading=TRADING.test(text);
+  if(movesMoney(goal))return{domain:"other",agentId:"core",needsOwner:true,reason:"Moving, sending, paying or withdrawing money is the owner's decision, made outside LayanX."};
   if(store&&trading){
     if(MONEY_MOVE.test(text)&&MONEY.test(text))return{domain:"other",agentId:"core",needsOwner:true,reason:"Moving money between the store and trading is the owner's decision, made outside LayanX."};
     return{domain:"other",agentId:"core",needsOwner:false,reason:"Touches both the store and trading: split it, one side at a time."};
