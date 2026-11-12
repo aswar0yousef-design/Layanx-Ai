@@ -45,7 +45,7 @@
   },
   "dependencies": {
     "imapflow": "^2.2.1",
-    "nodemailer": "^10.0.13",
+    "nodemailer": "^10.4.0",
     "pdfjs-dist": "6.4.299",
     "pg": "^8.23.1"
   },
