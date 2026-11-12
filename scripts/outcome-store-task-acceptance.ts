@@ -60,7 +60,7 @@ async function runOne(selected:Case){
   const now=new Date();
   const woo=await startFakeWoo({now,key:"ck_trial",secret:"cs_trial"});
   const before=JSON.parse(JSON.stringify({products:woo.products,orders:woo.orders}));
-  Object.assign(process.env,{LAYANX_WORKSPACE_ROOT:projects,LAYANX_STORE_DIR:dir,LAYANX_DATA_DIR:root,LAYANX_DATABASE_URL:"",DATABASE_URL:"",
+  Object.assign(process.env,{LAYANX_WORKSPACE_ROOT:projects,LAYANX_STORE_DIR:dir,LAYANX_DATA_DIR:root,LAYANX_DATABASE_URL:"",DATABASE_URL:"",LAYANX_BUSINESS_STORAGE_PATH:path.join(root,"business.json"),
     LAYANX_RUNTIME_STORAGE_PATH:path.join(dir,"runtime.json"),LAYANX_LESSONS_FILE:path.join(dir,"lessons.json"),LAYANX_TRUST_FILE:path.join(root,"trust.json"),
     LAYANX_SECRET_VAULT_PATH:path.join(dir,"secrets.vault"),LAYANX_AI_MODE:"local",LAYANX_FREE_POOL_ENABLED:"false",OPENAI_ENABLED:"false",ANTHROPIC_ENABLED:"false",GEMINI_ENABLED:"false",MT5_AUTO_START:"false",LAYANX_OPEN_BROWSER:"off",
     // The stand-in store and its throwaway keys; never the owner's store.

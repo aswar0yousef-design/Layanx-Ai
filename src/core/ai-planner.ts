@@ -9,6 +9,7 @@ import {leadRequest,siteFrom} from "../business/lead-research.js";
 import {webFormRequest} from "../tools/web-form.js";
 import {storeChangeRequest,storeReportRequest} from "../business/woocommerce.js";
 import {shippingIntent} from "../business/store-shipping.js";
+import {currentDraft,socialIntent} from "../business/social-posting.js";
 
 export interface PlannedTool{
   /** As MissionToolPlan.final: the mission is done once this step succeeds. */
@@ -146,6 +147,24 @@ function deterministicWebFormPlan(goal:string,catalog:ToolCatalogEntry[]):Planne
   successCriteria:["result.submitted === true"],
   stopCondition:"Stop if the page has no form for this request or a needed value is missing.",
   tools:[{tool:tool.name,action:tool.actions[0]!,permission:tool.permission,reason:"The owner asked to do this on "+url+".",payload:{url,goal:step.slice(0,1000)},final:true}]};
+}
+
+/** "Write an Instagram post about ..." drafts; "publish the post" publishes the latest draft, its exact text in the approval. */
+function deterministicSocialPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
+ const step=currentMilestoneGoal(goal),intent=socialIntent(step);
+ if(!intent)return undefined;
+ if(intent.kind==="draft"){
+  const tool=catalog.find(t=>t.name==="social.draft");if(!tool)return undefined;
+  return{risk:"low",requiredPermission:tool.permission,steps:[{description:"Write the post draft and show it word for word; nothing is published."}],
+   successCriteria:["The draft was saved and shown."],stopCondition:"Stop if the draft adds facts the owner did not give.",
+   tools:[{tool:tool.name,action:tool.actions[0]!,permission:tool.permission,reason:"The owner asked for a post.",payload:{goal:step.slice(0,1500),platforms:intent.platforms,...(intent.own?{own:intent.own}:{})},final:true}]};
+ }
+ const tool=catalog.find(t=>t.name==="social.publish");if(!tool)return undefined;
+ // The approval binds to this payload: the owner approves these exact words on these platforms, and nothing else.
+ const draft=currentDraft();
+ return{risk:"high",requiredPermission:tool.permission,steps:[{description:"Publish the latest post draft to its platforms and read it back."}],
+  successCriteria:["The post was published and read back."],stopCondition:"Stop if there is no draft or it changed since the owner saw it.",
+  tools:[{tool:tool.name,action:tool.actions[0]!,permission:tool.permission,reason:draft?`Publish to ${draft.platforms.join(", ")}: ${draft.body.slice(0,300)}`:"No draft yet.",payload:{contentId:draft?.id??"",text:draft?.body??"",platforms:draft?.platforms??[]},final:true}]};
 }
 
 /** "Prepare shipments for the store's orders", "invoice for order 1041", "close the delivered orders", "shipping report". */
@@ -325,6 +344,8 @@ export class AiMissionPlanner{
     if(leads)return leads;
     const form=deterministicWebFormPlan(goal,tools);
     if(form)return form;
+    const social=deterministicSocialPlan(goal,tools);
+    if(social)return social;
     const shipping=deterministicShippingPlan(goal,tools);
     if(shipping)return shipping;
     const store=deterministicStorePlan(goal,tools);

@@ -80,7 +80,7 @@ import {registerPaperTradingAgentTool,registerBinanceMarketDataTool,registerBina
 import type {LiveScreenObserver} from "../desktop/live-screen.js";
 import {routeGoal} from "../autonomy/domain-coordinator.js";
 /** Tools whose failure is a question for the owner (which product, which number), so the loop stops instead of repairing. */
-const OWNER_INPUT_TOOLS=new Set(["store.change","shipping.from_store","shipping.invoice.document","shipping.store.close"]);
+const OWNER_INPUT_TOOLS=new Set(["social.draft","social.publish","store.change","shipping.from_store","shipping.invoice.document","shipping.store.close"]);
 
 const RELEASES_KEY="runtime:releases";
 

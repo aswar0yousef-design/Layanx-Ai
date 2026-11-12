@@ -149,9 +149,43 @@ File: ${note.file}
   return A?`الحاسبة تعرض: ${shown}${ok?"":` (المتوقع ${request.expected}؛ راجع الحاسبة)`}`:`The Calculator shows: ${shown}${ok?"":` (expected ${request.expected}; check the Calculator)`}`;
 }
 
+const PLATFORM_AR:Record<string,string>={instagram:"إنستغرام",facebook:"فيسبوك",x:"X",linkedin:"لينكدإن",tiktok:"تيك توك",youtube:"يوتيوب",pinterest:"بنترست"};
+const SOCIAL_AR:Array<[RegExp,string]>=[
+  [/^There is no post draft to publish/,"لا توجد مسودة منشور. اطلب منشوراً أولاً، واقرأه، ثم قل: انشر المنشور."],
+  [/^The draft changed after you saw it/,"تغيّرت المسودة بعد أن رأيتها، فلم أنشرها. اقرأ النص الحالي ووافق عليه من جديد."],
+  [/^The draft kept adding facts/,"المسودة كانت تضيف معلومات ليست في طلبك (أو كانت أطول من المسموح)، فلم أحفظها. اكتب التفاصيل التي تريدها في المنشور."],
+  [/^Nothing was published: (.*)$/,"لم يُنشر شيء: $1"],
+  [/^Published, but the platform shows different text/,"نُشر، لكن المنصة تعرض نصاً مختلفاً عن الذي وافقت عليه؛ راجعه فوراً."]];
+/** Social replies, written by code: the draft word for word, and what each platform shows after publishing. */
+export function socialReply(tool:string,data:unknown,A:boolean):string|null{
+  const d=data as any;if(!d||typeof d!=="object")return null;
+  const names=(list:string[])=>list.map(p=>A?PLATFORM_AR[p]??p:p).join("، ");
+  if(tool==="social.draft"&&typeof d.body==="string"){
+    return[A?`مسودة منشور لـ ${names(d.platforms)}${d.ownWords?" (بكلماتك كما هي)":""}:`:`Post draft for ${names(d.platforms)}${d.ownWords?" (your own words)":""}:`,
+      "———",d.body,"———",
+      d.tidied?(A?"عدّلتُ تنسيق نصك قليلاً (علامات وترقيم)؛ هذا هو النص الذي سيُنشر.":"Your text was tidied slightly (punctuation); this is the text that would be published."):"",
+      A?"لم يُنشر شيء. إن أعجبك فقل: «انشر المنشور»، وستظهر لك الموافقة بهذا النص نفسه.":"Nothing was published. If you like it, say \"publish the post\"; the approval will show this exact text.",
+      d.notConnected?.length?(A?`غير مربوط بعد: ${names(d.notConnected)} (اربطه من صفحة التواصل في اللوحة).`:`Not connected yet: ${names(d.notConnected)} (connect it on the panel's Social page).`):"",
+      d.needsImage?.length?(A?`${names(d.needsImage)} يحتاج صورة أو فيديو برابط عام؛ هذه المسودة نص فقط.`:`${names(d.needsImage)} needs a public image or video link; this draft is text only.`):""].filter(Boolean).join("\n");
+  }
+  if(tool==="social.publish"&&Array.isArray(d.published)){
+    const lines=d.published.map((x:any)=>`- ${A?PLATFORM_AR[x.platform]??x.platform:x.platform}: ${x.url??""} ${x.verified===true?(A?"(قرأته من المنصة: النص مطابق)":"(read back: text matches)"):x.verified===null?(A?"(لم أستطع قراءته من المنصة للتأكد)":"(could not read it back to confirm)"):""}`.trim());
+    const failed=(d.failures??[]).map((f:any)=>`- ${A?PLATFORM_AR[f.platform]??f.platform:f.platform}: ${A?"لم يُنشر":"not published"} (${f.error})`);
+    return[A?"نشرتُ المنشور الذي وافقت عليه:":"Published the post you approved:",...lines,...failed].join("\n");
+  }
+  return null;
+}
+
 export async function composeTaskAnswer(models:Pick<ModelExecutionRouter,"execute">,goal:string,results:ToolResult[],completed:boolean):Promise<TaskAnswer|null>{
   const desk=openAndDoReply(goal,results,arabic(goal));
   if(desk)return{text:desk,fromImage:false};
+  for(const name of ["social.draft","social.publish"]){
+    const r=results.filter(x=>x?.ok&&x.tool===name).at(-1);
+    const text=r?socialReply(name,r.data,arabic(goal)):null;
+    if(text)return{text,fromImage:false};
+  }
+  const failedSocial=results.filter(r=>r&&!r.ok&&/^social\.(?:draft|publish)$/.test(String(r.tool))).at(-1) as (ToolResult&{error?:string})|undefined;
+  if(failedSocial?.error){const e=failedSocial.error;const ar=arabic(goal)?SOCIAL_AR.find(([re])=>re.test(e)):undefined;return{text:ar?e.replace(ar[0],ar[1]):e,fromImage:false};}
   for(const name of ["shipping.from_store","shipping.invoice.document","shipping.store.close","shipping.report"]){
     const r=results.filter(x=>x?.ok&&x.tool===name).at(-1);
     const text=r?shippingReply(name,r.data,arabic(goal)):null;

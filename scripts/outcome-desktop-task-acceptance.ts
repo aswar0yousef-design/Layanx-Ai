@@ -73,7 +73,7 @@ async function runOne(selected:Case){
   const trading=pids(TRADING);
   if(trading.size&&process.env.LAYANX_DESKTOP_TRIAL_WITH_TRADING!=="1"){finish({ok:false,stage:"skipped",reason:"a trading terminal (MetaTrader) is open; desktop trials never run beside it"});return;}
   const before=pids(selected.processes);
-  Object.assign(process.env,{LAYANX_WORKSPACE_ROOT:projects,LAYANX_STORE_DIR:store,LAYANX_DATA_DIR:root,LAYANX_DATABASE_URL:"",DATABASE_URL:"",
+  Object.assign(process.env,{LAYANX_WORKSPACE_ROOT:projects,LAYANX_STORE_DIR:store,LAYANX_DATA_DIR:root,LAYANX_DATABASE_URL:"",DATABASE_URL:"",LAYANX_BUSINESS_STORAGE_PATH:path.join(root,"business.json"),
     LAYANX_RUNTIME_STORAGE_PATH:path.join(store,"runtime.json"),LAYANX_LESSONS_FILE:path.join(store,"lessons.json"),LAYANX_TRUST_FILE:path.join(root,"trust.json"),
     LAYANX_SECRET_VAULT_PATH:path.join(store,"secrets.vault"),LAYANX_AI_MODE:"local",LAYANX_FREE_POOL_ENABLED:"false",OPENAI_ENABLED:"false",ANTHROPIC_ENABLED:"false",GEMINI_ENABLED:"false",MT5_AUTO_START:"false",LAYANX_OPEN_BROWSER:"off"});
   const {createRuntime}=await import("../src/runtime.js");

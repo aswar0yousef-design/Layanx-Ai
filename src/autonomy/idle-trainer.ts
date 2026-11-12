@@ -19,6 +19,7 @@ export const PRACTICES:Practice[]=[
   ...["qs-sentinel-delimiter","qs-lowercase-dot","qs-filter-sorted"].map(c=>({id:"real-repo:"+c,args:["scripts/outcome-real-repo-repair-acceptance.ts","--runs","1","--case",c]})),
   ...["pagination","missing-profile","lost-await","two-causes"].map(c=>({id:"repair:"+c,args:["scripts/outcome-node-repair-acceptance.ts","--runs","1","--case",c]}))
   ,...["report","price","order","vague"].map(c=>({id:"store:"+c,args:["scripts/outcome-store-task-acceptance.ts","--runs","1","--case",c]}))
+  ,...["draft","publish","nodraft","question"].map(c=>({id:"social:"+c,args:["scripts/outcome-social-task-acceptance.ts","--runs","1","--case",c]}))
   ,...["prepare","invoice","close","report"].map(c=>({id:"shipping:"+c,args:["scripts/outcome-shipping-task-acceptance.ts","--runs","1","--case",c]}))
 ];
 export interface PracticeRecord{at:string;practice:string;ok:boolean|null;passed?:number;runs?:number;minutes:number;stopped?:"owner returned"|"error";lessons?:number;report?:string}

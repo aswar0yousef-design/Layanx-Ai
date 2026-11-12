@@ -42,8 +42,8 @@ export class NativeSocialConnector implements PlatformSocialConnector{
   const graph=base("instagram","https://graph.facebook.com");
   const version=process.env.LAYANX_META_GRAPH_VERSION??"";
   const prefix=version?`/${version}`:"";
-  const q=new URLSearchParams({image_url:image,caption:item.body,access_token:access});
-  const created=await jsonRequest(`${graph}${prefix}/${encodeURIComponent(id)}/media?${q}`,{method:"POST"});
+  // The page token goes in the POST body, never in the address (addresses end up in server and proxy logs).
+  const created=await jsonRequest(`${graph}${prefix}/${encodeURIComponent(id)}/media`,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:new URLSearchParams({image_url:image,caption:item.body,access_token:access})});
   if(!created.id)throw new Error("instagram_media_container_missing");
   const published=await jsonRequest(`${graph}${prefix}/${encodeURIComponent(id)}/media_publish`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({creation_id:created.id,access_token:access})});
   const externalId=String(published.id??"");if(!externalId)throw new Error("instagram_publish_id_missing");
@@ -52,7 +52,7 @@ export class NativeSocialConnector implements PlatformSocialConnector{
  private async facebook(pageId:string,access:string,item:PublishItem){
   const graph=base("facebook","https://graph.facebook.com");const version=process.env.LAYANX_META_GRAPH_VERSION??"";const prefix=version?`/${version}`:"";
   const q=new URLSearchParams({message:item.body,access_token:access});const media=item.mediaUrls.find(x=>/^https?:\/\//i.test(x));if(media)q.set("link",media);
-  const d=await jsonRequest(`${graph}${prefix}/${encodeURIComponent(pageId)}/feed?${q}`,{method:"POST"});
+  const d=await jsonRequest(`${graph}${prefix}/${encodeURIComponent(pageId)}/feed`,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:q});
   const externalId=String(d.id??"");if(!externalId)throw new Error("facebook_post_id_missing");return {externalId,url:`https://www.facebook.com/${externalId}`};
  }
  private async tiktok(access:string,item:PublishItem){

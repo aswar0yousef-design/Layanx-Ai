@@ -58,7 +58,7 @@ async function runOne(selected:Case){
   const deskFile=path.join(dir,"shipping.json"),desk=new ShippingDesk(deskFile);
   desk.saveCarrier({id:"smsa",name:"سمسا",active:true,zones:{riyadh:["الرياض"]},rates:[{zone:"riyadh",firstKg:1,firstPrice:2000,extraKgPrice:500,days:2,codFee:700}]});
   const world:World={desk,deskFile,store,invoiceDir:path.join(dir,"invoices")};
-  Object.assign(process.env,{LAYANX_WORKSPACE_ROOT:projects,LAYANX_STORE_DIR:dir,LAYANX_DATA_DIR:root,LAYANX_DATABASE_URL:"",DATABASE_URL:"",
+  Object.assign(process.env,{LAYANX_WORKSPACE_ROOT:projects,LAYANX_STORE_DIR:dir,LAYANX_DATA_DIR:root,LAYANX_DATABASE_URL:"",DATABASE_URL:"",LAYANX_BUSINESS_STORAGE_PATH:path.join(root,"business.json"),
     LAYANX_RUNTIME_STORAGE_PATH:path.join(dir,"runtime.json"),LAYANX_LESSONS_FILE:path.join(dir,"lessons.json"),LAYANX_TRUST_FILE:path.join(root,"trust.json"),
     LAYANX_SECRET_VAULT_PATH:path.join(dir,"secrets.vault"),LAYANX_AI_MODE:"local",LAYANX_FREE_POOL_ENABLED:"false",OPENAI_ENABLED:"false",ANTHROPIC_ENABLED:"false",GEMINI_ENABLED:"false",MT5_AUTO_START:"false",LAYANX_OPEN_BROWSER:"off",
     LAYANX_WOOCOMMERCE_URL:store.url,LAYANX_WOOCOMMERCE_CONSUMER_KEY:"ck_trial",LAYANX_WOOCOMMERCE_CONSUMER_SECRET:"cs_trial",LAYANX_WOOCOMMERCE_ALLOW_WRITES:selected.writes?"on":"off",
