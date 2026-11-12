@@ -3,6 +3,7 @@ import type {ChannelMessage,ChannelPolicy,ChannelRole} from "./types.js";
 import {MONEY_REFUSAL,routeGoal} from "../autonomy/domain-coordinator.js";
 import {routeRequest} from "../voice/request-router.js";
 import {composeTaskAnswer} from "../core/task-answer.js";
+import {OwnerFacts,factCommand,factReply,factsForPrompt} from "../memory/owner-facts.js";
 
 /**
  * Messages from WhatsApp and Telegram. Found 2026-11-13: the owner's messages all went to the agent (a question too), a
@@ -74,10 +75,14 @@ export class ChannelRouter{
    const resumed=await this.core.executeAgentLoop(waiting.missionId,"default",12,{[waiting.nextToolIndex]:waiting.approvalId},"core");
    return this.finish(resumed,waiting.goal,message.chatId,role);
   }
+  // The owner's own facts: "remember that ..." is kept (only the owner's messages), and used in answers.
+  const facts=OwnerFacts.at();
+  const command=factCommand(message.text);
+  if(command){if(role!=="owner")return A?"ما أتذكره عن صاحب LayanX يخصه وحده.":"What I remember about the owner is for the owner only.";return factReply(facts,command,A);}
   if(routeGoal(message.text).needsOwner)return A?MONEY_REFUSAL:"Moving, paying or withdrawing money is your decision, done by you outside LayanX. I will not do it, and no money was moved.";
   const route=routeRequest(message.text).route;
   if(route==="answer"){
-   const result=await this.core.modelExecution.execute({capability:"chat",input:`You are LayanX, the owner's assistant, answering on ${message.channel}. Answer briefly in the language of the message. Do not claim you did anything. Message: ${message.text}`,maxOutputTokens:600,routing:{preferLocal:true}});
+   const result=await this.core.modelExecution.execute({capability:"chat",input:[`You are LayanX, the owner's assistant, answering on ${message.channel}. Answer briefly in the language of the message. Do not claim you did anything.`,role==="owner"?factsForPrompt(facts,message.text):"",`Message: ${message.text}`].filter(Boolean).join("\n"),maxOutputTokens:600,routing:{preferLocal:true}});
    return result.output.trim()||(A?"لم أستطع الرد الآن.":"I could not answer right now.");
   }
   if(route==="project-build"||route==="project-repair"||route==="project-status")

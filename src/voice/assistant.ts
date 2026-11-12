@@ -1,5 +1,6 @@
 import {routeRequest} from "./request-router.js";
 import {MONEY_REFUSAL,movesMoney} from "../autonomy/domain-coordinator.js";
+import {OwnerFacts,factCommand,factReply,factsForPrompt} from "../memory/owner-facts.js";
 import {existsSync,mkdirSync,readFileSync,writeFileSync} from "node:fs";
 import {dirname,join} from "node:path";
 import type {LayanXCore} from "../core/orchestrator.js";
@@ -74,6 +75,8 @@ export interface AssistantDeps{
   busyWith?():string|undefined;
   startProject?(goal:string,work:ProjectWork,projectId:string):ProjectStart;
   projectStatus?(projectId:string):ProjectJobView|undefined;
+  /** What the owner asked LayanX to remember (memory/owner-facts.ts), used in answers. */
+  facts?:OwnerFacts;
 }
 
 const ARABIC=/[\u0600-\u06FF]/;
@@ -237,6 +240,9 @@ export class VoiceAssistant{
 
     // Money is never moved by LayanX, and no model is asked (one claimed a transfer it never made, 2026-11-13).
     if(movesMoney(text))return{ok:true,lang,intent:"answer",reply:lang==="ar"?MONEY_REFUSAL:"Moving, paying or withdrawing money is your decision, done by you outside LayanX. I will not do it, and no money was moved."};
+    // "Remember that ...", "forget ...", "what do you remember about me": answered from the owner's own facts, no model.
+    const command=this.deps.facts?factCommand(text):null;
+    if(command)return{ok:true,lang,intent:"answer",reply:factReply(this.deps.facts!,command,lang==="ar")};
     const normalized=normalizeArabic(text);
     if(TIME_AR.test(normalized)||TIME_EN.test(text))return{ok:true,lang,intent:"time",reply:t.time(this.now())};
     const greeting=greetingOf(text);
@@ -293,7 +299,12 @@ export class VoiceAssistant{
     }
     if(decision?.intent!=="task"||!goal){
       const checked=reviewDialogueAnswer(text,reply);
-      if(!checked.ok)return{ok:false,lang,intent:"error",reply:t.unhelpful};
+      if(!checked.ok){
+        // One more, answer-only try before giving up (seen: a model's first reply right after it loads was empty or malformed).
+        const again=await this.answerOnly(text,lang,input.history??[]);
+        if(again&&reviewDialogueAnswer(text,again).ok)return{ok:true,lang,intent:"answer",reply:again};
+        return{ok:false,lang,intent:"error",reply:t.unhelpful};
+      }
       return{ok:true,lang,intent:"answer",reply};
     }
     if(input.allowTasks===false)return{ok:true,lang,intent:"task",goal,reply:t.tasksOff(goal)};
@@ -325,6 +336,7 @@ export class VoiceAssistant{
       "If it asks what you can do, describe it. If it can only be done by acting, say briefly which instruction would do it (for example: \"التقط صورة للشاشة\").",
       'Answer with ONLY one JSON object: {"reply":"..."}',
       `"reply" is at most three short sentences, no lists or markdown, written in ${lang==="ar"?"Arabic":"English"}.`,
+      this.deps.facts?factsForPrompt(this.deps.facts,text):"",
       recent?`Conversation so far:\n${recent}`:"",
       `Owner: ${text}`
     ].filter(Boolean).join("\n");
@@ -347,6 +359,7 @@ export class VoiceAssistant{
       `Rules: "reply" is spoken aloud, at most two short sentences, no lists or markdown, written in ${lang==="ar"?"Arabic":"English"}.`,
       '"goal" is a complete, self-contained instruction for the agent in the owner\'s language. Never say a task is done; the agent reports the result.',
       `Current time: ${this.now().toISOString()}`,
+      this.deps.facts?factsForPrompt(this.deps.facts,text):"",
       recent?`Conversation so far:\n${recent}`:"",
       `Owner: ${text}`
     ].filter(Boolean).join("\n");
@@ -356,6 +369,7 @@ export class VoiceAssistant{
 /** Adapter from the real runtime core. */
 export function coreAssistantDeps(core:LayanXCore):AssistantDeps{
   return{
+    facts:OwnerFacts.at(),
     // latencySensitive: spoken replies go to the small "fast" model when one is installed.
     decide:async prompt=>(await core.modelExecution.execute({capability:"reasoning",input:prompt,maxOutputTokens:400,routing:{preferLocal:true,latencySensitive:true}})).output,
     runTask:async(goal,projectId)=>await core.runAgentGateway(goal,projectId,10) as unknown as Record<string,unknown>,

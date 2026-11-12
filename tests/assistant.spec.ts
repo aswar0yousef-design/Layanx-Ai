@@ -95,10 +95,12 @@ assert.equal(brief.latest()?.report.counts.total,2);
     ["يا ليان صباح الخير",/صباح النور/],["شكراً جزيلاً",/العفو/],["مرحبا كيف حالك",/بخير/],["Hey, how are you?",/I'm well/],["thank you",/welcome/i]];
   for(const [text,re] of cases){const r=await jarvis.turn({text});assert.equal(r.intent,"answer",text);assert.match(r.reply,re,text);}
   assert.equal(prompts.length,before,"no model call for a greeting");
+  // Each one reaches the model (a rejected answer gets one more, answer-only try, so the count can be higher).
   for(const text of ["كيف حال الطقس اليوم في مسقط؟","مرحبا افتح المتصفح","hello, write a post about our sale","شكرا ارسل الفاتورة"]){
+    const was=prompts.length;
     await jarvis.turn({text});
+    assert.ok(prompts.length>was,"a greeting with a request still goes to the model: "+text);
   }
-  assert.equal(prompts.length,before+4,"a greeting with a request still goes to the model");
 }
 
 // A model that does not answer in time (busy with a job): LayanX says why, instead of thinking forever.
