@@ -1,3 +1,4 @@
+import {assertPublicAddress} from "./http-read.js";
 import {linkedProjectPath} from "../platform/linked-projects.js";
 import {safeChildEnv} from "../platform/safe-env.js";
 import {readFile,readdir,stat,mkdir,writeFile} from "node:fs/promises";
@@ -93,6 +94,7 @@ export function createBrowserToolAdapter(options:{fetcher?:typeof fetch}={}):Too
  const fetcher=options.fetcher??fetch;
  return{async execute(request){
   const input=payload(request),raw=typeof input.url==="string"?input.url:"",url=validateUrl(raw);
+  if(!options.fetcher)await assertPublicAddress(url);
   const response=await fetcher(url,{method:"GET",redirect:"error",signal:AbortSignal.timeout(5000)});
   const body=await response.text();if(body.length>256*1024)throw new Error("Browser response exceeds the 256 KiB limit.");
   return{url:url.toString(),status:response.status,contentType:response.headers.get("content-type"),body};

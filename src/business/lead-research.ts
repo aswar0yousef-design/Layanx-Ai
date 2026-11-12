@@ -1,5 +1,6 @@
 import {extractJson} from "../providers/adaptive-ollama.js";
 import {cleanQuery,isPublicUrl,webSearch,type SearchHit} from "../autonomy/task-research.js";
+import {assertPublicAddress} from "../tools/http-read.js";
 
 /**
  * "Find potential customers for layanx.com". A small local model never planned this by itself (it guessed what the business
@@ -45,6 +46,7 @@ export async function readSite(url:string,fetcher:typeof fetch=fetch):Promise<st
   let address=url;
   for(let hop=0;hop<4;hop++){
     if(!isPublicUrl(address))throw new Error("not a public address: "+address);
+    if(fetcher===fetch)await assertPublicAddress(new URL(address));
     const response=await fetcher(address,{headers:{"user-agent":UA},redirect:"manual",signal:AbortSignal.timeout(15_000)});
     if(response.status>=300&&response.status<400&&response.headers.get("location")){address=new URL(response.headers.get("location")!,address).toString();continue;}
     if(!response.ok)throw new Error("the site answered "+response.status);

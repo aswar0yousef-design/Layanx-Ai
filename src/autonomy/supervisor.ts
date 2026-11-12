@@ -126,6 +126,10 @@ export interface SupervisorDeps{
 }
 
 const ACTIVE:JobStatus[]=["queued","planning","running","waiting_approval","verifying"];
+/** Work whose every step stays inside the project folder (write files, run local checks): safe to retry after a restart. */
+export function localOnlyWork(job:Pick<SupervisorJob,"acceptanceProfile">):boolean{
+  return isBuildProfile(job.acceptanceProfile)||job.acceptanceProfile===NODE_REPAIR_PROFILE||job.acceptanceProfile===STATIC_REPAIR_PROFILE||job.acceptanceProfile==="task-app-http-v1";
+}
 const AGENT_FOR:Record<MilestoneKind,string>={code:"coder",test:"tester",research:"researcher",desktop:"operator",business:"business",general:"core"};
 const UI_WORDS=/\b(page|ui|ux|website|site|screen|design|layout|frontend|landing|dashboard|css|style|store|shop)\b|صفحة|واجهة|موقع|تصميم|شاشة|لوحة|متجر|تطبيق ويب/i;
 const OPEN_WORD="open|show|افتح|افتحه|افتحها|افتحلي|اعرض|أعرض|اعرضه|ورني|ورّني|شغله|شغّله";
@@ -323,6 +327,16 @@ export class Supervisor{
       const unknownEffects=(job.status==="running"||(job.status==="queued"&&job.queuedFrom==="running"))
         &&interrupted?.status==="running";
       const orphanApproval=job.status==="waiting_approval"&&!job.waiting;
+      // Building or repairing a project only writes files in its own folder and runs local checks: retrying the step is
+      // safe and the checks judge the result. Everything else (messages, posts, desktop actions) still waits for the owner.
+      // Seen live 2026-11-12: each LayanX restart left a project "failed: review required" that nothing outside could affect.
+      if(unknownEffects&&!orphanApproval&&localOnlyWork(job)){
+        job.deadline=new Date(Date.now()+(job.budgetMinutes??120)*60_000).toISOString();
+        interrupted!.status="pending";
+        this.log(job,`Resumed after a restart: step ${job.current+1} only writes project files and runs local checks, so it is retried`);
+        void this.drive(job.id);
+        continue;
+      }
       if(unknownEffects||orphanApproval){
         job.recoveryHold={kind:orphanApproval?"missing-approval":"interrupted-milestone",
           milestone:job.current,at:now(),description:orphanApproval

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import {extractJson} from "../providers/adaptive-ollama.js";
 import {findLessons,guidanceText,matchPlaybooks,scanPlaybook} from "./learning.js";
+import {assertPublicAddress} from "../tools/http-read.js";
 
 /**
  * Before work starts, LayanX collects what it already knows and what the web says about the task, compares the ways of doing
@@ -49,6 +50,7 @@ export async function webSearch(query:string,fetcher:typeof fetch=fetch):Promise
 /** Redirects are refused: a public address must not be able to lead the request to something on the owner's network. */
 export async function readPage(url:string,fetcher:typeof fetch=fetch):Promise<string>{
   if(!isPublicUrl(url))throw new Error("not a public address");
+  if(fetcher===fetch)await assertPublicAddress(new URL(url));
   const response=await fetcher(url,{headers:{"user-agent":UA},redirect:"error",signal:AbortSignal.timeout(15_000)});
   if(!response.ok||!/text\/(?:html|plain)/i.test(response.headers.get("content-type")??""))throw new Error("page not readable");
   return plain((await response.text()).slice(0,400_000));
