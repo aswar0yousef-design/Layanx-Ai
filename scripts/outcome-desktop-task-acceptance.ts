@@ -11,6 +11,7 @@ import path from "node:path";
 import {randomUUID} from "node:crypto";
 import {execFileSync,spawnSync} from "node:child_process";
 import {resolveDataPaths} from "../src/platform/paths.js";
+import {applyLiveModelPlan,liveModelPlan} from "./live-models.js";
 
 if(process.platform!=="win32"){console.log("desktop-task: Windows only");process.exit(0);}
 const arg=(name:string)=>{const i=process.argv.indexOf("--"+name);return i>=0?process.argv[i+1]:undefined;};
@@ -67,7 +68,7 @@ async function runOne(selected:Case){
   const root=path.join(resolveDataPaths().dataDir,"outcome-runs",new Date().toISOString().replace(/[:.]/g,"-")+"-"+id);
   const store=path.join(root,"store"),projects=path.join(root,"projects");
   fs.mkdirSync(store,{recursive:true});fs.mkdirSync(path.join(projects,id),{recursive:true});
-  const finish=(record:Record<string,unknown>)=>{const file=path.join(root,"desktop-result.json");fs.writeFileSync(file,JSON.stringify({case:selected.id,...record},null,2));console.log("RESULT_FILE="+file);};
+  const finish=(record:Record<string,unknown>)=>{const file=path.join(root,"desktop-result.json");fs.writeFileSync(file,JSON.stringify({case:selected.id,models:liveModelPlan(),...record},null,2));console.log("RESULT_FILE="+file);};
   const idle=userIdleMs();
   if(idle<5*60_000&&!process.argv.includes("--force")){finish({ok:false,stage:"skipped",reason:`someone used the keyboard or mouse ${Math.round(idle/1000)} s ago`});return;}
   const trading=pids(TRADING);
@@ -76,6 +77,8 @@ async function runOne(selected:Case){
   Object.assign(process.env,{LAYANX_WORKSPACE_ROOT:projects,LAYANX_STORE_DIR:store,LAYANX_DATA_DIR:root,LAYANX_DATABASE_URL:"",DATABASE_URL:"",LAYANX_BUSINESS_STORAGE_PATH:path.join(root,"business.json"),
     LAYANX_RUNTIME_STORAGE_PATH:path.join(store,"runtime.json"),LAYANX_LESSONS_FILE:path.join(store,"lessons.json"),LAYANX_TRUST_FILE:path.join(root,"trust.json"),
     LAYANX_SECRET_VAULT_PATH:path.join(store,"secrets.vault"),LAYANX_AI_MODE:"local",LAYANX_FREE_POOL_ENABLED:"false",OPENAI_ENABLED:"false",ANTHROPIC_ENABLED:"false",GEMINI_ENABLED:"false",MT5_AUTO_START:"false",LAYANX_OPEN_BROWSER:"off"});
+  // The owner's LayanX models, not the runtime's fallback (found 2026-11-13).
+  const models=applyLiveModelPlan();
   const {createRuntime}=await import("../src/runtime.js");
   const runtime=createRuntime({storagePath:process.env.LAYANX_RUNTIME_STORAGE_PATH});
   const core:any=runtime.core;

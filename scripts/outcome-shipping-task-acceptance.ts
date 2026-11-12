@@ -10,6 +10,7 @@ import path from "node:path";
 import {randomUUID} from "node:crypto";
 import {spawnSync} from "node:child_process";
 import {resolveDataPaths} from "../src/platform/paths.js";
+import {applyLiveModelPlan} from "./live-models.js";
 import {startFakeWoo} from "../tests/fixtures/fake-woocommerce.js";
 import {ShippingDesk} from "../src/business/shipping.js";
 
@@ -63,6 +64,8 @@ async function runOne(selected:Case){
     LAYANX_SECRET_VAULT_PATH:path.join(dir,"secrets.vault"),LAYANX_AI_MODE:"local",LAYANX_FREE_POOL_ENABLED:"false",OPENAI_ENABLED:"false",ANTHROPIC_ENABLED:"false",GEMINI_ENABLED:"false",MT5_AUTO_START:"false",LAYANX_OPEN_BROWSER:"off",
     LAYANX_WOOCOMMERCE_URL:store.url,LAYANX_WOOCOMMERCE_CONSUMER_KEY:"ck_trial",LAYANX_WOOCOMMERCE_CONSUMER_SECRET:"cs_trial",LAYANX_WOOCOMMERCE_ALLOW_WRITES:selected.writes?"on":"off",
     LAYANX_SELLER_NAME:"متجر تجريبي"});
+  // The owner's LayanX models, not the runtime's fallback (found 2026-11-13).
+  const models=applyLiveModelPlan();
   await selected.setup?.(world);
   store.requests.length=0;
   const {createRuntime}=await import("../src/runtime.js");
@@ -84,7 +87,7 @@ async function runOne(selected:Case){
   await store.close();
   const works=verdict.every(v=>v.ok),claimed=result?.completed===true;
   const file=path.join(root,"shipping-result.json");
-  fs.writeFileSync(file,JSON.stringify({case:selected.id,route,ok:works&&claimed,falseSuccess:claimed&&!works,works,claimed,minutes:Math.round((Date.now()-started)/6000)/10,approved,verdict,
+  fs.writeFileSync(file,JSON.stringify({case:selected.id,models,route,ok:works&&claimed,falseSuccess:claimed&&!works,works,claimed,minutes:Math.round((Date.now()-started)/6000)/10,approved,verdict,
     reply:answer?.text??null,tools:(result?.results??[]).map((r:any)=>({tool:r.tool,ok:r.ok,error:r.error?.slice?.(0,300)})),reason:result?.reason??result?.error},null,2));
   console.log("RESULT_FILE="+file);
 }

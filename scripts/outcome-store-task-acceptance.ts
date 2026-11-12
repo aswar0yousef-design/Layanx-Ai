@@ -11,6 +11,7 @@ import path from "node:path";
 import {randomUUID} from "node:crypto";
 import {spawnSync} from "node:child_process";
 import {resolveDataPaths} from "../src/platform/paths.js";
+import {applyLiveModelPlan} from "./live-models.js";
 import {startFakeWoo,sampleCatalog} from "../tests/fixtures/fake-woocommerce.js";
 
 const arg=(name:string)=>{const i=process.argv.indexOf("--"+name);return i>=0?process.argv[i+1]:undefined;};
@@ -65,6 +66,8 @@ async function runOne(selected:Case){
     LAYANX_SECRET_VAULT_PATH:path.join(dir,"secrets.vault"),LAYANX_AI_MODE:"local",LAYANX_FREE_POOL_ENABLED:"false",OPENAI_ENABLED:"false",ANTHROPIC_ENABLED:"false",GEMINI_ENABLED:"false",MT5_AUTO_START:"false",LAYANX_OPEN_BROWSER:"off",
     // The stand-in store and its throwaway keys; never the owner's store.
     LAYANX_WOOCOMMERCE_URL:woo.url,LAYANX_WOOCOMMERCE_CONSUMER_KEY:"ck_trial",LAYANX_WOOCOMMERCE_CONSUMER_SECRET:"cs_trial",LAYANX_WOOCOMMERCE_ALLOW_WRITES:selected.writes?"on":"off"});
+  // The owner's LayanX models, not the runtime's fallback (found 2026-11-13).
+  const models=applyLiveModelPlan();
   const {createRuntime}=await import("../src/runtime.js");
   const {composeTaskAnswer}=await import("../src/core/task-answer.js");
   const {routeRequest}=await import("../src/voice/request-router.js");
@@ -87,7 +90,7 @@ async function runOne(selected:Case){
   // The vague request passes only when nothing changed AND it was not reported as done.
   const ok=selected.id==="vague"?works&&!claimed:works&&claimed;
   const file=path.join(root,"store-result.json");
-  fs.writeFileSync(file,JSON.stringify({case:selected.id,route,ok,falseSuccess:claimed&&!works||selected.id==="vague"&&claimed,works,claimed,minutes:Math.round((Date.now()-started)/6000)/10,approved,verdict,
+  fs.writeFileSync(file,JSON.stringify({case:selected.id,models,route,ok,falseSuccess:claimed&&!works||selected.id==="vague"&&claimed,works,claimed,minutes:Math.round((Date.now()-started)/6000)/10,approved,verdict,
     reply:answer?.text??null,tools:(result?.results??[]).map((r:any)=>({tool:r.tool,ok:r.ok,error:r.error?.slice?.(0,300)})),requests:writes(woo.requests),reason:result?.reason??result?.error},null,2));
   console.log("RESULT_FILE="+file);
 }

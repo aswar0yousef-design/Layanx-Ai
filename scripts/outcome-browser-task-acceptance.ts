@@ -12,6 +12,7 @@ import path from "node:path";
 import {randomUUID} from "node:crypto";
 import {spawnSync} from "node:child_process";
 import {resolveDataPaths} from "../src/platform/paths.js";
+import {applyLiveModelPlan} from "./live-models.js";
 
 const arg=(name:string)=>{const i=process.argv.indexOf("--"+name);return i>=0?process.argv[i+1]:undefined;};
 const page=(title:string,body:string)=>`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${title}</title></head><body><h1>${title}</h1>${body}<p><a href="/">الرئيسية</a> · <a href="/contact">اتصل بنا</a></p></body></html>`;
@@ -54,6 +55,8 @@ async function runOne(selected:Case){
     LAYANX_RUNTIME_STORAGE_PATH:path.join(store,"runtime.json"),LAYANX_LESSONS_FILE:path.join(store,"lessons.json"),LAYANX_TRUST_FILE:path.join(root,"trust.json"),
     LAYANX_SECRET_VAULT_PATH:path.join(store,"secrets.vault"),LAYANX_AI_MODE:"local",LAYANX_FREE_POOL_ENABLED:"false",OPENAI_ENABLED:"false",ANTHROPIC_ENABLED:"false",GEMINI_ENABLED:"false",MT5_AUTO_START:"false",LAYANX_OPEN_BROWSER:"off",
     });
+  // The owner's LayanX models, not the runtime's fallback (found 2026-11-13).
+  const models=applyLiveModelPlan();
   const {createRuntime}=await import("../src/runtime.js");
   const {composeTaskAnswer}=await import("../src/core/task-answer.js");
   const runtime=createRuntime({storagePath:process.env.LAYANX_RUNTIME_STORAGE_PATH});
@@ -86,7 +89,7 @@ async function runOne(selected:Case){
   const verdict=selected.judge(received,answer?.text??"");
   const works=verdict.every(v=>v.ok),claimed=result?.completed===true;
   const file=path.join(root,"browser-result.json");
-  fs.writeFileSync(file,JSON.stringify({case:selected.id,ok:works&&claimed,falseSuccess:claimed&&!works,works,claimed,minutes:Math.round((Date.now()-started)/6000)/10,approved,verdict,received,
+  fs.writeFileSync(file,JSON.stringify({case:selected.id,models,ok:works&&claimed,falseSuccess:claimed&&!works,works,claimed,minutes:Math.round((Date.now()-started)/6000)/10,approved,verdict,received,
     reply:answer?.text??null,tools:(result?.results??[]).map((r:any)=>({tool:r.tool,ok:r.ok,error:r.error?.slice?.(0,200)})),plan:(core.missions?.get?.(result?.missionId)?.tools??[]).map((t:any)=>({tool:t.tool,payload:t.payload})),reason:result?.reason??result?.error},null,2));
   console.log("RESULT_FILE="+file);
 }

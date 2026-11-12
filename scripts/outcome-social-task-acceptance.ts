@@ -9,6 +9,7 @@ import path from "node:path";
 import {randomUUID} from "node:crypto";
 import {spawnSync} from "node:child_process";
 import {resolveDataPaths} from "../src/platform/paths.js";
+import {applyLiveModelPlan} from "./live-models.js";
 import {startFakeGraph,type FakeGraph} from "../tests/fixtures/fake-graph.js";
 
 const arg=(name:string)=>{const i=process.argv.indexOf("--"+name);return i>=0?process.argv[i+1]:undefined;};
@@ -48,9 +49,7 @@ async function runOne(selected:Case){
   const dir=path.join(root,"store"),projects=path.join(root,"projects");
   fs.mkdirSync(dir,{recursive:true});fs.mkdirSync(path.join(projects,id),{recursive:true});
   const graph=await startFakeGraph({token:"trial_page_token"});
-  // The models the live LayanX uses (its saved plan), so the trial writes with the same model as the owner's LayanX.
-  try{const plan=JSON.parse(fs.readFileSync(path.join(resolveDataPaths().dataDir,"ollama-models.json"),"utf8")).plan?.assignments??{};
-    const main=plan.planning??plan.general;if(main)process.env.OLLAMA_MODEL=main;if(plan.vision)process.env.OLLAMA_VISION_MODEL=plan.vision;}catch{}
+  const models=applyLiveModelPlan();
   Object.assign(process.env,{LAYANX_WORKSPACE_ROOT:projects,LAYANX_STORE_DIR:dir,LAYANX_DATA_DIR:root,LAYANX_DATABASE_URL:"",DATABASE_URL:"",LAYANX_BUSINESS_STORAGE_PATH:path.join(dir,"business.json"),
     LAYANX_RUNTIME_STORAGE_PATH:path.join(dir,"runtime.json"),LAYANX_LESSONS_FILE:path.join(dir,"lessons.json"),LAYANX_TRUST_FILE:path.join(root,"trust.json"),
     LAYANX_SECRET_VAULT_PATH:path.join(dir,"secrets.vault"),LAYANX_AI_MODE:"local",LAYANX_FREE_POOL_ENABLED:"false",OPENAI_ENABLED:"false",ANTHROPIC_ENABLED:"false",GEMINI_ENABLED:"false",MT5_AUTO_START:"false",LAYANX_OPEN_BROWSER:"off",
@@ -78,7 +77,7 @@ async function runOne(selected:Case){
   const works=verdict.every(v=>v.ok),claimed=result?.completed===true;
   const ok=works&&claimed===selected.expectDone;
   const file=path.join(root,"social-result.json");
-  fs.writeFileSync(file,JSON.stringify({case:selected.id,route,ok,falseSuccess:claimed&&!works,works,claimed,minutes:Math.round((Date.now()-started)/6000)/10,approved,verdict,reply:answer?.text??null,
+  fs.writeFileSync(file,JSON.stringify({case:selected.id,models,route,ok,falseSuccess:claimed&&!works,works,claimed,minutes:Math.round((Date.now()-started)/6000)/10,approved,verdict,reply:answer?.text??null,
     tools:(result?.results??[]).map((r:any)=>`${r.tool}:${r.ok?"ok":"fail: "+String(r.error??"").slice(0,200)}`),reason:result?.reason??result?.error},null,2));
   console.log("RESULT_FILE="+file);
 }
