@@ -4,7 +4,7 @@ import {createHash,randomUUID} from "node:crypto";
 import {AsyncLocalStorage} from "node:async_hooks";
 import {TWIN_INPUTS_SCHEMA,TWIN_PROGRAM_FILE,disagree,parseTwinInputs,parseTwinRun,twinBroken,twinCases,twinFailure,twinHarnessSource,twinInputsPrompt,twinPrompt,type TwinRun} from "./twin-check.js";
 import {REVIEW_TEST_FILE,agreedCases,mergeCases,parseReviewCases,reviewPrompt,reviewTestSource,secondOpinionPrompt,type ReviewCase} from "./peer-review.js";
-import {MAX_SPEC_CASES,MIN_SPEC_CASES,hasComputedSteps,parseSiteSteps,siteSecondOpinionPrompt,siteStepConflicts,SPEC_TEST_FILE,testCounts,NODE_TOOL_PROFILE,PROGRAM_FILE,PROGRAM_PLACEHOLDER,RUNTIME_FAILURE,SITE_FILE,SITE_PLACEHOLDER,STATIC_SITE_PROFILE,buildPlan,buildRuntimePatchPrompt,buildSitePatchPrompt,extractHtml,extractProgram,isBuildProfile,nodeSpecFiles,nodeSpecPrompt,observeSite,programPrompt,readSiteSteps,siteSpecFiles,sitePrompt,siteSpecPrompt,vacuousTests,type BuildProfile} from "./project-build.js";
+import {parseSiteFacts,HTTP_API_PROFILE,API_CASES_SCHEMA,SERVER_FILE,SERVER_PLACEHOLDER,apiSpecFiles,apiSpecPrompt,parseApiCases,serverPrompt,MAX_SPEC_CASES,MIN_SPEC_CASES,hasComputedSteps,parseSiteSteps,siteSecondOpinionPrompt,siteStepConflicts,SPEC_TEST_FILE,testCounts,NODE_TOOL_PROFILE,PROGRAM_FILE,PROGRAM_PLACEHOLDER,RUNTIME_FAILURE,SITE_FILE,SITE_PLACEHOLDER,STATIC_SITE_PROFILE,buildPlan,buildRuntimePatchPrompt,buildSitePatchPrompt,extractHtml,extractProgram,isBuildProfile,nodeSpecFiles,nodeSpecPrompt,observeSite,programPrompt,readSiteSteps,siteSpecFiles,sitePrompt,siteSpecPrompt,vacuousTests,type BuildProfile} from "./project-build.js";
 import {NODE_EDITABLE,NODE_REPAIR_PROFILE,buildNodeRepairPrompt,similarUnchanged,siblingPrompt,isTestFile,needsDependencies,nodeRepairSetback,observeTestRun,type NodeTestObservation} from "./node-repair.js";
 import {StallError,describeDuration,stallLimits,withStallLimit,type StallKind,type StallLimits} from "./stall-guard.js";
 import {detectProject,placeholderTest,type ProjectInfo} from "./project-runner.js";
@@ -753,7 +753,7 @@ export class Supervisor{
       prepare:(proposal:unknown)=>prepareRepair(dir,proposal,{editable:/^index\.html$/i}),
       setback:(before:any,after:any)=>repairSetback(before,after)
     };
-    if(job.acceptanceProfile===NODE_REPAIR_PROFILE||job.acceptanceProfile===NODE_TOOL_PROFILE)return{
+    if(job.acceptanceProfile===NODE_REPAIR_PROFILE||job.acceptanceProfile===NODE_TOOL_PROFILE||job.acceptanceProfile===HTTP_API_PROFILE)return{
       observe:()=>this.observeNodeTests(job),
       prompt:(before:any,previous:string)=>buildNodeRepairPrompt(dir,job.goal,before,previous),
       prepare:(proposal:unknown)=>prepareRepair(dir,proposal,{editable:NODE_EDITABLE,forbidden:file=>isTestFile(file)?`Tests must not be changed to make them pass: ${file}`:undefined}),
@@ -877,16 +877,26 @@ export class Supervisor{
     if(m.buildStage==="review"){await this.reviewAttempt(job,m,routing);return;}
     let files:Array<{path:string;content:string}>;
     try{
-      if(m.buildStage==="spec"){
+      if(m.buildStage==="spec"&&profile===HTTP_API_PROFILE){
+        const candidate=await generate(apiSpecPrompt(job.goal,previous),routing,API_CASES_SCHEMA);
+        files=apiSpecFiles(job.goal,parseApiCases(extractJson(candidate.content)));
+        this.log(job,`HTTP acceptance calls written by ${candidate.modelId}`);
+      }else if(m.buildStage!=="spec"&&profile===HTTP_API_PROFILE){
+        const existing=fs.readFileSync(path.join(dir,SERVER_FILE),"utf8");
+        if(existing!==SERVER_PLACEHOLDER&&(m.attempts-1)%3!==0&&!/Patch rejected/.test(m.notes??"")){await this.repairAttempt(job,m,routing);return;}
+        const candidate=await generate(serverPrompt(this.briefed(job,job.goal,m),dir,previous),routing);
+        files=[{path:SERVER_FILE,content:extractProgram(candidate.content)}];
+        this.log(job,`${SERVER_FILE} written by ${candidate.modelId}`);
+      }else if(m.buildStage==="spec"){
         const candidate=await generate(site?siteSpecPrompt(job.goal,previous):nodeSpecPrompt(job.goal,previous),routing,site?undefined:CASES_SCHEMA);
         // Written checks can be wrong too. A separate call, which does not see the expected results, has to reach the same ones.
         if(site){
-          const steps=parseSiteSteps(extractJson(candidate.content));
+          const written=extractJson(candidate.content),steps=parseSiteSteps(written),facts=parseSiteFacts(written);
           if(hasComputedSteps(steps)){
-            const conflicts=siteStepConflicts(steps,extractJson((await generate(siteSecondOpinionPrompt(job.goal,steps),routing,RESULTS_SCHEMA)).content));
+            const conflicts=siteStepConflicts(steps,extractJson((await generate(siteSecondOpinionPrompt(job.goal,steps,facts),routing,RESULTS_SCHEMA)).content));
             if(conflicts.length)throw new Error("Steps refused: "+conflicts.join(" "));
           }
-          files=siteSpecFiles(steps);
+          files=siteSpecFiles(steps,facts);
         }else{
           const cases=parseReviewCases(extractJson(candidate.content),MAX_SPEC_CASES);
           const opinion=async()=>agreedCases(cases,extractJson((await generate(secondOpinionPrompt(job.goal,cases),routing,ANSWERS_SCHEMA)).content));
@@ -1329,7 +1339,7 @@ export class Supervisor{
     if(isBuildProfile(job.acceptanceProfile)){
       if(purpose==="baseline")return[];
       const writingChecks=purpose==="milestone"&&job.milestones[job.current]?.buildStage==="spec";
-      if(job.acceptanceProfile===NODE_TOOL_PROFILE){
+      if(job.acceptanceProfile===NODE_TOOL_PROFILE||job.acceptanceProfile===HTTP_API_PROFILE){
         const observed=await this.observeNodeTests(job);
         if(observed==="waiting")return undefined;
         if(!writingChecks)return[{name:"test",ok:observed.ok,summary:observed.summary}];

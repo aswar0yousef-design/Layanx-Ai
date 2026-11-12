@@ -12,8 +12,9 @@ import {observeStaticProject,serveStatic,type StaticObservation} from "./repair-
  */
 export const NODE_TOOL_PROFILE="node-tool-v1";
 export const STATIC_SITE_PROFILE="static-site-v1";
-export type BuildProfile=typeof NODE_TOOL_PROFILE|typeof STATIC_SITE_PROFILE;
-export const isBuildProfile=(profile:unknown):profile is BuildProfile=>profile===NODE_TOOL_PROFILE||profile===STATIC_SITE_PROFILE;
+export const HTTP_API_PROFILE="http-api-v1";
+export type BuildProfile=typeof NODE_TOOL_PROFILE|typeof STATIC_SITE_PROFILE|typeof HTTP_API_PROFILE;
+export const isBuildProfile=(profile:unknown):profile is BuildProfile=>profile===NODE_TOOL_PROFILE||profile===STATIC_SITE_PROFILE||profile===HTTP_API_PROFILE;
 
 export const PROGRAM_FILE="src/index.mjs",SPEC_TEST_FILE="tests/spec.test.mjs",HELPER_FILE="tests/helpers.mjs";
 export const SITE_FILE="index.html",SITE_SPEC_FILE="acceptance/steps.json";
@@ -50,6 +51,11 @@ const REVIEW_STAGE=(goal:string)=>({title:"Independent review by another model",
 export function buildPlan(profile:BuildProfile,goal:string,dir:string){
   const site=profile===STATIC_SITE_PROFILE;
   const empty={install:false,test:false,build:false,typecheck:false,lint:false,security:false,browser:null};
+  if(profile===HTTP_API_PROFILE)return{
+    acceptance:["Every HTTP call written from the request gets the expected status and body from the running server","The calls fail against an empty server, so they check something real"],
+    milestones:[{title:"Write the HTTP acceptance calls from the request",goal,kind:"test",stage:"spec"},{title:"Build the server and repair it until the calls pass",goal,kind:"code",stage:"code"}],
+    checks:empty
+  };
   if(!site&&hasBuiltProgram(dir))return{acceptance:["The locked tests pass","Objections two models agree on are fixed"],milestones:[REVIEW_STAGE(goal)],checks:empty};
   return{
     acceptance:site?["Every step written from the request passes in a real browser","The page loads without errors"]:["Every test written from the request passes","The tests fail against an empty program, so they check something real"],
@@ -130,8 +136,9 @@ export function siteSpecPrompt(goal:string,previous?:string):string{
   return[
     "Write the acceptance steps for a single web page BEFORE it exists. Return ONLY JSON:",
     '{"steps":[{"action":"fill","selector":"#amount","value":"200"},{"action":"click","selector":"#calculate"},{"action":"expectText","text":"230"}]}',
-    "Actions: fill (selector, value), click (selector), press (key), expectText (text that must be visible), expectValue (selector, value), expectCount (selector, value), reload (load the page again, for anything that must be saved).",
+    "Actions: fill (selector, value), click (selector), press (key), expectText (text that must be visible), expectValue (selector, value: the value of an input), expectCount (selector, value: how many elements the selector matches, so never an #id with more than 1; for a number shown on the page, such as a cart count or total, use expectText), reload (load the page again, for anything that must be saved).",
     "Every selector is a simple #id that you choose in English; the page will be built to match them. If the request names a button's label or a phrase, also expect that exact text.",
+    'When the results depend on data the request leaves open (for example the names and prices of products), choose that data yourself and state it in "facts" as one plain sentence, for example {"facts":"Products: Oud 120 SAR (#add1), Musk 80 SAR (#add2), Amber 95 SAR (#add3).","steps":[...]}. The page will be built to show exactly these facts, and another reader will use them to check your expected results.',
     `Use ${MIN_STEPS} to ${MAX_STEPS} steps that exercise what the request asks for, end to end, and at least one expectText. Choose inputs where different readings give different results (for a percentage of an amount, do not use 100). Work out expected values carefully; a page that only displays text needs only expectText steps.`,
     "The request from the owner:\n"+goal,
     previous?"Your previous steps were refused:\n"+previous.slice(0,1500):""
@@ -147,14 +154,26 @@ export function parseSiteSteps(raw:unknown):SiteStep[]{
     if(!["fill","click","press","expectText","expectValue","expectCount","reload"].includes(item?.action)){problems.push("Unknown action: "+String(item?.action));continue;}
     if(["fill","click","expectValue","expectCount"].includes(item.action)&&!/^#[A-Za-z][\w-]*$/.test(String(item.selector??"")))problems.push(`${item.action} needs a simple #id selector.`);
     if(item.action==="expectText"&&!String(item.text??"").trim())problems.push("expectText needs text.");
+    // An id selects one element, so "expectCount #cartCount 2" can never pass: the model meant the number shown there
+    // (seen live 2026-11-12, a store page failed this impossible check four times). It is read as that text.
+    if(item.action==="expectCount"&&/^#[A-Za-z][\w-]*$/.test(String(item.selector??""))&&Number(item.value)>1){clean.push({action:"expectText",text:String(item.value)});continue;}
     clean.push({action:item.action,...(item.selector?{selector:String(item.selector)}:{}),...(item.value!==undefined?{value:String(item.value)}:{}),...(item.text!==undefined?{text:String(item.text)}:{}),...(item.key?{key:String(item.key)}:{})});
   }
   if(!clean.some(step=>step.action==="expectText"||step.action==="expectValue"||step.action==="expectCount"))problems.push("No step checks a result.");
   if(problems.length)throw new Error("Steps refused: "+problems.join(" "));
   return clean;
 }
-export function siteSpecFiles(steps:SiteStep[]):Array<{path:string;content:string}>{
-  return[{path:SITE_SPEC_FILE,content:JSON.stringify({steps},null,2)+"\n"},{path:SITE_FILE,content:SITE_PLACEHOLDER}];
+/**
+ * Data the step writer chose because the request left it open (seen live 2026-11-12: a store page with prices nobody named;
+ * the blind second reading could not know them and refused every correct total, so no store page could ever be built).
+ */
+export function parseSiteFacts(raw:unknown):string{
+  const facts=(raw as {facts?:unknown}|null)?.facts;
+  return typeof facts==="string"?facts.replace(/\s+/g," ").trim().slice(0,800):"";
+}
+export const readSiteFacts=(dir:string):string=>{try{return parseSiteFacts(JSON.parse(fs.readFileSync(path.join(dir,SITE_SPEC_FILE),"utf8")));}catch{return"";}};
+export function siteSpecFiles(steps:SiteStep[],facts=""):Array<{path:string;content:string}>{
+  return[{path:SITE_SPEC_FILE,content:JSON.stringify({...(facts?{facts}:{}),steps},null,2)+"\n"},{path:SITE_FILE,content:SITE_PLACEHOLDER}];
 }
 /**
  * Every visible result is worked out again blind. Numbers are where a model miscalculates; text is where it forgets the state:
@@ -168,13 +187,14 @@ const computedSteps=(steps:SiteStep[])=>steps.flatMap((step,index)=>{
   return /\d/.test(text)||(step.action==="expectText"&&interacted(steps,index))?[index]:[];
 });
 export const hasComputedSteps=(steps:SiteStep[])=>computedSteps(steps).length>0;
-export function siteSecondOpinionPrompt(goal:string,steps:SiteStep[]):string{
+export function siteSecondOpinionPrompt(goal:string,steps:SiteStep[],facts=""):string{
   const hidden=steps.map((step,index)=>computedSteps(steps).includes(index)?{action:step.action,selector:step.selector,result:"?"}:step);
   return[
     "A web page must follow this request. Someone uses it as described below. Work out each result marked \"?\" yourself. Return ONLY JSON:",
     '{"results":["the number or exact text that must appear for the first ?","for the second ?"]}',
     "Steps run in order on the same page, and fields keep what was typed into them until changed. For text, give the exact words the page shows, as the request states them.",
     "The request:\n"+goal,
+    facts?"Facts the page shows (chosen where the request left them open):\n"+facts:"",
     "What the person does:\n"+JSON.stringify(hidden)
   ].join("\n\n");
 }
@@ -196,6 +216,7 @@ export function sitePrompt(goal:string,dir:string,previous?:string):string{
     "Write the complete single-file web page. Return only the HTML document from <!doctype html> to </html>, no explanation.",
     "The request from the owner:\n"+goal,
     "Inline CSS and JavaScript, no external files or network requests. Attach handlers with addEventListener; never name a function the same as an element id. Clean design that fits a phone without sideways scrolling, with a viewport meta tag. Match the language of the request; for Arabic use dir=rtl.",
+    readSiteFacts(dir)?"The page must show exactly these facts (the steps' expected results depend on them): "+readSiteFacts(dir):"",
     "These locked acceptance steps run in a real browser: every #id they use must exist, and they must pass exactly as written:\n"+fs.readFileSync(path.join(dir,SITE_SPEC_FILE),"utf8"),
     previous?"The previous version failed:\n"+previous.slice(0,1800):""
   ].filter(Boolean).join("\n\n");
@@ -241,3 +262,96 @@ export function buildRuntimePatchPrompt(file:string,source:string,failure:string
   ].join("\n\n");
 }
 export const RUNTIME_FAILURE=/HTTP behavior failed|ReferenceError|TypeError|is not defined|Cannot read propert|is not a function/;
+
+// ---------------------------------------------------------------- an HTTP API
+/**
+ * Seen live 2026-11-12: "a Node server for shipments" took the general path; the model wrote require() in an .mjs file, no
+ * check ever started the server, and the job failed after 15 minutes. Here the calls are written from the request first and
+ * locked, a test starts the real server on a free port and makes them in order, and the server is built against them.
+ */
+export const SERVER_FILE="src/server.mjs",API_TEST_FILE="tests/api.test.mjs";
+export const SERVER_PLACEHOLDER="// Placeholder: the acceptance calls must fail against this.\nprocess.exit(1);\n";
+export interface ApiCase{method:"GET"|"POST"|"PUT"|"PATCH"|"DELETE";path:string;body?:unknown;status:number;expect?:unknown;why?:string}
+export const API_CASES_SCHEMA={type:"object",properties:{cases:{type:"array",items:{type:"object",properties:{method:{type:"string"},path:{type:"string"},body:{},status:{type:"integer"},expect:{},why:{type:"string"}},required:["method","path","status"]}}},required:["cases"]};
+export function apiSpecPrompt(goal:string,previous?:string):string{
+  return[
+    "Write the acceptance calls for an HTTP JSON API BEFORE it exists. The calls run in order against one fresh server, so earlier calls create the data later ones read. Return ONLY JSON:",
+    '{"cases":[{"method":"POST","path":"/items","body":{"name":"a"},"status":201,"expect":{"name":"a"},"why":"creates an item"},{"method":"GET","path":"/items","status":200,"expect":[{"name":"a"}],"why":"lists it"},{"method":"PATCH","path":"/items/:id","body":{"name":"b"},"status":200,"expect":{"name":"b"},"why":"updates the item just created"}]}',
+    `Write ${MIN_SPEC_CASES+1} to 10 calls that follow the request exactly, including its error cases (for example an unknown id). ":id" in a path means the id of the most recent response that had one. "expect" is checked as a subset of the JSON response: list only fields the request fixes, never generated ids or dates. Use the status codes the request names; when it names none, 200 for reads and updates and 201 for creation.`,
+    "The request from the owner:\n"+goal,
+    previous?"Your previous calls were refused:\n"+previous.slice(0,1500):""
+  ].filter(Boolean).join("\n\n");
+}
+const METHODS=new Set(["GET","POST","PUT","PATCH","DELETE"]);
+export function parseApiCases(raw:unknown):ApiCase[]{
+  const list=(raw as {cases?:unknown})?.cases;
+  if(!Array.isArray(list))throw new Error("Calls refused: no cases array.");
+  const cases=list.slice(0,10).map((c:any)=>({method:String(c?.method??"").toUpperCase(),path:String(c?.path??""),body:c?.body,status:Number(c?.status),expect:c?.expect,why:typeof c?.why==="string"?c.why.slice(0,120):undefined}))
+    .filter(c=>METHODS.has(c.method)&&c.path.startsWith("/")&&c.path.length<200&&Number.isInteger(c.status)&&c.status>=100&&c.status<600) as ApiCase[];
+  if(cases.length<MIN_SPEC_CASES)throw new Error(`Calls refused: ${cases.length} usable calls; ${MIN_SPEC_CASES} are needed, each with method, a path starting with / and a status.`);
+  if(!cases.some(c=>c.method!=="GET")||!cases.some(c=>c.status<300&&c.expect!==undefined))throw new Error("Calls refused: they must change data and check at least one response body.");
+  // A successful write that sends nothing cannot return the fields it expects (seen live: POST with no body expecting tracking).
+  const empty=cases.map((c,i)=>({c,i})).filter(({c})=>["POST","PUT","PATCH"].includes(c.method)&&c.status<300&&(c.body===undefined||c.body===null));
+  if(empty.length)throw new Error("Calls refused: "+empty.map(({c,i})=>`call ${i+1} (${c.method} ${c.path})`).join(", ")+" sends no JSON body; put the data it creates or changes in \"body\".");
+  return cases;
+}
+const API_TEST_TEMPLATE=String.raw`import test from 'node:test';
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import net from 'node:net';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+// Written from the owner's request before the server existed, and locked: the server must satisfy these, not the reverse.
+const server=path.join(path.dirname(fileURLToPath(import.meta.url)),'..','src','server.mjs');
+const cases=__CASES__;
+function subset(actual,expected,where){
+  if(Array.isArray(expected)){assert.ok(Array.isArray(actual),where+' should be an array, got '+JSON.stringify(actual)?.slice(0,200));assert.equal(actual.length,expected.length,where+' length');expected.forEach((e,i)=>subset(actual[i],e,where+'['+i+']'));return;}
+  if(expected&&typeof expected==='object'){assert.ok(actual&&typeof actual==='object',where+' should be an object, got '+JSON.stringify(actual)?.slice(0,200));for(const k of Object.keys(expected))subset(actual[k],expected[k],where+'.'+k);return;}
+  assert.deepEqual(actual,expected,where);
+}
+// A port the system says is free (a random one collided once and failed a working server, 2026-11-12).
+const freePort=()=>new Promise((resolve,reject)=>{const s=net.createServer();s.once('error',reject);s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p));});});
+test('the API answers the calls written from the request', async t=>{
+  const port=await freePort();
+  const child=spawn(process.execPath,[server],{env:{...process.env,PORT:String(port)},stdio:['ignore','pipe','pipe'],windowsHide:true});
+  let errors='';child.stderr.on('data',d=>{errors+=d;});
+  try{
+    for(let i=0;i<40;i++){try{await fetch('http://127.0.0.1:'+port+'/',{signal:AbortSignal.timeout(300)});break;}catch{await new Promise(r=>setTimeout(r,150));}}
+    let lastId;
+    for(const [i,c] of cases.entries()){
+      await t.test((i+1)+'. '+c.method+' '+c.path+' -> '+c.status+(c.why?' ('+c.why+')':''),async()=>{
+        const url='http://127.0.0.1:'+port+c.path.replace(':id',encodeURIComponent(String(lastId??'none')));
+        let res;
+        try{res=await fetch(url,{method:c.method,headers:{'content-type':'application/json'},...(c.body!==undefined?{body:JSON.stringify(c.body)}:{}),signal:AbortSignal.timeout(4000)});}
+        catch(error){assert.fail('the server did not answer: '+error.message+(errors?' | server error: '+errors.slice(-400):''));}
+        const text=await res.text();let json;try{json=JSON.parse(text);}catch{}
+        // Only a single object names "the most recent" id; a list response must not (it failed a correct server, 2026-11-12).
+        const found=json&&!Array.isArray(json)&&typeof json==='object'?(json.id!==undefined?json.id:Object.values(json).find(v=>v&&typeof v==='object'&&!Array.isArray(v)&&v.id!==undefined)?.id):undefined;
+        if(found!==undefined)lastId=found;
+        assert.equal(res.status,c.status,'status (body: '+text.slice(0,200)+')');
+        if(c.expect!==undefined)subset(json,c.expect,'response');
+      });
+    }
+  }finally{child.kill();}
+});
+`;
+export function apiTestSource(cases:ApiCase[]):string{return API_TEST_TEMPLATE.replace("__CASES__",()=>JSON.stringify(cases,null,1));}
+export function apiSpecFiles(goal:string,cases:ApiCase[]):Array<{path:string;content:string}>{
+  const slug=(goal.toLowerCase().match(/[a-z0-9]+/g)??[]).slice(0,3).join("-")||"api";
+  return[
+    {path:"package.json",content:JSON.stringify({name:slug,version:"1.0.0",private:true,type:"module",scripts:{test:"node --test",start:"node "+SERVER_FILE}},null,2)+"\n"},
+    {path:API_TEST_FILE,content:apiTestSource(cases)},
+    {path:SERVER_FILE,content:SERVER_PLACEHOLDER}
+  ];
+}
+export function serverPrompt(goal:string,dir:string,previous?:string):string{
+  const current=(()=>{try{const t=fs.readFileSync(path.join(dir,SERVER_FILE),"utf8");return t===SERVER_PLACEHOLDER?"":t;}catch{return"";}})();
+  return[
+    "Write the complete HTTP JSON server. Return only the JavaScript file, no explanation.",
+    "The request from the owner:\n"+goal,
+    "It is the ES module src/server.mjs: use import (never require), only Node built-ins (node:http, node:url), listen on Number(process.env.PORT)||3000, read JSON request bodies, answer JSON with a content-type header, keep data in memory unless the request says otherwise, return the same whole object (with its id) wherever a resource appears, lists included, and answer 404 JSON for unknown routes or ids.",
+    "These locked calls run in order against your server and must pass; do not special-case their values:\n"+fs.readFileSync(path.join(dir,API_TEST_FILE),"utf8").slice(0,6000),
+    previous?"The current version failed. For each failing call, compare the status and body it got with what was expected, and correct every cause:\n"+previous.slice(0,2400):"",
+    current?"The current version, to correct and return whole:\n"+current.slice(0,6000):""
+  ].filter(Boolean).join("\n\n");
+}
