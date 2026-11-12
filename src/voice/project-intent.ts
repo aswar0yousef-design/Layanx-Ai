@@ -20,15 +20,18 @@ const TASK_APP=/(?:قا[ئي]مه|تطبيق|موقع)\s+(?:ال)?مهام|\b(?:
 /** Kept to what the test-first paths can prove. Anything with a backend or another platform takes the general path. */
 // A store page with products and a cart is still a page (measured 2026-11-12: it worked, but the general path failed it);
 // a server or API has its own test-first path. Only these still need the general path.
-const OTHER_PLATFORM=/قاعده بيانات|تسجيل دخول|حسابات|دفع|اندرويد|ايفون|جوال|بايثون|\b(?:database|login|payment|android|ios|mobile app|flutter|react|next\.?js|python)\b/iu;
+const OTHER_PLATFORM=/قاعده بيانات|تسجيل دخول|حسابات|دفع|اندرويد|ايفون|جوال|\b(?:database|login|payment|android|ios|mobile app|flutter|react|next\.?js)\b/iu;
+// A Python command-line script has its own checked path (it was reported failed 4 times while working, 2026-11-12).
+const PYTHON_KIND=/بايثون|\bpython\b|\.py\b/iu;
 const API_KIND=/خادم|سيرفر|واجهه برمجيه|\b(?:server|backend|api|rest|endpoint)s?\b/iu;
 const SITE_KIND=/موقع|صفحه|حاسبه|لعبه|\b(?:website|web ?page|landing page|site|calculator|game|web app)\b/iu;
 const TOOL_KIND=/برنامج|اداه|سكربت|سطر الاوامر|\b(?:program|tool|script|command[- ]line|cli)\b/iu;
-export type NewProjectKind="task-app"|"static-site"|"node-tool"|"http-api"|"general";
+export type NewProjectKind="task-app"|"static-site"|"node-tool"|"http-api"|"python-tool"|"general";
 export function newProjectKind(text:string):NewProjectKind{
   const value=command(text);
   if(TASK_APP.test(value))return"task-app";
   if(OTHER_PLATFORM.test(value))return"general";
+  if(PYTHON_KIND.test(value))return API_KIND.test(value)||SITE_KIND.test(value)?"general":"python-tool";
   if(API_KIND.test(value))return"http-api";
   return SITE_KIND.test(value)?"static-site":TOOL_KIND.test(value)?"node-tool":"general";
 }

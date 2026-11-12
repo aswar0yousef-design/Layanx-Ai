@@ -13,8 +13,8 @@ import {observeStaticProject,serveStatic,type StaticObservation} from "./repair-
 export const NODE_TOOL_PROFILE="node-tool-v1";
 export const STATIC_SITE_PROFILE="static-site-v1";
 export const HTTP_API_PROFILE="http-api-v1";
-export type BuildProfile=typeof NODE_TOOL_PROFILE|typeof STATIC_SITE_PROFILE|typeof HTTP_API_PROFILE;
-export const isBuildProfile=(profile:unknown):profile is BuildProfile=>profile===NODE_TOOL_PROFILE||profile===STATIC_SITE_PROFILE||profile===HTTP_API_PROFILE;
+export type BuildProfile=typeof NODE_TOOL_PROFILE|typeof STATIC_SITE_PROFILE|typeof HTTP_API_PROFILE|typeof PYTHON_TOOL_PROFILE;
+export const isBuildProfile=(profile:unknown):profile is BuildProfile=>profile===NODE_TOOL_PROFILE||profile===STATIC_SITE_PROFILE||profile===HTTP_API_PROFILE||profile===PYTHON_TOOL_PROFILE;
 
 export const PROGRAM_FILE="src/index.mjs",SPEC_TEST_FILE="tests/spec.test.mjs",HELPER_FILE="tests/helpers.mjs";
 export const SITE_FILE="index.html",SITE_SPEC_FILE="acceptance/steps.json";
@@ -24,13 +24,18 @@ const MIN_TESTS=MIN_SPEC_CASES,MIN_OUTPUT_CASES=2,MAX_STEPS=16,MIN_STEPS=2,SITE_
 export const PROGRAM_PLACEHOLDER="// Placeholder: the acceptance tests must fail against this.\nprocess.exit(1);\n";
 export const SITE_PLACEHOLDER="<!doctype html><html><head><meta charset=utf-8><title>placeholder</title></head><body></body></html>\n";
 const CLI_HELPER=`import {spawn} from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const program=path.join(path.dirname(fileURLToPath(import.meta.url)),'..','src','index.mjs');
 /** Runs the program the way a person would: arguments, standard input, exit code and output. */
-export function cli(args=[],stdin=''){
+export function cli(args=[],stdin='',files){
+  // Input files the case names are written to a fresh folder, and the program runs there.
+  let cwd;
+  if(files){cwd=fs.mkdtempSync(path.join(os.tmpdir(),'lx-case-'));for(const [name,content] of Object.entries(files))fs.writeFileSync(path.join(cwd,name),content);}
   return new Promise((resolve,reject)=>{
-    const child=spawn(process.execPath,[program,...args.map(String)],{stdio:['pipe','pipe','pipe'],windowsHide:true});
+    const child=spawn(process.execPath,[program,...args.map(String)],{stdio:['pipe','pipe','pipe'],windowsHide:true,...(cwd?{cwd}:{})});
     let stdout='',stderr='';
     child.stdout.setEncoding('utf8').on('data',chunk=>{stdout+=chunk;});
     child.stderr.setEncoding('utf8').on('data',chunk=>{stderr+=chunk;});
@@ -51,6 +56,11 @@ const REVIEW_STAGE=(goal:string)=>({title:"Independent review by another model",
 export function buildPlan(profile:BuildProfile,goal:string,dir:string){
   const site=profile===STATIC_SITE_PROFILE;
   const empty={install:false,test:false,build:false,typecheck:false,lint:false,security:false,browser:null};
+  if(profile===PYTHON_TOOL_PROFILE)return{
+    acceptance:["Every test written from the request passes against the Python script","The tests fail against an empty script, so they check something real"],
+    milestones:[{title:"Write the acceptance checks from the request",goal,kind:"test",stage:"spec"},{title:"Write the Python script and correct it until the tests pass",goal,kind:"code",stage:"code"}],
+    checks:empty
+  };
   if(profile===HTTP_API_PROFILE)return{
     acceptance:["Every HTTP call written from the request gets the expected status and body from the running server","The calls fail against an empty server, so they check something real"],
     milestones:[{title:"Write the HTTP acceptance calls from the request",goal,kind:"test",stage:"spec"},{title:"Build the server and repair it until the calls pass",goal,kind:"code",stage:"code"}],
@@ -84,10 +94,11 @@ export function extractHtml(text:string):string{
 }
 
 // ---------------------------------------------------------------- a command-line program
-export function nodeSpecPrompt(goal:string,previous?:string):string{
+export function nodeSpecPrompt(goal:string,previous?:string,language="Node.js"):string{
   return[
-    "Write the acceptance cases for a command-line Node.js program BEFORE it exists. Return ONLY JSON:",
+    `Write the acceptance cases for a command-line ${language} program BEFORE it exists. Return ONLY JSON:`,
     '{"cases":[{"args":["2","3"],"stdin":"","code":0,"stdout":"5","why":"adds two numbers"}]}',
+    'When the program reads files, give a case "files": {"name.csv":"exact file content"}; they are created in the folder the program runs in, so pass just the file name in args.',
     `Write ${MIN_TESTS+1} to ${MAX_SPEC_CASES} cases that follow the request exactly and include edge cases it mentions. args and stdin are what the program receives, code is the exit code, stdout is its exact output ("" when it must fail). Keep inputs short so the expected output can be worked out exactly: count characters one by one.`,
     "The request from the owner:\n"+goal,
     previous?"Your previous cases were refused:\n"+previous.slice(0,1500):""
@@ -352,6 +363,67 @@ export function serverPrompt(goal:string,dir:string,previous?:string):string{
     "It is the ES module src/server.mjs: use import (never require), only Node built-ins (node:http, node:url), listen on Number(process.env.PORT)||3000, read JSON request bodies, answer JSON with a content-type header, keep data in memory unless the request says otherwise, return the same whole object (with its id) wherever a resource appears, lists included, and answer 404 JSON for unknown routes or ids.",
     "These locked calls run in order against your server and must pass; do not special-case their values:\n"+fs.readFileSync(path.join(dir,API_TEST_FILE),"utf8").slice(0,6000),
     previous?"The current version failed. For each failing call, compare the status and body it got with what was expected, and correct every cause:\n"+previous.slice(0,2400):"",
+    current?"The current version, to correct and return whole:\n"+current.slice(0,6000):""
+  ].filter(Boolean).join("\n\n");
+}
+
+// ---------------------------------------------------------------- a Python command-line script
+/**
+ * Seen live 2026-11-12: "a Python script that sums a CSV column" took the general path, worked 4 times out of 4 and was
+ * reported failed every time, because nothing there could prove a Python program. The command-line cases are written and
+ * confirmed exactly as for Node, and the locked tests run `python <file>`. Small scripts are rewritten whole on each
+ * attempt with the failures, since the patch repair reads JavaScript only.
+ */
+export const PYTHON_TOOL_PROFILE="python-tool-v1";
+export const PYTHON_PLACEHOLDER="# Placeholder: the acceptance tests must fail against this.\nimport sys\nsys.exit(1)\n";
+/** The file the owner named ("sum_column.py"), or main.py. */
+export function pythonFileFor(goal:string):string{
+  const named=/([A-Za-z_][\w-]{0,60}\.py)\b/.exec(goal)?.[1];
+  return named??"main.py";
+}
+const PY_HELPER=(file:string)=>`import {spawn} from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+const program=path.join(path.dirname(fileURLToPath(import.meta.url)),'..',${JSON.stringify(file)});
+const python=process.env.LAYANX_PYTHON||(process.platform==='win32'?'python':'python3');
+/** Runs the script the way a person would: arguments, standard input, exit code and output. */
+export function cli(args=[],stdin='',files){
+  // Input files the case names are written to a fresh folder, and the program runs there.
+  let cwd;
+  if(files){cwd=fs.mkdtempSync(path.join(os.tmpdir(),'lx-case-'));for(const [name,content] of Object.entries(files))fs.writeFileSync(path.join(cwd,name),content);}
+  return new Promise((resolve,reject)=>{
+    const child=spawn(python,[program,...args.map(String)],{stdio:['pipe','pipe','pipe'],windowsHide:true,...(cwd?{cwd}:{}),env:{...process.env,PYTHONIOENCODING:'utf-8',PYTHONUTF8:'1'}});
+    let stdout='',stderr='';
+    child.stdout.setEncoding('utf8').on('data',chunk=>{stdout+=chunk;});
+    child.stderr.setEncoding('utf8').on('data',chunk=>{stderr+=chunk;});
+    const timer=setTimeout(()=>child.kill(),10000);
+    child.on('error',reject);
+    child.on('close',code=>{clearTimeout(timer);resolve({code,stdout,stderr});});
+    child.stdin.on('error',()=>{});
+    child.stdin.end(stdin);
+  });
+}
+`;
+export function pythonSpecFiles(goal:string,tests:string):Array<{path:string;content:string}>{
+  const file=pythonFileFor(goal);
+  return[
+    {path:"package.json",content:JSON.stringify({name:"python-tool",version:"1.0.0",private:true,type:"module",scripts:{test:"node --test"}},null,2)+"\n"},
+    {path:HELPER_FILE,content:PY_HELPER(file)},
+    {path:SPEC_TEST_FILE,content:tests},
+    {path:file,content:PYTHON_PLACEHOLDER}
+  ];
+}
+export function pythonProgramPrompt(goal:string,dir:string,previous?:string):string{
+  const file=pythonFileFor(goal);
+  const current=(()=>{try{const t=fs.readFileSync(path.join(dir,file),"utf8");return t===PYTHON_PLACEHOLDER?"":t;}catch{return"";}})();
+  return[
+    `Write the complete Python 3 script ${file}. Return only the Python file, no explanation.`,
+    "The request from the owner:\n"+goal,
+    `It runs as \`python ${file} <args>\`, uses only the standard library, reads standard input only when the request needs it, prints the result to stdout, and for bad input prints a message to stderr and exits with sys.exit(1) instead of raising. Open text files with encoding="utf-8".`,
+    "These locked tests run the script and must pass; do not special-case their values:\n"+fs.readFileSync(path.join(dir,SPEC_TEST_FILE),"utf8").slice(0,5000),
+    previous?"The current version failed. For each failing test, compare its input, actual and expected value, and correct every cause:\n"+previous.slice(0,2400):"",
     current?"The current version, to correct and return whole:\n"+current.slice(0,6000):""
   ].filter(Boolean).join("\n\n");
 }

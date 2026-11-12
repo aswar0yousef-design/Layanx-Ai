@@ -4,7 +4,7 @@
  * what each input should give. Only where they agree does the case become a locked test, and only a failing test sends the
  * work back. A reviewer's opinion alone never rejects anything, because small models are often confidently wrong.
  */
-export interface ReviewCase{args:string[];stdin:string;code:number;stdout:string;why:string}
+export interface ReviewCase{args:string[];stdin:string;code:number;stdout:string;why:string;files?:Record<string,string>}
 export const REVIEW_TEST_FILE="tests/review.test.mjs";
 const MAX_CASES=3;
 
@@ -21,11 +21,17 @@ export function reviewPrompt(goal:string,program:string,tests:string):string{
 /** Models often write \\n in JSON where they mean a line break. A locked test built on that can never be passed by a correct program. */
 const realLineBreaks=(text:string)=>text.includes("\n")||!/\\[nt]/.test(text)?text:text.replace(/\\r\\n|\\n/g,"\n").replace(/\\t/g,"\t");
 const expectedOutput=(text:string)=>{try{JSON.parse(text);return text;}catch{return realLineBreaks(text);}};
+/** Input files a case needs (a CSV it reads), created in a fresh folder the program runs in. Simple names, small contents. */
+export function caseFiles(raw:unknown):Record<string,string>|undefined{
+  if(!raw||typeof raw!=="object"||Array.isArray(raw))return undefined;
+  const entries=Object.entries(raw as Record<string,unknown>).filter(([name,content])=>/^[\w.-]{1,60}$/.test(name)&&!name.startsWith(".")&&typeof content==="string"&&content.length<=4000).slice(0,5);
+  return entries.length?Object.fromEntries(entries.map(([name,content])=>[name,realLineBreaks(content as string)])):undefined;
+}
 export function parseReviewCases(raw:unknown,limit=MAX_CASES):ReviewCase[]{
   const cases=Array.isArray(raw)?raw:(raw as {cases?:unknown}|null)?.cases;
   if(!Array.isArray(cases))throw new Error("Unusable output: invalid JSON, no cases array.");
   return cases.slice(0,limit).filter((item:any)=>item&&Array.isArray(item.args)&&typeof item.stdout==="string"&&Number.isInteger(item.code))
-    .map((item:any)=>({args:item.args.map(String),stdin:typeof item.stdin==="string"?realLineBreaks(item.stdin):"",code:item.code,stdout:expectedOutput(item.stdout),why:String(item.why??"").slice(0,300)}));
+    .map((item:any)=>{const files=caseFiles(item.files);return{args:item.args.map(String),stdin:typeof item.stdin==="string"?realLineBreaks(item.stdin):"",code:item.code,stdout:expectedOutput(item.stdout),why:String(item.why??"").slice(0,300),...(files?{files}:{})};});
 }
 export function secondOpinionPrompt(goal:string,cases:ReviewCase[]):string{
   return[
@@ -33,7 +39,7 @@ export function secondOpinionPrompt(goal:string,cases:ReviewCase[]):string{
     '{"answers":[{"code":0,"stdout":"exact correct output"}]}',
     'One answer per input, in order. code is the exit code; stdout is the exact output, or "" when the program must fail.',
     "The request:\n"+goal,
-    "Inputs:\n"+JSON.stringify(cases.map(item=>({args:item.args,stdin:item.stdin})))
+    "Inputs (files are created in the folder the program runs in):\n"+JSON.stringify(cases.map(item=>({args:item.args,stdin:item.stdin,...(item.files?{files:item.files}:{})})))
   ].join("\n\n");
 }
 const normal=(text:string)=>{const trimmed=text.trim();try{return JSON.stringify(JSON.parse(trimmed));}catch{return trimmed;}};
@@ -49,11 +55,11 @@ export function agreedCases(cases:ReviewCase[],raw:unknown):ReviewCase[]{
 }
 /** Confirmed cases are kept across attempts, so one bad round does not throw away what two models already agreed on. */
 export function mergeCases(kept:ReviewCase[],added:ReviewCase[],limit:number):ReviewCase[]{
-  const key=(item:ReviewCase)=>JSON.stringify([item.args,item.stdin]),seen=new Set<string>();
+  const key=(item:ReviewCase)=>JSON.stringify([item.args,item.stdin,item.files??null]),seen=new Set<string>();
   return[...kept,...added].filter(item=>!seen.has(key(item))&&Boolean(seen.add(key(item)))).slice(0,limit);
 }
 const inputLabel=(item:ReviewCase)=>`[args=${JSON.stringify(item.args)} stdin=${JSON.stringify(item.stdin).slice(0,120)}]`;
 export function reviewTestSource(cases:ReviewCase[]):string{
-  const body=cases.map((item,i)=>`test(${JSON.stringify(`review ${i+1}: ${(item.why||item.args.join(" ")).slice(0,90)} ${inputLabel(item)}`)},async()=>{\n  const r=await cli(${JSON.stringify(item.args)},${JSON.stringify(item.stdin)});\n  assert.equal(r.code,${item.code},"exit code; stderr: "+r.stderr.slice(0,600));\n${item.code===0?`  same(r.stdout.trim(),${JSON.stringify(item.stdout.trim())});\n`:""}});`).join("\n");
+  const body=cases.map((item,i)=>`test(${JSON.stringify(`review ${i+1}: ${(item.why||item.args.join(" ")).slice(0,90)} ${inputLabel(item)}`)},async()=>{\n  const r=await cli(${JSON.stringify(item.args)},${JSON.stringify(item.stdin)}${item.files?","+JSON.stringify(item.files):""});\n  assert.equal(r.code,${item.code},"exit code; stderr: "+r.stderr.slice(0,600));\n${item.code===0?`  same(r.stdout.trim(),${JSON.stringify(item.stdout.trim())});\n`:""}});`).join("\n");
   return`import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport {cli} from './helpers.mjs';\nconst same=(got,want)=>{let a,b;try{a=JSON.parse(got);b=JSON.parse(want);}catch{assert.equal(got,want);return;}assert.deepEqual(a,b);};\n${body}\n`;
 }

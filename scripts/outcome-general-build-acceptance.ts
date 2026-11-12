@@ -132,8 +132,8 @@ async function runOne(selected:Case){
   const started=Date.now();
   // Exactly what the chat does for a "general" request: no acceptance profile.
   const kind=newProjectKind(selected.goal);
-  const {HTTP_API_PROFILE,NODE_TOOL_PROFILE,STATIC_SITE_PROFILE}=await import("../src/autonomy/project-build.js");
-  const profile=kind==="static-site"?STATIC_SITE_PROFILE:kind==="node-tool"?NODE_TOOL_PROFILE:kind==="http-api"?HTTP_API_PROFILE:kind==="task-app"?"task-app-http-v1":undefined;
+  const {HTTP_API_PROFILE,NODE_TOOL_PROFILE,PYTHON_TOOL_PROFILE,STATIC_SITE_PROFILE}=await import("../src/autonomy/project-build.js");
+  const profile=kind==="static-site"?STATIC_SITE_PROFILE:kind==="node-tool"?NODE_TOOL_PROFILE:kind==="http-api"?HTTP_API_PROFILE:kind==="python-tool"?PYTHON_TOOL_PROFILE:kind==="task-app"?"task-app-http-v1":undefined;
   const job=supervisor.create(selected.goal,id,{maxMinutes:25,maxRounds:14,openWhenDone:false,...(profile?{acceptanceProfile:profile as never}:{})});
   let seen=0;
   while(["planning","running","verifying","queued"].includes(job.status)&&Date.now()-started<26*60_000){

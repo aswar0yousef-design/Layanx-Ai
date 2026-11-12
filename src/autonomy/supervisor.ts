@@ -4,7 +4,7 @@ import {createHash,randomUUID} from "node:crypto";
 import {AsyncLocalStorage} from "node:async_hooks";
 import {TWIN_INPUTS_SCHEMA,TWIN_PROGRAM_FILE,disagree,parseTwinInputs,parseTwinRun,twinBroken,twinCases,twinFailure,twinHarnessSource,twinInputsPrompt,twinPrompt,type TwinRun} from "./twin-check.js";
 import {REVIEW_TEST_FILE,agreedCases,mergeCases,parseReviewCases,reviewPrompt,reviewTestSource,secondOpinionPrompt,type ReviewCase} from "./peer-review.js";
-import {parseSiteFacts,HTTP_API_PROFILE,API_CASES_SCHEMA,SERVER_FILE,SERVER_PLACEHOLDER,apiSpecFiles,apiSpecPrompt,parseApiCases,serverPrompt,MAX_SPEC_CASES,MIN_SPEC_CASES,hasComputedSteps,parseSiteSteps,siteSecondOpinionPrompt,siteStepConflicts,SPEC_TEST_FILE,testCounts,NODE_TOOL_PROFILE,PROGRAM_FILE,PROGRAM_PLACEHOLDER,RUNTIME_FAILURE,SITE_FILE,SITE_PLACEHOLDER,STATIC_SITE_PROFILE,buildPlan,buildRuntimePatchPrompt,buildSitePatchPrompt,extractHtml,extractProgram,isBuildProfile,nodeSpecFiles,nodeSpecPrompt,observeSite,programPrompt,readSiteSteps,siteSpecFiles,sitePrompt,siteSpecPrompt,vacuousTests,type BuildProfile} from "./project-build.js";
+import {PYTHON_TOOL_PROFILE,PYTHON_PLACEHOLDER,pythonFileFor,pythonProgramPrompt,pythonSpecFiles,parseSiteFacts,HTTP_API_PROFILE,API_CASES_SCHEMA,SERVER_FILE,SERVER_PLACEHOLDER,apiSpecFiles,apiSpecPrompt,parseApiCases,serverPrompt,MAX_SPEC_CASES,MIN_SPEC_CASES,hasComputedSteps,parseSiteSteps,siteSecondOpinionPrompt,siteStepConflicts,SPEC_TEST_FILE,testCounts,NODE_TOOL_PROFILE,PROGRAM_FILE,PROGRAM_PLACEHOLDER,RUNTIME_FAILURE,SITE_FILE,SITE_PLACEHOLDER,STATIC_SITE_PROFILE,buildPlan,buildRuntimePatchPrompt,buildSitePatchPrompt,extractHtml,extractProgram,isBuildProfile,nodeSpecFiles,nodeSpecPrompt,observeSite,programPrompt,readSiteSteps,siteSpecFiles,sitePrompt,siteSpecPrompt,vacuousTests,type BuildProfile} from "./project-build.js";
 import {NODE_EDITABLE,NODE_REPAIR_PROFILE,buildNodeRepairPrompt,similarUnchanged,siblingPrompt,isTestFile,needsDependencies,nodeRepairSetback,observeTestRun,type NodeTestObservation} from "./node-repair.js";
 import {StallError,describeDuration,stallLimits,withStallLimit,type StallKind,type StallLimits} from "./stall-guard.js";
 import {detectProject,placeholderTest,type ProjectInfo} from "./project-runner.js";
@@ -169,7 +169,7 @@ const clip=(s:unknown,n=1500)=>{const t=typeof s==="string"?s:JSON.stringify(s??
 const MAX_REVIEWERS=3,MAX_REVIEW_CASES=5,TWIN_HARNESS_FILE="tests/zz-layanx-twin.test.mjs",slowReviewers=new Set<string>();
 // Test cases and blind answers are parsed as JSON; an unparseable reply cost whole build runs (csv, wordcount: "no answers array").
 // Ollama constrains decoding to these shapes, so the reply is always well-formed JSON; the content is still checked as before.
-const CASES_SCHEMA={type:"object",properties:{cases:{type:"array",items:{type:"object",properties:{args:{type:"array",items:{type:"string"}},stdin:{type:"string"},code:{type:"integer"},stdout:{type:"string"},why:{type:"string"}},required:["args","stdin","code","stdout","why"]}}},required:["cases"]};
+const CASES_SCHEMA={type:"object",properties:{cases:{type:"array",items:{type:"object",properties:{args:{type:"array",items:{type:"string"}},stdin:{type:"string"},code:{type:"integer"},stdout:{type:"string"},why:{type:"string"},files:{type:"object",additionalProperties:{type:"string"}}},required:["args","stdin","code","stdout","why"]}}},required:["cases"]};
 const RESULTS_SCHEMA={type:"object",properties:{results:{type:"array",items:{type:"string"}}},required:["results"]};
 const ANSWERS_SCHEMA={type:"object",properties:{answers:{type:"array",items:{type:"object",properties:{code:{type:"integer"},stdout:{type:"string"}},required:["code","stdout"]}}},required:["answers"]};
 export class Supervisor{
@@ -888,7 +888,8 @@ export class Supervisor{
         files=[{path:SERVER_FILE,content:extractProgram(candidate.content)}];
         this.log(job,`${SERVER_FILE} written by ${candidate.modelId}`);
       }else if(m.buildStage==="spec"){
-        const candidate=await generate(site?siteSpecPrompt(job.goal,previous):nodeSpecPrompt(job.goal,previous),routing,site?undefined:CASES_SCHEMA);
+        const python=profile===PYTHON_TOOL_PROFILE;
+        const candidate=await generate(site?siteSpecPrompt(job.goal,previous):nodeSpecPrompt(job.goal,previous,python?"Python":"Node.js"),routing,site?undefined:CASES_SCHEMA);
         // Written checks can be wrong too. A separate call, which does not see the expected results, has to reach the same ones.
         if(site){
           const written=extractJson(candidate.content),steps=parseSiteSteps(written),facts=parseSiteFacts(written);
@@ -905,9 +906,17 @@ export class Supervisor{
           m.confirmedCases=confirmed;
           if(confirmed.length<MIN_SPEC_CASES)throw new Error(`Tests refused: only ${confirmed.length} cases are confirmed so far; ${MIN_SPEC_CASES} are needed. Write different cases with short inputs whose results are easy to work out exactly. Already confirmed, do not repeat: ${JSON.stringify(confirmed.map(item=>({args:item.args,stdin:item.stdin}))).slice(0,500)}`);
           if(agreed.length<cases.length)this.log(job,`${cases.length-agreed.length} of ${cases.length} cases dropped: a separate reading gave a different result`,"warn");
-          files=nodeSpecFiles(job.goal,reviewTestSource(confirmed));
+          files=python?pythonSpecFiles(job.goal,reviewTestSource(confirmed)):nodeSpecFiles(job.goal,reviewTestSource(confirmed));
         }
         this.log(job,`Acceptance checks written by ${candidate.modelId} and confirmed separately`);
+      }else if(profile===PYTHON_TOOL_PROFILE){
+        // Rewritten whole with the failures each time: the patch repair reads JavaScript only.
+        const target=pythonFileFor(job.goal);
+        const candidate=await generate(pythonProgramPrompt(this.briefed(job,job.goal,m),dir,previous),routing);
+        const code=extractProgram(candidate.content);
+        if(code.trim()===PYTHON_PLACEHOLDER.trim())throw new Error("Unusable output: the placeholder was returned.");
+        files=[{path:target,content:code}];
+        this.log(job,`${target} written by ${candidate.modelId}`);
       }else{
         const target=site?SITE_FILE:PROGRAM_FILE,placeholder=site?SITE_PLACEHOLDER:PROGRAM_PLACEHOLDER;
         const existing=fs.readFileSync(path.join(dir,target),"utf8");
@@ -1339,7 +1348,7 @@ export class Supervisor{
     if(isBuildProfile(job.acceptanceProfile)){
       if(purpose==="baseline")return[];
       const writingChecks=purpose==="milestone"&&job.milestones[job.current]?.buildStage==="spec";
-      if(job.acceptanceProfile===NODE_TOOL_PROFILE||job.acceptanceProfile===HTTP_API_PROFILE){
+      if(job.acceptanceProfile===NODE_TOOL_PROFILE||job.acceptanceProfile===HTTP_API_PROFILE||job.acceptanceProfile===PYTHON_TOOL_PROFILE){
         const observed=await this.observeNodeTests(job);
         if(observed==="waiting")return undefined;
         if(!writingChecks)return[{name:"test",ok:observed.ok,summary:observed.summary}];

@@ -5,7 +5,7 @@ import {newProjectKind,type ProjectJobView,type ProjectStart,type ProjectWork} f
 import {projectDir} from "./project-dir.js";
 import {STATIC_REPAIR_PROFILE,isStaticWebProject} from "./repair-engine.js";
 import {NODE_REPAIR_PROFILE,hasRealTestScript} from "./node-repair.js";
-import {HTTP_API_PROFILE,NODE_TOOL_PROFILE,STATIC_SITE_PROFILE} from "./project-build.js";
+import {HTTP_API_PROFILE,NODE_TOOL_PROFILE,PYTHON_TOOL_PROFILE,STATIC_SITE_PROFILE} from "./project-build.js";
 import type {Supervisor,SupervisorJob} from "./supervisor.js";
 
 const ACTIVE=new Set(["queued","planning","running","verifying","waiting_approval"]);
@@ -39,7 +39,7 @@ export function chatProjects(supervisor:Pick<Supervisor,"create"|"list">,env:Nod
       const slug=(goal.toLowerCase().match(/[a-z0-9]+/g)??[]).slice(0,3).join("-")||"project";
       const folder=`chat-${slug}-${randomBytes(3).toString("hex")}`;
       const kind=newProjectKind(goal);
-      return{started:jobView(supervisor.create(goal,folder,kind==="task-app"?{acceptanceProfile:"task-app-http-v1"}:kind==="static-site"?{acceptanceProfile:STATIC_SITE_PROFILE}:kind==="node-tool"?{acceptanceProfile:NODE_TOOL_PROFILE}:kind==="http-api"?{acceptanceProfile:HTTP_API_PROFILE}:{}))};
+      return{started:jobView(supervisor.create(goal,folder,kind==="task-app"?{acceptanceProfile:"task-app-http-v1"}:kind==="static-site"?{acceptanceProfile:STATIC_SITE_PROFILE}:kind==="node-tool"?{acceptanceProfile:NODE_TOOL_PROFILE}:kind==="http-api"?{acceptanceProfile:HTTP_API_PROFILE}:kind==="python-tool"?{acceptanceProfile:PYTHON_TOOL_PROFILE}:{}))};
     },
     projectStatus(projectId:string):ProjectJobView|undefined{
       const jobs=supervisor.list();
