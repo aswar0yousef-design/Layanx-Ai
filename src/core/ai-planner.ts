@@ -6,6 +6,7 @@ import {isDevelopmentGoal as isDevelopmentIntent,normalizeArabic,selectToolsForG
 import {openRequest} from "../tools/open-app.js";
 import {leadRequest,siteFrom} from "../business/lead-research.js";
 import {webFormRequest} from "../tools/web-form.js";
+import {storeChangeRequest,storeReportRequest} from "../business/woocommerce.js";
 
 export interface PlannedTool{
   /** As MissionToolPlan.final: the mission is done once this step succeeds. */
@@ -117,6 +118,26 @@ function deterministicWebFormPlan(goal:string,catalog:ToolCatalogEntry[]):Planne
   successCriteria:["result.submitted === true"],
   stopCondition:"Stop if the page has no form for this request or a needed value is missing.",
   tools:[{tool:tool.name,action:tool.actions[0]!,permission:tool.permission,reason:"The owner asked to do this on "+url+".",payload:{url,goal:step.slice(0,1000)},final:true}]};
+}
+
+/** "How many orders today in my store" reads the store; "lower the price of X to 40 in my store" is one approved change. */
+function deterministicStorePlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
+ const step=currentMilestoneGoal(goal);
+ if(storeChangeRequest(step)){
+  const tool=catalog.find(t=>t.name==="store.change");if(!tool)return undefined;
+  return{risk:"medium",requiredPermission:tool.permission,
+   steps:[{description:"Make the one change the owner asked for in their WooCommerce store and read it back from the store."}],
+   successCriteria:["result.verified === true"],
+   stopCondition:"Stop if the product or order, or the new value, is not clear from the request.",
+   tools:[{tool:tool.name,action:tool.actions[0]!,permission:tool.permission,reason:"The owner asked to change their store.",payload:{goal:step.slice(0,800)},final:true}]};
+ }
+ const tool=catalog.find(t=>t.name==="store.report");
+ if(!tool||!storeReportRequest(step))return undefined;
+ return{risk:"low",requiredPermission:tool.permission,
+  steps:[{description:"Read the owner's WooCommerce store: orders, sales and stock."}],
+  successCriteria:["The store's orders and stock were read."],
+  stopCondition:"Stop if the store is not connected.",
+  tools:[{tool:tool.name,action:tool.actions[0]!,permission:tool.permission,reason:"The owner asked about their store.",payload:{goal:step.slice(0,500)},final:true}]};
 }
 
 function deterministicDevelopmentPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
@@ -257,6 +278,8 @@ export class AiMissionPlanner{
     if(leads)return leads;
     const form=deterministicWebFormPlan(goal,tools);
     if(form)return form;
+    const store=deterministicStorePlan(goal,tools);
+    if(store)return store;
     const scopedTools=filterCatalogForGoal(goal,tools);
     const deterministic=deterministicDevelopmentPlan(goal,scopedTools);
     if(deterministic)return deterministic;

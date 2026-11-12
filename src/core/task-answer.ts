@@ -60,7 +60,45 @@ export function webFormReply(data:unknown,arabicReply:boolean):string|null{
     answer?(arabicReply?"ردّ الموقع:\n":"The site answered:\n")+answer:"",d.note??""].filter(Boolean).join("\n");
 }
 
+const STATUS:Record<string,string>={processing:"قيد التجهيز",completed:"مكتمل","on-hold":"معلّق",pending:"بانتظار الدفع",cancelled:"ملغى",refunded:"مسترجع",failed:"فاشل","checkout-draft":"مسودة"};
+/** The store report, written by code from the store's own numbers (nothing for a model to round or invent). */
+export function storeReply(data:unknown,arabicReply:boolean):string|null{
+  const d=data as {store?:string;days?:number;orders?:number;byStatus?:Record<string,number>;revenue?:Record<string,number>;toShip?:Array<{number:string;total:string;currency:string;city?:string;items:string}>;top?:Array<{name:string;quantity:number}>;outOfStock?:string[];lowStock?:Array<{name:string;left:number}>;products?:number}|null;
+  if(!d||typeof d!=="object"||typeof d.orders!=="number"||!d.byStatus)return null;
+  const A=arabicReply;
+  const period=d.days===1?(A?"اليوم":"today"):d.days===2?(A?"منذ أمس":"since yesterday"):(A?`آخر ${d.days} يوماً`:`the last ${d.days} days`);
+  const money=Object.entries(d.revenue??{}).map(([c,v])=>`${v} ${c}`).join(" + ")||"0";
+  const lines=[A?`متجر ${d.store}، ${period}: ${d.orders} طلب، والمبيعات المدفوعة ${money}.`:`Store ${d.store}, ${period}: ${d.orders} orders, paid sales ${money}.`];
+  const statuses=Object.entries(d.byStatus).map(([s,n])=>`${A?STATUS[s]??s:s} ${n}`).join("، ");
+  if(statuses)lines.push((A?"حسب الحالة: ":"By status: ")+statuses);
+  if(d.toShip?.length){lines.push(A?`طلبات تنتظر التجهيز والشحن (${d.toShip.length}):`:`Orders waiting to ship (${d.toShip.length}):`);for(const o of d.toShip.slice(0,10))lines.push(`- #${o.number}: ${o.total} ${o.currency}${o.city?" — "+o.city:""} — ${o.items}`);}
+  if(d.top?.length)lines.push((A?"الأكثر مبيعاً: ":"Best sellers: ")+d.top.map(t=>`${t.name} (${t.quantity})`).join("، "));
+  if(d.outOfStock?.length)lines.push((A?"نفد مخزونها: ":"Out of stock: ")+d.outOfStock.join("، "));
+  if(d.lowStock?.length)lines.push((A?"مخزون منخفض: ":"Low stock: ")+d.lowStock.map(l=>`${l.name} (${A?"بقي":"left"} ${l.left})`).join("، "));
+  if(!d.outOfStock?.length&&!d.lowStock?.length)lines.push(A?`لا منتج نافد أو منخفض المخزون من ${d.products} منتجاً منشوراً.`:`No product out of stock or low, of ${d.products} published.`);
+  return lines.join("\n");
+}
+/** One store change: what it was, and what the store holds now (read back after the change). */
+export function storeChangeReply(data:unknown,arabicReply:boolean):string|null{
+  const d=data as {kind?:string;product?:string;order?:string;before?:any;after?:any;verified?:boolean}|null;
+  if(!d||typeof d!=="object"||typeof d.verified!=="boolean")return null;
+  const A=arabicReply;
+  if(d.kind==="order")return A?`الطلب #${d.order}: كانت حالته «${STATUS[d.before]??d.before}»، وحالته في المتجر الآن «${STATUS[d.after]??d.after}».`:`Order #${d.order}: was ${d.before}, the store now shows ${d.after}.`;
+  const fields:Array<[string,string]>=[["regular_price",A?"السعر":"price"],["sale_price",A?"سعر العرض":"sale price"],["stock_quantity",A?"المخزون":"stock"]];
+  const changed=fields.filter(([k])=>String(d.before?.[k]??"")!==String(d.after?.[k]??"")).map(([k,label])=>A?`${label} كان ${d.before?.[k]||"—"} وصار ${d.after?.[k]||"—"}`:`${label} ${d.before?.[k]||"—"} → ${d.after?.[k]||"—"}`);
+  return(A?`${d.product}: عدّلتُه في المتجر وقرأتُه منه بعد التعديل. `:`${d.product}: changed in the store and read back. `)+(changed.join("، ")||(A?"لم تتغير قيمة.":"no value changed."));
+}
+
 export async function composeTaskAnswer(models:Pick<ModelExecutionRouter,"execute">,goal:string,results:ToolResult[],completed:boolean):Promise<TaskAnswer|null>{
+  const report=results.filter(r=>r?.ok&&r.tool==="store.report").at(-1);
+  const reportText=report?storeReply(report.data,arabic(goal)):null;
+  if(reportText)return{text:reportText,fromImage:false};
+  const change=results.filter(r=>r?.ok&&r.tool==="store.change").at(-1);
+  const changeText=change?storeChangeReply(change.data,arabic(goal)):null;
+  if(changeText)return{text:changeText,fromImage:false};
+  // A store change that could not be made: its message is the question the owner has to answer (which product, what price).
+  const refused=results.filter(r=>r&&!r.ok&&r.tool==="store.change").at(-1) as (ToolResult&{error?:string})|undefined;
+  if(refused?.error)return{text:(arabic(goal)?"لم أعدّل المتجر. ":"The store was not changed. ")+refused.error,fromImage:false};
   const leads=results.find(r=>r?.ok&&r.tool==="research.leads");
   const listed=leads?leadsReply(leads.data,arabic(goal)):null;
   if(listed)return{text:listed,fromImage:false};

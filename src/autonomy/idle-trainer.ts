@@ -18,6 +18,7 @@ export const PRACTICES:Practice[]=[
   ...["store","shipments-api","python-csv"].map(c=>({id:"general:"+c,args:["scripts/outcome-general-build-acceptance.ts","--runs","1","--case",c]})),
   ...["qs-sentinel-delimiter","qs-lowercase-dot","qs-filter-sorted"].map(c=>({id:"real-repo:"+c,args:["scripts/outcome-real-repo-repair-acceptance.ts","--runs","1","--case",c]})),
   ...["pagination","missing-profile","lost-await","two-causes"].map(c=>({id:"repair:"+c,args:["scripts/outcome-node-repair-acceptance.ts","--runs","1","--case",c]}))
+  ,...["report","price","order","vague"].map(c=>({id:"store:"+c,args:["scripts/outcome-store-task-acceptance.ts","--runs","1","--case",c]}))
 ];
 export interface PracticeRecord{at:string;practice:string;ok:boolean|null;passed?:number;runs?:number;minutes:number;stopped?:"owner returned"|"error";lessons?:number;report?:string}
 export interface TrainerLedger{records:PracticeRecord[]}

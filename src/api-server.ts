@@ -104,6 +104,11 @@ export function startRuntimeApi(options:RuntimeApiOptions){
   response.setHeader("cache-control","no-store");
   // Anything the owner sends (chat, voice, a click that changes something) means they are here: training waits.
   if(request.method!=="GET"&&request.url!=="/v1/training/run")lastOwnerActivity=Date.now();
+  // The owner's WooCommerce store: are the keys right, how big is it, are changes allowed. Never returns the keys.
+  if(request.url==="/v1/store/status"&&request.method==="GET"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
+    const {WooClient,wooConfig,WOO_SETUP_HINT}=await import("./business/woocommerce.js");const c=wooConfig();
+    if(!c){json(response,200,{ok:true,connected:false,hint:WOO_SETUP_HINT});return;}
+    try{json(response,200,{ok:true,connected:true,...await new WooClient(c).status()});}catch(error){json(response,200,{ok:true,connected:false,error:error instanceof Error?error.message:"store_unreachable"});}return;}
   if(request.url==="/v1/training"&&request.method==="GET"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}json(response,200,{ok:true,...trainer.status()});return;}
   if(request.method==="GET"&&(request.url==="/"||request.url==="/index.html"||request.url==="/app.js"||request.url==="/styles.css")){
    const file=request.url==="/app.js"?"app.js":request.url==="/styles.css"?"styles.css":"index.html";

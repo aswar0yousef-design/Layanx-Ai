@@ -79,6 +79,8 @@ import {ScalpRiskController} from "../trading/scalp-risk.js";
 import {registerPaperTradingAgentTool,registerBinanceMarketDataTool,registerBinanceLiveOrderTool} from "../trading/agent-integration.js";
 import type {LiveScreenObserver} from "../desktop/live-screen.js";
 import {routeGoal} from "../autonomy/domain-coordinator.js";
+/** Tools whose failure is a question for the owner (which product, which number), so the loop stops instead of repairing. */
+const OWNER_INPUT_TOOLS=new Set(["store.change"]);
 
 const RELEASES_KEY="runtime:releases";
 
@@ -870,6 +872,9 @@ export class LayanXCore{
           cleanupLiveScreen();
           return{missionId,completed:false,status:"awaiting_approval",paused:true,steps,nextToolIndex:actualIndex,approvalId:result.approvalId,results};
         }
+        // A store change that failed needs the owner's words (which product, what number), not more tools: seen live, the
+        // repair planner then read the store eleven times and every retry asked the owner for another approval.
+        if(OWNER_INPUT_TOOLS.has(plan.tool)){cleanupLiveScreen();return{missionId,completed:false,status:"failed",steps,results,reason:result.error};}
         const repair=this.aiPlanner.nextTool({
           goal:current.goal,result:{failure:result.error,latest},tools:this.toolCatalog.list(this.agents.get(agentId),current.requiredPermission),
           requiredPermission:current.requiredPermission,successCriteria:current.successCriteria?.length?current.successCriteria:this.agents.get(agentId).successCriteria,routing,completedTools:results.map(item=>(item as {tool?:string}).tool??""),

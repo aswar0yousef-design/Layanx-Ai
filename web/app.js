@@ -360,7 +360,7 @@ function integrationStatus(){
   ["WhatsApp",ch.whatsapp?.configured||ch.whatsapp?.enabled?"on":"off","WhatsApp Cloud API"],
   ["Telegram",ch.telegram?.configured||ch.telegram?.enabled?"on":"off","Bot token"],
   ["Shopify",has("LAYANX_SHOPIFY_ACCESS_TOKEN")?"on":"off","LAYANX_SHOPIFY_ACCESS_TOKEN"],
-  ["WooCommerce",has("LAYANX_WOOCOMMERCE_CONSUMER_KEY")?"on":"off","LAYANX_WOOCOMMERCE_CONSUMER_KEY"],
+  ["WooCommerce",has("LAYANX_WOOCOMMERCE_URL","LAYANX_WOOCOMMERCE_CONSUMER_KEY","LAYANX_WOOCOMMERCE_CONSUMER_SECRET")?(has("LAYANX_WOOCOMMERCE_ALLOW_WRITES")?"on":"part"):"off",has("LAYANX_WOOCOMMERCE_URL")?(has("LAYANX_WOOCOMMERCE_ALLOW_WRITES")?"read + write":"read only"):"LAYANX_WOOCOMMERCE_URL + keys"],
   ["Ads (Meta, TikTok, Google, X)",any("LAYANX_META_ADS_TOKEN","LAYANX_TIKTOK_ADS_TOKEN","LAYANX_GOOGLE_ADS_TOKEN","LAYANX_X_ADS_TOKEN")?"on":"off","LAYANX_*_ADS_TOKEN"],
   ["Social OAuth",oc.length?"on":"off",oc.length?oc.map(c=>c.provider).join(", "):"OAuth"],
   ["Quran Foundation",has("QF_CLIENT_SECRET")?"part":"off","QF_CLIENT_SECRET"],
