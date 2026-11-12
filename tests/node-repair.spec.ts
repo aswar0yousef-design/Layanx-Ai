@@ -72,3 +72,101 @@ assert.equal(prepareRepair(tsDir,{cause:"c",edits:[{path:"src/target.js",find:"4
 fs.rmSync(tsDir,{recursive:true,force:true});
 
 console.log("node-repair: test output is read correctly, the failure leads to the code, and tests cannot be edited to pass");
+
+// A real library (qs, 2026-11-12): tape output, require('../'), and a source file larger than the code budget.
+{
+  const {tapDetails,fileExcerpt,evidenceTerms,repairEvidence,observeTestRun:observe}=await import("../src/autonomy/node-repair.js");
+  const fsx=await import("node:fs"),osx=await import("node:os"),px=await import("node:path");
+  const tapOut="ok 264 adds the sentinel\nnot ok 265 uses the configured delimiter after the sentinel\n  ---\n    operator: equal\n    expected: 'utf8=%E2%9C%93;a=1'\n    actual:   'utf8=%E2%9C%93&a=1'\n    at: Test.<anonymous> (C:\p\test\stringify.js:12:5)\n    stack: |-\n      Error: x\n  ...\nok 266 next\n";
+  const seen=observe({exitCode:1,stdout:tapOut});
+  assert.deepEqual(seen.failing,["uses the configured delimiter after the sentinel"],"tape names without a dash");
+  assert.match(tapDetails(tapOut),/expected: 'utf8=%E2%9C%93;a=1'\n\s+actual:\s+'utf8=%E2%9C%93&a=1'/);
+  assert.ok(!seen.summary.includes("stack:"),"stack noise left out");
+  assert.ok(!evidenceTerms("the delimiter after the sentinel should be used").includes("should"));
+  const big=Array.from({length:400},(_,i)=>i===300?"    prefix += 'utf8=%E2%9C%93&';":"    var filler"+i+" = "+i+";").join("\n");
+  const part=fileExcerpt(big,["utf8"],[],1500);
+  assert.match(part,/prefix \+= 'utf8=%E2%9C%93&';/);
+  assert.match(part,/\.\.\. \(line 2\d\d\)/);
+  assert.ok(part.length<1600);
+  // The whole flow: require('../') reaches lib/index.js -> lib/stringify.js, which is too big to show whole.
+  const dir=fsx.mkdtempSync(px.join(osx.tmpdir(),"qs-like-"));
+  fsx.mkdirSync(px.join(dir,"lib"));fsx.mkdirSync(px.join(dir,"test"));
+  fsx.writeFileSync(px.join(dir,"package.json"),JSON.stringify({name:"q",main:"lib/index.js",scripts:{test:"tape test/*.js"}}));
+  fsx.writeFileSync(px.join(dir,"lib","index.js"),"module.exports={stringify:require('./stringify')};\n");
+  fsx.writeFileSync(px.join(dir,"lib","stringify.js"),big);
+  fsx.writeFileSync(px.join(dir,"lib","unrelated.js"),"x".repeat(20000));
+  fsx.writeFileSync(px.join(dir,"test","stringify.js"),"var qs=require('../');\n"+Array.from({length:30},(_,i)=>"// t"+i).join("\n"));
+  const ev=repairEvidence(dir,observe({exitCode:1,stdout:tapOut.replace("C:\p\test",px.join(dir,"test"))}),"charsetSentinel with delimiter puts & after utf8=");
+  assert.ok(ev.files.includes("lib/index.js")&&ev.files.includes("lib/stringify.js"),ev.files.join(","));
+  assert.match(ev.code,/EXCERPT of a 400-line file/);
+  assert.match(ev.code,/prefix \+= 'utf8=%E2%9C%93&';/);
+  assert.ok(!ev.files.includes("lib/unrelated.js"),"a large file the failure does not reach is not shown");
+  fsx.rmSync(dir,{recursive:true,force:true});
+  console.log("node-repair: tape failures, package main imports and excerpts of large files");
+}
+
+// Ranking (qs lowercase %2e, 2026-11-12): import order filled the budget with lib/utils.js and never showed lib/parse.js.
+{
+  const {repairEvidence,observeTestRun:observe}=await import("../src/autonomy/node-repair.js");
+  const fsx=await import("node:fs"),osx=await import("node:os"),px=await import("node:path");
+  const dir=fsx.mkdtempSync(px.join(osx.tmpdir(),"rank-"));
+  fsx.mkdirSync(px.join(dir,"lib"));fsx.mkdirSync(px.join(dir,"test"));
+  fsx.writeFileSync(px.join(dir,"package.json"),JSON.stringify({name:"q",main:"lib/index.js",scripts:{test:"tape test/*.js"}}));
+  fsx.writeFileSync(px.join(dir,"lib","index.js"),"module.exports={utils:require('./utils'),stringify:require('./stringify'),parse:require('./parse')};\n");
+  const filler=(n:number,word:string)=>Array.from({length:n},(_,i)=>`var ${word}${i} = ${i}; // ${word} helper`).join("\n");
+  fsx.writeFileSync(px.join(dir,"lib","utils.js"),filler(300,"utils"));
+  fsx.writeFileSync(px.join(dir,"lib","stringify.js"),filler(300,"stringify"));
+  fsx.writeFileSync(px.join(dir,"lib","parse.js"),filler(250,"parse")+"\n    var decodedRoot = options.decodeDotInKeys ? cleanRoot.replace(/%2E/g, '.') : cleanRoot;\n"+filler(50,"tail"));
+  fsx.writeFileSync(px.join(dir,"test","parse.js"),"var qs=require('../');\n");
+  const failure=observe({exitCode:1,stdout:"not ok 39 lowercase escapes decode\n  ---\n    operator: deepEqual\n  ...\n"});
+  const ev=repairEvidence(dir,failure,"qs.parse with decodeDotInKeys turns %2E into a dot but not %2e");
+  assert.equal(ev.files[0],"lib/parse.js","the file the report names comes first");
+  assert.match(ev.code,/cleanRoot\.replace\(\/%2E\/g, '\.'\)/);
+  // A file the model named after a rejection is shown first next time.
+  const again=repairEvidence(dir,failure,"something about keys","Patch rejected: find must occur exactly once in lib/stringify.js; it occurs 0 times: stringify12");
+  assert.equal(again.files[0],"lib/stringify.js");
+  fsx.rmSync(dir,{recursive:true,force:true});
+  console.log("node-repair: evidence ranked by the report and by the model's last attempt");
+}
+
+// A rejected find says where the text is (qs: "objKeys = filter;" occurs twice; rejected six times without a hint).
+{
+  const {whereInFile}=await import("../src/autonomy/repair-engine.js");
+  const file="a\n    if (x) {\n        objKeys = filter;\n    }\nb\n    } else {\n        objKeys = filter;\n    }\n";
+  const twice=whereInFile(file,"objKeys = filter;",2);
+  assert.match(twice,/3:         objKeys = filter;/);
+  assert.match(twice,/7:         objKeys = filter;/);
+  assert.match(twice,/2:     if \(x\) \{/);
+  const missing=whereInFile("var decodedRoot = options.decodeDotInKeys ? cleanRoot.replace(/%2E/g, '.') : cleanRoot;\n","key = cleanRoot.replace(/%2E/g, '.');",0);
+  assert.match(missing,/closest text in the file[\s\S]*1: var decodedRoot/);
+  assert.equal(whereInFile("nothing alike here\n","zzz qqq",0),"");
+  console.log("node-repair: a rejected find shows where the text really is");
+}
+
+// Half a fix (qs, 2026-11-12, two false successes): the same bug sat on a second line the test did not reach.
+{
+  const {similarUnchanged,siblingPrompt}=await import("../src/autonomy/node-repair.js");
+  const patched=["    if (options.charsetSentinel) {","        if (charset === 'iso-8859-1') {","            prefix += 'utf8=%26%2310003%3B&';","        } else {","            prefix += 'utf8=%E2%9C%93'+options.delimiter;","        }","    }","    var joined = keys.join(options.delimiter);"].join("\n");
+  const edit={path:"lib/stringify.js",find:"prefix += 'utf8=%E2%9C%93&';",replace:"prefix += 'utf8=%E2%9C%93'+options.delimiter;"};
+  const found=similarUnchanged(patched,[edit]);
+  assert.deepEqual(found.map(f=>f.line),[3],"the untouched twin line is found, nothing else");
+  assert.match(siblingPrompt("sentinel ignores delimiter",[edit],found,"report"),/lib\/stringify\.js:3: prefix \+= 'utf8=%26%2310003%3B&';/);
+  assert.deepEqual(similarUnchanged("a();\nb();\n",[{path:"x.js",find:"return total-percent;",replace:"return total*(1-percent/100);"}]),[],"no look-alikes, no extra step");
+  console.log("node-repair: lines like the fixed one are checked before the job counts as done");
+}
+
+// The same text twice: a line number picks the occurrence (qs "objKeys = filter;", rejected again and again).
+{
+  const {nearestOccurrence,prepareRepair:prep}=await import("../src/autonomy/repair-engine.js");
+  const fsx=await import("node:fs"),osx=await import("node:os"),px=await import("node:path");
+  const text="a\n    objKeys = filter;\nb\nc\nd\n    objKeys = filter;\n";
+  assert.equal(text.slice(nearestOccurrence(text,"objKeys = filter;",6)).split("\n")[0],"objKeys = filter;");
+  assert.ok(nearestOccurrence(text,"objKeys = filter;",6)>nearestOccurrence(text,"objKeys = filter;",2));
+  assert.equal(nearestOccurrence(text,"objKeys = filter;",90),-1,"too far from any occurrence");
+  const dir=fsx.mkdtempSync(px.join(osx.tmpdir(),"line-"));fsx.writeFileSync(px.join(dir,"s.js"),text);
+  const out=prep(dir,{cause:"c",edits:[{path:"s.js",find:"objKeys = filter;",replace:"objKeys = filter.slice();",line:6}]},{editable:/\.js$/});
+  assert.equal(out.files[0]!.content,"a\n    objKeys = filter;\nb\nc\nd\n    objKeys = filter.slice();\n");
+  assert.throws(()=>prep(dir,{cause:"c",edits:[{path:"s.js",find:"objKeys = filter;",replace:"x;"}]},{editable:/\.js$/}),/Add "line"/);
+  fsx.rmSync(dir,{recursive:true,force:true});
+  console.log("node-repair: a line number picks one of two identical lines");
+}

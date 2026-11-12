@@ -5,7 +5,7 @@ import {AsyncLocalStorage} from "node:async_hooks";
 import {TWIN_INPUTS_SCHEMA,TWIN_PROGRAM_FILE,disagree,parseTwinInputs,parseTwinRun,twinBroken,twinCases,twinFailure,twinHarnessSource,twinInputsPrompt,twinPrompt,type TwinRun} from "./twin-check.js";
 import {REVIEW_TEST_FILE,agreedCases,mergeCases,parseReviewCases,reviewPrompt,reviewTestSource,secondOpinionPrompt,type ReviewCase} from "./peer-review.js";
 import {MAX_SPEC_CASES,MIN_SPEC_CASES,hasComputedSteps,parseSiteSteps,siteSecondOpinionPrompt,siteStepConflicts,SPEC_TEST_FILE,testCounts,NODE_TOOL_PROFILE,PROGRAM_FILE,PROGRAM_PLACEHOLDER,RUNTIME_FAILURE,SITE_FILE,SITE_PLACEHOLDER,STATIC_SITE_PROFILE,buildPlan,buildRuntimePatchPrompt,buildSitePatchPrompt,extractHtml,extractProgram,isBuildProfile,nodeSpecFiles,nodeSpecPrompt,observeSite,programPrompt,readSiteSteps,siteSpecFiles,sitePrompt,siteSpecPrompt,vacuousTests,type BuildProfile} from "./project-build.js";
-import {NODE_EDITABLE,NODE_REPAIR_PROFILE,buildNodeRepairPrompt,isTestFile,needsDependencies,nodeRepairSetback,observeTestRun,type NodeTestObservation} from "./node-repair.js";
+import {NODE_EDITABLE,NODE_REPAIR_PROFILE,buildNodeRepairPrompt,similarUnchanged,siblingPrompt,isTestFile,needsDependencies,nodeRepairSetback,observeTestRun,type NodeTestObservation} from "./node-repair.js";
 import {StallError,describeDuration,stallLimits,withStallLimit,type StallKind,type StallLimits} from "./stall-guard.js";
 import {detectProject,placeholderTest,type ProjectInfo} from "./project-runner.js";
 import {projectDir} from "./project-dir.js";
@@ -817,7 +817,32 @@ export class Supervisor{
       return;
     }
     if(after?.ok&&m.tentative?.length&&await this.pruneTentative(job,m)==="waiting")return;
+    if(after?.ok&&job.acceptanceProfile===NODE_REPAIR_PROFILE&&await this.siblingPass(job,repair,routing)==="waiting")return;
     await this.afterWork(job,m);
+  }
+  /**
+   * The tests pass, but the same bug may sit on a similar line the tests do not reach (seen live: qs had it once per
+   * charset, the model fixed one, and the job claimed success with half a fix). Show those lines once; keep a further
+   * fix only if the tests still pass with it.
+   */
+  private async siblingPass(job:SupervisorJob,repair:ReturnType<typeof prepareRepair>,routing?:JobRouting):Promise<"waiting"|undefined>{
+    const dir=projectDir(job.projectId);
+    const siblings=repair.files.flatMap(file=>similarUnchanged(fs.readFileSync(path.join(dir,file.path),"utf8"),repair.edits.filter(e=>e.path===file.path)));
+    if(!siblings.length||!this.deps.generateRepairPatch)return undefined;
+    this.log(job,`Checking ${siblings.length} similar line(s) the patch left unchanged: `+siblings.map(s=>s.path+":"+s.line).join(", "));
+    let extra:ReturnType<typeof prepareRepair>;
+    try{
+      const answer=extractJson((await this.deps.generateRepairPatch(siblingPrompt(repair.cause,repair.edits,siblings,job.goal),routing)).content) as {edits?:unknown[]}|null;
+      if(!answer||!Array.isArray(answer.edits)||!answer.edits.length){this.log(job,"Similar lines checked: none has the same bug");return undefined;}
+      extra=this.repairPath(job).prepare(answer);
+    }catch(error){this.log(job,"Similar-line check gave no usable patch: "+clip((error as Error).message,200),"warn");return undefined;}
+    for(const file of extra.files){const written=await this.tool(job,"files.write",{path:file.path,content:file.content},"milestone");if(written==="waiting")return"waiting";}
+    const observed:any=await this.repairPath(job).observe().catch(()=>undefined);
+    if(observed==="waiting")return"waiting";
+    if(observed?.ok){this.log(job,`Applied the same fix to ${extra.edits.length} similar line(s); the tests still pass`);return undefined;}
+    for(const file of extra.files){const undone=await this.tool(job,"files.write",{path:file.path,content:file.original},"milestone");if(undone==="waiting")return"waiting";}
+    this.log(job,"The similar-line fix broke the tests, so it was undone","warn");
+    return undefined;
   }
   /** The page works now: every held patch that it still works without goes away, so only what the fix needs stays. */
   private async pruneTentative(job:SupervisorJob,m:Milestone):Promise<"waiting"|undefined>{

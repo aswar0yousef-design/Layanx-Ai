@@ -17,9 +17,37 @@ export interface PageObservation{page:string;target:boolean;errors:PageError[];c
 export interface StaticObservation{ok:boolean;pages:PageObservation[];summary:string;signature:string;storage?:Record<string,string>}
 /** seed: what the unpatched app left in the browser, replayed so a patch is judged against data people already have. */
 export type StaticObserver=(dir:string,report:string,seed?:Record<string,string>)=>Promise<StaticObservation>;
-export interface RepairEdit{path:string;find:string;replace:string}
+export interface RepairEdit{path:string;find:string;replace:string;line?:number}
 export interface PreparedRepair{cause:string;files:Array<{path:string;content:string;original:string}>;changedLines:number;edits:RepairEdit[]}
 
+/**
+ * Where a rejected "find" stands in the file, so the next attempt can quote it exactly. Seen live 2026-11-12 (qs):
+ * "objKeys = filter;" occurs twice and the model was rejected six times without being told where the two were.
+ */
+/** The offset of the occurrence of find that starts nearest the given 1-based line, if one is within 15 lines. */
+export function nearestOccurrence(content:string,find:string,line:number):number{
+  let best=-1,distance=Infinity;
+  for(let i=content.indexOf(find);i>=0;i=content.indexOf(find,i+1)){
+    const d=Math.abs(content.slice(0,i).split("\n").length-line);
+    if(d<distance){distance=d;best=i;}
+  }
+  return distance<=15?best:-1;
+}
+export function whereInFile(content:string,find:string,occurrences:number):string{
+  const lines=content.split(/\r?\n/);
+  const show=(at:number)=>lines.slice(Math.max(0,at-2),at+3).map((line,k)=>`${Math.max(0,at-2)+k+1}: ${line}`).join("\n");
+  if(occurrences>1){
+    const firstLine=find.split(/\r?\n/)[0]!,hits:number[]=[];
+    lines.forEach((line,i)=>{if(line.includes(firstLine.trim())&&hits.length<3)hits.push(i);});
+    return hits.length?"\nIt appears at these places. Add \"line\": the line number of the one to change (or quote more surrounding lines):\n"+hits.map(show).join("\n---\n"):"";
+  }
+  // Not found: the line most like it, which is usually what the model meant but quoted from memory.
+  const words=new Set(find.toLowerCase().match(/[a-z_$][\w$]{2,}/g)??[]);
+  if(!words.size)return"";
+  let best=-1,score=0;
+  lines.forEach((line,i)=>{const s=(line.toLowerCase().match(/[a-z_$][\w$]{2,}/g)??[]).filter(w=>words.has(w)).length;if(s>score){score=s;best=i;}});
+  return best>=0&&score>=Math.min(2,words.size)?"\nThe closest text in the file (copy exactly from it):\n"+show(best):"";
+}
 export function rootPages(dir:string):string[]{
   return fs.readdirSync(dir,{withFileTypes:true}).filter(e=>e.isFile()&&/\.html?$/i.test(e.name)).map(e=>e.name).sort().slice(0,MAX_PAGES);
 }
@@ -224,7 +252,17 @@ export function prepareRepair(dir:string,proposal:unknown,policy:{editable?:RegE
     const eol=current.content.includes("\r\n")?"\r\n":"\n";
     const find=raw.find.replace(/\r?\n/g,eol),replace=raw.replace.replace(/\r?\n/g,eol);
     const occurrences=current.content.split(find).length-1;
-    if(occurrences!==1)throw new Error(`find must occur exactly once in ${relative}; it occurs ${occurrences} times: ${raw.find.slice(0,120)}`);
+    // The same text twice (qs: "objKeys = filter;"): a line number from the model picks the occurrence nearest to it.
+    const at=occurrences>1&&typeof raw.line==="number"?nearestOccurrence(current.content,find,raw.line):-1;
+    if(at>=0){
+      const lostAt=storageReferences(find).filter(reference=>!storageReferences(replace).includes(reference));
+      if(lostAt.length)throw new Error(`The patch changes where saved data is kept (${lostAt.join(", ")}); data people already saved would disappear. Fix the bug without changing storage keys.`);
+      changedLines+=lineCount(raw.find)+lineCount(raw.replace);
+      current.content=current.content.slice(0,at)+replace+current.content.slice(at+find.length);
+      files.set(relative,current);edits.push({path:relative,find,replace});
+      continue;
+    }
+    if(occurrences!==1)throw new Error(`find must occur exactly once in ${relative}; it occurs ${occurrences} times: ${raw.find.slice(0,120)}`+whereInFile(current.content,find,occurrences));
     const lostStorage=storageReferences(find).filter(reference=>!storageReferences(replace).includes(reference));
     if(lostStorage.length)throw new Error(`The patch changes where saved data is kept (${lostStorage.join(", ")}); data people already saved would disappear. Fix the bug without changing storage keys.`);
     changedLines+=lineCount(raw.find)+lineCount(raw.replace);
