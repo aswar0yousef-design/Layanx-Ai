@@ -114,7 +114,7 @@ export function createRuntime(options:RuntimeOptions={}){
    "shipping.carriers","shipping.carrier.save","shipping.quote","shipping.create","shipping.list","shipping.book","shipping.update","shipping.refresh","shipping.cod.collected","shipping.invoice","shipping.reconcile","shipping.report",
    "integration.intake.request","integration.intake.list","improvement.ledger",
    // Dangerous ones (orders, MT5 auto-scalper, setup) still stop for explicit approval.
-   "research.internet","agent-reach.status","agent-reach.channels","agent-reach.collect","agent-reach.capabilities","agent-reach.update.check","agent-reach.setup",
+   "research.internet","research.leads","agent-reach.status","agent-reach.channels","agent-reach.collect","agent-reach.capabilities","agent-reach.update.check","agent-reach.setup",
    "trading.strategy.list","trading.strategy.backtest","trading.strategy.optimize","trading.strategy.walk_forward","trading.strategy.monte_carlo",
    "trading.account","trading.quote","trading.order.place","trading.position.close",
    ...MT5_TOOLS,

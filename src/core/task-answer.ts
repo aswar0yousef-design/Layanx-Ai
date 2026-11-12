@@ -26,7 +26,30 @@ export function resultsForAnswer(results:ToolResult[]):{text:string;image?:{mime
   return{text:parts.join("\n").slice(0,MAX_RESULTS_CHARS),...(image?{image}:{})};
 }
 
+/**
+ * The lead list is written by code, not a model: a small model echoed the JSON back (seen live 2026-11-12), and every
+ * company and link must be exactly the checked one from the search results.
+ */
+export function leadsReply(data:unknown,arabicReply:boolean):string|null{
+  const d=data as {site?:string;business?:string;segments?:Array<{name?:string;why?:string}>;leads?:Array<{name?:string;url?:string;segment?:string;why?:string}>;searched?:string[];note?:string}|null;
+  if(!d||typeof d!=="object"||!Array.isArray(d.leads))return null;
+  const lines:string[]=[];
+  if(d.business)lines.push((arabicReply?"ما يقدمه "+d.site+" (من نص الموقع): ":"What "+d.site+" offers (from its site): ")+d.business);
+  const segments=(d.segments??[]).map(s=>s.name).filter(Boolean);
+  if(segments.length)lines.push((arabicReply?"أنواع العملاء المحتملين: ":"Customer types: ")+segments.join("، "));
+  if(d.leads.length){
+    lines.push(arabicReply?`شركات وجدتها في نتائج البحث (${d.leads.length}):`:`Companies found in the search results (${d.leads.length}):`);
+    for(const l of d.leads)lines.push(`- ${l.name} (${l.segment}): ${l.url}${l.why?" — "+l.why:""}`);
+    lines.push(arabicReply?"هذه مرشحون من البحث، لم أتواصل مع أحد. راجعهم قبل التواصل.":"These are candidates from web search; nobody was contacted. Review them before reaching out.");
+  }else lines.push((arabicReply?"لم أجد شركات بعينها. ":"No individual companies found. ")+(d.note??""));
+  if(d.searched?.length)lines.push((arabicReply?"عمليات البحث: ":"Searches: ")+d.searched.join(" | "));
+  return lines.join("\n");
+}
+
 export async function composeTaskAnswer(models:Pick<ModelExecutionRouter,"execute">,goal:string,results:ToolResult[],completed:boolean):Promise<TaskAnswer|null>{
+  const leads=results.find(r=>r?.ok&&r.tool==="research.leads");
+  const listed=leads?leadsReply(leads.data,arabic(goal)):null;
+  if(listed)return{text:listed,fromImage:false};
   const {text,image}=resultsForAnswer(results);
   if(!text&&!image)return null;
   const lang=arabic(goal)?"Arabic":"English";

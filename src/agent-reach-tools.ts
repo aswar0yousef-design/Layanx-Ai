@@ -2,6 +2,7 @@ import type {LayanXCore} from "./core/orchestrator.js";
 import type {ToolRequest} from "./core/types.js";
 import {createAgentReachAdapter,agentReachSupportedChannels} from "./connectors/agent-reach.js";
 import {webSearch} from "./autonomy/task-research.js";
+import {findLeads,siteFrom} from "./business/lead-research.js";
 
 export function registerAgentReachTools(core:LayanXCore):void{
   const raw=createAgentReachAdapter();
@@ -63,6 +64,24 @@ export function registerAgentReachTools(core:LayanXCore):void{
     tags:["research","internet","agent-reach","search","web","social","github","youtube","leads","customers","market","competitors"]
   });
   core.toolAdapters.register("research.internet",{execute:request=>researchWithFallback(request,adapter)});
+
+  // "Find potential customers for my site": read the site, work out who buys it, search for real companies of each type.
+  core.tools.register({
+    name:"research.leads",
+    description:"find potential customers (leads) for a website or business: reads the site, works out which kinds of companies buy it, searches the web for real companies of each kind and lists them with their links. payload.site = the website address.",
+    permission:"L2_ANALYZE",
+    dangerous:false,
+    actions:["find leads","find potential customers","البحث عن عملاء محتملين","عملاء محتملين"],
+    tags:["leads","customers","prospects","sales","market","research","internet","عملاء"]
+  });
+  core.toolAdapters.register("research.leads",{async execute(request:ToolRequest){
+    const site=siteFrom(request.payload);
+    if(!site)throw new Error("research.leads needs payload.site: the website address, for example layanx.com.");
+    const p=request.payload&&typeof request.payload==="object"?request.payload as Record<string,unknown>:{};
+    return findLeads({site,request:typeof p.goal==="string"?p.goal:typeof p.request==="string"?p.request:""},{
+      think:async(prompt,schema)=>(await core.modelExecution.execute({capability:"reasoning",input:prompt,maxOutputTokens:1500,responseSchema:schema,routing:{preferLocal:true}} as never)).output
+    });
+  }});
 
   core.tools.register({
     name:"agent-reach.setup",

@@ -4,6 +4,7 @@ import type {ToolCatalogEntry} from "./tool-catalog.js";
 import type {ModelRoutingOptions} from "../models/inference.js";
 import {isDevelopmentGoal as isDevelopmentIntent,normalizeArabic,selectToolsForGoal} from "../providers/tool-selection.js";
 import {openRequest} from "../tools/open-app.js";
+import {leadRequest,siteFrom} from "../business/lead-research.js";
 
 export interface PlannedTool{
   /** As MissionToolPlan.final: the mission is done once this step succeeds. */
@@ -90,6 +91,19 @@ function deterministicScreenPlan(goal:string,catalog:ToolCatalogEntry[]):Planned
   successCriteria:["The screen was captured."],
   stopCondition:"Stop if the screen cannot be captured.",
   tools:[{tool:tool.name,action:tool.actions[0]!,permission:tool.permission,reason:"The owner asked what is on the screen; the reply is written from this capture.",payload:{},final:true}]};
+}
+
+/** "Find potential customers for layanx.com" is one step: research.leads does read-site -> customer types -> searches -> companies. */
+function deterministicLeadPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
+ const step=currentMilestoneGoal(goal);
+ const tool=catalog.find(t=>t.name==="research.leads");
+ if(!tool||!leadRequest(step))return undefined;
+ const site=siteFrom(step)!;
+ return{risk:"low",requiredPermission:tool.permission,
+  steps:[{description:"Read "+site+", work out which companies would buy from it, and search the web for real ones."}],
+  successCriteria:["Potential customers were listed with links from the search results."],
+  stopCondition:"Stop if the site cannot be read.",
+  tools:[{tool:tool.name,action:tool.actions[0]!,permission:tool.permission,reason:"The owner asked for potential customers of "+site+".",payload:{site,goal:step.slice(0,500)},final:true}]};
 }
 
 function deterministicDevelopmentPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
@@ -211,6 +225,8 @@ export class AiMissionPlanner{
     if(opening)return opening;
     const look=deterministicScreenPlan(goal,tools);
     if(look)return look;
+    const leads=deterministicLeadPlan(goal,tools);
+    if(leads)return leads;
     const scopedTools=filterCatalogForGoal(goal,tools);
     const deterministic=deterministicDevelopmentPlan(goal,scopedTools);
     if(deterministic)return deterministic;
