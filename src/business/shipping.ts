@@ -12,10 +12,10 @@ export interface Carrier{id:string;name:string;active:boolean;zones:Record<strin
 export type ShipmentStatus="draft"|"booked"|"picked_up"|"in_transit"|"out_for_delivery"|"delivered"|"delivery_failed"|"returned"|"cancelled";
 export interface TrackingEvent{at:string;status:ShipmentStatus;note?:string;source:"manual"|"carrier"}
 export interface Customer{name:string;phone:string;city:string;address:string}
-export interface Shipment{id:string;orderId:string;carrierId:string;customer:Customer;weightKg:number;cost:number;charged:number;codAmount:number;codCollected:boolean;promisedDays:number;status:ShipmentStatus;trackingNumber?:string;createdAt:string;events:TrackingEvent[]}
+export interface Shipment{id:string;orderId:string;carrierId:string;customer:Customer;weightKg:number;cost:number;charged:number;codAmount:number;codCollected:boolean;promisedDays:number;status:ShipmentStatus;trackingNumber?:string;createdAt:string;events:TrackingEvent[];invoiceNumber?:string;source?:"store"|"manual"}
 export interface Quote{carrierId:string;carrierName:string;zone:string;price:number;days:number}
 export interface CarrierAdapter{book(shipment:Shipment):Promise<{trackingNumber:string}>;track(trackingNumber:string):Promise<Array<{at:string;status:ShipmentStatus;note?:string}>>}
-export interface ShippingState{carriers:Carrier[];shipments:Shipment[];vatPercent:number}
+export interface ShippingState{carriers:Carrier[];shipments:Shipment[];vatPercent:number;invoiceSeq?:number}
 
 const NEXT:Record<ShipmentStatus,ShipmentStatus[]>={
   draft:["booked","cancelled"],booked:["picked_up","cancelled"],picked_up:["in_transit","delivery_failed"],
@@ -27,16 +27,28 @@ const normalCity=(city:string)=>city.trim().toLowerCase().replace(/[أإآ]/g,"�
 const dayMs=86_400_000;
 
 export class ShippingDesk{
-  private state:ShippingState;
+  private cached:ShippingState;
+  private stamp=-1;
   constructor(private readonly file:string,private readonly adapters:Record<string,CarrierAdapter>={},private readonly now:()=>Date=()=>new Date()){
-    this.state=this.read();
+    this.cached=this.read();
   }
-  private read():ShippingState{try{return{carriers:[],shipments:[],vatPercent:15,...JSON.parse(fs.readFileSync(this.file,"utf8"))};}catch{return{carriers:[],shipments:[],vatPercent:15};}}
+  /**
+   * The agent's tools and the panel each hold a desk on the same file. Each used to keep its first reading forever, so a
+   * save from one erased what the other had just added; the file is read again whenever someone else has written it.
+   */
+  private get state():ShippingState{
+    const stamp=this.mtime();
+    if(stamp!==this.stamp)this.cached=this.read();
+    return this.cached;
+  }
+  private mtime(){try{return fs.statSync(this.file).mtimeMs;}catch{return -1;}}
+  private read():ShippingState{this.stamp=this.mtime();try{return{carriers:[],shipments:[],vatPercent:15,invoiceSeq:0,...JSON.parse(fs.readFileSync(this.file,"utf8"))};}catch{return{carriers:[],shipments:[],vatPercent:15,invoiceSeq:0};}}
   private save(){
     fs.mkdirSync(path.dirname(this.file),{recursive:true});
     const temporary=this.file+"."+randomUUID()+".tmp";
-    fs.writeFileSync(temporary,JSON.stringify(this.state,null,2),{mode:0o600});
+    fs.writeFileSync(temporary,JSON.stringify(this.cached,null,2),{mode:0o600});
     fs.renameSync(temporary,this.file);
+    this.stamp=this.mtime();
   }
   setVat(percent:number){if(!(percent>=0&&percent<=100))throw new Error("shipping_invalid_vat");this.state.vatPercent=percent;this.save();}
   saveCarrier(carrier:Carrier){
@@ -110,6 +122,14 @@ export class ShippingDesk{
     return{shipment,applied,ignored};
   }
   recordCodCollected(id:string){const shipment=this.get(id);if(shipment.status!=="delivered"||!shipment.codAmount)throw new Error("shipping_cod_not_collectable");shipment.codCollected=true;this.save();return shipment;}
+  /** A shipment's invoice number: given once, in sequence (INV-000001, ...), and never reused. */
+  invoiceNumber(id:string):string{
+    const shipment=this.get(id);
+    if(shipment.invoiceNumber)return shipment.invoiceNumber;
+    const next=(this.cached.invoiceSeq??0)+1;
+    this.cached.invoiceSeq=next;shipment.invoiceNumber="INV-"+String(next).padStart(6,"0");this.save();
+    return shipment.invoiceNumber;
+  }
   /** The customer's invoice, with tax worked out once and rounded once. */
   invoice(id:string){
     const shipment=this.get(id),vat=Math.round(shipment.charged*this.state.vatPercent/100);
@@ -133,9 +153,9 @@ export class ShippingDesk{
   /** Per carrier, between two dates: volume, delivery rate, lateness, margin and cash still with the carrier. */
   report(from?:string,to?:string){
     const inRange=this.state.shipments.filter(item=>item.status!=="cancelled"&&(!from||item.createdAt>=from)&&(!to||item.createdAt<=to));
-    const now=this.now().getTime(),carriers:Record<string,{shipments:number;delivered:number;failedOrReturned:number;late:number;cost:number;charged:number;margin:number;codOutstanding:number}>={};
+    const now=this.now().getTime(),carriers:Record<string,{name:string;shipments:number;delivered:number;failedOrReturned:number;late:number;cost:number;charged:number;margin:number;codOutstanding:number}>={};
     for(const item of inRange){
-      const row=carriers[item.carrierId]??={shipments:0,delivered:0,failedOrReturned:0,late:0,cost:0,charged:0,margin:0,codOutstanding:0};
+      const row=carriers[item.carrierId]??={name:this.state.carriers.find(c=>c.id===item.carrierId)?.name??item.carrierId,shipments:0,delivered:0,failedOrReturned:0,late:0,cost:0,charged:0,margin:0,codOutstanding:0};
       const due=new Date(item.createdAt).getTime()+item.promisedDays*dayMs,deliveredAt=item.events.find(event=>event.status==="delivered")?.at;
       row.shipments++;row.cost+=item.cost;row.charged+=item.charged;row.margin+=item.charged-item.cost;
       if(item.status==="delivered"){row.delivered++;if(!item.codCollected)row.codOutstanding+=item.codAmount;}

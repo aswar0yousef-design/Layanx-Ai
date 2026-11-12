@@ -56,7 +56,8 @@ const T={
   projectsLead:"كل مجلد داخل مجلد المشاريع مشروع، ويمكنك ربط أي مجلد آخر (مثل المفتوح في VS Code).",activeProject:"المشروع النشط",use:"اعتماد",inspect:"فحص بالوكيل",linkFolder:"ربط مجلد",folderPath:"مسار المجلد",projectName:"اسم المشروع",link:"ربط",linked:"مربوط",
   gitLead:"أوامر القراءة تعمل فوراً؛ إنشاء الفروع والـ commit والـ push يحتاج موافقتك.",gitAsk:"اطلب من الوكيل",gitCommit:"اكتب commit واضحاً للتغييرات الحالية",gitPush:"ارفع الفرع الحالي إلى GitHub",gitPR:"جهّز Pull Request بعد مراجعة الكود والأمان",
   stores:"المتاجر",products:"المنتجات",orders:"الطلبات",orderValue:"قيمة الطلبات",content:"المحتوى",published:"منشور",scheduled:"مجدول",campaigns:"الحملات",media:"الوسائط",accounts:"الحسابات",
-  shopGoals:"أنشئ 5 منتجات جديدة في المتجر مع أوصاف وصور|زامن الطلبات الجديدة من المتجر|اكتب وصفاً تسويقياً لأفضل منتج",
+  shopGoals:"كم طلب جاني اليوم في متجري؟|جهّز شحنات طلبات المتجر|كم شحنة متأخرة؟|الطلبات اللي وصلت اقفلها في المتجر",shipL:"الشحنات",shipNone:"لا شحنات بعد. اطلب: «جهّز شحنات طلبات المتجر».",invoiceB:"الفاتورة",
+  shipSt:{draft:"مسودة",booked:"محجوزة",picked_up:"استُلمت",in_transit:"في الطريق",out_for_delivery:"خرجت للتوصيل",delivered:"سُلّمت",delivery_failed:"فشل التوصيل",returned:"مرتجعة",cancelled:"ملغاة"},
   plL:"المنصات",plLead:"اربط LayanX بالمنصات التي يعمل عليها في المواقع. المفتاح يُحفظ مشفّراً على هذا الكمبيوتر فقط، والقراءة آمنة، وكل نشر للإنتاج أو تعديل أو حذف ينتظر موافقتك.",plConnect:"ربط",plDisconnect:"فصل",plSave:"ربط الآن",plCancel:"إلغاء",plGetToken:"أنشئ المفتاح من هنا",plTokenFor:"المفتاح",plOptional:"اختياري",plKeep:"محفوظ؛ اتركه فارغاً للإبقاء عليه",plTools:"أداة",plManaged:"يُدار من صفحة الإعداد",plConnected:"تم الربط",plDisconnected:"تم الفصل",plConfirm:"فصل {p}؟ يُحذف مفتاحه من هذا الكمبيوتر.",plReplaced:"استُبدلت نسخة سابقة: {x}",plDocs:"التوثيق",plShared:"مشترك مع أجزاء أخرى من LayanX",
   pls_connected:"متصل",pls_available:"جاهز للربط",pls_needs_token:"يحتاج مفتاحاً",pls_error:"خطأ",pls_starting:"يبدأ…",plFromMcp:"منصة",
   cd_burstiness:"تنوّع أطوال الجمل",cd_specificity:"تفاصيل ملموسة: أرقام، أسماء، مواعيد",cd_slop:"عبارات نمطية يكثر منها الذكاء الاصطناعي",cd_fingerprint:"رموز مخفية وآثار آلية",cd_voice:"صوت طبيعي يشبه كتابتك",cd_platform:"حدود المنصة: الطول والوسوم",
@@ -133,7 +134,8 @@ const T={
   projectsLead:"Every folder inside the projects folder is a project; you can also link any other folder (such as the one open in VS Code).",activeProject:"Active project",use:"Use",inspect:"Inspect with agent",linkFolder:"Link a folder",folderPath:"Folder path",projectName:"Project name",link:"Link",linked:"Linked",
   gitLead:"Read commands run immediately; creating branches, commits and pushes needs your approval.",gitAsk:"Ask the agent",gitCommit:"Write a clear commit for the current changes",gitPush:"Push the current branch to GitHub",gitPR:"Prepare a pull request after code and security review",
   stores:"Stores",products:"Products",orders:"Orders",orderValue:"Order value",content:"Content",published:"Published",scheduled:"Scheduled",campaigns:"Campaigns",media:"Media",accounts:"Accounts",
-  shopGoals:"Create 5 new products in the store with descriptions and images|Sync new orders from the store|Write a marketing description for the best product",
+  shopGoals:"How many orders did my store get today?|Prepare shipments for the store's orders|How many shipments are late?|Close the delivered orders in the store",shipL:"Shipments",shipNone:"No shipments yet. Ask: \"Prepare shipments for the store's orders\".",invoiceB:"Invoice",
+  shipSt:{draft:"draft",booked:"booked",picked_up:"picked up",in_transit:"in transit",out_for_delivery:"out for delivery",delivered:"delivered",delivery_failed:"delivery failed",returned:"returned",cancelled:"cancelled"},
   plL:"Platforms",plLead:"Connect LayanX to the platforms it works on for websites. The token is stored encrypted on this computer only; reading is safe, and every production deploy, change or deletion waits for your approval.",plConnect:"Connect",plDisconnect:"Disconnect",plSave:"Connect now",plCancel:"Cancel",plGetToken:"Create the token here",plTokenFor:"Token",plOptional:"optional",plKeep:"saved; leave empty to keep it",plTools:"tools",plManaged:"Managed on the setup page",plConnected:"Connected",plDisconnected:"Disconnected",plConfirm:"Disconnect {p}? Its token is deleted from this computer.",plReplaced:"Replaced an earlier copy: {x}",plDocs:"Docs",plShared:"shared with other parts of LayanX",
   pls_connected:"Connected",pls_available:"Ready to connect",pls_needs_token:"Needs a token",pls_error:"Error",pls_starting:"Starting…",plFromMcp:"platform",
   cd_burstiness:"Variety in sentence length",cd_specificity:"Concrete details: numbers, names, dates",cd_slop:"Stock phrases AI overuses",cd_fingerprint:"Hidden characters and machine traces",cd_voice:"A natural voice, like yours",cd_platform:"Platform limits: length and hashtags",
@@ -1147,11 +1149,19 @@ const VIEWS={
   run("git.status");
  },
  async ecommerce(v){
-  const b=(await safe(api("/v1/business"),{})).business||{};S.biz=b;
+  const [b,sh]=await Promise.all([safe(api("/v1/business"),{}).then(x=>x.business||{}),safe(api("/v1/shipping"),{shipments:[],carriers:[]})]);S.biz=b;
+  const carrierName=id=>((sh.carriers||[]).find(c=>c.id===id)||{}).name||id;
+  // The printable invoice opens in its own window (built from the store order when the store is connected).
+  const openInvoice=async id=>{const r=await safe(api("/v1/shipping/shipment/"+encodeURIComponent(id)+"/invoice"),{});if(!r.html){toast(r.error||"—");return;}const w=window.open(URL.createObjectURL(new Blob([r.html],{type:"text/html"})),"_blank");if(!w)toast(r.document?.number||"");};
+  const ships=(sh.shipments||[]).slice(-15).reverse();
+  const shipCard=el("section",{class:"card",style:"margin-top:1rem"},el("h3",{text:t("shipL")+" ("+(sh.shipments||[]).length+")"}),el("div",{class:"rows"},
+   ships.map(s=>el("div",{class:"row"},el("div",{class:"t mono",text:"#"+s.orderId}),el("div",{class:"s",dir:"auto",text:carrierName(s.carrierId)+" · "+(s.customer?.city||"")+" · "+((s.cost||0)/100).toFixed(2)+(s.codAmount?" · COD "+(s.codAmount/100).toFixed(2):"")}),
+    el("div",{class:"a"},pill(s.status==="delivered"?"done":["delivery_failed","returned","cancelled"].includes(s.status)?"fail":"pend",(t("shipSt")||{})[s.status]||s.status),el("button",{class:"btn small",onclick:()=>openInvoice(s.id)},t("invoiceB"))))),
+   ships.length?null:el("div",{class:"empty",text:t("shipNone")})));
   fill(v,head(t("ecommerce"),"Shopify · WooCommerce"),stats([[t("stores"),(b.stores||[]).length],[t("products"),(b.products||[]).length],[t("orders"),(b.orders||[]).length],[t("orderValue"),(b.orders||[]).reduce((n,o)=>n+(o.total||0),0)]]),
    el("div",{class:"grid2",style:"margin-top:1rem"},
     el("section",{class:"card"},el("h3",{text:t("products")}),el("div",{class:"rows"},(b.products||[]).slice(-12).reverse().map(p=>el("div",{class:"row"},el("div",{class:"t",dir:"auto",text:p.name}),el("div",{class:"s",text:(p.price??"")+" "+(p.currency||"")}),el("div",{class:"a"},pill(p.externalId?"done":"pend",p.externalId?t("published"):"draft")))),(b.products||[]).length?null:el("div",{class:"empty",text:"—"}))),
-    el("section",{class:"card"},el("h3",{text:t("gitAsk")}),goalChips(t("shopGoals")),el("h3",{style:"margin-top:1rem",text:t("orders")}),el("div",{class:"rows"},(b.orders||[]).slice(-8).reverse().map(o=>el("div",{class:"row"},el("div",{class:"t mono",text:o.externalId||o.id.slice(0,8)}),el("div",{class:"s",text:(o.total??"")+" "+(o.currency||"")+" · "+(o.status||"")}))),(b.orders||[]).length?null:el("div",{class:"empty",text:"—"})))));
+    el("section",{class:"card"},el("h3",{text:t("gitAsk")}),goalChips(t("shopGoals")),el("h3",{style:"margin-top:1rem",text:t("orders")}),el("div",{class:"rows"},(b.orders||[]).slice(-8).reverse().map(o=>el("div",{class:"row"},el("div",{class:"t mono",text:o.externalId||o.id.slice(0,8)}),el("div",{class:"s",text:(o.total??"")+" "+(o.currency||"")+" · "+(o.status||"")}))),(b.orders||[]).length?null:el("div",{class:"empty",text:"—"})))),shipCard);
  },
  async social(v){
   const [b,oc]=await Promise.all([safe(api("/v1/business"),{}).then(x=>x.business||{}),safe(api("/v1/oauth/connections"),{connections:[]})]);

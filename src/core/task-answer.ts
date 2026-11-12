@@ -89,7 +89,47 @@ export function storeChangeReply(data:unknown,arabicReply:boolean):string|null{
   return(A?`${d.product}: عدّلتُه في المتجر وقرأتُه منه بعد التعديل. `:`${d.product}: changed in the store and read back. `)+(changed.join("، ")||(A?"لم تتغير قيمة.":"no value changed."));
 }
 
+const money=(m:number,c?:string)=>(m/100).toFixed(2)+(c?" "+c:"");
+const SKIP_AR:Array<[RegExp,string]>=[[/missing customer/,"ينقص من بيانات العميل:"],[/no weight in the store for:/,"لا وزن في المتجر لـ:"],[/no carrier serves/,"لا شركة شحن تخدم"],[/\bphone\b/,"الهاتف"],[/\baddress\b/,"العنوان"],[/\bcity\b/,"المدينة"]];
+/** Shipping replies, written by code from the desk's and the store's own data. */
+export function shippingReply(tool:string,data:unknown,A:boolean):string|null{
+  const d=data as any;if(!d||typeof d!=="object")return null;
+  if(tool==="shipping.from_store"&&Array.isArray(d.created)){
+    const lines=[A?`جهّزتُ ${d.created.length} شحنة جديدة (مسودات، لم تُرسل لشركة الشحن بعد).`:`Prepared ${d.created.length} new shipments (drafts, not sent to a carrier yet).`];
+    for(const c of d.created)lines.push(`- #${c.order}: ${c.carrier} — ${c.city} — ${c.weightKg} ${A?"كغ":"kg"} — ${A?"التكلفة":"cost"} ${money(c.cost,d.currency)}${c.cod?(A?` — يُحصَّل عند الاستلام ${money(c.cod,d.currency)}`:` — COD ${money(c.cod,d.currency)}`):""}`);
+    if(d.existing?.length)lines.push((A?"لها شحنات من قبل: ":"Already had shipments: ")+d.existing.map((e:any)=>"#"+e.order).join("، "));
+    if(d.skipped?.length){lines.push(A?"لم أجهّزها:":"Not prepared:");for(const s of d.skipped)lines.push(`- #${s.order}: ${A?SKIP_AR.reduce((t,[re,ar])=>t.replace(re,ar),String(s.reason)):s.reason}`);}
+    if(!d.created.length&&!d.existing?.length&&!d.skipped?.length)lines.push(A?"لا طلبات تنتظر الشحن في المتجر.":"No store orders are waiting to ship.");
+    return lines.join("\n");
+  }
+  if(tool==="shipping.invoice.document"&&d.invoice){
+    return[A?`الفاتورة ${d.invoice} للطلب #${d.order}: الإجمالي ${money(d.total,d.currency)}.`:`Invoice ${d.invoice} for order #${d.order}: total ${money(d.total,d.currency)}.`,
+      (A?"الملف: ":"File: ")+(d.pdf??d.html),
+      d.sellerMissing?(A?"اسم متجرك غير مضبوط على الفاتورة: أضف LAYANX_SELLER_NAME (وLAYANX_SELLER_VAT إن كان لك رقم ضريبي) في اللوحة.":"Your store name is not set on the invoice: add LAYANX_SELLER_NAME (and LAYANX_SELLER_VAT if you have a VAT number) in the panel."):"",
+      d.fromStore?"":(A?"المتجر غير مربوط، فالفاتورة للشحن فقط.":"The store is not connected, so the invoice covers shipping only.")].filter(Boolean).join("\n");
+  }
+  if(tool==="shipping.store.close"&&Array.isArray(d.closed)){
+    const lines=[d.closed.length?(A?`أغلقتُ ${d.closed.length} طلباً في المتجر (مكتمل)، وقرأتها منه بعد التعديل: `:`Closed ${d.closed.length} orders in the store (completed), read back: `)+d.closed.map((c:any)=>"#"+c.order).join("، "):(A?"لا طلب مسلَّم يحتاج إغلاقاً في المتجر.":"No delivered order needed closing in the store.")];
+    if(d.already?.length)lines.push((A?"كانت مغلقة من قبل: ":"Already closed: ")+d.already.map((x:string)=>"#"+x).join("، "));
+    if(d.notInStore?.length)lines.push((A?"ليست في طلبات المتجر: ":"Not among the store's orders: ")+d.notInStore.map((x:string)=>"#"+x).join("، "));
+    return lines.join("\n");
+  }
+  if(tool==="shipping.report"&&d.carriers&&typeof d.shipments==="number"){
+    const rows=Object.values(d.carriers) as any[];
+    if(!rows.length)return A?"لا شحنات مسجلة بعد.":"No shipments recorded yet.";
+    return[A?`${d.shipments} شحنة:`:`${d.shipments} shipments:`,...rows.map(r=>A?`- ${r.name}: ${r.shipments} شحنة، سُلِّم ${r.delivered}، متأخر ${r.late}، فشل أو مرتجع ${r.failedOrReturned}، التكلفة ${money(r.cost)}${r.codOutstanding?`، نقد عند الاستلام لم يُستلم بعد ${money(r.codOutstanding)}`:""}`:`- ${r.name}: ${r.shipments}, delivered ${r.delivered}, late ${r.late}, failed/returned ${r.failedOrReturned}, cost ${money(r.cost)}${r.codOutstanding?`, COD outstanding ${money(r.codOutstanding)}`:""}`)].join("\n");
+  }
+  return null;
+}
+
 export async function composeTaskAnswer(models:Pick<ModelExecutionRouter,"execute">,goal:string,results:ToolResult[],completed:boolean):Promise<TaskAnswer|null>{
+  for(const name of ["shipping.from_store","shipping.invoice.document","shipping.store.close","shipping.report"]){
+    const r=results.filter(x=>x?.ok&&x.tool===name).at(-1);
+    const text=r?shippingReply(name,r.data,arabic(goal)):null;
+    if(text)return{text,fromImage:false};
+  }
+  const failedShipping=results.filter(r=>r&&!r.ok&&/^shipping\.(?:from_store|invoice\.document|store\.close)$/.test(String(r.tool))).at(-1) as (ToolResult&{error?:string})|undefined;
+  if(failedShipping?.error)return{text:failedShipping.error,fromImage:false};
   const report=results.filter(r=>r?.ok&&r.tool==="store.report").at(-1);
   const reportText=report?storeReply(report.data,arabic(goal)):null;
   if(reportText)return{text:reportText,fromImage:false};

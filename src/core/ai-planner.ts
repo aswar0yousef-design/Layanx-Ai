@@ -7,6 +7,7 @@ import {openRequest} from "../tools/open-app.js";
 import {leadRequest,siteFrom} from "../business/lead-research.js";
 import {webFormRequest} from "../tools/web-form.js";
 import {storeChangeRequest,storeReportRequest} from "../business/woocommerce.js";
+import {shippingIntent} from "../business/store-shipping.js";
 
 export interface PlannedTool{
   /** As MissionToolPlan.final: the mission is done once this step succeeds. */
@@ -118,6 +119,23 @@ function deterministicWebFormPlan(goal:string,catalog:ToolCatalogEntry[]):Planne
   successCriteria:["result.submitted === true"],
   stopCondition:"Stop if the page has no form for this request or a needed value is missing.",
   tools:[{tool:tool.name,action:tool.actions[0]!,permission:tool.permission,reason:"The owner asked to do this on "+url+".",payload:{url,goal:step.slice(0,1000)},final:true}]};
+}
+
+/** "Prepare shipments for the store's orders", "invoice for order 1041", "close the delivered orders", "shipping report". */
+function deterministicShippingPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
+ const step=currentMilestoneGoal(goal),intent=shippingIntent(step);
+ if(!intent)return undefined;
+ const spec={
+  prepare:{tool:"shipping.from_store",payload:{goal:step.slice(0,500)},step:"Prepare draft shipments for the store's orders that wait to ship.",done:"Shipments were prepared or the reasons listed.",risk:"low" as const},
+  invoice:{tool:"shipping.invoice.document",payload:{goal:step.slice(0,500),order:intent.kind==="invoice"?intent.order:""},step:"Write the customer's invoice for the order as a file.",done:"The invoice file was written.",risk:"low" as const},
+  close:{tool:"shipping.store.close",payload:{goal:step.slice(0,500)},step:"Set the store orders whose shipments were delivered to completed, and read them back.",done:"Delivered orders were closed in the store.",risk:"medium" as const},
+  report:{tool:"shipping.report",payload:{},step:"Report the shipments by carrier.",done:"The shipping report was read.",risk:"low" as const}
+ }[intent.kind];
+ const tool=catalog.find(t=>t.name===spec.tool);
+ if(!tool)return undefined;
+ return{risk:spec.risk,requiredPermission:tool.permission,steps:[{description:spec.step}],successCriteria:[spec.done],
+  stopCondition:"Stop if the store or the shipping desk cannot be read.",
+  tools:[{tool:tool.name,action:tool.actions[0]!,permission:tool.permission,reason:"The owner asked: "+step.slice(0,120),payload:spec.payload,final:true}]};
 }
 
 /** "How many orders today in my store" reads the store; "lower the price of X to 40 in my store" is one approved change. */
@@ -278,6 +296,8 @@ export class AiMissionPlanner{
     if(leads)return leads;
     const form=deterministicWebFormPlan(goal,tools);
     if(form)return form;
+    const shipping=deterministicShippingPlan(goal,tools);
+    if(shipping)return shipping;
     const store=deterministicStorePlan(goal,tools);
     if(store)return store;
     const scopedTools=filterCatalogForGoal(goal,tools);

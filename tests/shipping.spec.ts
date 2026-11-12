@@ -78,10 +78,23 @@ const customer={name:"سارة",phone:"0500000000",city:"الرياض",address:"
   assert.deepEqual(r,{matched:1,mismatches:[{trackingNumber:"T2",expected:2500,billed:9000}],unknown:["X"],duplicates:["T2"],overBilled:6500});
   clock=new Date("2026-01-05T00:00:00Z");
   const row=d.report().carriers.a!;
-  assert.deepEqual(row,{shipments:3,delivered:1,failedOrReturned:0,late:2,cost:8500,charged:11333,margin:2833,codOutstanding:10000});
+  assert.deepEqual(row,{name:"Fast",shipments:3,delivered:1,failedOrReturned:0,late:2,cost:8500,charged:11333,margin:2833,codOutstanding:10000});
   d.recordCodCollected(a.id);
   assert.equal(d.report().carriers.a!.codOutstanding,0);
   assert.equal(d.report("2026-02-01").shipments,0);
 }
 fs.rmSync(root,{recursive:true,force:true});
 console.log("shipping: quotes, one shipment per order, forward-only tracking, invoices, carrier-bill checks and reports add up");
+{ // The agent's desk and the panel's desk share one file: neither erases what the other added (it used to).
+  const f=file(),agent=new ShippingDesk(f,{},()=>clock),panel=new ShippingDesk(f,{},()=>clock);
+  agent.saveCarrier(carrierA);
+  const s=agent.create({orderId:"shared-1",customer,weightKg:1,charged:3000});
+  panel.saveCarrier(carrierB);
+  assert.equal(panel.get(s.id).orderId,"shared-1","the panel sees the agent's shipment");
+  assert.equal(agent.carriers().length,2,"the agent sees the panel's carrier");
+  assert.equal(new ShippingDesk(f).list().length,1,"and the file still holds the shipment");
+  assert.equal(agent.invoiceNumber(s.id),"INV-000001");assert.equal(panel.invoiceNumber(s.id),"INV-000001","given once");
+  const t=panel.create({orderId:"shared-2",customer,weightKg:1,charged:3000});
+  assert.equal(agent.invoiceNumber(t.id),"INV-000002","in sequence across both");
+  console.log("shipping: two desks on one file stay in step");
+}

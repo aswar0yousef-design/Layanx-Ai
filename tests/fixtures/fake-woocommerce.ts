@@ -14,19 +14,19 @@ export function sampleCatalog(now=new Date()){
   const daysAgo=(n:number)=>{const d=new Date(now);d.setDate(d.getDate()-n);d.setHours(12,0,0,0);return gmt(d);};
   // 230 products, so the list really needs three pages.
   const products:any[]=[
-    {id:11,name:"عسل سدر يمني 500 جرام",sku:"HONEY-500",status:"publish",price:"45",regular_price:"45",sale_price:"",stock_status:"instock",stock_quantity:12,manage_stock:true},
-    {id:12,name:"بن يمني حراز 250 جرام",sku:"COFFEE-250",status:"publish",price:"30",regular_price:"30",sale_price:"",stock_status:"outofstock",stock_quantity:0,manage_stock:true},
-    {id:13,name:"زيت سمسم بلدي",sku:"SESAME-1L",status:"publish",price:"18",regular_price:"18",sale_price:"",stock_status:"instock",stock_quantity:2,manage_stock:true},
+    {id:11,name:"عسل سدر يمني 500 جرام",sku:"HONEY-500",status:"publish",price:"45",regular_price:"45",sale_price:"",stock_status:"instock",stock_quantity:12,manage_stock:true,weight:"0.6"},
+    {id:12,name:"بن يمني حراز 250 جرام",sku:"COFFEE-250",status:"publish",price:"30",regular_price:"30",sale_price:"",stock_status:"outofstock",stock_quantity:0,manage_stock:true,weight:"0.3"},
+    {id:13,name:"زيت سمسم بلدي",sku:"SESAME-1L",status:"publish",price:"18",regular_price:"18",sale_price:"",stock_status:"instock",stock_quantity:2,manage_stock:true,weight:"1.1"},
     {id:14,name:"بخور عدني",sku:"BAKHOOR",status:"draft",price:"25",regular_price:"25",sale_price:"",stock_status:"outofstock",stock_quantity:0,manage_stock:true}
   ];
   for(let i=0;i<226;i++)products.push({id:100+i,name:"منتج تجريبي "+(i+1),sku:"FILL-"+i,status:"publish",price:"10",regular_price:"10",sale_price:"",stock_status:"instock",stock_quantity:50,manage_stock:true});
   const li=(product_id:number,name:string,quantity:number,price:number)=>({product_id,name,quantity,total:String(quantity*price)});
   const orders=[
-    {id:501,number:"1041",status:"processing",total:"90.00",currency:"SAR",date_created_gmt:today(1),line_items:[li(11,"عسل سدر يمني 500 جرام",2,45)],shipping:{city:"الرياض"},billing:{first_name:"سالم",city:"الرياض"}},
+    {id:501,number:"1041",status:"processing",total:"90.00",currency:"SAR",date_created_gmt:today(1),line_items:[li(11,"عسل سدر يمني 500 جرام",2,45)],payment_method:"cod",payment_method_title:"الدفع عند الاستلام",shipping_total:"0.00",total_tax:"0.00",shipping:{first_name:"سالم",last_name:"العمري",address_1:"حي النرجس، شارع 12",city:"الرياض",phone:""},billing:{first_name:"سالم",last_name:"العمري",city:"الرياض",phone:"0501112233"}},
     {id:502,number:"1042",status:"completed",total:"30.00",currency:"SAR",date_created_gmt:today(2),line_items:[li(12,"بن يمني حراز 250 جرام",1,30)],shipping:{city:"جدة"}},
     {id:503,number:"1043",status:"pending",total:"45.00",currency:"SAR",date_created_gmt:today(3),line_items:[li(11,"عسل سدر يمني 500 جرام",1,45)]},
     {id:504,number:"1044",status:"cancelled",total:"18.00",currency:"SAR",date_created_gmt:today(4),line_items:[li(13,"زيت سمسم بلدي",1,18)]},
-    {id:505,number:"1045",status:"processing",total:"63.00",currency:"SAR",date_created_gmt:today(5),line_items:[li(11,"عسل سدر يمني 500 جرام",1,45),li(13,"زيت سمسم بلدي",1,18)],billing:{city:"الدمام"}},
+    {id:505,number:"1045",status:"processing",total:"63.00",currency:"SAR",date_created_gmt:today(5),line_items:[li(11,"عسل سدر يمني 500 جرام",1,45),li(13,"زيت سمسم بلدي",1,18)],payment_method:"bacs",payment_method_title:"تحويل بنكي",shipping_total:"0.00",total_tax:"0.00",billing:{first_name:"نورة",last_name:"القحطاني",address_1:"حي الفيصلية",city:"الدمام",phone:"0559998877"}},
     {id:490,number:"1030",status:"completed",total:"300.00",currency:"SAR",date_created_gmt:daysAgo(3),line_items:[li(12,"بن يمني حراز 250 جرام",10,30)]},
     {id:470,number:"1010",status:"completed",total:"450.00",currency:"SAR",date_created_gmt:daysAgo(20),line_items:[li(11,"عسل سدر يمني 500 جرام",10,45)]}
   ];

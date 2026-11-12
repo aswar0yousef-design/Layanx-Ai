@@ -11,9 +11,10 @@ import {extractJson} from "../providers/adaptive-ollama.js";
  *  - Money stays with the owner: refunds and cancellations are never done here.
  */
 export interface WooConfig{url:string;key:string;secret:string;allowWrites:boolean}
-export interface WooProduct{id:number;name:string;sku:string;status:string;price:string;regular_price:string;sale_price:string;stock_status:string;stock_quantity:number|null;manage_stock:boolean;total_sales?:number;permalink?:string}
-export interface WooLineItem{product_id:number;name:string;quantity:number;total:string;sku?:string}
-export interface WooOrder{id:number;number:string;status:string;total:string;currency:string;date_created_gmt:string;line_items:WooLineItem[];billing?:{first_name?:string;city?:string};shipping?:{city?:string}}
+export interface WooProduct{id:number;name:string;sku:string;status:string;price:string;regular_price:string;sale_price:string;stock_status:string;stock_quantity:number|null;manage_stock:boolean;total_sales?:number;permalink?:string;weight?:string}
+export interface WooLineItem{product_id:number;name:string;quantity:number;total:string;total_tax?:string;price?:number|string;sku?:string}
+export interface WooAddress{first_name?:string;last_name?:string;address_1?:string;address_2?:string;city?:string;phone?:string;email?:string}
+export interface WooOrder{id:number;number:string;status:string;total:string;currency:string;date_created_gmt:string;line_items:WooLineItem[];billing?:WooAddress;shipping?:WooAddress;payment_method?:string;payment_method_title?:string;shipping_total?:string;total_tax?:string;discount_total?:string}
 export type Fetcher=typeof fetch;
 
 /** "mystore.com", "https://mystore.com/shop/" or a full ".../wp-json/wc/v3" become the REST base. */
@@ -293,6 +294,10 @@ const ARABIC:Array<[RegExp,(m:RegExpExecArray)=>string]>=[
   [/^Changing the store is off/,()=>"تعديل المتجر مغلق. لتفعيله أضف LAYANX_WOOCOMMERCE_ALLOW_WRITES بقيمة on في اللوحة (الإعداد ← الأسرار)، وتأكد أن المفاتيح بصلاحية قراءة وكتابة."],
   [/^The store is not connected/,()=>"المتجر غير مربوط. أضف في اللوحة (الإعداد ← الأسرار): LAYANX_WOOCOMMERCE_URL (عنوان المتجر)، وLAYANX_WOOCOMMERCE_CONSUMER_KEY وLAYANX_WOOCOMMERCE_CONSUMER_SECRET من WooCommerce ← الإعدادات ← متقدم ← REST API. صلاحية القراءة تكفي للتقارير."],
   [/^The store refused the keys \(([^)]*)\)/,m=>`رفض المتجر المفاتيح (${m[1]}). تحقق من المفتاح والسر، ومن صلاحيتهما.`],
+  [/^Say the order number for the invoice/,()=>"اكتب رقم الطلب الذي تريد فاتورته."],
+  [/^Order (\d+) has no shipment yet/,m=>`الطلب ${m[1]} ليس له شحنة بعد. قل أولاً: «جهّز شحنات طلبات المتجر».`],
+  [/^Order (\d+): its lines, shipping and tax add up to (\S+), but the store's total is (\S+)\./,m=>`الطلب ${m[1]}: مجموع منتجاته والشحن والضريبة ${m[2]}، لكن إجمالي المتجر ${m[3]}. راجع الطلب في WooCommerce قبل إصدار الفاتورة.`],
+  [/^The store did not keep order (\d+) as completed \(it shows (\S+)\)/,m=>`المتجر لم يحتفظ بالطلب ${m[1]} مكتملاً (حالته الآن ${m[2]}).`],
   [/^The store did not keep the change/,()=>"أرسلتُ التعديل لكن المتجر لم يحتفظ به عند قراءته بعد التعديل؛ راجعه في WooCommerce."]
 ];
 export function storeMessage(message:string,arabic:boolean):string{

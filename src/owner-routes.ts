@@ -7,6 +7,8 @@ import {adoptSkill,decideIntake,listIntake,requestIntake} from "./autonomy/integ
 import {mineFailures,proposeExperiments,readLedger,rollBack} from "./autonomy/improvement-cycle.js";
 import {domainBrief,routeGoal,type DomainReader} from "./autonomy/domain-coordinator.js";
 import {qrSvg} from "./platform/qr.js";
+import {buildInvoice,invoiceHtml,sellerFrom} from "./business/store-shipping.js";
+import {WooClient,wooConfig} from "./business/woocommerce.js";
 import {readLearningLedger} from "./autonomy/daily-learning.js";
 import {decideProposal,readScoutLedger,runProjectScout,type ScoutIntegrations} from "./autonomy/project-scout.js";
 import {approvePulls,checkHardware,describePlan,detectHardware,installedModels,loadCatalog,ollamaPull,pullMode,pullPlanned,readHardwareState} from "./platform/hardware-plan.js";
@@ -55,7 +57,13 @@ export function createOwnerRoutes(deps:OwnerRouteDeps):OwnerRoute{
       if(route==="/v1/shipping/reconcile"&&method==="POST"){const body=await input();send(200,{ok:true,result:deps.desk.reconcile(String(body.carrierId),body.bill??[])});return true;}
       if(parts[0]==="shipping"&&parts[1]==="shipment"&&parts[2]){
         const id=parts[2];
-        if(parts[3]==="invoice"&&method==="GET"){send(200,{ok:true,invoice:deps.desk.invoice(id)});return true;}
+        if(parts[3]==="invoice"&&method==="GET"){
+          // The printable invoice: from the store order when the store is connected, else the shipment alone.
+          const shipment=deps.desk.get(id),c=wooConfig();
+          const order=c?await new WooClient(c).ordersSince(new Date(Date.now()-365*86400_000)).then(list=>list.find(o=>String(o.number??o.id)===shipment.orderId)).catch(()=>undefined):undefined;
+          const doc=buildInvoice(deps.desk,shipment,order,sellerFrom());
+          send(200,{ok:true,invoice:deps.desk.invoice(id),document:doc,html:invoiceHtml(doc)});return true;
+        }
         if(parts[3]==="book"&&method==="POST"){
           const tracking=String((await input()).trackingNumber??"").trim();
           if(!tracking)throw new Error("shipping_tracking_number_required");
