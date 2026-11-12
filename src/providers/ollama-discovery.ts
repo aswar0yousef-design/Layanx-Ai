@@ -198,7 +198,9 @@ export function scoreModel(model:OllamaModelProfile,task:ModelTask,machine:Machi
     case "general":return size+(tools?12:0)-(coder?6:0)-(thinking?2:0)+fits+bonus;
     case "planning":return size*1.4+(tools?20:0)+(thinking?6:0)-(coder?3:0)+(model.contextLength>=16384?3:0)+fits/3+bonus+(RX.provenCoder.test(model.name)&&memoryPenalty(model,machine)>-25?40:0);
     case "coding":return (coder?30:0)+size+(tools?6:0)+fits+bonus+(RX.provenCoder.test(model.name)&&memoryPenalty(model,machine)>-25?40:0);
-    case "vision":return 20+size+(tools?3:0)+fits+bonus;
+    // The owner waits for the description of a screenshot: a model mostly in video memory answers in seconds, one that
+    // spills into system RAM takes minutes (measured 2026-11-12 on a 6 GB GPU: qwen3.5:9b 20-45 s, qwen3.8:27b 4-5 min).
+    case "vision":return 20+size+(tools?3:0)+fits+bonus-((machine.gpuVramBytes??0)>0&&model.sizeBytes>(machine.gpuVramBytes??0)*1.15?40:0);
     // Thinking is switched off for quick replies, so it only costs a little; coders make poor chat partners.
     case "fast":return 30-Math.min(model.paramsB||8,30)+(tools?6:0)-(thinking?3:0)-(coder?10:0)+fits+bonus;
   }

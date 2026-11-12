@@ -506,7 +506,7 @@ async function runGoal(goal,model,knownKind){
   me.state="fail";me.text=LANG==="ar"?"تعذر تحديد نوع الطلب بأمان. لم أنفذ أي مهمة. تحقق من اتصال LayanX وأعد المحاولة.":"The dialogue brain could not classify the request safely. No task was executed.";me.at=Date.now();drawAgent();return;
  }
  if(route==="conversation"){
-  const answer=await safe(api("/v1/assistant/turn",{method:"POST",body:{text:goal,projectId:project(),allowTasks:false}}),{ok:false,error:"assistant_unavailable"});
+  const answer=await safe(api("/v1/assistant/turn",{method:"POST",body:{text:goal,projectId:project(),allowTasks:false,tasksRunElsewhere:true}}),{ok:false,error:"assistant_unavailable"});
   const informational=answer.ok&&["answer","report","time","busy"].includes(answer.intent);
   me.state=informational?(answer.intent==="busy"?"wait":"done"):"fail";
   me.text=informational?answer.reply:t("notCompleted")+": "+reasonText(answer.error||answer.reply||"assistant_unavailable");

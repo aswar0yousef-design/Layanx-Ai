@@ -29,6 +29,8 @@ export interface AssistantTurnInput{
   history?:AssistantHistoryItem[];
   /** When false, requests to act are described but not executed. */
   allowTasks?:boolean;
+  /** The caller runs tasks itself (the Control Center sends actions to the agent, not here): say tasks are available. */
+  tasksRunElsewhere?:boolean;
 }
 export interface AssistantTaskSummary{completed:boolean;paused:boolean;status?:string;reason?:string}
 export interface AssistantTurnResult{
@@ -235,8 +237,9 @@ export class VoiceAssistant{
     if(TIME_AR.test(normalized)||TIME_EN.test(text))return{ok:true,lang,intent:"time",reply:t.time(this.now())};
     const greeting=greetingOf(text);
     if(greeting)return{ok:true,lang,intent:"answer",reply:t.greet[greeting]};
-    if(capabilityQuestion(text))return{ok:true,lang,intent:"answer",reply:t.capabilities(input.allowTasks!==false)};
-    const compound=compoundDirectAnswer(text,lang,input.allowTasks!==false);
+    const tasksAvailable=input.allowTasks!==false||input.tasksRunElsewhere===true;
+    if(capabilityQuestion(text))return{ok:true,lang,intent:"answer",reply:t.capabilities(tasksAvailable)};
+    const compound=compoundDirectAnswer(text,lang,tasksAvailable);
     if(compound)return{ok:true,lang,intent:"answer",reply:compound};
     const dialogue=classifyDialogue(text);
     const direct=directDialogueAnswer(dialogue.topic,lang);

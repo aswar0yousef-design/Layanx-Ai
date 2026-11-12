@@ -133,6 +133,13 @@ assert.equal(recommendNumCtx(owned.models[0]!,pc),8192,"9b spills past 6 GB: kee
 assert.equal(recommendNumCtx(owned.models[1]!,pc),16384,"4b fits in VRAM with room for a long context");
 assert.equal(recommendNumCtx(owned.models[2]!,pc),9216,"coder: context sized to what is left of the 6 GB");
 
+// Vision: the largest model that is mostly in video memory, not the largest installed (seen live: qwen3.8:27b took 4-5 minutes per screenshot).
+const bigVision={...owned,models:[...owned.models,
+  {name:"qwen3.8:27b",sizeBytes:17.7e9,family:"qwen35",parameterSize:"27B",paramsB:27,quantization:"Q4_K_M",capabilities:["completion","vision","tools","thinking"],capabilitySource:"ollama" as const,contextLength:262144},
+  {name:"gemma4:12b",sizeBytes:8.0e9,family:"gemma4",parameterSize:"11.9B",paramsB:11.9,quantization:"Q4_K_M",capabilities:["completion","vision","tools","thinking"],capabilitySource:"ollama" as const,contextLength:131072}]};
+assert.equal(buildModelPlan(bigVision,pc).assignments.vision,"qwen3.5:9b");
+assert.equal(buildModelPlan(bigVision,{totalMemBytes:128*GB,freeMemBytes:100*GB,gpuVramBytes:24*GB}).assignments.vision,"qwen3.8:27b","a 24 GB GPU holds the big model");
+
 // gpt-oss:20b is the default coder only where it is installed and memory allows; a pin still wins.
 const withGptOss={...owned,models:[...owned.models,{name:"gpt-oss:20b",sizeBytes:13e9,family:"gptoss",parameterSize:"20.9B",paramsB:20.9,quantization:"MXFP4",capabilities:["completion","tools","thinking"],capabilitySource:"ollama" as const,contextLength:131072}]};
 assert.equal(buildModelPlan(withGptOss,pc).assignments.coding,"gpt-oss:20b","the proven coder wins coding on the owner's PC");

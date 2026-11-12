@@ -98,3 +98,25 @@ assert.equal(unwrapAnswer('{ "response":"لا توجد نتائج كافية." }
 assert.equal(unwrapAnswer("- أولاً\n- ثانياً"),"- أولاً\n- ثانياً");
 assert.equal(unwrapAnswer('{"items":[1]}'),'{"items":[1]}',"other JSON is left as it is");
 console.log("chat understanding: JSON-wrapped replies are unwrapped");
+
+// 10. The Control Center runs tasks itself (allowTasks:false only means "not from this endpoint"), so "what can you do"
+// must not say tasks need turning on (seen live 2026-11-12).
+const panel=new VoiceAssistant({decide:async()=>"{}",runTask:async()=>{throw new Error("x");},report:()=>({}) as never} as never);
+const can=await panel.turn({text:"ماذا يمكنك أن تفعل؟",lang:"ar",allowTasks:false,tasksRunElsewhere:true});
+assert.ok(!can.reply.includes("عند تفعيل"),can.reply);
+assert.match(can.reply,/ملفات المشاريع/);
+assert.match((await panel.turn({text:"ماذا يمكنك أن تفعل؟",lang:"ar",allowTasks:false})).reply,/عند تفعيل/,"where tasks are really off, it still says so");
+const {readFile:readApp}=await import("node:fs/promises");
+assert.match(await readApp(new URL("../web/app.js",import.meta.url),"utf8"),/allowTasks:false,tasksRunElsewhere:true/);
+console.log("chat understanding: the Control Center does not claim tasks are switched off");
+
+// 11. With only a screenshot, the model is told the image is the result (seen live: "the request is not in the results").
+const seen:Record<string,unknown>[]=[];
+await composeTaskAnswer({execute:async(req:Record<string,unknown>)=>{seen.push(req);return{output:"أرى MT5.",modelId:"v"};}} as never,"التقط صورة للشاشة وصف ما تراه",[shot],true);
+const screenPrompt=String((seen[0]!.input as {text:string}[])[0]!.text);
+assert.match(screenPrompt,/IS the screenshot your tool just captured/);
+assert.ok(!/do not contain what was asked/.test(screenPrompt));
+console.log("chat understanding: a screenshot-only reply is told the image is the result");
+assert.equal(unwrapAnswer('{"user_question":"التقط صورة","tool_response":"تظهر الشاشة برنامج MetaTrader مع رسوم بيانية."}'),"تظهر الشاشة برنامج MetaTrader مع رسوم بيانية.","any key: the longest text is the reply (seen live)");
+assert.equal(unwrapAnswer('{"status":"ok","count":3}'),'{"status":"ok","count":3}',"short fields are data, not a reply");
+console.log("chat understanding: replies wrapped under any key are unwrapped");

@@ -25,7 +25,7 @@ import type {IdempotencyService} from "./idempotency.js";
 import {IdempotencyStore} from "./idempotency.js";
 import {ModelProviderRegistry,ModelExecutionRouter} from "./model-execution.js";
 import {AiMissionPlanner} from "./ai-planner.js";
-import {readSignature,repeatedReadReason} from "./repeated-read-guard.js";
+import {readSignature,repeatedReadReason,failedCall,repeatedFailureReason,type FailedCall} from "./repeated-read-guard.js";
 import {ExecutionRuntime} from "./runtime.js";
 import {MissionCompiler} from "./mission-compiler.js";
 import {ToolSelector} from "./tool-selection.js";
@@ -718,6 +718,7 @@ export class LayanXCore{
     const limit=Math.min(Math.max(Math.floor(maxSteps),1),25);
     const results:unknown[]=[];
     const successfulObservations:string[]=[];
+    const failedCalls:FailedCall[]=[];
     let latest:unknown={status:"not_started"};
     let steps=0;
     let visualContext:{mimeType:string;base64:string}|undefined;
@@ -819,7 +820,7 @@ export class LayanXCore{
       }
       // Do not burn the remaining mission budget repeating an unchanged successful read.
       // Mark the mission failed rather than pretending these observations fulfilled the goal.
-      const repeatedObservation=plan?repeatedReadReason(plan,successfulObservations):null;
+      const repeatedObservation=plan?repeatedReadReason(plan,successfulObservations)??repeatedFailureReason(plan,failedCalls):null;
       if(repeatedObservation){
         setLifecycle(current,this.executionStates,"failed",true);
         this.missions.save(current);
@@ -841,6 +842,7 @@ export class LayanXCore{
       const observationSignature=plan?readSignature(plan):null;
       if(result.ok&&observationSignature)successfulObservations.push(observationSignature);
       else successfulObservations.length=0;
+      if(!result.ok&&!result.approvalId)failedCalls.push(failedCall(plan,result.error));
       latest=result.ok?result.data:result.error;
       if(result.ok&&plan.tool==="desktop.screenshot"){
         const data=result.data as Record<string,unknown>;

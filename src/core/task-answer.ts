@@ -56,8 +56,10 @@ export async function composeTaskAnswer(models:Pick<ModelExecutionRouter,"execut
   const prompt=[
     "You are LayanX. The owner asked for something and your tools ran. Write the reply to the owner.",
     "Use ONLY the tool results below"+(image?" and the attached screenshot":"")+". Never invent names, numbers, links or facts that are not there.",
+    // A small model read "use only the results" as "the screenshot is not in the results" (seen live with qwen3.5:9b).
+    image?"The attached image IS the screenshot your tool just captured: describe what is on it to answer the request. Do not talk about tools.":"",
     completed?"":"The task did not finish; say briefly what was found and what is still missing.",
-    "If the results do not contain what was asked, say so plainly and what would get it.",
+    image&&!text?"":"If the results do not contain what was asked, say so plainly and what would get it.",
     `Write in ${lang}, plain text, at most 10 short lines; a list may use "- ".`,
     `Owner's request: ${goal.slice(0,1000)}`,
     text?`Tool results:\n${text}`:""
@@ -86,6 +88,9 @@ export function unwrapAnswer(raw:string):string{
   try{
     const o=JSON.parse(text) as Record<string,unknown>;
     const value=["response","reply","answer","text","message","content"].map(k=>o[k]).find(v=>typeof v==="string"&&v.trim());
-    return typeof value==="string"?value.trim():text;
+    if(typeof value==="string")return value.trim();
+    // Any other key ({"user_question":"...","tool_response":"..."}, seen live): the longest text is the reply.
+    const longest=Object.values(o).filter((v):v is string=>typeof v==="string").sort((a,b)=>b.length-a.length)[0];
+    return longest&&longest.trim().length>=20?longest.trim():text;
   }catch{return text;}
 }

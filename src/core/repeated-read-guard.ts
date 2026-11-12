@@ -35,3 +35,24 @@ export function repeatedReadReason(plan:ReadPlan,history:readonly string[]):stri
     " has already succeeded twice with the same arguments and no intervening change. "+
     "The agent must stop rather than report the request completed or repeat the same observation.";
 }
+
+/**
+ * The same failure, again. Seen live 2026-11-12: research.internet failed ten times in one task with
+ * "spawn agent-reach ENOENT" because the planner kept choosing it. A third attempt is blocked when the exact call
+ * already failed twice, or the same tool failed twice with the same error (other arguments do not help a missing program).
+ */
+export interface FailedCall{tool:string;call:string;error:string}
+const errorKey=(error:unknown)=>String(error??"").toLowerCase().replace(/\d+/g,"#").replace(/\s+/g," ").trim().slice(0,200);
+export function failedCall(plan:ReadPlan,error:unknown):FailedCall{
+  return{tool:plan.tool,call:plan.tool+"|"+plan.action+"|"+stable(plan.payload??{}),error:errorKey(error)};
+}
+export function repeatedFailureReason(plan:ReadPlan,failures:readonly FailedCall[]):string|null{
+  const call=plan.tool+"|"+plan.action+"|"+stable(plan.payload??{});
+  const same=failures.filter(f=>f.call===call);
+  const byTool=failures.filter(f=>f.tool===plan.tool);
+  const repeatedError=byTool.find(f=>byTool.filter(g=>g.error===f.error).length>=2);
+  if(same.length<2&&!repeatedError)return null;
+  const error=(same[same.length-1]??repeatedError)!.error;
+  return "Stopped: "+plan.tool+" already failed twice"+(same.length>=2?" with the same arguments":" with the same error")+
+    " ("+error+"). Trying it again would fail the same way.";
+}

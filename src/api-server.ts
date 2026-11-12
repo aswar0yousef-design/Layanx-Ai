@@ -405,7 +405,7 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     const lang=input.lang==="ar"||input.lang==="en"?input.lang:"auto";
     const projectId=typeof input.projectId==="string"&&input.projectId.trim()?input.projectId.trim():"default";
     const history=Array.isArray(input.history)?(input.history as unknown[]).filter((h):h is AssistantHistoryItem=>!!h&&typeof h==="object"&&((h as AssistantHistoryItem).role==="user"||(h as AssistantHistoryItem).role==="assistant")&&typeof (h as AssistantHistoryItem).text==="string").slice(-6):[];
-    const result=await assistant.turn({text,lang,projectId,history,allowTasks:input.allowTasks!==false});
+    const result=await assistant.turn({text,lang,projectId,history,allowTasks:input.allowTasks!==false,tasksRunElsewhere:input.tasksRunElsewhere===true});
     json(response,200,result);
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"assistant failed"});}
    return;
