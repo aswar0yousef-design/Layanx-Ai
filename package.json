@@ -51,6 +51,6 @@
   },
   "optionalDependencies": {
     "@whiskeysockets/baileys": "7.0.0-rc14",
-    "playwright-core": "^1.55.0"
+    "playwright-core": "^1.65.0"
   }
 }
