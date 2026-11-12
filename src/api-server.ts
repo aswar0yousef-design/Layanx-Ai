@@ -1,5 +1,8 @@
 import {createServer,IncomingMessage,ServerResponse} from "node:http";
 import {composeTaskAnswer} from "./core/task-answer.js";
+import {getMcpManager} from "./mcp/manager.js";
+import {adoptSkill} from "./autonomy/integration-intake.js";
+import {runProjectScout,scoutDue} from "./autonomy/project-scout.js";
 import {TesterRuns,scalperAction,tradingOverview} from "./trading/control.js";
 import {gitSafetyArgs} from "./platform/windows-sandbox.js";
 import {readFile} from "node:fs/promises";
@@ -79,7 +82,13 @@ export function startRuntimeApi(options:RuntimeApiOptions){
  const ownerRoutes=createOwnerRoutes({channels:options.channels,desk:options.shipping??new ShippingDesk(joinPath(ownerStore,"shipping.json")),domains:{
   store:async()=>{if(!(options.business.snapshot() as {stores?:unknown[]}).stores?.length)throw new Error("no store connected");return options.business.analytics() as unknown as Record<string,unknown>;},
   trading:async()=>await tradingOverview(options.core,{connect:false,days:7}) as unknown as Record<string,unknown>
- },intakeRoot:joinPath(ownerStore,"intake"),ledgerFile:improvementLedger,jobFiles:()=>improvementJobFiles(ownerStore,ownerRunsRoot),improvement,learningFile:joinPath(ownerStore,"learning-ledger.json"),hardwareStore:ownerStore,startLearning:()=>improvement.startDaily(ownerStore)});
+ },intakeRoot:joinPath(ownerStore,"intake"),ledgerFile:improvementLedger,jobFiles:()=>improvementJobFiles(ownerStore,ownerRunsRoot),improvement,learningFile:joinPath(ownerStore,"learning-ledger.json"),hardwareStore:ownerStore,startLearning:()=>improvement.startDaily(ownerStore),scoutStore:ownerStore,scoutIntegrations:{
+  addMcpServer:config=>{const mcp=getMcpManager();if(!mcp)throw new Error("MCP is not running");return mcp.add(config);},
+  adoptSkills:(intakeId,skills)=>skills.map(skill=>{try{return adoptSkill(joinPath(ownerStore,"intake"),intakeId,skill);}catch(error){return{skill,error:(error as Error).message};}})
+ }});
+ // The project scout looks once a day while LayanX runs (LAYANX_PROJECT_SCOUT=off stops it). It installs and runs nothing.
+ const scoutTimer=setInterval(()=>{if(scoutDue(ownerStore))void runProjectScout(ownerStore,{intakeRoot:joinPath(ownerStore,"intake")}).catch(()=>undefined);},60*60_000);
+ scoutTimer.unref?.();
  const testerRuns=new TesterRuns();
  const oauth=new OAuthConnectionCenter();
  const business=options.business??new BusinessManager(); const ads=options.ads??new AdsManager(business.store); const media=options.media??new MediaManager(); const growth=options.growth;

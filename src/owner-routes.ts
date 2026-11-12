@@ -8,14 +8,15 @@ import {mineFailures,proposeExperiments,readLedger,rollBack} from "./autonomy/im
 import {domainBrief,routeGoal,type DomainReader} from "./autonomy/domain-coordinator.js";
 import {qrSvg} from "./platform/qr.js";
 import {readLearningLedger} from "./autonomy/daily-learning.js";
+import {decideProposal,readScoutLedger,runProjectScout,type ScoutIntegrations} from "./autonomy/project-scout.js";
 import {approvePulls,checkHardware,describePlan,detectHardware,installedModels,loadCatalog,ollamaPull,pullMode,pullPlanned,readHardwareState} from "./platform/hardware-plan.js";
 
 /** The owner's controls for WhatsApp QR, shipping, the two-domain report, outside code and self-improvement. Every caller is already authorized. */
-export interface OwnerRouteDeps{channels?:MessagingChannels;desk:ShippingDesk;domains:DomainReader;intakeRoot:string;ledgerFile:string;jobFiles:()=>string[];improvement:ImprovementRunner;learningFile?:string;startLearning?:()=>unknown;hardwareStore?:string}
+export interface OwnerRouteDeps{channels?:MessagingChannels;desk:ShippingDesk;domains:DomainReader;intakeRoot:string;ledgerFile:string;jobFiles:()=>string[];improvement:ImprovementRunner;learningFile?:string;startLearning?:()=>unknown;hardwareStore?:string;scoutStore?:string;scoutIntegrations?:ScoutIntegrations}
 export type OwnerSend=(status:number,value:Record<string,unknown>)=>void;
 export type OwnerRoute=(method:string,url:URL,input:()=>Promise<any>,send:OwnerSend)=>Promise<boolean>;
 
-const PREFIXES=/^\/v1\/(?:channels\/whatsapp\/(?:qr|methods)|shipping|domains|intake|improvement)(?:\/|$)/;
+const PREFIXES=/^\/v1\/(?:channels\/whatsapp\/(?:qr|methods)|shipping|domains|intake|improvement|scout)(?:\/|$)/;
 
 export const isOwnerRoute=(url?:string)=>PREFIXES.test((url??"").split("?")[0]!);
 export function createOwnerRoutes(deps:OwnerRouteDeps):OwnerRoute{
@@ -75,6 +76,15 @@ export function createOwnerRoutes(deps:OwnerRouteDeps):OwnerRoute{
         send(200,{ok:true,record:decideIntake(deps.intakeRoot,parts[1],decision)});return true;
       }
       if(parts[0]==="intake"&&parts[1]&&parts[2]==="adopt"&&method==="POST"){send(200,{ok:true,playbook:adoptSkill(deps.intakeRoot,parts[1],String((await input()).skill??""))});return true;}
+      // ---- Popular new GitHub projects, reviewed and prepared; the owner approves or rejects each.
+      if(route==="/v1/scout"&&method==="GET"){if(!deps.scoutStore)throw new Error("scout_not_configured");const ledger=readScoutLedger(deps.scoutStore);send(200,{ok:true,lastRun:ledger.lastRun??null,proposals:ledger.proposals.slice().reverse()});return true;}
+      if(route==="/v1/scout/run"&&method==="POST"){if(!deps.scoutStore)throw new Error("scout_not_configured");const ledger=await runProjectScout(deps.scoutStore,{intakeRoot:deps.intakeRoot});send(200,{ok:true,lastRun:ledger.lastRun,proposals:ledger.proposals.slice().reverse(),...(ledger.problem?{problem:ledger.problem}:{})});return true;}
+      if(parts[0]==="scout"&&parts[1]&&parts[2]==="decide"&&method==="POST"){
+        if(!deps.scoutStore)throw new Error("scout_not_configured");
+        const decision=(await input()).decision;
+        if(decision!=="approved"&&decision!=="rejected")throw new Error("scout_invalid_decision");
+        send(200,{ok:true,proposal:await decideProposal(deps.scoutStore,deps.intakeRoot,parts[1],decision,deps.scoutIntegrations??{})});return true;
+      }
       // ---- Measured self-improvement
       if(route==="/v1/improvement"&&method==="GET"){
         const ledger=readLedger(deps.ledgerFile),patterns=mineFailures(deps.jobFiles());
