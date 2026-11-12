@@ -4,6 +4,7 @@ import {getMcpManager} from "./mcp/manager.js";
 import {routeRequest} from "./voice/request-router.js";
 import {adoptSkill} from "./autonomy/integration-intake.js";
 import {runProjectScout,scoutDue} from "./autonomy/project-scout.js";
+import {IdleTrainer,ollamaInUse,windowsUserIdleMs} from "./autonomy/idle-trainer.js";
 import {TesterRuns,scalperAction,tradingOverview} from "./trading/control.js";
 import {gitSafetyArgs} from "./platform/windows-sandbox.js";
 import {readFile} from "node:fs/promises";
@@ -90,11 +91,20 @@ export function startRuntimeApi(options:RuntimeApiOptions){
  // The project scout looks once a day while LayanX runs (LAYANX_PROJECT_SCOUT=off stops it). It installs and runs nothing.
  const scoutTimer=setInterval(()=>{if(scoutDue(ownerStore))void runProjectScout(ownerStore,{intakeRoot:joinPath(ownerStore,"intake")}).catch(()=>undefined);},60*60_000);
  scoutTimer.unref?.();
+ // Learns and practises whenever the owner is away and nothing is running (LAYANX_IDLE_TRAINING=off stops it).
+ let lastOwnerActivity=Date.now();
+ const trainer=new IdleTrainer({ledgerFile:joinPath(ownerStore,"practice-ledger.json"),logFile:joinPath(ownerStore,"practice.log"),
+  busy:()=>supervisor.list().some(job=>["queued","planning","running","verifying"].includes(job.status))||improvement.status().running,
+  lastOwnerActivity:()=>lastOwnerActivity,userIdleMs:windowsUserIdleMs,gpuInUse:()=>ollamaInUse()});
+ if(process.env.NODE_ENV!=="test"&&!process.env.LAYANX_TEST_MODE)trainer.schedule();
  const testerRuns=new TesterRuns();
  const oauth=new OAuthConnectionCenter();
  const business=options.business??new BusinessManager(); const ads=options.ads??new AdsManager(business.store); const media=options.media??new MediaManager(); const growth=options.growth;
  const server=createServer(async(request,response)=>{
   response.setHeader("cache-control","no-store");
+  // Anything the owner sends (chat, voice, a click that changes something) means they are here: training waits.
+  if(request.method!=="GET"&&request.url!=="/v1/training/run")lastOwnerActivity=Date.now();
+  if(request.url==="/v1/training"&&request.method==="GET"){if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}json(response,200,{ok:true,...trainer.status()});return;}
   if(request.method==="GET"&&(request.url==="/"||request.url==="/index.html"||request.url==="/app.js"||request.url==="/styles.css")){
    const file=request.url==="/app.js"?"app.js":request.url==="/styles.css"?"styles.css":"index.html";
    try{const content=await readFile(join(process.cwd(),"web",file));response.statusCode=200;response.setHeader("content-type",file.endsWith(".js")?"text/javascript; charset=utf-8":file.endsWith(".css")?"text/css; charset=utf-8":"text/html; charset=utf-8");response.end(content);return;}catch{json(response,404,{ok:false,error:"ui_asset_not_found"});return;}
