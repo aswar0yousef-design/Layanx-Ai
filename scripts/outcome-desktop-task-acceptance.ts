@@ -67,11 +67,11 @@ async function runOne(selected:Case){
   let result:any,approvals:Record<number,string>={},rounds=0,approved=0;
   try{
     // The owner approving each step: this is a throwaway window task, approved here so the run measures the agent, not a person.
-    for(;rounds<8;rounds++){
-      result=await core.runAgentGateway(selected.goal(marker),id,12,approvals,"core",{preferLocal:true});
-      if(!result?.paused||!result.approvalId)break;
+    // Resumed on the same task after each approval, as the panel does (a new gateway call would be a new task).
+    result=await core.runAgentGateway(selected.goal(marker),id,12,{},"core",{preferLocal:true});
+    for(let round=0;round<8&&result?.paused&&result.approvalId;round++){
       core.executionRuntime.approvals.approve(result.approvalId);approved++;
-      approvals={...approvals,[result.nextToolIndex]:result.approvalId};
+      result=await core.executeAgentLoop(result.missionId,id,12,{[result.nextToolIndex]:result.approvalId},"core");
     }
   }catch(error){result={error:String((error as Error).message).slice(0,400)};}
   await new Promise(r=>setTimeout(r,1500));

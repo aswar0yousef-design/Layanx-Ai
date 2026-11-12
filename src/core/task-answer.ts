@@ -46,10 +46,27 @@ export function leadsReply(data:unknown,arabicReply:boolean):string|null{
   return lines.join("\n");
 }
 
+/**
+ * A web form: what was filled and the site's own answer, word for word. Written by code (seen live 2026-11-12: the model's
+ * summary came back as broken JSON and dropped the price the site had shown).
+ */
+export function webFormReply(data:unknown,arabicReply:boolean):string|null{
+  const d=data as {url?:string;filled?:Record<string,string>;submitted?:boolean;resultText?:string;note?:string}|null;
+  if(!d||typeof d!=="object"||typeof d.submitted!=="boolean")return null;
+  const filled=Object.entries(d.filled??{}).map(([k,v])=>`${k}: ${v}`).join("، ");
+  const answer=(d.resultText??"").replace(/\s+\n/g,"\n").replace(/\n{2,}/g,"\n").trim().slice(0,900);
+  if(!d.submitted)return(arabicReply?"لم أرسل النموذج في "+d.url+". ":"I did not submit the form on "+d.url+". ")+(d.note??"");
+  return[(arabicReply?"أرسلتُ النموذج في ":"I submitted the form on ")+d.url+(filled?(arabicReply?" بهذه البيانات: ":" with: ")+filled:""),
+    answer?(arabicReply?"ردّ الموقع:\n":"The site answered:\n")+answer:"",d.note??""].filter(Boolean).join("\n");
+}
+
 export async function composeTaskAnswer(models:Pick<ModelExecutionRouter,"execute">,goal:string,results:ToolResult[],completed:boolean):Promise<TaskAnswer|null>{
   const leads=results.find(r=>r?.ok&&r.tool==="research.leads");
   const listed=leads?leadsReply(leads.data,arabic(goal)):null;
   if(listed)return{text:listed,fromImage:false};
+  const form=results.filter(r=>r?.ok&&r.tool==="web.form").at(-1);
+  const formText=form?webFormReply(form.data,arabic(goal)):null;
+  if(formText)return{text:formText,fromImage:false};
   const {text,image}=resultsForAnswer(results);
   if(!text&&!image)return null;
   const lang=arabic(goal)?"Arabic":"English";

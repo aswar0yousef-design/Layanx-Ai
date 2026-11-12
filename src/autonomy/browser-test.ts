@@ -39,6 +39,8 @@ async function browser():Promise<any>{
   browserPromise.catch(()=>{browserPromise=null;});
   return browserPromise;
 }
+/** The same headless Edge or Chrome, for other tools (web forms). */
+export const sharedBrowser=()=>browser();
 // Models often write key names in lower case ("escape", "arrowdown"); Playwright only knows "Escape", "ArrowDown".
 const KEY_NAMES=["Escape","Enter","Tab","Backspace","Delete","Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Home","End","PageUp","PageDown","Insert","Shift","Control","Alt","Meta"];
 export function keyName(key:string):string{

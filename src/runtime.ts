@@ -36,6 +36,7 @@ import {GoogleInvoiceAgent,registerGoogleInvoiceTool} from "./google-invoice-age
 import {registerYahooMailTools} from "./yahoo-tools.js";
 import {registerSkillLearningTools} from "./skills/tools.js";
 import {registerAgentReachTools} from "./agent-reach-tools.js";
+import {registerWebFormTool} from "./tools/web-form.js";
 import {registerAutonomyTools,specialisedAgents} from "./autonomy/tools.js";
 import {MessagingChannels} from "./channels/service.js";
 import {FlowRuntime} from "./flows/runtime.js";
@@ -103,6 +104,7 @@ export function createRuntime(options:RuntimeOptions={}){
  registerPlatformTools(core,()=>({mcp,toolNames:()=>core.tools.list().map(t=>t.name)}));
  process.once("exit",()=>mcp.killAll());
  if(capabilityEnabled("research"))registerAgentReachTools(core);
+ registerWebFormTool(core);
  let channels!: MessagingChannels;
  const flows=new FlowRuntime(core,async(channel,chatId,text)=>{if(channel==="whatsapp")await channels.sendWhatsApp(chatId,text);else if(channel==="telegram")await channels.telegram.sendText(chatId,text);});
  channels=new MessagingChannels(core,async message=>{const raw=message.raw&&typeof message.raw==="object"?message.raw as Record<string,unknown>:{};const projectId=process.env.LAYANX_CHANNEL_PROJECT_ID??"default"; /* never taken from the inbound message itself */const result=await flows.handleInbound({id:message.messageId,projectId,channel:message.channel,senderId:message.senderId,chatId:message.chatId,text:message.text,timestamp:new Date().toISOString(),metadata:{...raw,eventType:"message"}});return result.matched>0;});
@@ -114,7 +116,7 @@ export function createRuntime(options:RuntimeOptions={}){
    "shipping.carriers","shipping.carrier.save","shipping.quote","shipping.create","shipping.list","shipping.book","shipping.update","shipping.refresh","shipping.cod.collected","shipping.invoice","shipping.reconcile","shipping.report",
    "integration.intake.request","integration.intake.list","improvement.ledger",
    // Dangerous ones (orders, MT5 auto-scalper, setup) still stop for explicit approval.
-   "research.internet","research.leads","agent-reach.status","agent-reach.channels","agent-reach.collect","agent-reach.capabilities","agent-reach.update.check","agent-reach.setup",
+   "research.internet","research.leads","web.form","agent-reach.status","agent-reach.channels","agent-reach.collect","agent-reach.capabilities","agent-reach.update.check","agent-reach.setup",
    "trading.strategy.list","trading.strategy.backtest","trading.strategy.optimize","trading.strategy.walk_forward","trading.strategy.monte_carlo",
    "trading.account","trading.quote","trading.order.place","trading.position.close",
    ...MT5_TOOLS,

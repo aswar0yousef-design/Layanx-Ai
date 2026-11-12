@@ -5,6 +5,7 @@ import type {ModelRoutingOptions} from "../models/inference.js";
 import {isDevelopmentGoal as isDevelopmentIntent,normalizeArabic,selectToolsForGoal} from "../providers/tool-selection.js";
 import {openRequest} from "../tools/open-app.js";
 import {leadRequest,siteFrom} from "../business/lead-research.js";
+import {webFormRequest} from "../tools/web-form.js";
 
 export interface PlannedTool{
   /** As MissionToolPlan.final: the mission is done once this step succeeds. */
@@ -104,6 +105,18 @@ function deterministicLeadPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMi
   successCriteria:["Potential customers were listed with links from the search results."],
   stopCondition:"Stop if the site cannot be read.",
   tools:[{tool:tool.name,action:tool.actions[0]!,permission:tool.permission,reason:"The owner asked for potential customers of "+site+".",payload:{site,goal:step.slice(0,500)},final:true}]};
+}
+
+/** "Open <url> and get a quote / send a message": one step, web.form fills the site's own form and returns its answer. */
+function deterministicWebFormPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
+ const step=currentMilestoneGoal(goal);
+ const tool=catalog.find(t=>t.name==="web.form"),url=webFormRequest(step);
+ if(!tool||!url)return undefined;
+ return{risk:"medium",requiredPermission:tool.permission,
+  steps:[{description:"Fill and submit the form on "+url+" as the owner asked, and read the page the site answers with."}],
+  successCriteria:["result.submitted === true"],
+  stopCondition:"Stop if the page has no form for this request or a needed value is missing.",
+  tools:[{tool:tool.name,action:tool.actions[0]!,permission:tool.permission,reason:"The owner asked to do this on "+url+".",payload:{url,goal:step.slice(0,1000)},final:true}]};
 }
 
 function deterministicDevelopmentPlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
@@ -215,6 +228,21 @@ export interface PlannedMission{
   tools:PlannedTool[];
 }
 
+/** A criterion about the result that the verifier cannot evaluate (natural language dressed as a result field). */
+export function isUnsupportedCriterion(c:string):boolean{
+  const t=c.trim();
+  return/^result\b/i.test(t)&&
+    !(/^result(?:\.[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)?(?:\s*(?:===|==|!==|!=|>=|<=|>|<)\s*(?:"[^"]*"|'[^']*'|true|false|null|-?\d+(?:\.\d+)?)|\s+contains\s+(?:"[^"]*"|'[^']*'|true|false|null|-?\d+(?:\.\d+)?)|\s+(?:exists|is present|is not empty))$/i.test(t)
+      ||/^result\.[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/i.test(t));
+}
+/** "result.url === http://x/contact" -> "result.url === \"http://x/contact\"": the value was meant as text. */
+export function quoteCriterionValue(c:string):string{
+  const m=/^(result(?:\.[A-Za-z_$][\w$]*)*)\s*(===|==|!==|!=|contains)\s*(.+)$/i.exec(c.trim());
+  if(!m)return c;
+  const value=m[3]!.trim();
+  if(/^(?:"[^"]*"|'[^']*'|true|false|null|-?\d+(?:\.\d+)?)$/i.test(value)||/["']/.test(value))return c;
+  return `${m[1]} ${m[2]} "${value}"`;
+}
 export class AiMissionPlanner{
   constructor(private readonly models:ModelExecutionRouter){}
   async plan(goal:string,tools:ToolCatalogEntry[]=[],projectContext?:unknown,routing?:ModelRoutingOptions):Promise<PlannedMission>{
@@ -227,6 +255,8 @@ export class AiMissionPlanner{
     if(look)return look;
     const leads=deterministicLeadPlan(goal,tools);
     if(leads)return leads;
+    const form=deterministicWebFormPlan(goal,tools);
+    if(form)return form;
     const scopedTools=filterCatalogForGoal(goal,tools);
     const deterministic=deterministicDevelopmentPlan(goal,scopedTools);
     if(deterministic)return deterministic;
@@ -365,7 +395,9 @@ export class AiMissionPlanner{
     if(!["low","medium","high","critical"].includes(String(v.risk)))throw new Error("Invalid mission risk.");
     if(!["L1_READ","L2_ANALYZE","L3_MODIFY","L4_EXECUTE","L5_CRITICAL"].includes(String(v.requiredPermission)))throw new Error("Invalid mission permission.");
     const steps=Array.isArray(v.steps)?v.steps.filter(x=>x&&typeof x==="object"&&typeof (x as Record<string,unknown>).description==="string").map(x=>({description:String((x as Record<string,unknown>).description)})):[];
-    const successCriteria=Array.isArray(v.successCriteria)?v.successCriteria.filter(x=>typeof x==="string").map(String):[];
+    // An unquoted value ("result.browser.url === http://...") is quoted: rejecting the whole plan for it stopped every
+    // browser task before a single step (seen live 2026-11-12).
+    const successCriteria=(Array.isArray(v.successCriteria)?v.successCriteria.filter(x=>typeof x==="string").map(String):[]).map(quoteCriterionValue);
     const tools=this.parseTools(v.tools,catalog);
     // Small local models repeatedly produce pseudo-criteria like
     // "result.fileExists package.json". When the final selected tool really
@@ -390,14 +422,20 @@ export class AiMissionPlanner{
       const unique=[...new Set(successCriteria)];
       successCriteria.splice(0,successCriteria.length,...unique);
     }
-    if(!steps.length||!successCriteria.length||typeof v.stopCondition!=="string"||!v.stopCondition.trim())throw new Error("Incomplete mission plan.");
+    // A missing stop condition is not a reason to fail the owner's task; the runtime has its own limits.
+    if(typeof v.stopCondition!=="string"||!v.stopCondition.trim())v.stopCondition="Stop when the goal is done, a step fails twice, or approval is needed.";
+    if(!steps.length&&tools.length)steps.push(...tools.map(tool=>({description:tool.reason||("Use "+tool.tool)})));
+    if(!steps.length||!successCriteria.length)throw new Error("Incomplete mission plan.");
     // A criterion beginning with result. must use the verifier's supported
     // assertion syntax. Reject invented natural-language properties such as
     // "result.createServer exports createServer function" during planning.
-    const unsupported=successCriteria.find(c=>/^result\b/i.test(c.trim())&&
-      !(/^result(?:\.[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)?(?:\s*(?:===|==|!==|!=|>=|<=|>|<)\s*(?:"[^"]*"|'[^']*'|true|false|null|-?\d+(?:\.\d+)?)|\s+contains\s+(?:"[^"]*"|'[^']*'|true|false|null|-?\d+(?:\.\d+)?)|\s+(?:exists|is present|is not empty))$/i.test(c.trim())
-        ||/^result\.[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/i.test(c.trim())));
-    if(unsupported)throw new Error("Unsupported planner success criterion: "+unsupported.slice(0,160));
+    const unsupported=successCriteria.find(isUnsupportedCriterion);
+    // One invented criterion among valid ones is dropped; only a plan with nothing checkable left is refused.
+    if(unsupported){
+      const supported=successCriteria.filter(c=>!isUnsupportedCriterion(c));
+      if(!supported.length)throw new Error("Unsupported planner success criterion: "+unsupported.slice(0,160));
+      successCriteria.splice(0,successCriteria.length,...supported);
+    }
     // Model-supplied mission scope is a proposal, not an authority decision.
     // Derive the minimum scope needed for catalog-approved tools. The catalog is
     // already limited by the agent contract; execution still enforces trust,

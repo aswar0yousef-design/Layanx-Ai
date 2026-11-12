@@ -120,3 +120,15 @@ console.log("chat understanding: a screenshot-only reply is told the image is th
 assert.equal(unwrapAnswer('{"user_question":"التقط صورة","tool_response":"تظهر الشاشة برنامج MetaTrader مع رسوم بيانية."}'),"تظهر الشاشة برنامج MetaTrader مع رسوم بيانية.","any key: the longest text is the reply (seen live)");
 assert.equal(unwrapAnswer('{"status":"ok","count":3}'),'{"status":"ok","count":3}',"short fields are data, not a reply");
 console.log("chat understanding: replies wrapped under any key are unwrapped");
+
+// 12. Planner criteria: an unquoted value is quoted, and one invented criterion no longer sinks the plan (every browser task
+// stopped at planning on 2026-11-12: "Unsupported planner success criterion: result.browser.url === http://...").
+{
+  const {quoteCriterionValue,isUnsupportedCriterion}=await import("../src/core/ai-planner.js");
+  assert.equal(quoteCriterionValue("result.browser.url === http://127.0.0.1:5000/contact"),'result.browser.url === "http://127.0.0.1:5000/contact"');
+  assert.equal(quoteCriterionValue("result.ok === true"),"result.ok === true");
+  assert.equal(quoteCriterionValue('result.text contains "سالم"'),'result.text contains "سالم"');
+  assert.ok(!isUnsupportedCriterion(quoteCriterionValue("result.browser.url === http://x/contact")));
+  assert.ok(isUnsupportedCriterion("result.page shows the thank you message"));
+  console.log("chat understanding: planner criteria are repaired instead of rejecting the plan");
+}
