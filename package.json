@@ -38,7 +38,7 @@
     "acceptance:repair:local": "tsx scripts/outcome-repo-repair-acceptance.ts"
   },
   "devDependencies": {
-    "@types/node": "^26.6.3",
+    "@types/node": "^26.6.6",
     "@types/pg": "^8.15.5",
     "tsx": "^4.19.2",
     "typescript": "^7.0.2"
