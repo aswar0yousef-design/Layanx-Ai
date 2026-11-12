@@ -10,6 +10,7 @@ import {webFormRequest} from "../tools/web-form.js";
 import {storeChangeRequest,storeReportRequest} from "../business/woocommerce.js";
 import {shippingIntent} from "../business/store-shipping.js";
 import {currentDraft,socialIntent} from "../business/social-posting.js";
+import {mailInvoiceRequest} from "../business/mail-invoices.js";
 
 export interface PlannedTool{
   /** As MissionToolPlan.final: the mission is done once this step succeeds. */
@@ -147,6 +148,16 @@ function deterministicWebFormPlan(goal:string,catalog:ToolCatalogEntry[]):Planne
   successCriteria:["result.submitted === true"],
   stopCondition:"Stop if the page has no form for this request or a needed value is missing.",
   tools:[{tool:tool.name,action:tool.actions[0]!,permission:tool.permission,reason:"The owner asked to do this on "+url+".",payload:{url,goal:step.slice(0,1000)},final:true}]};
+}
+
+/** "Read the invoices in my email and put them in Sheets": one step, email.invoices.scan. */
+function deterministicMailInvoicePlan(goal:string,catalog:ToolCatalogEntry[]):PlannedMission|undefined{
+ const step=currentMilestoneGoal(goal),request=mailInvoiceRequest(step);
+ const tool=catalog.find(t=>t.name==="email.invoices.scan");
+ if(!request||!tool)return undefined;
+ return{risk:"low",requiredPermission:tool.permission,steps:[{description:"Read invoice emails and add each new invoice to its company's Google Sheet."}],
+  successCriteria:["The invoice emails were read and new invoices written."],stopCondition:"Stop if the mailbox or Google Sheets cannot be reached.",
+  tools:[{tool:tool.name,action:tool.actions[0]!,permission:tool.permission,reason:"The owner asked to put the email invoices in Sheets.",payload:{provider:request.provider,limit:20},final:true}]};
 }
 
 /** "Write an Instagram post about ..." drafts; "publish the post" publishes the latest draft, its exact text in the approval. */
@@ -344,6 +355,8 @@ export class AiMissionPlanner{
     if(leads)return leads;
     const form=deterministicWebFormPlan(goal,tools);
     if(form)return form;
+    const mailInvoices=deterministicMailInvoicePlan(goal,tools);
+    if(mailInvoices)return mailInvoices;
     const social=deterministicSocialPlan(goal,tools);
     if(social)return social;
     const shipping=deterministicShippingPlan(goal,tools);

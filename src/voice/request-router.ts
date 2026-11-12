@@ -4,6 +4,7 @@ import {asksProjectStatus,classifyProjectWork} from "./project-intent.js";
 import {storeChangeRequest,storeReportRequest} from "../business/woocommerce.js";
 import {shippingIntent} from "../business/store-shipping.js";
 import {socialIntent} from "../business/social-posting.js";
+import {mailInvoiceRequest} from "../business/mail-invoices.js";
 
 /**
  * One router for every entry point (Control Center chat, voice, the assistant turn). Before this, the Control Center knew only
@@ -40,6 +41,7 @@ export function routeRequest(text:string):RouteDecision{
   if(PROJECT_NOUN.test(v)&&(WANT.test(v)||POLITE_MAKE.test(v)||MAKE.test(v)&&!QUESTION_START.test(v)))return{route:"project-build",work:"build",reason:"asks for something to be made"};
   // "How many orders today in my store?" is a question about the owner's own data: a chat model has none and would invent
   // numbers, so it is a task that reads the store (store.report), or one approved change (store.change).
+  if(mailInvoiceRequest(text))return{route:"task",reason:"asks to file the email invoices"};
   if(socialIntent(text))return{route:"task",reason:"asks for a social post or to publish it"};
   if(shippingIntent(text))return{route:"task",reason:"asks about shipments or invoices"};
   if(storeChangeRequest(text))return{route:"task",reason:"asks to change the owner's store"};

@@ -97,7 +97,7 @@ export function createRuntime(options:RuntimeOptions={}){
  if(capabilityEnabled("quran"))registerQuranTools(core);
  if(capabilityEnabled("email")){
   registerGoogleWorkspaceTools(core,{accessToken:process.env.GOOGLE_ACCESS_TOKEN,clientId:process.env.GOOGLE_CLIENT_ID,clientSecret:process.env.GOOGLE_CLIENT_SECRET,refreshToken:process.env.GOOGLE_REFRESH_TOKEN});
-  registerGoogleInvoiceTool(core,new GoogleInvoiceAgent(core));
+  registerGoogleInvoiceTool(core,new GoogleInvoiceAgent(core,{registryPath:process.env.LAYANX_GOOGLE_INVOICE_REGISTRY??joinPath(process.env.LAYANX_STORE_DIR?.trim()||".layanx","google-invoices.json")}));
   registerYahooMailTools(core);
  }
  registerSkillLearningTools(core);
