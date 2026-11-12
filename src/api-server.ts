@@ -1,6 +1,7 @@
 import {createServer,IncomingMessage,ServerResponse} from "node:http";
 import {composeTaskAnswer} from "./core/task-answer.js";
 import {getMcpManager} from "./mcp/manager.js";
+import {routeRequest} from "./voice/request-router.js";
 import {adoptSkill} from "./autonomy/integration-intake.js";
 import {runProjectScout,scoutDue} from "./autonomy/project-scout.js";
 import {TesterRuns,scalperAction,tradingOverview} from "./trading/control.js";
@@ -401,7 +402,9 @@ export function startRuntimeApi(options:RuntimeApiOptions){
     const input=await body(request,max);
     const text=typeof input.text==="string"?input.text:"";
     if(!text.trim()||text.length>4000){json(response,422,{ok:false,error:"invalid_dialogue_text"});return;}
-    json(response,200,{ok:true,...classifyDialogue(text)});
+    const routed=routeRequest(text);
+    // kind stays "conversation"/"action" for older callers; route says where it really goes (project work included).
+    json(response,200,{ok:true,...classifyDialogue(text),kind:routed.route==="answer"?"conversation":"action",route:routed.route,routeReason:routed.reason});
    }catch(error){json(response,422,{ok:false,error:error instanceof Error?error.message:"classification_failed"});}
    return;
   }

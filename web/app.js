@@ -515,6 +515,7 @@ function conversationOnly(text){return greetingOnly(text)||capabilityQuestionOnl
 // The same server-side dialogue brain classifies both UI modes and /voice.
 async function classifyTurn(goal){
  const result=await safe(api("/v1/assistant/classify",{method:"POST",body:{text:goal}}),{ok:false,kind:"unavailable"});
+ if(result.ok&&/^project-(?:build|repair|status)$/.test(result.route||""))return "project";
  return result.ok&&(result.kind==="conversation"||result.kind==="action")?result.kind:"unavailable";
 }
 async function runGoal(goal,model,knownKind){
@@ -524,6 +525,14 @@ async function runGoal(goal,model,knownKind){
  const route=knownKind||(conversationOnly(goal)?"conversation":await classifyTurn(goal));
  if(route==="unavailable"){
   me.state="fail";me.text=LANG==="ar"?"تعذر تحديد نوع الطلب بأمان. لم أنفذ أي مهمة. تحقق من اتصال LayanX وأعد المحاولة.":"The dialogue brain could not classify the request safely. No task was executed.";me.at=Date.now();drawAgent();return;
+ }
+ // Build, repair or "where is the project": the supervisor, which checks the work before calling it done.
+ if(route==="project"){
+  const answer=await safe(api("/v1/assistant/turn",{method:"POST",body:{text:goal,projectId:project(),allowTasks:true}}),{ok:false,error:"assistant_unavailable"});
+  me.state=answer.ok?(answer.job?"wait":"done"):"fail";
+  me.text=answer.ok?answer.reply:t("notCompleted")+": "+reasonText(answer.error||"assistant_unavailable");
+  if(answer.job)me.job=answer.job;
+  me.at=Date.now();drawAgent();return;
  }
  if(route==="conversation"){
   const answer=await safe(api("/v1/assistant/turn",{method:"POST",body:{text:goal,projectId:project(),allowTasks:false,tasksRunElsewhere:true}}),{ok:false,error:"assistant_unavailable"});
@@ -576,6 +585,8 @@ function agentCard(big){
   // Informational turns must never become autonomous jobs or notes on an active job.
   const route=await classifyTurn(g);
   if(route==="conversation"||route==="unavailable"){runGoal(g,model.value,route);return;}
+  // Build, repair or project status goes to the supervisor (it was sent to the ten-step agent before, seen live 2026-11-12).
+  if(route==="project"){runGoal(g,model.value,"project");return;}
   try{if(await noteForRunningJob(g))return;}catch(e){toast(e.message);return;}
   if(auto.getAttribute("aria-pressed")==="true"){try{const j=await startJob(g);S.log.push({id:uid(),role:"you",text:g,at:Date.now()},{id:uid(),role:"me",text:t("jobStarted"),state:"run",at:Date.now(),job:j.id});drawAgent();}catch(e){toast(e.message);}return;}
   runGoal(g,model.value,"action");};

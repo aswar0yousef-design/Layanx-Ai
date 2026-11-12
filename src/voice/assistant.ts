@@ -1,3 +1,4 @@
+import {routeRequest} from "./request-router.js";
 import {existsSync,mkdirSync,readFileSync,writeFileSync} from "node:fs";
 import {dirname,join} from "node:path";
 import type {LayanXCore} from "../core/orchestrator.js";
@@ -244,8 +245,10 @@ export class VoiceAssistant{
     const dialogue=classifyDialogue(text);
     const direct=directDialogueAnswer(dialogue.topic,lang);
     if(direct)return{ok:true,lang,intent:"answer",reply:direct};
-    if(this.deps.projectStatus&&asksProjectStatus(text))return{ok:true,lang,intent:"report",reply:projectStatusReply(this.deps.projectStatus(projectId),lang)};
-    const projectWork=this.deps.startProject?classifyProjectWork(text):null;
+    // The same router as the Control Center (voice/request-router.ts): dialect wordings of build, repair and status included.
+    const routed=routeRequest(text);
+    if(this.deps.projectStatus&&routed.route==="project-status")return{ok:true,lang,intent:"report",reply:projectStatusReply(this.deps.projectStatus(projectId),lang)};
+    const projectWork=this.deps.startProject?routed.work??null:null;
     if(projectWork){
       if(input.allowTasks===false)return{ok:true,lang,intent:"task",goal:text,reply:t.tasksOff(text)};
       const start=this.deps.startProject!(text,projectWork,projectId);
