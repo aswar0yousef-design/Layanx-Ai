@@ -21,6 +21,7 @@ Safety in this file (it is the last step before the broker):
 """
 import datetime
 import json
+import re
 import sys
 
 try:
@@ -123,8 +124,29 @@ def require_trading_allowed(settings):
     return info
 
 
-def select(symbol):
+_SUFFIX = re.compile(r"[._#][A-Za-z]?")
+
+
+def resolve_name(symbol):
+    """The broker's own name for a symbol: CFI calls gold "XAUUSD_", not "XAUUSD" (found 2026-11-13). Only a one-mark
+    suffix ("_", "#", ".f") is accepted, never another product ("XAUUSD-24H"); a visible symbol wins; two equal choices are
+    refused rather than guessed. Used everywhere a symbol is read, so prices, orders, positions and history agree."""
     symbol = str(symbol or "").strip()
+    if not symbol or mt5.symbol_info(symbol) is not None:
+        return symbol
+    lister = getattr(mt5, "symbols_get", None)
+    candidates = [s for s in ((lister(symbol + "*") if lister else None) or [])
+                  if s.name.upper().startswith(symbol.upper()) and _SUFFIX.fullmatch(s.name[len(symbol):])]
+    if not candidates:
+        return symbol
+    visible = [s for s in candidates if getattr(s, "visible", False)] or candidates
+    if len(visible) > 1:
+        raise BridgeError(f"{symbol} matches several broker symbols ({', '.join(s.name for s in visible)}): set the exact one.")
+    return visible[0].name
+
+
+def select(symbol):
+    symbol = resolve_name(symbol)
     if not symbol:
         raise BridgeError("symbol is required")
     if not mt5.symbol_select(symbol, True):
@@ -259,7 +281,7 @@ def do_symbol_spec(p, s):
 
 
 def do_orders(p, s):
-    orders = mt5.orders_get(symbol=p["symbol"]) if p.get("symbol") else mt5.orders_get()
+    orders = mt5.orders_get(symbol=resolve_name(p["symbol"])) if p.get("symbol") else mt5.orders_get()
     if orders is None:
         raise BridgeError(f"orders_get failed: {mt5.last_error()}")
     return [{"ticket": str(o.ticket), "symbol": o.symbol, "quantity": float(get(o, "volume_current", 0) or 0),
@@ -267,7 +289,7 @@ def do_orders(p, s):
 
 
 def do_positions(p, s):
-    positions = mt5.positions_get(symbol=p["symbol"]) if p.get("symbol") else mt5.positions_get()
+    positions = mt5.positions_get(symbol=resolve_name(p["symbol"])) if p.get("symbol") else mt5.positions_get()
     if positions is None:
         raise BridgeError(f"positions_get failed: {mt5.last_error()}")
     return [position_dict(x) for x in positions]
@@ -275,7 +297,7 @@ def do_positions(p, s):
 
 def do_history(p, s):
     out = []
-    deals = deals_between(p.get("days", 7), p.get("symbol") or None)
+    deals = deals_between(p.get("days", 7), resolve_name(p.get("symbol")) or None)
     ours = int(s.get("magic", 0))
     # Positions LayanX opened: a close done by hand carries magic 0 but still ends a LayanX trade.
     opened_by_layanx = {int(get(d, "position_id", 0) or 0) for d in deals

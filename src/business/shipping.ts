@@ -28,7 +28,7 @@ const dayMs=86_400_000;
 
 export class ShippingDesk{
   private cached:ShippingState;
-  private stamp=-1;
+  private stamp="";
   constructor(private readonly file:string,private readonly adapters:Record<string,CarrierAdapter>={},private readonly now:()=>Date=()=>new Date()){
     this.cached=this.read();
   }
@@ -41,7 +41,9 @@ export class ShippingDesk{
     if(stamp!==this.stamp)this.cached=this.read();
     return this.cached;
   }
-  private mtime(){try{return fs.statSync(this.file).mtimeMs;}catch{return -1;}}
+  // Two saves in the same millisecond have the same time (seen once in the release check, 2026-11-13): every save renames a
+  // new file into place, so the file's number changes each time and tells the versions apart.
+  private mtime(){try{const s=fs.statSync(this.file,{bigint:true});return`${s.mtimeNs}:${s.size}:${s.ino}`;}catch{return"-";}}
   private read():ShippingState{this.stamp=this.mtime();try{return{carriers:[],shipments:[],vatPercent:15,invoiceSeq:0,...JSON.parse(fs.readFileSync(this.file,"utf8"))};}catch{return{carriers:[],shipments:[],vatPercent:15,invoiceSeq:0};}}
   private save(){
     fs.mkdirSync(path.dirname(this.file),{recursive:true});

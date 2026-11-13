@@ -167,6 +167,18 @@ assert.equal(read().initialize_password,"كلمة-سر");
 named.dispose();
 for(const k of ["LAYANX_MT5_LOGIN","LAYANX_MT5_PASSWORD","LAYANX_MT5_SERVER"])delete process.env[k];
 
+// 8c. The broker's own name ("XAUUSD_" at CFI, found 2026-11-13): "XAUUSD" resolves to it for prices AND positions, so a
+// robot never misses its own open trade; another product ("XAUUSD-24H") is never picked.
+{
+  const st=read();st.broker_suffix="_";st.positions=[{ticket:4242,symbol:"XAUUSD_",type:0,volume:0.01,price_open:2399,sl:0,tp:0,profit:1,magic:2601004,comment:"LX:x",time:1760000000}];write(st);
+  const broker=new Mt5LiveAdapter({bridgePath,env,timeoutMs:20000});
+  assert.equal((await broker.getSymbolSnapshot("XAUUSD") as any).symbol,"XAUUSD_");
+  assert.deepEqual((await broker.positions("XAUUSD")).map(p=>p.ticket),["4242"],"the open trade is found under the plain name");
+  await assert.rejects(broker.getSymbolSnapshot("NOPE"),/symbol_select failed/);
+  broker.dispose();
+  const back=read();delete back.broker_suffix;back.positions=[];write(back);
+}
+
 // 9. Live trading switched off: nothing is started at all.
 process.env.MT5_LIVE_TRADING_ENABLED="false";
 await assert.rejects(new Mt5LiveAdapter({bridgePath,env}).placeOrder({symbol:"XAUUSD",side:"long",quantity:0.01}),/live execution is disabled/);

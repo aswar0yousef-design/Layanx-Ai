@@ -74,12 +74,26 @@ def account_info():
                 "currency": "USD", "leverage": 100, "trade_mode": s.get("trade_mode", 0), "trade_allowed": True})
 
 
+def _known():
+    """Broker names: with "broker_suffix" in the state, gold is "XAUUSD_" (as at CFI), plus another product "XAUUSD-24H"."""
+    suffix = _load().get("broker_suffix", "")
+    names = [n + suffix for n in ("XAUUSD", "EURUSD")]
+    return names + (["XAUUSD-24H"] if suffix else [])
+
+
 def symbol_select(symbol, enable=True):
-    return symbol in ("XAUUSD", "EURUSD")
+    return symbol in _known()
+
+
+def symbols_get(group="*"):
+    prefix = group.rstrip("*")
+    return [_ns({"name": n, "visible": True}) for n in _known() if n.startswith(prefix)]
 
 
 def symbol_info(symbol):
     s = _load()
+    if symbol not in _known():
+        return None
     return _ns({"filling_mode": s.get("filling_mode", 1), "volume_min": 0.01, "volume_step": 0.01, "volume_max": 100.0,
                 "trade_tick_size": 0.01, "trade_tick_value": 1.0, "path": "Fake\\Metals\\" + symbol, "point": 0.01})
 
