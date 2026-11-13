@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
-import {isIpAddress,parsePairingLink} from "../mobile/src/pairing.js";
-import {pairingLink} from "../src/local/setup-routes.js";
+import {isIpAddress,pairingProblem,parsePairingLink} from "../mobile/src/pairing.js";
+import {pairingLink,phonePairingProblem} from "../src/local/setup-routes.js";
+
+// A code with no address the phone can use: the PC says what to turn on and draws no QR; the phone says why.
+{
+  const noAddress=pairingLink({code:"ABCD-2345",urls:[],computer:"PC"});
+  assert.equal(parsePairingLink(noAddress),null);
+  assert.match(pairingProblem(noAddress),/الاتصال من الهاتف/);
+  assert.equal(pairingProblem("https://example.com"),"هذا ليس رمز ربط LayanX.");
+  assert.match(phonePairingProblem([],{mobileAccess:false,mobileActive:false,remoteActive:true})??"",/Tailscale/);
+  assert.match(phonePairingProblem([],{mobileAccess:true,mobileActive:false,remoteActive:false})??"",/إعادة تشغيل/);
+  assert.match(phonePairingProblem(["http://100.1.2.3:3000"],{mobileAccess:false,mobileActive:false,remoteActive:true})??"",/Tailscale/,"http only is not usable by the phone");
+  assert.equal(phonePairingProblem(["https://192.168.1.5:3000"],{mobileAccess:true,mobileActive:true,remoteActive:false}),undefined);
+}
 
 // What the setup page puts in the QR code is what the phone reads back.
 const pin="x7Q0n2bq8VZt3s1Yw4u9rL6eK5aF2gH8jM0pN3oP1iU";

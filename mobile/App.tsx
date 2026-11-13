@@ -4,7 +4,7 @@ import{Alert,Image,Modal,PermissionsAndroid,Platform,Pressable,RefreshControl,Sa
 import*as SecureStore from"expo-secure-store";
 import{CameraView,useCameraPermissions}from"expo-camera";
 import{LayanXApi,type Approval,type Feed,type Job,type MissionSummary}from"./src/api";
-import{parsePairingLink}from"./src/pairing";
+import{pairingProblem,parsePairingLink}from"./src/pairing";
 import{LayanXNative,type DecideResult}from"./modules/layanx-native";
 
 /**
@@ -126,7 +126,7 @@ export default function App(){
  function onScanned(data:string){
   if(scanned.current)return;
   const link=parsePairingLink(data);
-  if(!link){setError("هذا ليس رمز ربط LayanX.");return}
+  if(!link){setError(pairingProblem(data));return}
   scanned.current=true;setScanning(false);
   void pairWith(link.urls,link.code,link.pin);
  }

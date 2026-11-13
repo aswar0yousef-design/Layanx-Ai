@@ -210,6 +210,7 @@ aside h2{margin-bottom:.5rem}
         <p class="code" id="pair-code"></p>
         <p class="code-meta" id="pair-expiry"></p>
         <p class="note">أو أدخل أحد العناوين ثم الرمز يدوياً (عناوين Tailscale فقط؛ داخل المنزل استخدم QR):</p>
+        <p class="note" id="pair-problem" hidden style="color:#b42318;font-weight:600"></p>
         <ul class="urls" id="pair-urls"></ul>
         <p class="note fp" id="pair-fp" hidden></p>
       </div>
@@ -394,6 +395,7 @@ $("pair-start").addEventListener("click",async()=>{
     const p=await api("/v1/pair/start","POST",{});
     $("pair-box").hidden=false;$("pair-code").textContent=p.code;
     $("pair-urls").replaceChildren(...p.urls.map(u=>el("li",{text:u})));
+    $("pair-problem").hidden=!p.problem;$("pair-problem").textContent=p.problem||"";
     const qr=$("pair-qr");qr.hidden=!p.qrSvg;$("pair-qr-note").hidden=!p.qrSvg;
     if(p.qrSvg)qr.src="data:image/svg+xml;base64,"+btoa(p.qrSvg);
     $("pair-fp").hidden=!p.fingerprint;$("pair-fp").textContent=p.fingerprint?"بصمة الشهادة: "+p.fingerprint.match(/.{1,4}/g).join(" "):"";

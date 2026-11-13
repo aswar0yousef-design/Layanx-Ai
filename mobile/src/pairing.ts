@@ -25,6 +25,13 @@ export function parsePairingLink(text:string):PairingLink|null{
   return{code,pin,computer:(values.n?.[0]??"").slice(0,40),urls};
 }
 
+/** Why a scanned code cannot be used, in the owner's words. */
+export function pairingProblem(text:string):string{
+  if(!/^layanx:\/\/pair\?/.test(text.trim()))return "هذا ليس رمز ربط LayanX.";
+  if(!/[?&]u=https/.test(text))return "رمز LayanX لا يحوي عنواناً آمناً للكمبيوتر. على الكمبيوتر فعّل «الاتصال من الهاتف» في صفحة الإعداد وأعد تشغيل LayanX، ثم امسح رمزاً جديداً.";
+  return "رمز الربط تالف أو قديم. أنشئ رمزاً جديداً على الكمبيوتر.";
+}
+
 /** Addresses that are IPs need the pinned certificate; names (*.ts.net, a tunnel) have real ones. */
 export function isIpAddress(url:string):boolean{
   const host=/^https?:\/\/(\[[^\]]+\]|[^/:]+)/.exec(url)?.[1]??"";

@@ -170,6 +170,8 @@ function extractJson(raw:string):any{
 }
 const clip=(s:unknown,n=1500)=>{const t=typeof s==="string"?s:JSON.stringify(s??"");return t.length>n?t.slice(0,n)+"…":t;};
 
+/** A goal for an Android app (planned as a native project that opens in Android Studio). */
+export const ANDROID_GOAL=/\bandroid\b|android studio|\bapk\b|اندرويد|أندرويد|اندرويد ستوديو|تطبيق (?:جوال|موبايل|هاتف)/i;
 const MAX_REVIEWERS=3,MAX_REVIEW_CASES=5,TWIN_HARNESS_FILE="tests/zz-layanx-twin.test.mjs",slowReviewers=new Set<string>();
 // Test cases and blind answers are parsed as JSON; an unparseable reply cost whole build runs (csv, wordcount: "no answers array").
 // Ollama constrains decoding to these shapes, so the reply is always well-formed JSON; the content is still checked as before.
@@ -512,6 +514,9 @@ export class Supervisor{
       'Schema: {"acceptance":["checkable outcome",...],"milestones":[{"title":"short","goal":"what to do","kind":"code|test|research|desktop|business|general"}],"checks":{"install":bool,"test":bool,"build":bool,"typecheck":bool,"lint":bool,"browser":{"path":"/"}|null}}',
       "Rules: 1-6 milestones, smallest safe steps, reuse and edit existing code instead of rewriting, never delete working features.",
       "Set checks to what really proves the goal for this project. browser is for anything visible in a web page.",
+      ANDROID_GOAL.test(job.goal)&&!/flutter|react native|فلاتر/i.test(job.goal)&&(!info||info.stack==="unknown"||info.stack==="android")
+        ? "This is an Android app: build it as a native Kotlin + Jetpack Compose project that opens in Android Studio. The first code milestone runs project.run {task:\"android:create\",appName,packageId} (it writes the Gradle project and wrapper), then the screens are written under app/src/main/java/<package path>/; checks: build (assembleDebug) and test (unit tests) true, install false, browser null. The last milestone runs project.run {task:\"studio:open\"} so the owner sees it in Android Studio."
+        : "",
       `Project: ${JSON.stringify(info?{stack:info.stack,scripts:info.scripts,git:info.git}:{stack:"unknown"})}`,
       notes?`Project memory (build on it, respect decisions, do not duplicate existing modules):\n${clip(notes,3000)}`:"",
       playbooks.length||lessons.length?guidanceText(playbooks,lessons,2400):"",
@@ -1688,7 +1693,7 @@ export class Supervisor{
     try{
       const j=extractJson(await this.deps.think([
         "Write a short reusable playbook for this KIND of task, based on what worked. Return ONLY JSON",
-        '{"title":"...","tags":["keywords in English and Arabic"],"stacks":["node|python|flutter|dotnet|any"],"steps":["..."],"pitfalls":["..."],"checks":["..."]}',
+        '{"title":"...","tags":["keywords in English and Arabic"],"stacks":["node|python|flutter|android|dotnet|any"],"steps":["..."],"pitfalls":["..."],"checks":["..."]}',
         `Task: ${job.goal}`,`Milestones: ${job.milestones.map(m=>`${m.title}${m.attempts>1?` (needed ${m.attempts} attempts)`:""}`).join("; ")}`,
         `Checks that proved it: ${(job.lastChecks??[]).map(c=>c.name).join(", ")||"none"}${job.visual?", browser":""}${job.security?", security":""}`].join("\n")));
       if(!j||typeof j.title!=="string"||!Array.isArray(j.steps)||!j.steps.length)return;

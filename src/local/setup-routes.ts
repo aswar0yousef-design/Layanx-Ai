@@ -60,6 +60,18 @@ async function phoneAddresses(host:SetupHost,settings:LocalSettings):Promise<str
  * network (and the normal web certificates for *.ts.net), so nobody else on the Wi-Fi can
  * read or answer its requests, even during pairing.
  */
+/**
+ * Why the phone cannot pair yet, or undefined. The phone talks to the PC over https only, so a code
+ * without an https address is one it must reject ("not a LayanX code"): say what to turn on instead.
+ */
+export function phonePairingProblem(urls:string[],state:{mobileAccess:boolean;mobileActive:boolean;remoteActive:boolean}):string|undefined{
+  if(urls.some(u=>u.startsWith("https://")))return undefined;
+  if(state.mobileAccess&&!state.mobileActive)return "فُعّل «الاتصال من الهاتف» لكنه لا يعمل قبل إعادة تشغيل LayanX. أعد التشغيل ثم أنشئ رمزاً جديداً.";
+  if(state.mobileAccess)return "تعذر تجهيز شهادة التشفير للشبكة المحلية، فلا عنوان آمناً يتصل به الهاتف. راجع السجل.";
+  if(state.remoteActive)return "«التحكم من أي مكان» يحتاج Tailscale، وهو غير مثبّت أو غير متصل على هذا الجهاز. فعّل «الاتصال من الهاتف» داخل الشبكة المنزلية وأعد التشغيل، أو ثبّت Tailscale وسجّل الدخول.";
+  return "الاتصال من الهاتف غير مفعّل. فعّل «الاتصال من الهاتف» أعلاه وأعد تشغيل LayanX، ثم أنشئ رمزاً جديداً.";
+}
+
 export function pairingLink(input:{code:string;urls:string[];pin?:string|null;computer:string}):string{
   const q=new URLSearchParams({v:"1",c:input.code.replace(/-/g,"")});
   if(input.pin)q.set("p",input.pin);
@@ -409,7 +421,8 @@ export function createSetupRoutes(host:SetupHost):(ctx:RouteContext)=>Promise<bo
       const settings=host.getSettings();
       const urls=await phoneAddresses(host,settings);
       const link=pairingLink({code:pairing.code,urls,pin:host.lanTls?.pin,computer:os.hostname()});
-      ctx.sendJson(200,{...pairing,urls,computer:os.hostname(),fingerprint:host.lanTls?.fingerprint??null,link,qrSvg:qrSvg(link)});
+      const problem=phonePairingProblem(urls,{mobileAccess:settings.mobileAccess,mobileActive:Boolean(host.mobileActive),remoteActive:Boolean(host.remoteActive)});
+      ctx.sendJson(200,{...pairing,urls,computer:os.hostname(),fingerprint:host.lanTls?.fingerprint??null,link,qrSvg:problem?null:qrSvg(link),...(problem?{problem}:{})});
       return true;
     }
 

@@ -10,6 +10,7 @@ import {dockerRun,dockerVersion,isolationLevel,restrictedAvailable,withoutInstal
 import {gitSnapshot,prepareRestricted,restrictedCommand,restrictedEnv,verifyGitAfterRun} from "../platform/windows-sandbox.js";
 import net from "node:net";
 import os from "node:os";
+import {adbPath,androidEnv,androidToolchain,applicationId,createAndroidProject,isAndroidProject,openInAndroidStudio,startEmulator} from "./android.js";
 
 /**
  * project.run: everything needed to build and check a project without a free-form shell.
@@ -18,12 +19,15 @@ import os from "node:os";
  *
  * tasks: detect | install | test | build | lint | typecheck | script | dev:start | dev:stop | dev:status
  */
-export type Stack="node"|"python"|"flutter"|"dotnet"|"unknown";
+export type Stack="node"|"python"|"flutter"|"android"|"dotnet"|"unknown";
 export interface ProjectInfo{dir:string;stack:Stack;packageManager?:"npm"|"pnpm"|"yarn";scripts:string[];hasLockfile:boolean;git:boolean;tasks:string[]}
 type Cmd={command:string;args:string[];label:string};
 
 const MAX_OUT=64*1024;
 const TIMEOUTS:Record<string,number>={install:15*60_000,test:10*60_000,build:10*60_000,lint:5*60_000,typecheck:5*60_000,script:10*60_000};
+/** Gradle: the first build downloads the Android plugin and libraries. */
+const ANDROID_TIMEOUTS:Record<string,number>={install:20*60_000,test:20*60_000,build:25*60_000,lint:15*60_000,"device:run":20*60_000};
+const ANDROID_TASKS=["studio:open","emulator:start","device:run","android:create"];
 
 const NO_TEST=/no test specified.*exit 1/i;
 /** True when package.json's test script is the placeholder `npm init` writes (it only fails). */
@@ -40,10 +44,11 @@ export function detectProject(dir:string):ProjectInfo{
     try{const pkg=JSON.parse(fs.readFileSync(path.join(dir,"package.json"),"utf8")) as {scripts?:Record<string,unknown>};scripts=Object.keys(pkg.scripts??{}).filter(k=>typeof pkg.scripts?.[k]==="string"&&!(k==="test"&&NO_TEST.test(String(pkg.scripts[k]))));}catch{}
     pm=has("pnpm-lock.yaml")?"pnpm":has("yarn.lock")?"yarn":"npm";
   }else if(has("pubspec.yaml"))stack="flutter";
+  else if(isAndroidProject(dir))stack="android";
   else if(has("pyproject.toml")||has("requirements.txt")||has("setup.py"))stack="python";
   else if(fs.existsSync(dir)&&fs.readdirSync(dir).some(f=>/\.(csproj|sln|fsproj)$/i.test(f)))stack="dotnet";
   const hasLockfile=has("package-lock.json")||has("pnpm-lock.yaml")||has("yarn.lock")||has("poetry.lock")||has("pubspec.lock");
-  const tasks=["install",...["test","build","lint","typecheck"].filter(t=>stack!=="node"||scripts.includes(t)),...(stack==="node"&&scripts.some(s=>["dev","start","serve"].includes(s))?["dev:start"]:[]),...(stack==="flutter"||stack==="dotnet"?["test","build"]:[])];
+  const tasks=["install",...["test","build","lint","typecheck"].filter(t=>stack==="android"?t!=="typecheck":stack!=="node"||scripts.includes(t)),...(stack==="node"&&scripts.some(s=>["dev","start","serve"].includes(s))?["dev:start"]:[]),...(stack==="flutter"||stack==="dotnet"||stack==="android"?["test","build"]:[]),...(stack==="android"?["lint","studio:open","emulator:start","device:run"]:[])];
   return{dir,stack,...(pm?{packageManager:pm}:{}),scripts,hasLockfile,git:has(".git"),tasks:[...new Set(tasks)]};
 }
 
@@ -71,7 +76,7 @@ export function emptyProjectReason(projectId:string,payload:unknown):string|unde
   let dir:string;
   try{dir=projectDir(projectId);}catch{return undefined;}
   if(fs.existsSync(dir)&&detectProject(dir).stack!=="unknown")return undefined;
-  return `The project folder has no project yet (no package.json, pyproject.toml/requirements.txt, pubspec.yaml or .csproj), so "${task}" has nothing to run. Create the project first: write package.json and the source files with files.write, or use project.bootstrap with the packages it needs. Run project.run after that.`;
+  return `The project folder has no project yet (no package.json, pyproject.toml/requirements.txt, pubspec.yaml, settings.gradle.kts or .csproj), so "${task}" has nothing to run. Create the project first: write package.json and the source files with files.write, or use project.bootstrap with the packages it needs; for an Android app run project.run with task android:create (a Kotlin project Android Studio opens). Run project.run after that.`;
 }
 
 export function commandFor(info:ProjectInfo,task:string,script?:string):Cmd{
@@ -97,12 +102,23 @@ export function commandFor(info:ProjectInfo,task:string,script?:string):Cmd{
     if(!args)throw new Error(`Task "${task}" is not available for Flutter projects.`);
     return process.platform==="win32"?winShim("flutter.bat",args):{command:"flutter",args,label:"flutter "+args.join(" ")};
   }
+  if(info.stack==="android"){
+    const gradleTask=task==="install"?"help":task==="test"?"testDebugUnitTest":task==="build"?"assembleDebug":task==="lint"?"lintDebug":task==="device:run"?"installDebug":null;
+    if(!gradleTask)throw new Error(`Task "${task}" is not available for Android projects (install, test, build, lint, device:run, studio:open, emulator:start).`);
+    const args=[gradleTask,"--console=plain","--stacktrace"];
+    if(process.platform==="win32"){
+      if(!fs.existsSync(path.join(info.dir,"gradlew.bat")))throw new Error("The project has no Gradle wrapper (gradlew.bat). Open it once in Android Studio (project.run task studio:open), which adds it.");
+      return winShim("gradlew.bat",args);
+    }
+    if(!fs.existsSync(path.join(info.dir,"gradlew")))throw new Error("The project has no Gradle wrapper (gradlew). Open it once in Android Studio, which adds it.");
+    return{command:"sh",args:["./gradlew",...args],label:"gradlew "+args.join(" ")};
+  }
   if(info.stack==="dotnet"){
     const args=task==="install"?["restore"]:task==="test"?["test"]:task==="build"?["build"]:null;
     if(!args)throw new Error(`Task "${task}" is not available for .NET projects.`);
     return{command:"dotnet",args,label:"dotnet "+args.join(" ")};
   }
-  throw new Error("No supported project (package.json, pyproject.toml/requirements.txt, pubspec.yaml or .csproj) was found in the project folder.");
+  throw new Error("No supported project (package.json, pyproject.toml/requirements.txt, pubspec.yaml, an Android settings.gradle.kts or .csproj) was found in the project folder.");
 }
 
 function childEnv(){return safeChildEnv({allow:["PYTHONPATH","VIRTUAL_ENV","JAVA_HOME","ANDROID_HOME","FLUTTER_ROOT","DOTNET_ROOT","NVM_HOME","NVM_SYMLINK"],extra:{CI:"1",FORCE_COLOR:"0",NO_COLOR:"1",npm_config_update_notifier:"false"}});}
@@ -298,6 +314,22 @@ function devStop(key:string){const s=servers.get(key);if(s?.container)execFile("
 export function stopAllDevServers(){for(const k of [...servers.keys()])devStop(k);}
 process.once("exit",stopAllDevServers);
 
+/** Installs the debug build on the running emulator or phone and opens the app. */
+async function deviceRun(dir:string,info:ProjectInfo){
+  const adb=adbPath();
+  if(!adb)throw new Error("adb was not found in the Android SDK (platform-tools).");
+  let devices:string[]=[];
+  try{devices=execFileSync(adb,["devices"],{encoding:"utf8",windowsHide:true,timeout:20_000}).split(/\r?\n/).slice(1).filter(l=>/\tdevice$/.test(l)).map(l=>l.split("\t")[0]!);}catch{}
+  if(!devices.length)return{task:"device:run",ok:false,devices,reason:"No emulator or phone is connected. Run project.run task emulator:start, wait about a minute, then try again (or connect a phone with USB debugging)."};
+  const cmd=commandFor(info,"device:run");
+  const result=await runOnce(cmd,dir,ANDROID_TIMEOUTS["device:run"]!,androidEnv(dir,childEnv()));
+  const ok=result.exitCode===0&&!result.timedOut;
+  const id=applicationId(dir);
+  let launched=false;
+  if(ok&&id)try{execFileSync(adb,["shell","monkey","-p",id,"-c","android.intent.category.LAUNCHER","1"],{windowsHide:true,timeout:20_000,stdio:"ignore"});launched=true;}catch{}
+  return{task:"device:run",stack:info.stack,devices,applicationId:id??null,launched,...result,ok};
+}
+
 export function createProjectRunnerAdapter():ToolAdapter{
   return{async execute(request:ToolRequest){
     const input=(request.payload&&typeof request.payload==="object"?request.payload:{}) as Record<string,unknown>;
@@ -313,12 +345,21 @@ export function createProjectRunnerAdapter():ToolAdapter{
     if(isolation==="restricted"&&task!=="detect"&&task!=="dev:status"&&task!=="dev:stop"){
       if(!restrictedAvailable())throw new Error("Restricted isolation runs on Windows only. Choose no-scripts or Docker for this project.");
       if(info.stack==="flutter")throw new Error("Flutter writes to its own SDK folder, which restricted isolation does not allow. Choose local, no-scripts or Docker for this project.");
+      if(info.stack==="android"||task==="android:create")throw new Error("Gradle keeps its downloads in the user's .gradle folder, which restricted isolation does not allow. Choose local or no-scripts for this Android project.");
     }
-    if(task==="detect")return{...info,isolation};
+    if(task==="detect")return{...info,isolation,...(info.stack==="android"||info.stack==="unknown"?{android:androidToolchain()}:{})};
+    if(ANDROID_TASKS.includes(task)){
+      if(docker)throw new Error("Android projects build on this PC with the Android SDK, not in Docker. Choose local or no-scripts isolation for this project.");
+      if(task==="android:create")return{task,...(await createAndroidProject(dir,{appName:input.appName,packageId:input.packageId,projectId:request.projectId},runOnce))};
+      if(info.stack!=="android")throw new Error("This folder has no Android project yet: run project.run with task android:create first.");
+      if(task==="studio:open")return{task,...openInAndroidStudio(dir)};
+      if(task==="emulator:start")return{task,...startEmulator(typeof input.avd==="string"?input.avd:undefined)};
+      if(task==="device:run")return deviceRun(dir,info);
+    }
     if(task==="dev:start")return{...(await devStart(dir,key,info,typeof input.script==="string"?input.script:undefined,isolation)),isolation};
     if(task==="dev:status")return devStatus(key);
     if(task==="dev:stop")return devStop(key);
-    if(!["install","test","build","lint","typecheck","script"].includes(task))throw new Error("Unknown task. Use detect, install, test, build, lint, typecheck, script, dev:start, dev:status or dev:stop.");
+    if(!["install","test","build","lint","typecheck","script"].includes(task))throw new Error("Unknown task. Use detect, install, test, build, lint, typecheck, script, dev:start, dev:status or dev:stop (Android: android:create, studio:open, emulator:start, device:run).");
     let cmd=commandFor(info,task,typeof input.script==="string"?input.script:undefined);
     if(docker){const d=dockerRun(info,task,{script:typeof input.script==="string"?input.script:undefined,uid:typeof process.getuid==="function"?`${process.getuid()}:${process.getgid?.()}`:undefined});cmd={command:d.command,args:d.args,label:d.label};}
     else if((isolation==="no-scripts"||isolation==="restricted")&&task==="install"&&info.stack==="node")cmd={...cmd,args:withoutInstallScripts(cmd.args),label:cmd.label+" --ignore-scripts"};
@@ -333,8 +374,9 @@ export function createProjectRunnerAdapter():ToolAdapter{
       cmd=restrictedCommand(cmd,dir,setup);
       gitBefore=gitSnapshot(dir);prepWarning=setup.gitWarning;
     }
+    if(info.stack==="android")env=androidEnv(dir,env??childEnv());
     // Callers may shorten a task's limit, never extend it.
-    const limit=TIMEOUTS[task]??10*60_000;
+    const limit=(info.stack==="android"?ANDROID_TIMEOUTS[task]:undefined)??TIMEOUTS[task]??10*60_000;
     const requested=Number(input.timeoutMs);
     const result=await runOnce(cmd,dir,Number.isFinite(requested)&&requested>=1000?Math.min(requested,limit):limit,env);
     const gitWarning=[prepWarning,gitBefore?await verifyGitAfterRun(dir,gitBefore):undefined].filter(Boolean).join(" ")||undefined;
