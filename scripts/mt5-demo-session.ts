@@ -8,7 +8,7 @@
  * With --capital the robots trade as if the account held only that money (the owner's real capital), split evenly between
  * them; --risk sets the percent risked per trade for this session only.
  *
- *   npx tsx scripts/mt5-demo-session.ts --minutes 60 [--symbols BTCUSD,ETHUSD] [--capital 320] [--risk 0.5] [--timeframe M1]
+ *   npx tsx scripts/mt5-demo-session.ts --minutes 60 [--symbols BTCUSD,ETHUSD] [--capital 320 [--shared-capital]] [--risk 0.5] [--timeframe M1]
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -27,7 +27,9 @@ const log=path.join(dir,"checks.jsonl");
 const write=(o:Record<string,unknown>)=>{const line=JSON.stringify({at:new Date().toISOString(),...o});fs.appendFileSync(log,line+"\n");console.log(line);};
 const adapter=new Mt5LiveAdapter({bridgePath:path.resolve("scripts/mt5-bridge.py")});
 const symbols=(arg("symbols")??arg("symbol")??"XAUUSD").split(",").map(x=>x.trim()).filter(Boolean);
-const share=capital&&capital>0?Math.round(capital/symbols.length*100)/100:undefined;
+// --shared-capital: every robot sizes on the whole capital (one trade each at most, so the open risk is at most
+// robots x risk%); without it the capital is split evenly between them.
+const share=capital&&capital>0?(process.argv.includes("--shared-capital")?capital:Math.round(capital/symbols.length*100)/100):undefined;
 const robots=symbols.map(symbol=>({symbol,robot:new Mt5AutoScalper({adapter,symbol,timeframe:arg("timeframe")??"M1",statePath:path.join(dir,`state-${symbol}.json`),...(share?{capital:share}:{})})}));
 const first=await adapter.connect();
 if(first.tradeMode!=="demo"){write({stop:"not a demo account",tradeMode:first.tradeMode,server:first.server});adapter.dispose();process.exit(2);}

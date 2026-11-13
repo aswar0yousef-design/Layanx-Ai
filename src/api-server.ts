@@ -91,6 +91,9 @@ export function startRuntimeApi(options:RuntimeApiOptions){
  // The project scout looks once a day while LayanX runs (LAYANX_PROJECT_SCOUT=off stops it). It installs and runs nothing.
  const scoutTimer=setInterval(()=>{if(scoutDue(ownerStore))void runProjectScout(ownerStore,{intakeRoot:joinPath(ownerStore,"intake")}).catch(()=>undefined);},60*60_000);
  scoutTimer.unref?.();
+ // Trading learns once a week: live results against history, then a fresh measurement on the demo account (LAYANX_TRADING_LEARNING=off stops it).
+ const tradingLearning=setInterval(()=>{void import("./trading/weekly-learning.js").then(m=>{if(m.weeklyTradingDue(ownerStore))return m.runWeeklyTradingLearning(ownerStore);}).catch(()=>undefined);},60*60_000);
+ tradingLearning.unref?.();
  // Learns and practises whenever the owner is away and nothing is running (LAYANX_IDLE_TRAINING=off stops it).
  let lastOwnerActivity=Date.now();
  const trainer=new IdleTrainer({ledgerFile:joinPath(ownerStore,"practice-ledger.json"),logFile:joinPath(ownerStore,"practice.log"),

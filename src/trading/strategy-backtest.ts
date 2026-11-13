@@ -1,5 +1,5 @@
 import type {MarketCandle} from "./scalping-signal.js";
-import {STRATEGIES,buildContext,type StrategyName} from "./strategies.js";
+import {STRATEGIES,buildContext,type StrategyName,type StrategyContext} from "./strategies.js";
 import {trailingStop,DEFAULT_TRAIL} from "./trailing-stop.js";
 
 /**
@@ -11,8 +11,8 @@ import {trailingStop,DEFAULT_TRAIL} from "./trailing-stop.js";
 export interface BacktestTrade{entryAt:string;side:"long"|"short";r:number;bars:number;exit:"stop"|"target"|"session"|"time"|"end"}
 export interface BacktestStats{trades:number;winRate:number;netR:number;profitFactor:number|null;maxDrawdownR:number;avgR:number}
 
-export function backtestStrategy(c:MarketCandle[],minutes:number,name:StrategyName,spread:number,from=0,to=c.length,maxBars=600):BacktestTrade[]{
-  const x=buildContext(c,minutes),rule=STRATEGIES[name],trades:BacktestTrade[]=[];
+export function backtestStrategy(c:MarketCandle[],minutes:number,name:StrategyName,spread:number,from=0,to=c.length,maxBars=600,context?:StrategyContext):BacktestTrade[]{
+  const x=context??buildContext(c,minutes),rule=STRATEGIES[name],trades:BacktestTrade[]=[];
   let i=Math.max(from,210);
   while(i<to-1){
     const intent=rule(x,i);
@@ -46,12 +46,18 @@ export function statsOf(t:BacktestTrade[]):BacktestStats{
  * The bar a strategy must clear on BOTH halves of the history to be switched on. Many combinations are tried, so some pass
  * by luck: the bar is set above break-even, needs enough trades, and the demo account still has the last word.
  */
-export const KEEP_RULE={minTradesPerHalf:25,minProfitFactor:1.15,minQuartersPositive:3};
-export function verdict(c:MarketCandle[],minutes:number,name:StrategyName,spread:number){
-  const n=c.length,half=Math.floor(n/2);
-  const first=statsOf(backtestStrategy(c,minutes,name,spread,0,half)),second=statsOf(backtestStrategy(c,minutes,name,spread,half,n));
-  const q=[0,1,2,3].map(k=>statsOf(backtestStrategy(c,minutes,name,spread,Math.floor(k*n/4),Math.floor((k+1)*n/4))));
+export const KEEP_RULE={minTradesPerHalf:25,minProfitFactor:1.15,minQuartersPositive:3,
+  /** It must also stay profitable on both halves with the spread this many times wider (a result one spread tick can flip
+   *  is luck: ETH M5 went from +7R to -4.7R when the spread moved from 1.2 to 2.0, 2026-11-13). */
+  stressSpread:1.5};
+export function verdict(c:MarketCandle[],minutes:number,name:StrategyName,spread:number,context:StrategyContext=buildContext(c,minutes)){
+  const n=c.length,half=Math.floor(n/2),run=(sp:number,a:number,b:number)=>statsOf(backtestStrategy(c,minutes,name,sp,a,b,600,context));
+  const first=run(spread,0,half),second=run(spread,half,n);
+  const q=[0,1,2,3].map(k=>run(spread,Math.floor(k*n/4),Math.floor((k+1)*n/4)));
   const passHalf=(s:BacktestStats)=>s.trades>=KEEP_RULE.minTradesPerHalf&&(s.profitFactor??0)>=KEEP_RULE.minProfitFactor&&s.netR>0;
   const quartersPositive=q.filter(s=>s.netR>0).length;
-  return{first,second,quartersPositive,keep:passHalf(first)&&passHalf(second)&&quartersPositive>=KEEP_RULE.minQuartersPositive};
+  const base=passHalf(first)&&passHalf(second)&&quartersPositive>=KEEP_RULE.minQuartersPositive;
+  const stressed=base?{first:run(spread*KEEP_RULE.stressSpread,0,half),second:run(spread*KEEP_RULE.stressSpread,half,n)}:undefined;
+  const survivesCosts=!!stressed&&stressed.first.netR>0&&stressed.second.netR>0;
+  return{first,second,quartersPositive,stressed,keep:base&&survivesCosts};
 }

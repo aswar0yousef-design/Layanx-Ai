@@ -7,12 +7,17 @@ import {adxSeries,atrSeries,bollingerSeries,donchianSeries,emaSeries,macdSeries,
  * manages the trade. None of them is assumed to work: scripts/strategy-backtest.ts measures each on real history, and only
  * those that win in both halves of the data are switched on (src/trading/strategy-book.ts).
  */
-export type StrategyName="trend-pullback"|"macd-momentum"|"london-breakout"|"asian-mean-reversion"|"donchian-breakout";
-export const STRATEGY_NAMES:StrategyName[]=["trend-pullback","macd-momentum","london-breakout","asian-mean-reversion","donchian-breakout"];
+export type StrategyName="trend-pullback"|"macd-momentum"|"london-breakout"|"asian-mean-reversion"|"donchian-breakout"|"rsi2-reversion"|"squeeze-breakout"|"ny-opening-range";
+export const STRATEGY_NAMES:StrategyName[]=["trend-pullback","macd-momentum","london-breakout","asian-mean-reversion","donchian-breakout","rsi2-reversion","squeeze-breakout","ny-opening-range"];
 export interface Intent{action:"long"|"short";stopDistance:number;target?:number;trail:boolean;closeHourUtc?:number;reason:string}
 export interface StrategyContext{
   c:MarketCandle[];minutes:number;
   atr:Series;rsi:Series;ema21:Series;adx:Series;macd:Series;macdSignal:Series;bbMid:Series;bbUpper:Series;bbLower:Series;donHigh:Series;donLow:Series;
+  rsi2:Series;ema5:Series;ema200:Series;
+  /** Bollinger bands inside the Keltner channel (EMA20 +- 1.5 ATR20): a volatility squeeze. */
+  squeeze:Uint8Array;
+  /** New York local time of each candle (minutes after midnight, and the date), daylight saving included. */
+  nyMinute:Int16Array;nyDate:string[];
   /** Trend of the higher timeframe at each candle, from its last COMPLETE candle: 1 up, -1 down, 0 none. */
   htfTrend:Int8Array;
 }
@@ -31,8 +36,14 @@ export function buildContext(c:MarketCandle[],minutes:number):StrategyContext{
     const up=e50[k]!>e200[k]!&&hc[k]!>e50[k]!&&hadx[k]!>=20,down=e50[k]!<e200[k]!&&hc[k]!<e50[k]!&&hadx[k]!>=20;
     htfTrend[i]=up?1:down?-1:0;
   }
+  const e20=emaSeries(closes,20),a20=atrSeries(c,20),squeeze=new Uint8Array(c.length);
+  for(let i=0;i<c.length;i++)squeeze[i]=Number.isFinite(bb.upper[i]!)&&Number.isFinite(e20[i]!)&&Number.isFinite(a20[i]!)&&bb.upper[i]!<e20[i]!+1.5*a20[i]!&&bb.lower[i]!>e20[i]!-1.5*a20[i]!?1:0;
+  const nyMinute=new Int16Array(c.length),nyDate:string[]=new Array(c.length);
+  const fmt=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hourCycle:"h23",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+  for(let i=0;i<c.length;i++){const p:Record<string,string>={};for(const part of fmt.formatToParts(new Date(c[i]!.timestamp)))p[part.type]=part.value;nyMinute[i]=Number(p.hour)*60+Number(p.minute);nyDate[i]=`${p.year}-${p.month}-${p.day}`;}
   return{c,minutes,atr:atrSeries(c,14),rsi:rsiSeries(closes,14),ema21:emaSeries(closes,21),adx:adxSeries(c,14),macd:m.macd,macdSignal:m.signal,
-    bbMid:bb.mid,bbUpper:bb.upper,bbLower:bb.lower,donHigh:don.high,donLow:don.low,htfTrend};
+    bbMid:bb.mid,bbUpper:bb.upper,bbLower:bb.lower,donHigh:don.high,donLow:don.low,htfTrend,
+    rsi2:rsiSeries(closes,2),ema5:emaSeries(closes,5),ema200:emaSeries(closes,200),squeeze,nyMinute,nyDate};
 }
 const hourUtc=(c:MarketCandle)=>new Date(c.timestamp).getUTCHours();
 const dayUtc=(c:MarketCandle)=>c.timestamp.slice(0,10);
@@ -89,7 +100,52 @@ function donchianBreakout(x:StrategyContext,i:number):Intent|null{
   if(t<0&&c.close<lo)return{action:"short",stopDistance:2*a,trail:true,reason:"20-candle breakout down in a downtrend"};
   return null;
 }
+/**
+ * Larry Connors' RSI(2): a sharp short-term drop inside a long uptrend (RSI(2) < 10 above the 200 average) tends to bounce
+ * back to the 5 average; the mirror for shorts. Published tests are good on stock indices and poor on EUR/USD: measured here.
+ */
+function rsi2Reversion(x:StrategyContext,i:number):Intent|null{
+  const c=x.c[i]!,a=x.atr[i]!,r=x.rsi2[i]!,e5=x.ema5[i]!,e200=x.ema200[i]!;
+  if(!ok(a,r,e5,e200))return null;
+  if(c.close>e200&&r<10&&e5>c.close)return{action:"long",stopDistance:2*a,target:e5,trail:false,reason:"RSI(2) oversold in an uptrend"};
+  if(c.close<e200&&r>90&&e5<c.close)return{action:"short",stopDistance:2*a,target:e5,trail:false,reason:"RSI(2) overbought in a downtrend"};
+  return null;
+}
+/** TTM-style squeeze: after at least 6 candles of Bollinger inside Keltner, the first candle out, in the momentum's direction. */
+function squeezeBreakout(x:StrategyContext,i:number):Intent|null{
+  if(i<7||x.squeeze[i]!)return null;
+  for(let k=i-6;k<i;k++)if(!x.squeeze[k]!)return null;
+  const c=x.c[i]!,a=x.atr[i]!,mid=x.bbMid[i]!,h=x.macd[i]!-x.macdSignal[i]!,t=x.htfTrend[i]!;
+  if(!ok(a,mid,h))return null;
+  if(c.close>mid&&h>0&&t>=0)return{action:"long",stopDistance:1.5*a,trail:true,reason:"volatility squeeze released upward"};
+  if(c.close<mid&&h<0&&t<=0)return{action:"short",stopDistance:1.5*a,trail:true,reason:"volatility squeeze released downward"};
+  return null;
+}
+/**
+ * New York opening range (M5/M15): the high and low of 09:30-10:00 New York time, then the first close outside it before
+ * 12:00; stop at the middle of the range; closed at 15:00 New York. Daylight saving is followed (Intl, America/New_York).
+ */
+function nyOpeningRange(x:StrategyContext,i:number):Intent|null{
+  if(x.minutes>15)return null;
+  const m=x.nyMinute[i]!,day=x.nyDate[i]!,a=x.atr[i]!,c=x.c[i]!;
+  if(m<600||m>=720||!ok(a))return null;
+  let hi=-Infinity,lo=Infinity,brokeUp=false,brokeDown=false;
+  for(let j=i-1;j>=0&&x.nyDate[j]===day;j--){
+    const mj=x.nyMinute[j]!;
+    if(mj>=570&&mj<600){hi=Math.max(hi,x.c[j]!.high);lo=Math.min(lo,x.c[j]!.low);}
+  }
+  if(!Number.isFinite(hi))return null;
+  for(let j=i-1;j>=0&&x.nyDate[j]===day;j--){const mj=x.nyMinute[j]!;if(mj>=600){if(x.c[j]!.close>hi)brokeUp=true;if(x.c[j]!.close<lo)brokeDown=true;}}
+  const width=hi-lo;if(width<a||width>8*a)return null;
+  // 15:00 New York in UTC hours for this day (4 or 5 hours ahead depending on daylight saving).
+  const utcHour=new Date(c.timestamp).getUTCHours(),offset=((utcHour-Math.floor(m/60))%24+24)%24,closeHourUtc=(15+offset)%24;
+  const mid=(hi+lo)/2;
+  if(c.close>hi&&!brokeUp)return{action:"long",stopDistance:Math.max(c.close-mid,a),trail:true,closeHourUtc,reason:"broke above the New York opening range"};
+  if(c.close<lo&&!brokeDown)return{action:"short",stopDistance:Math.max(mid-c.close,a),trail:true,closeHourUtc,reason:"broke below the New York opening range"};
+  return null;
+}
 export const STRATEGIES:Record<StrategyName,(x:StrategyContext,i:number)=>Intent|null>={
   "trend-pullback":trendPullback,"macd-momentum":macdMomentum,"london-breakout":londonBreakout,
-  "asian-mean-reversion":asianMeanReversion,"donchian-breakout":donchianBreakout
+  "asian-mean-reversion":asianMeanReversion,"donchian-breakout":donchianBreakout,
+  "rsi2-reversion":rsi2Reversion,"squeeze-breakout":squeezeBreakout,"ny-opening-range":nyOpeningRange
 };

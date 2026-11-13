@@ -7,9 +7,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import {resolveDataPaths} from "../src/platform/paths.js";
-import {STRATEGY_NAMES} from "../src/trading/strategies.js";
+import {STRATEGY_NAMES,buildContext} from "../src/trading/strategies.js";
 import {verdict,KEEP_RULE} from "../src/trading/strategy-backtest.js";
-import {saveStrategyBook,type StrategyBookEntry} from "../src/trading/strategy-book.js";
+import {loadStrategyBook,saveStrategyBook,type StrategyBookEntry} from "../src/trading/strategy-book.js";
 
 const arg=(n:string)=>{const i=process.argv.indexOf("--"+n);return i>=0?process.argv[i+1]:undefined;};
 const symbols=(arg("symbols")??"XAUUSD,EURUSD,GBPUSD,USDJPY,WTI,BRENT,BTCUSD,ETHUSD").split(",");
@@ -24,17 +24,24 @@ for(const symbol of symbols)for(const tf of timeframes){
   let candles,spread;
   try{candles=await adapter.getCandles({symbol,timeframe:tf as any,limit:Number(arg("bars")??"99000")});const q=await adapter.getSymbolSnapshot(symbol);spread=q.ask-q.bid;}
   catch(e){rows.push({symbol,tf,error:(e as Error).message});console.log(symbol,tf,"ERROR",(e as Error).message);continue;}
+  const context=buildContext(candles,MINUTES[tf]!);
   for(const name of STRATEGY_NAMES){
-    const v=verdict(candles,MINUTES[tf]!,name,spread);
+    const v=verdict(candles,MINUTES[tf]!,name,spread,context);
     const row={symbol,tf,strategy:name,from:candles[0]?.timestamp,to:candles.at(-1)?.timestamp,candles:candles.length,spread,...v};
     rows.push(row);
     if(v.keep)kept.push({symbol,timeframe:tf,strategy:name,firstHalf:v.first,secondHalf:v.second,quartersPositive:v.quartersPositive});
-    if(v.first.trades+v.second.trades>0)console.log(`${v.keep?"KEEP":"    "} ${symbol.padEnd(7)} ${tf.padEnd(3)} ${name.padEnd(21)} | 1st ${String(v.first.trades).padStart(3)} tr ${String(v.first.netR).padStart(7)}R PF ${v.first.profitFactor} | 2nd ${String(v.second.trades).padStart(3)} tr ${String(v.second.netR).padStart(7)}R PF ${v.second.profitFactor} | quarters+ ${v.quartersPositive}/4`);
+    if(v.first.trades+v.second.trades>0)console.log(`${v.keep?"KEEP":"    "} ${symbol.padEnd(7)} ${tf.padEnd(3)} ${name.padEnd(21)} | 1st ${String(v.first.trades).padStart(3)} tr ${String(v.first.netR).padStart(7)}R PF ${v.first.profitFactor} | 2nd ${String(v.second.trades).padStart(3)} tr ${String(v.second.netR).padStart(7)}R PF ${v.second.profitFactor} | quarters+ ${v.quartersPositive}/4${v.stressed?` | x1.5 spread ${v.stressed.first.netR}R/${v.stressed.second.netR}R`:""}`);
   }
 }
 adapter.dispose();
 const out=path.join(resolveDataPaths().dataDir,"outcome-runs","strategy-backtest-"+new Date().toISOString().replace(/[:.]/g,"-")+".json");
 fs.writeFileSync(out,JSON.stringify({account:account.server,keepRule:KEEP_RULE,kept,rows},null,2));
-if(process.argv.includes("--write-book"))console.log("strategy book:",saveStrategyBook({measuredAt:new Date().toISOString(),source:out,keepRule:KEEP_RULE,entries:kept}));
+if(process.argv.includes("--write-book")){
+  // A strategy the live review suspended stays out until the owner clears it, even if history still likes it.
+  const previous=loadStrategyBook() as (ReturnType<typeof loadStrategyBook>&{suspended?:Array<{key:string}>})|null;
+  const suspended=previous?.suspended??[];
+  const entries=kept.filter(k=>!suspended.some(x=>x.key===`${k.symbol} ${k.timeframe} ${k.strategy}`));
+  console.log("strategy book:",saveStrategyBook({measuredAt:new Date().toISOString(),source:out,keepRule:KEEP_RULE,entries,...(suspended.length?{suspended}:{})} as any));
+}
 console.log(JSON.stringify({report:out,tested:rows.filter(r=>!r.error).length,kept:kept.map(k=>`${k.symbol} ${k.timeframe} ${k.strategy}`)},null,2));
 process.exit(0);
