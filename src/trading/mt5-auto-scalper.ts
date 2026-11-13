@@ -4,6 +4,11 @@ import {Mt5LiveAdapter,Mt5UnknownOutcomeError,newClientOrderId,mt5Settings} from
 const mt5Magic=()=>mt5Settings().magic;
 import {generateScalpingSignal,atr as atrOf} from "./scalping-signal.js";
 import {trailingStop} from "./trailing-stop.js";
+import {STRATEGIES,buildContext} from "./strategies.js";
+import {enabledStrategies,loadStrategyBook,type StrategyBook} from "./strategy-book.js";
+import type {MarketCandle} from "./scalping-signal.js";
+const TF_MINUTES:Record<string,number>={M1:1,M5:5,M15:15,M30:30,H1:60,H4:240};
+interface Entry{action:"long"|"short";atr:number;candles:MarketCandle[];timeframe:string;label:string;stopLossPrice:number;takeProfitPrice?:number;closeHourUtc?:number}
 import {evaluateScalpingDecision} from "./scalping-decision.js";
 import {filterCompletedMt5Candles} from "./mt5-adapter.js";
 
@@ -24,8 +29,17 @@ interface State{
  lastTradeTimestamp?:string;
  /** The stop each LayanX trade was opened with (by ticket): it defines R for the trailing stop. */
  initialStops?:Record<string,number>;
+ /** Real-capital mode: LayanX's own closed results since it started (all days) and today, on this market. */
+ realizedPnl?:number;
+ realizedToday?:number;
+ /** Which strategy and timeframe opened each trade (for the trade journal and session closes). */
+ openedBy?:Record<string,{strategy:string;timeframe:string;closeHourUtc?:number}>;
+ /** The last closed candle each book strategy was asked about (each candle is judged once). */
+ lastSignalKeys?:Record<string,string>;
 }
-export interface Mt5AutoScalperStatus{running:boolean;symbol:string;timeframe:string;lastAction?:string;lastError?:string;lastCheckAt?:string;lastTradeTimestamp?:string;tradesToday:number;dailyPnl:number;consecutiveLosses:number;tradeMode?:string;}
+export interface Mt5AutoScalperStatus{running:boolean;symbol:string;timeframe:string;lastAction?:string;lastError?:string;lastCheckAt?:string;lastTradeTimestamp?:string;tradesToday:number;dailyPnl:number;consecutiveLosses:number;tradeMode?:string;
+ /** Real-capital mode: the capital LayanX trades with, plus its own results (what a real account of that size would hold). */
+ capitalEquity?:number;}
 
 const today=(now:Date)=>now.toISOString().slice(0,10);
 const envNum=(name:string,d:number,min:number,max:number)=>{const n=Number(process.env[name]);return Number.isFinite(n)&&process.env[name]!==""&&process.env[name]!==undefined?Math.min(Math.max(n,min),max):d;};
@@ -41,8 +55,19 @@ export class Mt5AutoScalper{
  private busy=false;
  /** Bumped by stop(): a check that started before it never sends an order after it. */
  private generation=0;
- constructor(options:{adapter?:Mt5LiveAdapter;symbol?:string;timeframe?:string;intervalMs?:number;statePath?:string;now?:()=>Date}={}){
+ /** The measured strategy book (null: none, the original signal is used). */
+ private readonly book:StrategyBook|null;
+ /**
+  * Real-capital mode (MT5_RISK_CAPITAL, in the account currency): the robot trades as if the account held only this, plus
+  * its own results. Sizes, the daily loss limit and the losing streak use LayanX's trades alone, so a large demo account or
+  * other robots on it do not make the test look easier (the owner's wish, 2026-11-13: trade like the real money).
+  */
+ private readonly capital:number|undefined;
+ constructor(options:{adapter?:Mt5LiveAdapter;symbol?:string;timeframe?:string;intervalMs?:number;statePath?:string;now?:()=>Date;book?:StrategyBook|null;capital?:number}={}){
+  const cap=options.capital??Number(process.env.MT5_RISK_CAPITAL);
+  this.capital=Number.isFinite(cap)&&cap>0?cap:undefined;
   this.adapter=options.adapter??new Mt5LiveAdapter();
+  this.book=options.book!==undefined?options.book:process.env.MT5_ENTRY_MODE==="signal"?null:loadStrategyBook();
   this.intervalMs=options.intervalMs??Math.max(15_000,Number(process.env.MT5_SCALPER_INTERVAL_MS??15_000));
   this.statePath=options.statePath??process.env.MT5_SCALPER_STATE_PATH??".layanx/mt5-scalper.json";
   this.now=options.now??(()=>new Date());
@@ -76,6 +101,7 @@ export class Mt5AutoScalper{
    if(t<=this.state.lastDealTicket)continue;
    const net=d.profit+d.commission+d.swap;
    this.state.consecutiveLosses=net<0?this.state.consecutiveLosses+1:0;
+   this.state.realizedPnl=(this.state.realizedPnl??0)+net;this.state.realizedToday=(this.state.realizedToday??0)+net;
    this.state.lastDealTicket=t;
   }
  }
@@ -93,11 +119,22 @@ export class Mt5AutoScalper{
    const date=today(now);
    if(this.state.date!==date){
     // A new trading day: limits start again from today's equity.
-    this.state={...this.fresh(date,account.equity),lastDealTicket:this.state.lastDealTicket,pendingClientOrderId:this.state.pendingClientOrderId,pendingMisses:this.state.pendingMisses};
+    this.state={...this.fresh(date,account.equity),lastDealTicket:this.state.lastDealTicket,pendingClientOrderId:this.state.pendingClientOrderId,pendingMisses:this.state.pendingMisses,
+     realizedPnl:this.state.realizedPnl,realizedToday:0,initialStops:this.state.initialStops,openedBy:this.state.openedBy,lastSignalKeys:this.state.lastSignalKeys};
    }
    if(!this.state.startEquity)this.state.startEquity=account.equity;
    this.state.dailyPnl=account.equity-this.state.startEquity;
    await this.updateLosses();
+   let sizingEquity=account.equity;
+   if(this.capital!==undefined){
+    const open=(await this.adapter.positions(this.statusState.symbol)).filter(p=>p.magic===mt5Magic()).reduce((a,p)=>a+p.profit,0);
+    const realized=this.state.realizedPnl??0,today=this.state.realizedToday??0;
+    sizingEquity=this.capital+realized+open;
+    this.state.startEquity=this.capital+realized-today;
+    this.state.dailyPnl=today+open;
+    this.statusState.capitalEquity=Math.round(sizingEquity*100)/100;
+    if(sizingEquity<=0)return this.done("the real-capital budget is used up; no new entry");
+   }
    if(this.state.pendingClientOrderId){
     const id=this.state.pendingClientOrderId;
     const found=await this.adapter.findOrder(id);
@@ -123,28 +160,16 @@ export class Mt5AutoScalper{
    const working=await this.adapter.orders(this.statusState.symbol);
    if(working.length>0)return this.done("an order is still being filled; no new entry");
    const snapshot=await this.adapter.getSymbolSnapshot(this.statusState.symbol);
-   const raw=await this.adapter.getCandles({symbol:this.statusState.symbol,timeframe:this.statusState.timeframe,limit:120});
-   const candles=filterCompletedMt5Candles(raw,snapshot.timestamp,this.statusState.timeframe);
-   if(candles.length<40)return this.done("waiting for sufficient completed candles",false);
-   const signal=generateScalpingSignal(candles);
-   if(signal.candleTimestamp===this.state.lastSignalTimestamp)return this.done("signal candle already evaluated",false);
-   this.state.lastSignalTimestamp=signal.candleTimestamp;
-   if(signal.action==="neutral")return this.done("neutral signal");
-   const atr=signal.indicators.atr;
-   if(!atr||atr<=0)return this.done("ATR unavailable");
+   const entry=this.book?await this.bookEntry(snapshot):await this.signalEntry(snapshot);
+   if(typeof entry==="string")return this.done(entry,!/already evaluated|waiting for sufficient/.test(entry));
+   const signal={action:entry.action};const atr=entry.atr,candles=entry.candles;
    const riskPercent=envNum("MT5_SCALP_RISK_PERCENT",0.25,0.01,2);
-   const stopDistance=atr*envNum("MT5_STOP_ATR_MULTIPLIER",1.2,0.1,20);
-   const targetDistance=atr*envNum("MT5_TARGET_ATR_MULTIPLIER",1.8,0.1,40);
-   const stopLossPrice=signal.action==="long"?snapshot.ask-stopDistance:snapshot.bid+stopDistance;
-   // With the trailing stop on, no fixed target: measured 2026-11-13 on demo history (5 markets, M5 and M15, both halves),
-   // a 1.5R target closed winners before the trail could act; "trail, no target" lost least in both halves
-   // (scripts/trailing-backtest.ts). The stop loss is always there.
-   const trailing=process.env.MT5_TRAILING_STOP!=="off";
-   const takeProfitPrice=trailing?undefined:signal.action==="long"?snapshot.ask+targetDistance:snapshot.bid-targetDistance;
+   const stopLossPrice=entry.stopLossPrice,takeProfitPrice=entry.takeProfitPrice;
    const decision=evaluateScalpingDecision({
     candles,
-    market:{symbol:this.statusState.symbol,timeframe:this.statusState.timeframe,bid:snapshot.bid,ask:snapshot.ask,spread:snapshot.ask-snapshot.bid,atr,timestamp:snapshot.timestamp},
-    risk:{accountBalance:account.equity,riskPercent,stopLossPrice,brokerSymbol:await this.adapter.getSymbolSpecification(this.statusState.symbol)},
+    ...(this.book?{side:entry.action}:{}),
+    market:{symbol:this.statusState.symbol,timeframe:entry.timeframe,bid:snapshot.bid,ask:snapshot.ask,spread:snapshot.ask-snapshot.bid,atr,timestamp:snapshot.timestamp},
+    risk:{accountBalance:sizingEquity,riskPercent,stopLossPrice,brokerSymbol:await this.adapter.getSymbolSpecification(this.statusState.symbol)},
     executionPolicy:{maxSpreadAtrRatio:envNum("MT5_MAX_SPREAD_ATR",0.15,0.01,5),maxExpectedSlippageAtrRatio:envNum("MT5_MAX_SLIPPAGE_ATR",0.1,0.01,5),requireSpread:true,requireAtr:true},
    });
    if(!decision.executable||!decision.riskPlan)return this.done(`blocked: ${decision.reasons.join("; ")}`);
@@ -158,9 +183,9 @@ export class Mt5AutoScalper{
     this.state.pendingClientOrderId=undefined;this.state.pendingMisses=undefined;
     if(!result.accepted){this.saveState();throw new Error(result.message??"MT5 rejected order.");}
     this.state.tradesToday+=1;
-    if(result.brokerOrderId)(this.state.initialStops??={})[result.brokerOrderId]=stopLossPrice;
+    if(result.brokerOrderId){(this.state.initialStops??={})[result.brokerOrderId]=stopLossPrice;(this.state.openedBy??={})[result.brokerOrderId]={strategy:entry.label,timeframe:entry.timeframe,...(entry.closeHourUtc!==undefined?{closeHourUtc:entry.closeHourUtc}:{})};}
     this.state.lastTradeTimestamp=this.statusState.lastCheckAt;this.statusState.lastTradeTimestamp=this.state.lastTradeTimestamp;
-    return this.done(`${signal.action} order accepted: ${result.brokerOrderId??"unknown"}${result.replayed?" (already on the account)":""}`);
+    return this.done(`${signal.action} order accepted${this.book?` (${entry.label} ${entry.timeframe})`:""}: ${result.brokerOrderId??"unknown"}${result.replayed?" (already on the account)":""}`);
    }catch(error){
     if(error instanceof Mt5UnknownOutcomeError){this.statusState.lastError=error.message;return this.done("order outcome unknown; it is checked on the account before any new entry");}
     if(this.state.pendingClientOrderId===clientOrderId){this.state.pendingClientOrderId=undefined;this.state.pendingMisses=undefined;this.saveState();}
@@ -173,22 +198,90 @@ export class Mt5AutoScalper{
    return this.status();
   }finally{this.busy=false;}
  }
+
+ /** The robot's original signal (EMA/RSI on one timeframe), used only when no strategy book exists. */
+ private async signalEntry(snapshot:{bid:number;ask:number;timestamp:string}):Promise<Entry|string>{
+  const raw=await this.adapter.getCandles({symbol:this.statusState.symbol,timeframe:this.statusState.timeframe,limit:120});
+  const candles=filterCompletedMt5Candles(raw,snapshot.timestamp,this.statusState.timeframe);
+  if(candles.length<40)return"waiting for sufficient completed candles";
+  const signal=generateScalpingSignal(candles);
+  if(signal.candleTimestamp===this.state.lastSignalTimestamp)return"signal candle already evaluated";
+  this.state.lastSignalTimestamp=signal.candleTimestamp;
+  if(signal.action==="neutral")return"neutral signal";
+  const atr=signal.indicators.atr;
+  if(!atr||atr<=0)return"ATR unavailable";
+  const stopDistance=atr*envNum("MT5_STOP_ATR_MULTIPLIER",1.2,0.1,20);
+  const targetDistance=atr*envNum("MT5_TARGET_ATR_MULTIPLIER",1.8,0.1,40);
+  // With the trailing stop on, no fixed target: measured 2026-11-13 on demo history (5 markets, M5 and M15, both halves),
+  // a 1.5R target closed winners before the trail could act (scripts/trailing-backtest.ts). The stop loss is always there.
+  const trailing=process.env.MT5_TRAILING_STOP!=="off";
+  return{action:signal.action,atr,candles,timeframe:this.statusState.timeframe,label:"ema-rsi",
+   stopLossPrice:signal.action==="long"?snapshot.ask-stopDistance:snapshot.bid+stopDistance,
+   takeProfitPrice:trailing?undefined:signal.action==="long"?snapshot.ask+targetDistance:snapshot.bid-targetDistance};
+ }
+ /**
+  * Entries from the strategy book: only strategies that won on both halves of this market's history
+  * (scripts/strategy-backtest.ts). Each is asked once per closed candle of its own timeframe.
+  */
+ private async bookEntry(snapshot:{bid:number;ask:number;timestamp:string}):Promise<Entry|string>{
+  const symbol=this.statusState.symbol;
+  const rows=(this.book?.entries??[]).filter(e=>enabledStrategies(this.book,symbol,e.timeframe).includes(e.strategy)&&enabledStrategies({...this.book!,entries:[e]},symbol,e.timeframe).length>0);
+  if(!rows.length)return`no measured strategy for ${symbol} in the strategy book; no new entry`;
+  const seen=this.state.lastSignalKeys??={};
+  let waited=false;
+  for(const tf of [...new Set(rows.map(r=>r.timeframe))]){
+   const minutes=TF_MINUTES[tf];if(!minutes)continue;
+   const raw=await this.adapter.getCandles({symbol,timeframe:tf,limit:1500});
+   const candles=filterCompletedMt5Candles(raw,snapshot.timestamp,tf);
+   if(candles.length<400){waited=true;continue;}
+   const last=candles.at(-1)!.timestamp;
+   const x=buildContext(candles,minutes),i=candles.length-1;
+   for(const r of rows.filter(r=>r.timeframe===tf)){
+    const key=`${tf}:${r.strategy}`;
+    if(seen[key]===last)continue;
+    seen[key]=last;
+    const intent=STRATEGIES[r.strategy](x,i);
+    if(!intent)continue;
+    const atr=x.atr[i]!;
+    const long=intent.action==="long",price=long?snapshot.ask:snapshot.bid;
+    return{action:intent.action,atr,candles,timeframe:tf,label:r.strategy,
+     stopLossPrice:long?price-intent.stopDistance:price+intent.stopDistance,
+     takeProfitPrice:intent.target!==undefined&&(long?intent.target>price:intent.target<price)?intent.target:undefined,
+     ...(intent.closeHourUtc!==undefined?{closeHourUtc:intent.closeHourUtc}:{})};
+   }
+  }
+  this.saveState();
+  return waited?"waiting for sufficient completed candles":`no entry now from ${rows.map(r=>r.strategy+" "+r.timeframe).join(", ")}`;
+ }
  /**
   * Follows LayanX's open trades: the stop goes to the entry at 1R and then trails the price (src/trading/trailing-stop.ts);
   * it is never moved back. Trades opened by hand or by another robot have another magic number and are not touched.
   */
  private async manage(positions:Awaited<ReturnType<Mt5LiveAdapter["positions"]>>,generation:number):Promise<string>{
-  if(process.env.MT5_TRAILING_STOP==="off")return"position already open; no new entry";
   // Only trades carrying LayanX's magic number: the owner's own trades and other robots' are never touched.
   const mine=positions.filter(p=>p.magic===mt5Magic());
   if(!mine.length)return"position already open; no new entry";
-  const snapshot=await this.adapter.getSymbolSnapshot(this.statusState.symbol);
-  const candles=await this.adapter.getCandles({symbol:this.statusState.symbol,timeframe:this.statusState.timeframe,limit:60});
-  const atr=atrOf(candles,14);
-  if(!atr)return"position open; ATR unavailable, stop unchanged";
-  const stops=this.state.initialStops??={};
   const notes:string[]=[];
+  // A strategy that trades one session closes its trade when the session ends (e.g. the quiet Asian hours at 08:00 UTC).
+  const hour=this.now().getUTCHours(),today=this.now().toISOString().slice(0,10);
+  for(const p of [...mine]){
+   const by=this.state.openedBy?.[p.ticket];
+   const openedToday=!p.openedAt||new Date(p.openedAt).toISOString().slice(0,10)===today;
+   if(by?.closeHourUtc===undefined||hour<by.closeHourUtc||!openedToday)continue;
+   if(generation!==this.generation)return"stopped before closing a trade";
+   try{const r=await this.adapter.closePosition(p.ticket);notes.push(r.accepted?`#${p.ticket} closed at the end of its session (${by.strategy})`:`#${p.ticket} not closed: ${r.message??"refused"}`);if(r.accepted)mine.splice(mine.indexOf(p),1);}
+   catch(error){notes.push(`#${p.ticket} not closed: ${(error as Error).message}`);}
+  }
+  if(process.env.MT5_TRAILING_STOP==="off")return notes.length?"position open; "+notes.join("; "):"position already open; no new entry";
+  if(!mine.length){this.saveState();return"position closed; "+notes.join("; ");}
+  const snapshot=await this.adapter.getSymbolSnapshot(this.statusState.symbol);
+  // The ATR of the timeframe that opened the trade (an H1 trade trails on H1 swings, not on M1 noise).
+  const atrBy=new Map<string,number|undefined>();
+  const atrFor=async(tf:string)=>{if(!atrBy.has(tf)){const c=await this.adapter.getCandles({symbol:this.statusState.symbol,timeframe:tf,limit:60});atrBy.set(tf,atrOf(c,14));}return atrBy.get(tf);};
+  const stops=this.state.initialStops??={};
   for(const p of mine){
+   const atr=await atrFor(this.state.openedBy?.[p.ticket]?.timeframe??this.statusState.timeframe);
+   if(!atr){notes.push(`#${p.ticket} ATR unavailable, stop unchanged`);continue;}
    if(stops[p.ticket]===undefined&&p.stopLoss&&(p.side==="long"?p.stopLoss<p.price:p.stopLoss>p.price))stops[p.ticket]=p.stopLoss;
    const move=trailingStop({side:p.side,entry:p.price,stopLoss:p.stopLoss,initialStop:stops[p.ticket],bid:snapshot.bid,ask:snapshot.ask,atr});
    if(!move){notes.push(`#${p.ticket} stop kept at ${p.stopLoss??"none"}`);continue;}

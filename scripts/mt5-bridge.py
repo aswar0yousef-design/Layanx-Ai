@@ -263,7 +263,8 @@ def do_candles(p, s):
     timeframe = str(p.get("timeframe", "M1")).upper()
     if timeframe not in TIMEFRAMES:
         raise BridgeError(f"Unsupported MT5 timeframe: {timeframe} (use {', '.join(TIMEFRAMES)})")
-    limit = max(1, min(int(p.get("limit", 100)), 5000))
+    # Up to 99000 candles (the terminal refuses 100000) for history tests (5000 M5 candles were only 17 days, 2026-11-13); the terminal may hold fewer.
+    limit = max(1, min(int(p.get("limit", 100)), 99000))
     rates = mt5.copy_rates_from_pos(symbol, getattr(mt5, "TIMEFRAME_" + timeframe), 0, limit)
     if rates is None:
         raise BridgeError(f"copy_rates failed: {mt5.last_error()}")

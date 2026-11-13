@@ -11,6 +11,11 @@ export interface ScalpingDecisionInput {
   risk: Omit<RiskInput, "side" | "entryPrice"> & { stopLossPrice: number; entryPrice?: number };
   signalConfig?: Partial<ScalpingSignalConfig>;
   executionPolicy?: Partial<PreTradeExecutionPolicy>;
+  /**
+   * The side chosen by a measured strategy (src/trading/strategy-book.ts). Then the EMA/RSI signal does not decide (it lost
+   * on history and used to veto every book entry, 2026-11-13); the spread gate and the risk plan still do.
+   */
+  side?: "long" | "short";
 }
 
 export interface ScalpingDecision {
@@ -23,7 +28,8 @@ export interface ScalpingDecision {
 }
 
 export function evaluateScalpingDecision(input: ScalpingDecisionInput): ScalpingDecision {
-  const signal = generateScalpingSignal(input.candles, input.signalConfig);
+  const computed = generateScalpingSignal(input.candles, input.signalConfig);
+  const signal = input.side ? { ...computed, action: input.side, reasons: [`Side chosen by a measured strategy: ${input.side}.`] } : computed;
   const executionGate = evaluatePreTradeExecutionGate(input.market, input.executionPolicy);
   const reasons = [...signal.reasons, ...executionGate.reasons];
 

@@ -22,7 +22,7 @@ const adapter={
 } as unknown as Mt5LiveAdapter;
 const deal=(ticket:number,profit:number,day:string):Mt5ClosedDeal=>({ticket:String(ticket),positionId:String(ticket),symbol:"XAUUSD",closedAt:`${day}T10:00:00+00:00`,quantity:0.01,price:1,profit,commission:-0.5,swap:0,magic:2601004,comment:""});
 let now=new Date("2026-10-12T09:00:00Z");
-const make=()=>new Mt5AutoScalper({adapter,statePath,intervalMs:60_000,now:()=>now});
+const make=()=>new Mt5AutoScalper({adapter,statePath,intervalMs:60_000,now:()=>now,book:null});
 open=1;
 
 // 1. First check of the day: today's equity is the starting point; old deals are not counted as a streak.

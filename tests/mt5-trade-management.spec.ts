@@ -27,7 +27,7 @@ const adapter={
   async modifyStopLoss(ticket:string,stop:number){modifies.push({ticket,stop});sl=stop;return{accepted:true,stopLoss:stop};},
   dispose(){}
 } as unknown as Mt5LiveAdapter;
-const robot=new Mt5AutoScalper({adapter,statePath:path.join(dir,"s.json"),symbol:"XAUUSD"});
+const robot=new Mt5AutoScalper({adapter,statePath:path.join(dir,"s.json"),symbol:"XAUUSD",book:null});
 
 // R = 6. At +3 nothing moves.
 bid=2403;let s=await robot.checkOnce();
