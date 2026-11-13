@@ -238,3 +238,109 @@ pre.raw{background:#060C17;border:1px solid var(--line);border-radius:.6rem;padd
 .job-sum{margin:.2rem 0 .5rem;font-size:.9rem;font-weight:600}
 .job-sum.ok{color:var(--green)}
 .job-sum.bad{color:#FCA5A5}
+
+/* ================================================================== glass theme
+ * The same look as the professional dashboard kit (templates/dashboard-kit): soft aurora light behind
+ * translucent, blurred panels, one warm accent. Only colours, surfaces and radii change here; layout and
+ * behaviour above stay as they are.
+ */
+:root{
+  --bg:#0b0d12;--bg2:rgba(255,255,255,.035);--panel:rgba(255,255,255,.055);--panel2:rgba(255,255,255,.075);
+  --line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.13);
+  --ink:#f5f6fa;--soft:#a3a8b8;--faint:#6b7183;
+  --accent:#ff7a45;--accent2:#ff9a62;--accent-soft:rgba(255,122,69,.16);
+  --blue:#7c5cff;--blue2:#ff7a45;--sky:#ffb088;
+  --r:1rem;
+  --glass-blur:blur(22px) saturate(140%);
+}
+html,body{background:#0b0d12}
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:radial-gradient(1200px 700px at 85% -10%,rgba(124,92,255,.30),transparent 60%),
+    radial-gradient(900px 600px at -10% 110%,rgba(31,182,201,.22),transparent 60%),
+    radial-gradient(700px 500px at 40% 40%,rgba(255,122,69,.10),transparent 65%),#0b0d12}
+a{color:var(--sky)}
+:focus-visible{outline-color:var(--accent);border-radius:.5rem}
+
+/* glass surfaces */
+.topbar,.sidebar,.card,.drop,.stat,.integ,.tile,.composer,.ask,.icon-btn,.bubble,.screen,.node,.term,pre.raw{
+  backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:1.15rem;
+  box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 20px 40px -24px rgba(0,0,0,.6);transition:transform .25s ease,border-color .25s ease}
+.card:hover{border-color:var(--line2)}
+.topbar{background:rgba(14,16,22,.55);border:1px solid var(--line);border-radius:1.15rem;margin:.75rem .75rem 0;top:.75rem}
+.sidebar{background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:1.25rem;margin:.75rem;height:calc(100vh - 6rem);top:5.5rem}
+.main{padding-top:1rem}
+.drop{background:rgba(20,22,30,.85)}
+.ask{background:rgba(255,255,255,.04);border-color:var(--line2);border-radius:.8rem}
+.icon-btn{background:rgba(255,255,255,.04);border-color:var(--line);border-radius:.8rem}
+.icon-btn:hover{background:rgba(255,255,255,.08);border-color:var(--line2)}
+.avatar,.msg.you .who{background:linear-gradient(135deg,var(--accent2),var(--accent))}
+
+/* navigation: quiet glass highlight, accent icon */
+.nav-btn{color:var(--soft);border-radius:.8rem;transition:background .2s,color .2s}
+.nav-btn:hover{background:rgba(255,255,255,.05);color:var(--ink)}
+.nav-btn[aria-current="page"],[dir="rtl"] .nav-btn[aria-current="page"]{background:rgba(255,255,255,.08);color:var(--ink);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
+.nav-btn[aria-current="page"] .i{color:var(--accent)}
+.nav-btn .count{background:var(--accent);color:#fff}
+.nav-sep{background:var(--line)}
+
+/* buttons */
+.btn{background:rgba(255,255,255,.05);border-color:var(--line2);border-radius:.75rem;transition:transform .15s,background .2s,border-color .2s}
+.btn:hover{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.22)}
+.btn:active{transform:scale(.98)}
+.btn.primary,.send{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 10px 24px -10px rgba(255,122,69,.7)}
+.btn.primary:hover{background:var(--accent2);border-color:var(--accent2)}
+.composer{background:rgba(255,255,255,.04);border-color:var(--line2);border-radius:.9rem}
+.composer:focus-within{border-color:rgba(255,122,69,.6)}
+input.text,textarea.text,select.text,.composer select{background:rgba(255,255,255,.04);border-color:var(--line2);border-radius:.7rem}
+input.text:focus,textarea.text:focus,select.text:focus{outline:none;border-color:rgba(255,122,69,.6)}
+
+/* numbers */
+.kpis{gap:1rem}
+.kpi b{font-size:1.85rem;font-weight:650;letter-spacing:-.02em}
+.kpi .ic{border-radius:.9rem}
+.c-blue{background:rgba(124,92,255,.18);color:#c4b5fd}.c-green{background:rgba(52,211,153,.16);color:#6ee7b7}
+.c-purple{background:rgba(255,122,69,.16);color:#ffb088}.c-amber{background:rgba(251,191,36,.16);color:#fcd34d}
+.stat{background:rgba(255,255,255,.045);border-color:var(--line);border-radius:.9rem}
+.stat b{letter-spacing:-.01em}
+.progress{background:rgba(255,255,255,.08)}
+.progress>i{background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.steps li.current{background:var(--accent-soft);border-color:rgba(255,122,69,.35)}
+.bubble{background:rgba(255,255,255,.06);border-color:var(--line)}
+.msg.you .bubble{background:rgba(255,122,69,.16);border-color:rgba(255,122,69,.35)}
+.msg.me .who{background:rgba(255,255,255,.06);border-color:var(--accent);color:var(--accent)}
+.spark{color:var(--accent)}
+.status{border-radius:999px;padding:.12rem .6rem}
+.s-done{background:rgba(52,211,153,.15);color:#6ee7b7}.s-run{background:rgba(251,191,36,.15);color:#fcd34d}
+.s-pend{background:rgba(255,255,255,.07);color:var(--soft)}.s-fail{background:rgba(248,113,113,.15);color:#fca5a5}.s-wait{background:rgba(255,122,69,.16);color:#ffb088}
+.pill{background:rgba(52,211,153,.12);border-color:rgba(52,211,153,.3);border-radius:999px}
+.pill.off{background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.3)}
+.badge{background:var(--accent)}
+.term,pre.raw{background:rgba(0,0,0,.35);border-color:var(--line)}
+.tile{background:rgba(255,255,255,.045);border-color:var(--line);border-radius:.9rem}
+.tile:hover{background:rgba(255,255,255,.08)}
+.chip{border-color:var(--line2);border-radius:999px}
+.chip:hover{border-color:var(--accent)}
+.integ{background:rgba(255,255,255,.04);border-color:var(--line);border-radius:.9rem}
+.screen{border-color:var(--line2);border-radius:.9rem;background:radial-gradient(120% 90% at 70% 20%,rgba(124,92,255,.45) 0%,rgba(20,18,40,.8) 45%,#0b0d12 80%)}
+
+/* capability cards: glass with a coloured glow instead of solid blocks */
+.cap{border-radius:1.15rem;background:rgba(255,255,255,.045)!important;border-color:var(--line)!important;position:relative;overflow:hidden;transition:transform .25s ease,border-color .25s}
+.cap::before{content:"";position:absolute;inset:-40% -40% auto auto;width:70%;height:90%;border-radius:50%;filter:blur(40px);opacity:.35;background:var(--glow,#7c5cff);pointer-events:none}
+.cap:hover{transform:translateY(-3px);border-color:var(--line2)!important}
+.cap-dev{--glow:#7c5cff}.cap-shop{--glow:#34d399}.cap-social{--glow:#ec4899}.cap-ads{--glow:#f59e0b}.cap-pc{--glow:#3b82f6}.cap-int{--glow:#14b8a6}.cap-team{--glow:#8b5cf6}.cap-trade{--glow:#eab308}
+.node{background:rgba(255,255,255,.045)!important;border-color:var(--line)!important;border-radius:.9rem}
+
+/* language switch on the home page */
+.lang-switch{display:inline-flex;gap:.25rem;padding:.25rem;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid var(--line)}
+.lang-switch button{border:0;background:none;color:var(--soft);padding:.35rem .9rem;border-radius:999px;cursor:pointer;font-size:.82rem}
+.lang-switch button[aria-pressed="true"]{background:#fff;color:#0b0d12;font-weight:600}
+.home-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin:0 0 1rem;flex-wrap:wrap}
+.home-head h1{margin:0;font-size:1.6rem;letter-spacing:-.02em}
+.home-head p{margin:.2rem 0 0;color:var(--soft)}
+
+@media (max-width:56rem){
+  .topbar{margin:.5rem .5rem 0;top:.5rem}
+  .sidebar{margin:0;top:4.6rem;border-radius:0 1.25rem 1.25rem 0;height:auto;background:rgba(14,16,22,.92)}
+  [dir="rtl"] .sidebar{border-radius:1.25rem 0 0 1.25rem}
+}

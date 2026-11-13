@@ -1,7 +1,7 @@
 "use strict";
 /* LayanX Control Center. Same-origin only; the gateway session cookie authenticates every call. */
 const $=s=>document.querySelector(s);
-let LANG=localStorage.getItem("lx.cc.lang")==="en"?"en":"ar";
+let LANG=localStorage.getItem("lx.cc.lang")==="ar"?"ar":"en";
 
 // ------------------------------------------------------------------ i18n
 const T={
@@ -811,10 +811,20 @@ async function refreshDashboard(light){
  const sig=S.log.filter(m=>m.job).map(m=>{const j=S.jobs.find(x=>x.id===m.job);return j?j.status+(j.preview||""):"";}).join("|");
  if(sig!==refreshDashboard.sig){refreshDashboard.sig=sig;drawAgent();}
 }
+/** English | العربية, on the home page: the choice is kept and the whole panel (and its direction) follows it. */
+function langSwitch(){
+ const pick=l=>()=>{if(LANG===l)return;LANG=l;localStorage.setItem("lx.cc.lang",LANG);boot();};
+ return el("div",{class:"lang-switch",role:"group","aria-label":"Language / اللغة"},
+  el("button",{type:"button","aria-pressed":String(LANG==="en"),lang:"en",onclick:pick("en"),text:"English"}),
+  el("button",{type:"button","aria-pressed":String(LANG==="ar"),lang:"ar",onclick:pick("ar"),text:"العربية"}));
+}
+function homeHead(){
+ return el("div",{class:"home-head"},el("div",{},el("h1",{text:t("dashboard")}),el("p",{text:t("agentSub")})),langSwitch());
+}
 async function renderDashboard(v){
  await Promise.all([loadJobs(),loadSetup(),loadMissions(),loadApprovals(),safe(api("/v1/tools"),null).then(x=>{if(x)S.tools=x.tools||[];}),safe(api("/v1/channels/status"),null).then(x=>S.channels=x),safe(api("/v1/oauth/connections"),null).then(x=>S.oauth=x),safe(api("/v1/business"),null).then(x=>S.biz=x?.business||null),safe(api("/v1/ads"),null).then(x=>S.ads=x),safe(api("/v1/computer/live/status"),null).then(x=>S.live=x),safe(api("/v1/trading/overview"),null).then(x=>S.trading=x)]);
  await Promise.all(S.missions.slice(0,5).map(m=>missionDetail(m.id)));
- v.replaceChildren(kpiCards(),
+ v.replaceChildren(homeHead(),kpiCards(),
   el("div",{class:"dash"},el("div",{class:"col"},agentCard(false)),el("div",{class:"col"},currentMissionCard(),activitiesCard()),el("div",{class:"col"},systemCard(),computerCard(false),terminalCard(false),quickCard())),
   capCards(),archStrip());
  drawAgent();drawLiveFrame();
