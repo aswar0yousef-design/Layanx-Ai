@@ -6,6 +6,8 @@ import {Mt5AutoScalper} from "../src/trading/mt5-auto-scalper.js";
 import {DEFAULT_MT5_MAGIC,type Mt5LiveAdapter,type Mt5ClosedDeal} from "../src/trading/mt5-live-adapter.js";
 import {STRATEGIES} from "../src/trading/strategies.js";
 import type {StrategyBook} from "../src/trading/strategy-book.js";
+process.env.LAYANX_TRADE_JOURNAL=(await import("node:path")).join((await import("node:os")).tmpdir(),"lx-journal-"+process.pid+".jsonl");   // never the owner's journal
+process.env.MT5_NEWS_FILTER="off";   // no network in this test (the news check has its own spec)
 
 // Real-capital mode: on a big demo account the robot sizes and limits itself as if it held only the owner's real money,
 // and counts only its own trades (other robots' losses on the same account do not move its limits).

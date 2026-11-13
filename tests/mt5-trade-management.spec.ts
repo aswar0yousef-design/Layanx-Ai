@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import {Mt5AutoScalper} from "../src/trading/mt5-auto-scalper.js";
 import {DEFAULT_MT5_MAGIC,type Mt5LiveAdapter} from "../src/trading/mt5-live-adapter.js";
+process.env.LAYANX_TRADE_JOURNAL=(await import("node:path")).join((await import("node:os")).tmpdir(),"lx-journal-"+process.pid+".jsonl");   // never the owner's journal
+process.env.MT5_NEWS_FILTER="off";   // no network in this test (the news check has its own spec)
 
 // The robot follows its open trades: breakeven at 1R, then a trailing stop that only moves forward; the owner's own trades
 // (another magic number) are never touched.

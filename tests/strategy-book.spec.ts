@@ -6,6 +6,8 @@ import {Mt5AutoScalper} from "../src/trading/mt5-auto-scalper.js";
 import {DEFAULT_MT5_MAGIC,type Mt5LiveAdapter} from "../src/trading/mt5-live-adapter.js";
 import {STRATEGIES} from "../src/trading/strategies.js";
 import {enabledStrategies,loadStrategyBook,saveStrategyBook,type StrategyBook} from "../src/trading/strategy-book.js";
+process.env.LAYANX_TRADE_JOURNAL=(await import("node:path")).join((await import("node:os")).tmpdir(),"lx-journal-"+process.pid+".jsonl");   // never the owner's journal
+process.env.MT5_NEWS_FILTER="off";   // no network in this test (the news check has its own spec)
 
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),"lx-book-"));
 const stats={trades:30,winRate:50,netR:5,profitFactor:1.3,maxDrawdownR:-3,avgR:0.1};

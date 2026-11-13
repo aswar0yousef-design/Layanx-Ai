@@ -6,6 +6,8 @@ import {generateScalpingSignal,atr as atrOf} from "./scalping-signal.js";
 import {trailingStop} from "./trailing-stop.js";
 import {STRATEGIES,buildContext} from "./strategies.js";
 import {enabledStrategies,loadStrategyBook,type StrategyBook} from "./strategy-book.js";
+import {NewsCalendar,newsBlock,type NewsBlock} from "./news-filter.js";
+import {appendJournal,journalPath} from "./trade-journal.js";
 import type {MarketCandle} from "./scalping-signal.js";
 const TF_MINUTES:Record<string,number>={M1:1,M5:5,M15:15,M30:30,H1:60,H4:240};
 interface Entry{action:"long"|"short";atr:number;candles:MarketCandle[];timeframe:string;label:string;stopLossPrice:number;takeProfitPrice?:number;closeHourUtc?:number}
@@ -63,7 +65,19 @@ export class Mt5AutoScalper{
   * other robots on it do not make the test look easier (the owner's wish, 2026-11-13: trade like the real money).
   */
  private readonly capital:number|undefined;
- constructor(options:{adapter?:Mt5LiveAdapter;symbol?:string;timeframe?:string;intervalMs?:number;statePath?:string;now?:()=>Date;book?:StrategyBook|null;capital?:number}={}){
+ /** Where closed trades are journaled (null: nowhere, as in tests). */
+ private readonly journal:string|null;
+ /** High-impact news check (src/trading/news-filter.ts); null switches it off. */
+ private readonly news:((symbol:string,now:Date)=>Promise<NewsBlock|null|"no calendar">)|null;
+ constructor(options:{adapter?:Mt5LiveAdapter;symbol?:string;timeframe?:string;intervalMs?:number;statePath?:string;now?:()=>Date;book?:StrategyBook|null;capital?:number;journal?:string|null;news?:((symbol:string,now:Date)=>Promise<NewsBlock|null|"no calendar">)|null}={}){
+  this.journal=options.journal!==undefined?options.journal:journalPath();
+  if(options.news!==undefined)this.news=options.news;
+  else if(process.env.MT5_NEWS_FILTER==="off")this.news=null;
+  else{
+   const calendar=new NewsCalendar();
+   const before=envNum("MT5_NEWS_BEFORE_MIN",30,0,240),after=envNum("MT5_NEWS_AFTER_MIN",30,0,240);
+   this.news=async(symbol,now)=>{const c=await calendar.get();return c?newsBlock(symbol,now,c.events,before,after):"no calendar";};
+  }
   const cap=options.capital??Number(process.env.MT5_RISK_CAPITAL);
   this.capital=Number.isFinite(cap)&&cap>0?cap:undefined;
   this.adapter=options.adapter??new Mt5LiveAdapter();
@@ -102,6 +116,10 @@ export class Mt5AutoScalper{
    const net=d.profit+d.commission+d.swap;
    this.state.consecutiveLosses=net<0?this.state.consecutiveLosses+1:0;
    this.state.realizedPnl=(this.state.realizedPnl??0)+net;this.state.realizedToday=(this.state.realizedToday??0)+net;
+   // The trade journal: which strategy opened this trade and how it ended (src/trading/trade-journal.ts).
+   const by=this.state.openedBy?.[d.positionId];
+   if(by&&this.journal){try{appendJournal({closedAt:d.closedAt,symbol:d.symbol,positionId:d.positionId,strategy:by.strategy,timeframe:by.timeframe,net:Math.round(net*100)/100,quantity:d.quantity},this.journal);}catch{}}
+   if(this.state.openedBy)delete this.state.openedBy[d.positionId];
    this.state.lastDealTicket=t;
   }
  }
@@ -159,6 +177,9 @@ export class Mt5AutoScalper{
    if(positions.length>0)return this.done(await this.manage(positions,generation));
    const working=await this.adapter.orders(this.statusState.symbol);
    if(working.length>0)return this.done("an order is still being filled; no new entry");
+   // No new trade around high-impact news for this market's currencies (spreads widen and stops slip).
+   const news=this.news?await this.news(this.statusState.symbol,now).catch(()=>"no calendar" as const):null;
+   if(news&&news!=="no calendar")return this.done(`news: ${news.title} (${news.country}) ${news.minutesAway>=0?`in ${news.minutesAway} min`:`${-news.minutesAway} min ago`}; no new entry`);
    const snapshot=await this.adapter.getSymbolSnapshot(this.statusState.symbol);
    const entry=this.book?await this.bookEntry(snapshot):await this.signalEntry(snapshot);
    if(typeof entry==="string")return this.done(entry,!/already evaluated|waiting for sufficient/.test(entry));

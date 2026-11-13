@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import {Mt5LiveAdapter} from "../src/trading/mt5-live-adapter.js";
 import {Mt5AutoScalper} from "../src/trading/mt5-auto-scalper.js";
+process.env.LAYANX_TRADE_JOURNAL=(await import("node:path")).join((await import("node:os")).tmpdir(),"lx-journal-"+process.pid+".jsonl");   // never the owner's journal
+process.env.MT5_NEWS_FILTER="off";   // no network in this test (the news check has its own spec)
 
 process.env.MT5_LIVE_TRADING_ENABLED="false";
 const adapter=new Mt5LiveAdapter({bridgePath:"scripts/mt5-bridge.py"});

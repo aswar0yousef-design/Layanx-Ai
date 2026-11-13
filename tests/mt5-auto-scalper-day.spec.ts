@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import {Mt5AutoScalper} from "../src/trading/mt5-auto-scalper.js";
 import {Mt5UnknownOutcomeError,type Mt5LiveAdapter,type Mt5ClosedDeal} from "../src/trading/mt5-live-adapter.js";
+process.env.LAYANX_TRADE_JOURNAL=(await import("node:path")).join((await import("node:os")).tmpdir(),"lx-journal-"+process.pid+".jsonl");   // never the owner's journal
+process.env.MT5_NEWS_FILTER="off";   // no network in this test (the news check has its own spec)
 
 // The auto-scalper's day: limits survive a restart, start again at midnight (UTC), and a losing streak
 // pauses trading. Before the fix tradesToday lived only in memory (a restart reset it), nothing was
