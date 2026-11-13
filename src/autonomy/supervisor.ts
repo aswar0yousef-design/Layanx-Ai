@@ -45,7 +45,7 @@ import {taskServerGoal,verifyTaskApp,type TaskAppProbeResult} from "./task-app-v
 import {classifyFailure,decideAfterFailure,diffFingerprints,failureSignature,firstUsableRung,projectFingerprint,renderHandoff,writeHandoff,type ModelAttempt,type ModelLadders,type ModelRunState} from "./model-handoff.js";
 import {NO_VISIBLE_EFFECT,STATIC_REPAIR_PROFILE,buildRepairPrompt,isStaticWebProject,observeStaticProject,prepareRepair,repairSetback,reverseEdits,type RepairEdit,type StaticObservation,type StaticObserver} from "./repair-engine.js";
 
-export interface Milestone{confirmedCases?:ReviewCase[];title:string;goal:string;kind:MilestoneKind;agent:string;status:"pending"|"running"|"done"|"failed";attempts:number;missions:string[];notes?:string;rung?:number;tentative?:Array<{cause:string;edits:RepairEdit[]}>;tentativeOriginals?:Record<string,string>;runtimePatched?:boolean;buildStage?:"spec"|"code"|"review"}
+export interface Milestone{confirmedCases?:ReviewCase[];/** The review cases written to the review test file, and how many review rounds ran. */reviewCases?:ReviewCase[];reviewRound?:number;title:string;goal:string;kind:MilestoneKind;agent:string;status:"pending"|"running"|"done"|"failed";attempts:number;missions:string[];notes?:string;rung?:number;tentative?:Array<{cause:string;edits:RepairEdit[]}>;tentativeOriginals?:Record<string,string>;runtimePatched?:boolean;buildStage?:"spec"|"code"|"review"}
 export interface Checks{install:boolean;test:boolean;build:boolean;typecheck:boolean;lint:boolean;browser:{path:string}|null;security?:boolean}
 export interface CheckResult{name:string;ok:boolean;skipped?:boolean;summary:string}
 export interface JobLog{at:string;msg:string;level?:"info"|"warn"|"error"}
@@ -951,6 +951,33 @@ export class Supervisor{
     await this.afterWork(job,m);
   }
   /** Another model looks for what the tests missed. Only a case two models agree on, and the program then fails, sends the work back. */
+  /**
+   * Round two of the review, once, after the first round's fix passed: the separately written program is run against the
+   * fixed one again; differences that a blind second reading confirms are added to the review tests ("more": repair goes on).
+   */
+  private async secondReviewRound(job:SupervisorJob,m:Milestone):Promise<"more"|"clean"|"waiting">{
+    m.reviewRound=2;this.save();
+    const builder=job.modelRun?.attempts.filter(a=>a.outcome==="passed").at(-1)?.model??job.modelRun?.ladders.coding[0];
+    if(!builder||!this.deps.generateFile)return"clean";
+    const twin=await this.twinCheck(job,builder);
+    if(twin==="waiting")return"waiting";
+    if(!twin||!twin.cases.length){this.log(job,`Second review round: the fixed program agrees with the separately written one${twin?` on ${twin.compared-twin.differed} of ${twin.compared} inputs`:""}`);return"clean";}
+    let agreed:ReviewCase[]=[];
+    try{
+      const opinion=await this.deps.generateFile(secondOpinionPrompt(job.goal,twin.cases),{preferLocal:true,modelId:builder},ANSWERS_SCHEMA);
+      agreed=agreedCases(twin.cases,extractJson(opinion.content));
+    }catch(error){this.log(job,"Second review round could not run: "+clip((error as Error).message,200),"warn");return"clean";}
+    const fresh=agreed.filter(c=>!(m.reviewCases??[]).some(o=>JSON.stringify([o.args,o.stdin])===JSON.stringify([c.args,c.stdin])));
+    this.log(job,`Second review round: ${twin.differed} of ${twin.compared} inputs still differ from the separately written program; ${fresh.length} newly confirmed by a blind reading`);
+    if(!fresh.length)return"clean";
+    const all=mergeCases(m.reviewCases??[],fresh,MAX_REVIEW_CASES*3);
+    m.reviewCases=all;
+    const written=await this.tool(job,"files.write",{path:REVIEW_TEST_FILE,content:reviewTestSource(all)},"milestone");
+    if(written==="waiting")return"waiting";
+    if(!written.ok||written.data?.written!==true)return"clean";
+    if(job.review)job.review={...job.review,status:"objection confirmed in round 2: the fixed program failed it",cases:job.review.cases+fresh.length,agreed:job.review.agreed+fresh.length};
+    return"more";
+  }
   private async reviewAttempt(job:SupervisorJob,m:Milestone,routing?:JobRouting){
     const dir=projectDir(job.projectId),generate=this.deps.generateFile!;
     if(fs.existsSync(path.join(dir,REVIEW_TEST_FILE))){await this.repairAttempt(job,m,routing);return;}
@@ -1000,6 +1027,7 @@ export class Supervisor{
       agreed=agreedCases(cases,extractJson(opinion.content));
     }catch(error){await conclude("could not run: "+clip((error as Error).message,200));return;}
     if(!agreed.length){await conclude("no objection confirmed by a second model",cases.length);return;}
+    m.reviewCases=agreed;m.reviewRound=1;
     const written=await this.tool(job,"files.write",{path:REVIEW_TEST_FILE,content:reviewTestSource(agreed)},"milestone");
     if(written==="waiting")return;
     if(written.missionId)m.missions.push(written.missionId);
@@ -1215,6 +1243,13 @@ export class Supervisor{
       const missionId=m.missions.at(-1);
       if(missionId&&!(job.runtimeProofs??[]).some(p=>p.missionId===missionId)){
         (job.runtimeProofs??=[]).push({missionId,milestone:m.title,observedAt:now()});
+      }
+      // The review stage passed after a fix: compare once more with the separately written program. Seen 2026-11-13: the
+      // first round confirmed 1 of 23 differences, the fix covered that one, and the program was delivered still wrong.
+      if(m.buildStage==="review"&&(job.review?.failedFirst??0)>0&&(m.reviewRound??1)<2&&process.env.LAYANX_TWIN_CHECK!=="off"){
+        const round=await this.secondReviewRound(job,m);
+        if(round==="waiting")return;
+        if(round==="more"){await this.afterWork(job,m);return;}
       }
       this.recordPassedAttempt(job,m,checks);
       m.status="done";m.notes=undefined;
