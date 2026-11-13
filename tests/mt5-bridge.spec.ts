@@ -196,6 +196,18 @@ for(const k of ["LAYANX_MT5_LOGIN","LAYANX_MT5_PASSWORD","LAYANX_MT5_SERVER"])de
   const back=read();back.positions=[];write(back);
 }
 
+// 8e. The tick value comes from the terminal's profit calculator: the reported field was 100x too small for US stocks.
+{
+  // Reported: 1.0 per 0.01 tick (100 per unit). The calculator says 2500 per unit: 25 per tick is what sizing must use.
+  const st=read();st.calc_per_unit={XAUUSD:2500};st.market_closed=false;write(st);
+  const spec=new Mt5LiveAdapter({bridgePath,env,timeoutMs:20000});
+  const s1=await spec.getSymbolSpecification("XAUUSD");
+  assert.ok(Math.abs(s1.tickValue-25)<1e-9,"the calculator's 25, not the reported 1: got "+s1.tickValue);
+  const back=read();delete back.calc_per_unit;write(back);
+  assert.equal((await spec.getSymbolSpecification("XAUUSD")).tickValue,1,"no calculator answer: the reported value");
+  spec.dispose();
+}
+
 // 9. Live trading switched off: nothing is started at all.
 process.env.MT5_LIVE_TRADING_ENABLED="false";
 await assert.rejects(new Mt5LiveAdapter({bridgePath,env}).placeOrder({symbol:"XAUUSD",side:"long",quantity:0.01}),/live execution is disabled/);

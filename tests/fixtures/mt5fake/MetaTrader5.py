@@ -99,6 +99,12 @@ def symbol_info(symbol):
                 "trade_tick_size": 0.01, "trade_tick_value": 1.0, "path": "Fake\\Metals\\" + symbol, "point": 0.01})
 
 
+def order_calc_profit(order_type, symbol, volume, price_open, price_close):
+    """Like the terminal's calculator: "calc_per_unit" in the state gives the real money per 1.0 of price for 1 lot."""
+    per = _load().get("calc_per_unit", {}).get(symbol)
+    return None if per is None else (price_close - price_open) * per * volume
+
+
 def symbol_info_tick(symbol):
     s = _load()
     if s.get("market_closed"):

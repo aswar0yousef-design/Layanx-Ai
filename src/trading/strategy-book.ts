@@ -9,7 +9,7 @@ import type {BacktestStats} from "./strategy-backtest.js";
  * (scripts/strategy-backtest.ts --write-book), never by hand or by a model, and read by the live robot. An empty book means
  * no strategy earned its place yet: the robot then opens nothing new (it still manages open trades).
  */
-export interface StrategyBookEntry{symbol:string;timeframe:string;strategy:StrategyName;firstHalf:BacktestStats;secondHalf:BacktestStats;quartersPositive:number}
+export interface StrategyBookEntry{symbol:string;timeframe:string;strategy:StrategyName;assetClass?:string;firstHalf:BacktestStats;secondHalf:BacktestStats;quartersPositive:number}
 export interface StrategyBook{measuredAt:string;source:string;keepRule:Record<string,number>;entries:StrategyBookEntry[]}
 export function strategyBookPath(env:NodeJS.ProcessEnv=process.env){return env.LAYANX_STRATEGY_BOOK?.trim()||path.join(resolveDataPaths().dataDir,"trading","strategy-book.json");}
 export function loadStrategyBook(file=strategyBookPath()):StrategyBook|null{

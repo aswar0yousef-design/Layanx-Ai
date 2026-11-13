@@ -17,7 +17,7 @@ export interface StrategyContext{
   /** Bollinger bands inside the Keltner channel (EMA20 +- 1.5 ATR20): a volatility squeeze. */
   squeeze:Uint8Array;
   /** New York local time of each candle (minutes after midnight, and the date), daylight saving included. */
-  nyMinute:Int16Array;nyDate:string[];
+  nyMinute:Int16Array;nyDate:string[];nyDay:Int8Array;
   /** Trend of the higher timeframe at each candle, from its last COMPLETE candle: 1 up, -1 down, 0 none. */
   htfTrend:Int8Array;
 }
@@ -38,12 +38,13 @@ export function buildContext(c:MarketCandle[],minutes:number):StrategyContext{
   }
   const e20=emaSeries(closes,20),a20=atrSeries(c,20),squeeze=new Uint8Array(c.length);
   for(let i=0;i<c.length;i++)squeeze[i]=Number.isFinite(bb.upper[i]!)&&Number.isFinite(e20[i]!)&&Number.isFinite(a20[i]!)&&bb.upper[i]!<e20[i]!+1.5*a20[i]!&&bb.lower[i]!>e20[i]!-1.5*a20[i]!?1:0;
-  const nyMinute=new Int16Array(c.length),nyDate:string[]=new Array(c.length);
-  const fmt=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hourCycle:"h23",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
-  for(let i=0;i<c.length;i++){const p:Record<string,string>={};for(const part of fmt.formatToParts(new Date(c[i]!.timestamp)))p[part.type]=part.value;nyMinute[i]=Number(p.hour)*60+Number(p.minute);nyDate[i]=`${p.year}-${p.month}-${p.day}`;}
+  const nyMinute=new Int16Array(c.length),nyDate:string[]=new Array(c.length),nyDay=new Int8Array(c.length);
+  const fmt=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hourCycle:"h23",weekday:"short",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+  const DAYS:Record<string,number>={Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6};
+  for(let i=0;i<c.length;i++){const p:Record<string,string>={};for(const part of fmt.formatToParts(new Date(c[i]!.timestamp)))p[part.type]=part.value;nyMinute[i]=Number(p.hour)*60+Number(p.minute);nyDate[i]=`${p.year}-${p.month}-${p.day}`;nyDay[i]=DAYS[p.weekday!]??0;}
   return{c,minutes,atr:atrSeries(c,14),rsi:rsiSeries(closes,14),ema21:emaSeries(closes,21),adx:adxSeries(c,14),macd:m.macd,macdSignal:m.signal,
     bbMid:bb.mid,bbUpper:bb.upper,bbLower:bb.lower,donHigh:don.high,donLow:don.low,htfTrend,
-    rsi2:rsiSeries(closes,2),ema5:emaSeries(closes,5),ema200:emaSeries(closes,200),squeeze,nyMinute,nyDate};
+    rsi2:rsiSeries(closes,2),ema5:emaSeries(closes,5),ema200:emaSeries(closes,200),squeeze,nyMinute,nyDate,nyDay};
 }
 const hourUtc=(c:MarketCandle)=>new Date(c.timestamp).getUTCHours();
 const dayUtc=(c:MarketCandle)=>c.timestamp.slice(0,10);

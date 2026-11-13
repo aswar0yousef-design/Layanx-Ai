@@ -278,7 +278,27 @@ def do_symbol_spec(p, s):
     path = get(info, "path", None)
     return {"broker": str(path).split("\\")[0] if path else "MT5", "accountType": trade_mode_name(account), "symbol": symbol,
             "volumeMin": float(info.volume_min), "volumeStep": float(info.volume_step), "volumeMax": float(info.volume_max),
-            "tickSize": float(info.trade_tick_size), "tickValue": float(info.trade_tick_value)}
+            "tickSize": float(info.trade_tick_size), "tickValue": tick_value(symbol, info)}
+
+
+def tick_value(symbol, info):
+    """What one tick is worth for 1 lot, from the terminal's own profit calculator. The reported trade_tick_value was 100x
+    too small for US stocks at CFI (0.0001 instead of 0.01 per cent per share, 2026-11-13): sizing on it would have opened
+    stock positions 100x larger than the risk limit. The reported value is used only when the calculator cannot answer."""
+    reported = float(get(info, "trade_tick_value", 0) or 0)
+    size = float(get(info, "trade_tick_size", 0) or 0)
+    calc = getattr(mt5, "order_calc_profit", None)
+    if not calc or size <= 0:
+        return reported
+    try:
+        tick = mt5.symbol_info_tick(symbol)
+        price = float(tick.ask) if tick and tick.ask else float(get(info, "ask", 0) or get(info, "bid", 0) or 0)
+        if price <= 0:
+            return reported
+        profit = calc(mt5.ORDER_TYPE_BUY, symbol, 1.0, price, price + size)
+        return float(profit) if profit is not None and float(profit) > 0 else reported
+    except Exception:
+        return reported
 
 
 def do_orders(p, s):

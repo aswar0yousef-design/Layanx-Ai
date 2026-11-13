@@ -8,6 +8,7 @@ import {STRATEGIES,buildContext} from "./strategies.js";
 import {EMPTY_BOOK,enabledStrategies,loadStrategyBook,type StrategyBook} from "./strategy-book.js";
 import {NewsCalendar,newsBlock,type NewsBlock} from "./news-filter.js";
 import {appendJournal,journalPath} from "./trade-journal.js";
+import {PROFILES,assetClassOf,inTradingWindow,pastSessionClose} from "./asset-profiles.js";
 import type {MarketCandle} from "./scalping-signal.js";
 const TF_MINUTES:Record<string,number>={M1:1,M5:5,M15:15,M30:30,H1:60,H4:240};
 interface Entry{action:"long"|"short";atr:number;candles:MarketCandle[];timeframe:string;label:string;stopLossPrice:number;takeProfitPrice?:number;closeHourUtc?:number}
@@ -76,7 +77,7 @@ export class Mt5AutoScalper{
   else{
    const calendar=new NewsCalendar();
    const before=envNum("MT5_NEWS_BEFORE_MIN",30,0,240),after=envNum("MT5_NEWS_AFTER_MIN",30,0,240);
-   this.news=async(symbol,now)=>{const c=await calendar.get();return c?newsBlock(symbol,now,c.events,before,after):"no calendar";};
+   this.news=async(symbol,now)=>{const c=await calendar.get();return c?newsBlock(symbol,now,c.events,before,after,PROFILES[assetClassOf(symbol)].extraNews):"no calendar";};
   }
   const cap=options.capital??Number(process.env.MT5_RISK_CAPITAL);
   this.capital=Number.isFinite(cap)&&cap>0?cap:undefined;
@@ -178,6 +179,9 @@ export class Mt5AutoScalper{
    if(positions.length>0)return this.done(await this.manage(positions,generation));
    const working=await this.adapter.orders(this.statusState.symbol);
    if(working.length>0)return this.done("an order is still being filled; no new entry");
+   // Each kind of market has its own trading hours (asset-profiles.ts): no new trade outside them.
+   const cls=assetClassOf(this.statusState.symbol);
+   if(process.env.MT5_TRADING_HOURS!=="off"&&!inTradingWindow(cls,now))return this.done(`outside ${PROFILES[cls].label} trading hours; no new entry`,false);
    // No new trade around high-impact news for this market's currencies (spreads widen and stops slip).
    const news=this.news?await this.news(this.statusState.symbol,now).catch(()=>"no calendar" as const):null;
    if(news&&news!=="no calendar")return this.done(`news: ${news.title} (${news.country}) ${news.minutesAway>=0?`in ${news.minutesAway} min`:`${-news.minutesAway} min ago`}; no new entry`);
@@ -289,9 +293,11 @@ export class Mt5AutoScalper{
   for(const p of [...mine]){
    const by=this.state.openedBy?.[p.ticket];
    const openedToday=!p.openedAt||new Date(p.openedAt).toISOString().slice(0,10)===today;
-   if(by?.closeHourUtc===undefined||hour<by.closeHourUtc||!openedToday)continue;
+   // Stocks and indices are not held over the close (overnight gaps, earnings): closed by 15:50 New York.
+   const sessionOver=process.env.MT5_TRADING_HOURS!=="off"&&pastSessionClose(assetClassOf(this.statusState.symbol),this.now());
+   if(!sessionOver&&(by?.closeHourUtc===undefined||hour<by.closeHourUtc||!openedToday))continue;
    if(generation!==this.generation)return"stopped before closing a trade";
-   try{const r=await this.adapter.closePosition(p.ticket);notes.push(r.accepted?`#${p.ticket} closed at the end of its session (${by.strategy})`:`#${p.ticket} not closed: ${r.message??"refused"}`);if(r.accepted)mine.splice(mine.indexOf(p),1);}
+   try{const r=await this.adapter.closePosition(p.ticket);notes.push(r.accepted?`#${p.ticket} closed at the end of its session (${by?.strategy??"market close"})`:`#${p.ticket} not closed: ${r.message??"refused"}`);if(r.accepted)mine.splice(mine.indexOf(p),1);}
    catch(error){notes.push(`#${p.ticket} not closed: ${(error as Error).message}`);}
   }
   if(process.env.MT5_TRAILING_STOP==="off")return notes.length?"position open; "+notes.join("; "):"position already open; no new entry";

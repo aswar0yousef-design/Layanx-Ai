@@ -1,6 +1,17 @@
 import type {MarketCandle} from "./scalping-signal.js";
 import {STRATEGIES,buildContext,type StrategyName,type StrategyContext} from "./strategies.js";
 import {trailingStop,DEFAULT_TRAIL} from "./trailing-stop.js";
+import {PROFILES,type AssetClass} from "./asset-profiles.js";
+
+/** The market's trading hours (asset-profiles.ts) at each candle: may a trade open here, must an open one close here. */
+export function sessionRules(x:StrategyContext,cls?:AssetClass):{open:(i:number)=>boolean;close:(i:number)=>boolean}{
+  if(!cls)return{open:()=>true,close:()=>false};
+  const p=PROFILES[cls];
+  return{
+    open:i=>p.days.includes(x.nyDay[i]!)&&(!p.newYorkWindow||(x.nyMinute[i]!>=p.newYorkWindow[0]&&x.nyMinute[i]!<p.newYorkWindow[1])),
+    close:i=>p.closeAtNewYork!==null&&x.nyMinute[i]!>=p.closeAtNewYork
+  };
+}
 
 /**
  * Replays a strategy on history the way the live robot would trade it: enter at the next candle's open (buy at the ask),
@@ -11,10 +22,11 @@ import {trailingStop,DEFAULT_TRAIL} from "./trailing-stop.js";
 export interface BacktestTrade{entryAt:string;side:"long"|"short";r:number;bars:number;exit:"stop"|"target"|"session"|"time"|"end"}
 export interface BacktestStats{trades:number;winRate:number;netR:number;profitFactor:number|null;maxDrawdownR:number;avgR:number}
 
-export function backtestStrategy(c:MarketCandle[],minutes:number,name:StrategyName,spread:number,from=0,to=c.length,maxBars=600,context?:StrategyContext):BacktestTrade[]{
-  const x=context??buildContext(c,minutes),rule=STRATEGIES[name],trades:BacktestTrade[]=[];
+export function backtestStrategy(c:MarketCandle[],minutes:number,name:StrategyName,spread:number,from=0,to=c.length,maxBars=600,context?:StrategyContext,cls?:AssetClass):BacktestTrade[]{
+  const x=context??buildContext(c,minutes),rule=STRATEGIES[name],trades:BacktestTrade[]=[],session=sessionRules(x,cls);
   let i=Math.max(from,210);
   while(i<to-1){
+    if(!session.open(i)){i++;continue;}
     const intent=rule(x,i);
     if(!intent||!(intent.stopDistance>0)){i++;continue;}
     const long=intent.action==="long",o=c[i+1]!.open;
@@ -27,7 +39,7 @@ export function backtestStrategy(c:MarketCandle[],minutes:number,name:StrategyNa
       const b=c[j]!;
       if(long?b.low<=stop:b.high+spread>=stop){exit=stop;how="stop";break;}
       if(target!==undefined&&(long?b.high>=target:b.low+spread<=target)){exit=target;how="target";break;}
-      if(intent.closeHourUtc!==undefined&&new Date(b.timestamp).getUTCHours()>=intent.closeHourUtc&&j>i+1){exit=long?b.close:b.close+spread;how="session";break;}
+      if(j>i+1&&((intent.closeHourUtc!==undefined&&new Date(b.timestamp).getUTCHours()>=intent.closeHourUtc)||session.close(j))){exit=long?b.close:b.close+spread;how="session";break;}
       if(intent.trail){const a=x.atr[j]!;if(Number.isFinite(a)){const m=trailingStop({side:long?"long":"short",entry,stopLoss:stop,initialStop:first,bid:b.close,ask:b.close+spread,atr:a},DEFAULT_TRAIL);if(m)stop=m.stop;}}
     }
     if(exit===undefined){const b=c[Math.min(j,to-1)]!;exit=long?b.close:b.close+spread;how=j>=i+1+maxBars?"time":"end";}
@@ -50,8 +62,8 @@ export const KEEP_RULE={minTradesPerHalf:25,minProfitFactor:1.15,minQuartersPosi
   /** It must also stay profitable on both halves with the spread this many times wider (a result one spread tick can flip
    *  is luck: ETH M5 went from +7R to -4.7R when the spread moved from 1.2 to 2.0, 2026-11-13). */
   stressSpread:1.5};
-export function verdict(c:MarketCandle[],minutes:number,name:StrategyName,spread:number,context:StrategyContext=buildContext(c,minutes)){
-  const n=c.length,half=Math.floor(n/2),run=(sp:number,a:number,b:number)=>statsOf(backtestStrategy(c,minutes,name,sp,a,b,600,context));
+export function verdict(c:MarketCandle[],minutes:number,name:StrategyName,spread:number,context:StrategyContext=buildContext(c,minutes),cls?:AssetClass){
+  const n=c.length,half=Math.floor(n/2),run=(sp:number,a:number,b:number)=>statsOf(backtestStrategy(c,minutes,name,sp,a,b,600,context,cls));
   const first=run(spread,0,half),second=run(spread,half,n);
   const q=[0,1,2,3].map(k=>run(spread,Math.floor(k*n/4),Math.floor((k+1)*n/4)));
   const passHalf=(s:BacktestStats)=>s.trades>=KEEP_RULE.minTradesPerHalf&&(s.profitFactor??0)>=KEEP_RULE.minProfitFactor&&s.netR>0;

@@ -14,16 +14,20 @@ export const CALENDAR_URL="https://nfs.faireconomy.media/ff_calendar_thisweek.js
 
 /** The currencies a market moves with: gold, oil and crypto are priced in dollars; a pair moves with both its currencies. */
 export function currenciesFor(symbol:string):string[]{
+  // US stocks ("AAPL.US", "TSLA.OQ") and US indices move with the dollar's news, not as a currency pair.
+  if(/\.(US|OQ|N)$/i.test(symbol)||/^(US30|US100|US500|NAS|SPX500|USTEC|DJ30)/i.test(symbol))return["USD"];
   const s=symbol.toUpperCase().replace(/[^A-Z]/g,"");
   if(/^(XAU|XAG|GOLD|SILVER|WTI|BRENT|USOIL|UKOIL|BTC|ETH)/.test(s))return["USD"];
   const pair=/^([A-Z]{3})([A-Z]{3})/.exec(s);
   return pair?[pair[1]!,pair[2]!]:["USD"];
 }
-export function newsBlock(symbol:string,now:Date,events:NewsEvent[],beforeMin=30,afterMin=30):NewsBlock|null{
+/** `extra`: titles that block this market whatever their impact (the weekly crude inventories for oil). */
+export function newsBlock(symbol:string,now:Date,events:NewsEvent[],beforeMin=30,afterMin=30,extra:RegExp|null=null):NewsBlock|null{
   const wanted=new Set([...currenciesFor(symbol),"ALL"]);
   let best:NewsBlock|null=null;
   for(const e of events){
-    if(!/^high$/i.test(e.impact)||!wanted.has(e.country.toUpperCase()))continue;
+    if(!wanted.has(e.country.toUpperCase()))continue;
+    if(!/^high$/i.test(e.impact)&&!(extra&&extra.test(e.title)))continue;
     const t=Date.parse(e.date);if(!Number.isFinite(t))continue;
     const minutes=(t-now.getTime())/60_000;
     if(minutes<=beforeMin&&minutes>=-afterMin&&(!best||Math.abs(minutes)<Math.abs(best.minutesAway)))
