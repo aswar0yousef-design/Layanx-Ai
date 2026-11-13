@@ -9,11 +9,12 @@ import path from "node:path";
 import {resolveDataPaths} from "../src/platform/paths.js";
 import {STRATEGY_NAMES,buildContext} from "../src/trading/strategies.js";
 import {verdict,KEEP_RULE} from "../src/trading/strategy-backtest.js";
-import {loadStrategyBook,saveStrategyBook,type StrategyBookEntry} from "../src/trading/strategy-book.js";
+import {SCALPING_TIMEFRAMES,loadStrategyBook,saveStrategyBook,scalpingAllowed,type StrategyBookEntry} from "../src/trading/strategy-book.js";
 
 const arg=(n:string)=>{const i=process.argv.indexOf("--"+n);return i>=0?process.argv[i+1]:undefined;};
 const symbols=(arg("symbols")??"XAUUSD,EURUSD,GBPUSD,USDJPY,WTI,BRENT,BTCUSD,ETHUSD").split(",");
-const timeframes=(arg("timeframes")??"M5,M15,H1").split(",");
+// Scalping timeframes (M1, M5) are measured only when the owner turned scalping back on (MT5_ALLOW_SCALPING=on).
+const timeframes=(arg("timeframes")??"M15,H1").split(",").filter(tf=>!SCALPING_TIMEFRAMES.includes(tf)||scalpingAllowed());
 const MINUTES:Record<string,number>={M1:1,M5:5,M15:15,M30:30,H1:60,H4:240};
 const {Mt5LiveAdapter}=await import("../src/trading/mt5-live-adapter.js");
 const adapter=new Mt5LiveAdapter({bridgePath:path.resolve("scripts/mt5-bridge.py"),timeoutMs:90000});

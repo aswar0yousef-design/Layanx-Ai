@@ -5,7 +5,7 @@ const mt5Magic=()=>mt5Settings().magic;
 import {generateScalpingSignal,atr as atrOf} from "./scalping-signal.js";
 import {trailingStop} from "./trailing-stop.js";
 import {STRATEGIES,buildContext} from "./strategies.js";
-import {enabledStrategies,loadStrategyBook,type StrategyBook} from "./strategy-book.js";
+import {EMPTY_BOOK,enabledStrategies,loadStrategyBook,type StrategyBook} from "./strategy-book.js";
 import {NewsCalendar,newsBlock,type NewsBlock} from "./news-filter.js";
 import {appendJournal,journalPath} from "./trade-journal.js";
 import type {MarketCandle} from "./scalping-signal.js";
@@ -81,7 +81,8 @@ export class Mt5AutoScalper{
   const cap=options.capital??Number(process.env.MT5_RISK_CAPITAL);
   this.capital=Number.isFinite(cap)&&cap>0?cap:undefined;
   this.adapter=options.adapter??new Mt5LiveAdapter();
-  this.book=options.book!==undefined?options.book:process.env.MT5_ENTRY_MODE==="signal"?null:loadStrategyBook();
+  // The old EMA/RSI signal only when the owner asks for it (MT5_ENTRY_MODE=signal): with no book the robot opens nothing.
+  this.book=options.book!==undefined?options.book:process.env.MT5_ENTRY_MODE==="signal"?null:(loadStrategyBook()??EMPTY_BOOK);
   this.intervalMs=options.intervalMs??Math.max(15_000,Number(process.env.MT5_SCALPER_INTERVAL_MS??15_000));
   this.statePath=options.statePath??process.env.MT5_SCALPER_STATE_PATH??".layanx/mt5-scalper.json";
   this.now=options.now??(()=>new Date());

@@ -20,6 +20,18 @@ assert.equal(loadStrategyBook(file)!.entries.length,2);
 assert.deepEqual(enabledStrategies(book,"XAUUSD_","H1"),["donchian-breakout"]);
 assert.deepEqual(enabledStrategies(book,"XAUUSD","M5"),[]);
 assert.deepEqual(enabledStrategies(null,"XAUUSD","H1"),[]);
+// Scalping is off: an M5 line in the book is ignored unless the owner turns scalping back on.
+assert.deepEqual(enabledStrategies(book,"ETHUSD","M5"),[]);
+process.env.MT5_ALLOW_SCALPING="on";assert.deepEqual(enabledStrategies(book,"ETHUSD","M5"),["asian-mean-reversion"]);delete process.env.MT5_ALLOW_SCALPING;
+// No book file at all: the robot opens nothing (never the old signal that lost on history).
+{
+  process.env.LAYANX_STRATEGY_BOOK=path.join(dir,"missing-book.json");
+  const none=new Mt5AutoScalper({adapter:{async connect(){return{login:1,server:"Demo",balance:1000,equity:1000,tradeMode:"demo"};},async history(){return[];},async findOrder(){return{found:false};},
+    async positions(){return[];},async orders(){return[];},async getSymbolSnapshot(){return{symbol:"XAUUSD_",bid:2400,ask:2400.1,timestamp:new Date().toISOString()};},dispose(){}} as any,
+    statePath:path.join(dir,"none.json"),symbol:"XAUUSD"});
+  assert.match((await none.checkOnce()).lastAction!,/no measured strategy for XAUUSD/);
+  delete process.env.LAYANX_STRATEGY_BOOK;
+}
 
 process.env.MT5_LIVE_TRADING_ENABLED="true";
 const t0=Date.parse("2026-11-12T00:00:00Z");

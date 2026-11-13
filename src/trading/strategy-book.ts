@@ -20,9 +20,18 @@ export function saveStrategyBook(book:StrategyBook,file=strategyBookPath()):stri
   const tmp=file+".tmp";fs.writeFileSync(tmp,JSON.stringify(book,null,2),{mode:0o600});fs.renameSync(tmp,file);
   return file;
 }
+/**
+ * Scalping (M1, M5) is off: every measurement lost more than it won there, the spread eating small trades (2026-11-13), and
+ * the owner decided to drop it. Only the owner can bring it back (MT5_ALLOW_SCALPING=on).
+ */
+export const SCALPING_TIMEFRAMES=["M1","M5"];
+export const scalpingAllowed=(env:NodeJS.ProcessEnv=process.env)=>env.MT5_ALLOW_SCALPING==="on";
+/** No book at all: the robot opens nothing new (it never falls back to the old signal that lost on history). */
+export const EMPTY_BOOK:StrategyBook={measuredAt:"",source:"none",keepRule:{},entries:[]};
 /** The strategies switched on for one market and timeframe (the plain name "XAUUSD" also matches the broker's "XAUUSD_"). */
 export function enabledStrategies(book:StrategyBook|null,symbol:string,timeframe:string):StrategyName[]{
   if(!book)return[];
+  if(SCALPING_TIMEFRAMES.includes(timeframe)&&!scalpingAllowed())return[];
   const base=symbol.replace(/[._#][A-Za-z]?$/,"").toUpperCase();
   return book.entries.filter(e=>e.symbol.replace(/[._#][A-Za-z]?$/,"").toUpperCase()===base&&e.timeframe===timeframe).map(e=>e.strategy);
 }
