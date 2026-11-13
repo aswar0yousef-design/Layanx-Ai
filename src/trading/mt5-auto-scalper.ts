@@ -176,8 +176,11 @@ export class Mt5AutoScalper{
    const maxLosses=Math.floor(envNum("MT5_MAX_CONSECUTIVE_LOSSES",3,1,20));
    if(this.state.consecutiveLosses>=maxLosses)return this.done(`${this.state.consecutiveLosses} losing trades in a row; trading paused until tomorrow`);
    const positions=await this.adapter.positions(this.statusState.symbol);
-   if(positions.length>0)return this.done(await this.manage(positions,generation));
-   const working=await this.adapter.orders(this.statusState.symbol);
+   // In real-capital mode LayanX is its own account inside the demo one: other robots' trades on the same market neither
+   // block it nor are touched (it still manages and closes only its own). Otherwise any open trade blocks a new one.
+   const blocking=this.capital!==undefined?positions.filter(p=>p.magic===mt5Magic()):positions;
+   if(blocking.length>0)return this.done(await this.manage(positions,generation));
+   const working=(await this.adapter.orders(this.statusState.symbol)).filter(o=>this.capital===undefined||o.magic===mt5Magic());
    if(working.length>0)return this.done("an order is still being filled; no new entry");
    // Each kind of market has its own trading hours (asset-profiles.ts): no new trade outside them.
    const cls=assetClassOf(this.statusState.symbol);

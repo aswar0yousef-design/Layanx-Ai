@@ -44,6 +44,16 @@ deals.push({ticket:"501",positionId:"9002",symbol:"BTCUSD",closedAt:"2026-11-13T
            {ticket:"502",positionId:"9003",symbol:"BTCUSD",closedAt:"2026-11-13T03:00:00+00:00",quantity:0.008,price:67620,profit:-3.3,commission:0,swap:0,magic:DEFAULT_MT5_MAGIC,comment:""});
 s=await robot.checkOnce();
 assert.equal(s.capitalEquity,310.3);assert.match(s.lastAction!,/daily loss limit reached/);
+// Another robot's trade on the same market (another magic number) does not stop LayanX from entering in this mode.
+{
+  const d2=fs.mkdtempSync(path.join(os.tmpdir(),"lx-capital2-"));
+  open=[{ticket:"77",symbol:"BTCUSD",side:"short",quantity:0.5,price:68100,stopLoss:69000,profit:-4,magic:6660001,comment:"CM_MACD_M15"}];deals=[];
+  const before=orders.length;
+  const other=new Mt5AutoScalper({adapter,statePath:path.join(d2,"s.json"),symbol:"BTCUSD",book,capital:320,now:()=>new Date(t0+5000)});
+  const s2=await other.checkOnce();
+  assert.equal(orders.length,before+1,"entered beside the other robot's trade: "+s2.lastAction);
+  fs.rmSync(d2,{recursive:true,force:true});
+}
 STRATEGIES["macd-momentum"]=original;delete process.env.MT5_SCALP_RISK_PERCENT;
 fs.rmSync(dir,{recursive:true,force:true});
 console.log("real-capital: sized on the owner's real capital, only LayanX's own trades move its limits");
