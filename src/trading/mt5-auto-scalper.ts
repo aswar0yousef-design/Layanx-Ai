@@ -1,7 +1,9 @@
 import {readFileSync,writeFileSync,mkdirSync,existsSync} from "node:fs";
 import {dirname} from "node:path";
-import {Mt5LiveAdapter,Mt5UnknownOutcomeError,newClientOrderId} from "./mt5-live-adapter.js";
-import {generateScalpingSignal} from "./scalping-signal.js";
+import {Mt5LiveAdapter,Mt5UnknownOutcomeError,newClientOrderId,mt5Settings} from "./mt5-live-adapter.js";
+const mt5Magic=()=>mt5Settings().magic;
+import {generateScalpingSignal,atr as atrOf} from "./scalping-signal.js";
+import {trailingStop} from "./trailing-stop.js";
 import {evaluateScalpingDecision} from "./scalping-decision.js";
 import {filterCompletedMt5Candles} from "./mt5-adapter.js";
 
@@ -20,6 +22,8 @@ interface State{
  pendingMisses?:number;
  lastSignalTimestamp?:string;
  lastTradeTimestamp?:string;
+ /** The stop each LayanX trade was opened with (by ticket): it defines R for the trailing stop. */
+ initialStops?:Record<string,number>;
 }
 export interface Mt5AutoScalperStatus{running:boolean;symbol:string;timeframe:string;lastAction?:string;lastError?:string;lastCheckAt?:string;lastTradeTimestamp?:string;tradesToday:number;dailyPnl:number;consecutiveLosses:number;tradeMode?:string;}
 
@@ -81,6 +85,8 @@ export class Mt5AutoScalper{
   this.busy=true;
   const generation=this.generation;
   const now=this.now();this.statusState.lastCheckAt=now.toISOString();
+  // An error from an earlier check is not news (it stayed on screen after Algo Trading was turned on, 2026-11-13).
+  this.statusState.lastError=undefined;
   try{
    const account=await this.adapter.connect();
    this.statusState.tradeMode=account.tradeMode;
@@ -113,7 +119,7 @@ export class Mt5AutoScalper{
    const maxLosses=Math.floor(envNum("MT5_MAX_CONSECUTIVE_LOSSES",3,1,20));
    if(this.state.consecutiveLosses>=maxLosses)return this.done(`${this.state.consecutiveLosses} losing trades in a row; trading paused until tomorrow`);
    const positions=await this.adapter.positions(this.statusState.symbol);
-   if(positions.length>0)return this.done("position already open; no new entry");
+   if(positions.length>0)return this.done(await this.manage(positions,generation));
    const working=await this.adapter.orders(this.statusState.symbol);
    if(working.length>0)return this.done("an order is still being filled; no new entry");
    const snapshot=await this.adapter.getSymbolSnapshot(this.statusState.symbol);
@@ -130,7 +136,11 @@ export class Mt5AutoScalper{
    const stopDistance=atr*envNum("MT5_STOP_ATR_MULTIPLIER",1.2,0.1,20);
    const targetDistance=atr*envNum("MT5_TARGET_ATR_MULTIPLIER",1.8,0.1,40);
    const stopLossPrice=signal.action==="long"?snapshot.ask-stopDistance:snapshot.bid+stopDistance;
-   const takeProfitPrice=signal.action==="long"?snapshot.ask+targetDistance:snapshot.bid-targetDistance;
+   // With the trailing stop on, no fixed target: measured 2026-11-13 on demo history (5 markets, M5 and M15, both halves),
+   // a 1.5R target closed winners before the trail could act; "trail, no target" lost least in both halves
+   // (scripts/trailing-backtest.ts). The stop loss is always there.
+   const trailing=process.env.MT5_TRAILING_STOP!=="off";
+   const takeProfitPrice=trailing?undefined:signal.action==="long"?snapshot.ask+targetDistance:snapshot.bid-targetDistance;
    const decision=evaluateScalpingDecision({
     candles,
     market:{symbol:this.statusState.symbol,timeframe:this.statusState.timeframe,bid:snapshot.bid,ask:snapshot.ask,spread:snapshot.ask-snapshot.bid,atr,timestamp:snapshot.timestamp},
@@ -148,6 +158,7 @@ export class Mt5AutoScalper{
     this.state.pendingClientOrderId=undefined;this.state.pendingMisses=undefined;
     if(!result.accepted){this.saveState();throw new Error(result.message??"MT5 rejected order.");}
     this.state.tradesToday+=1;
+    if(result.brokerOrderId)(this.state.initialStops??={})[result.brokerOrderId]=stopLossPrice;
     this.state.lastTradeTimestamp=this.statusState.lastCheckAt;this.statusState.lastTradeTimestamp=this.state.lastTradeTimestamp;
     return this.done(`${signal.action} order accepted: ${result.brokerOrderId??"unknown"}${result.replayed?" (already on the account)":""}`);
    }catch(error){
@@ -161,6 +172,35 @@ export class Mt5AutoScalper{
    this.statusState.lastAction="error";
    return this.status();
   }finally{this.busy=false;}
+ }
+ /**
+  * Follows LayanX's open trades: the stop goes to the entry at 1R and then trails the price (src/trading/trailing-stop.ts);
+  * it is never moved back. Trades opened by hand or by another robot have another magic number and are not touched.
+  */
+ private async manage(positions:Awaited<ReturnType<Mt5LiveAdapter["positions"]>>,generation:number):Promise<string>{
+  if(process.env.MT5_TRAILING_STOP==="off")return"position already open; no new entry";
+  // Only trades carrying LayanX's magic number: the owner's own trades and other robots' are never touched.
+  const mine=positions.filter(p=>p.magic===mt5Magic());
+  if(!mine.length)return"position already open; no new entry";
+  const snapshot=await this.adapter.getSymbolSnapshot(this.statusState.symbol);
+  const candles=await this.adapter.getCandles({symbol:this.statusState.symbol,timeframe:this.statusState.timeframe,limit:60});
+  const atr=atrOf(candles,14);
+  if(!atr)return"position open; ATR unavailable, stop unchanged";
+  const stops=this.state.initialStops??={};
+  const notes:string[]=[];
+  for(const p of mine){
+   if(stops[p.ticket]===undefined&&p.stopLoss&&(p.side==="long"?p.stopLoss<p.price:p.stopLoss>p.price))stops[p.ticket]=p.stopLoss;
+   const move=trailingStop({side:p.side,entry:p.price,stopLoss:p.stopLoss,initialStop:stops[p.ticket],bid:snapshot.bid,ask:snapshot.ask,atr});
+   if(!move){notes.push(`#${p.ticket} stop kept at ${p.stopLoss??"none"}`);continue;}
+   if(generation!==this.generation)return"stopped before moving a stop";
+   try{
+    const r=await this.adapter.modifyStopLoss(p.ticket,move.stop);
+    notes.push(r.accepted?`#${p.ticket} stop moved to ${r.stopLoss??move.stop} (${move.stage}, ${move.lockedR}R locked)`:`#${p.ticket} stop not moved: ${r.message??"refused"}`);
+   }catch(error){notes.push(`#${p.ticket} stop not moved: ${(error as Error).message}`);}
+  }
+  for(const t of Object.keys(stops))if(!positions.some(p=>p.ticket===t))delete stops[t];
+  this.saveState();
+  return"position open; "+notes.join("; ");
  }
  start(){if(this.timer)return this.status();this.statusState.running=true;void this.checkOnce();this.timer=setInterval(()=>void this.checkOnce(),this.intervalMs);return this.status();}
  /** Stops new checks; a check already running does not send an order after this. The bridge stays open for the read tools. */

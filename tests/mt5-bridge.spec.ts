@@ -179,6 +179,23 @@ for(const k of ["LAYANX_MT5_LOGIN","LAYANX_MT5_PASSWORD","LAYANX_MT5_SERVER"])de
   const back=read();delete back.broker_suffix;back.positions=[];write(back);
 }
 
+// 8d. Moving a stop (trailing stop): forward only, LayanX's own trades only, demo only.
+{
+  const st=read();st.positions=[
+    {ticket:5101,symbol:"XAUUSD",type:0,volume:0.01,price_open:2390,sl:2385,tp:2410,profit:3,magic:2601004,comment:"LX:a",time:1760000000},
+    {ticket:5102,symbol:"XAUUSD",type:0,volume:0.5,price_open:2390,sl:2385,tp:0,profit:3,magic:0,comment:"manual",time:1760000000}];
+  st.trade_mode=0;st.terminal_trade_allowed=true;st.market_closed=false;write(st);
+  const trail=new Mt5LiveAdapter({bridgePath,env,timeoutMs:20000});
+  assert.equal((await trail.modifyStopLoss("5101",2391)).accepted,true);
+  assert.equal(read().positions.find((p:any)=>p.ticket===5101).sl,2391);
+  await assert.rejects(trail.modifyStopLoss("5101",2388),/only moves forward/);
+  await assert.rejects(trail.modifyStopLoss("5102",2391),/not opened by LayanX/);
+  await assert.rejects(trail.modifyStopLoss("5101",2400.5),/too close to the price/);
+  assert.equal(read().positions.find((p:any)=>p.ticket===5102).sl,2385,"the owner's trade is untouched");
+  trail.dispose();
+  const back=read();back.positions=[];write(back);
+}
+
 // 9. Live trading switched off: nothing is started at all.
 process.env.MT5_LIVE_TRADING_ENABLED="false";
 await assert.rejects(new Mt5LiveAdapter({bridgePath,env}).placeOrder({symbol:"XAUUSD",side:"long",quantity:0.01}),/live execution is disabled/);

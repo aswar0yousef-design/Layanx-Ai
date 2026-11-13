@@ -229,6 +229,11 @@ export class Mt5LiveAdapter implements Mt5Adapter{
    throw new Mt5UnknownOutcomeError(clientOrderId,cause);
   }
  }
+ /** Moves the stop loss of one of LayanX's own positions forward (the bridge refuses a step back or someone else's trade). */
+ async modifyStopLoss(ticket:string,stopLoss:number):Promise<Mt5OrderResult&{stopLoss?:number}>{
+  if(process.env.MT5_LIVE_TRADING_ENABLED!=="true")throw new Error("MT5 live execution is disabled.");
+  return await this.call("modify_stop",{ticket,stopLoss},this.orderTimeoutMs) as Mt5OrderResult&{stopLoss?:number};
+ }
  /** Closes one of LayanX's own positions (magic number); positions opened by hand are left alone. */
  async closePosition(ticket:string):Promise<Mt5OrderResult>{
   if(process.env.MT5_LIVE_TRADING_ENABLED!=="true")throw new Error("MT5 live execution is disabled.");

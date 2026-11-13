@@ -379,10 +379,39 @@ def do_close_position(p, s):
     return send_checked(request)
 
 
+def do_modify_stop(p, s):
+    """Moves the stop loss of one of LayanX's own positions, only in the trade's favour (a trailing stop never goes back).
+    The same account rules as an order apply (demo only unless the owner allows real; Algo Trading on)."""
+    require_trading_allowed(s)
+    ticket = int(p["ticket"])
+    new_sl = float(p["stopLoss"])
+    position = next((x for x in (mt5.positions_get() or []) if int(x.ticket) == ticket), None)
+    if position is None:
+        raise BridgeError(f"Position not found: {ticket}")
+    magic = int(s.get("magic", 0))
+    if int(get(position, "magic", 0) or 0) != magic:
+        raise BridgeError(f"Position {ticket} was not opened by LayanX (magic {get(position, 'magic', 0)}); its stop is left alone.")
+    symbol, info = select(position.symbol)
+    tick = tick_of(symbol)
+    long = position.type == mt5.POSITION_TYPE_BUY
+    current = float(get(position, "sl", 0) or 0)
+    if current and (new_sl <= current if long else new_sl >= current):
+        raise BridgeError(f"The stop only moves forward: {new_sl} is not better than {current}.")
+    gap = float(get(info, "trade_stops_level", 0) or 0) * float(get(info, "point", 0) or 0)
+    if long and new_sl >= float(tick.bid) - gap or (not long) and new_sl <= float(tick.ask) + gap:
+        raise BridgeError(f"The stop {new_sl} is too close to the price (minimum distance {gap}).")
+    digits = int(get(info, "digits", 5) or 5)
+    request = {"action": mt5.TRADE_ACTION_SLTP, "symbol": symbol, "position": ticket,
+               "sl": round(new_sl, digits), "tp": float(get(position, "tp", 0) or 0), "magic": magic}
+    result = send_checked(request)
+    result["stopLoss"] = round(new_sl, digits)
+    return result
+
+
 ACTIONS = {
     "account": do_account, "tick": do_tick, "candles": do_candles, "symbol_spec": do_symbol_spec,
     "positions": do_positions, "orders": do_orders, "history": do_history, "find_order": do_find_order, "terminal": do_terminal,
-    "order": do_order, "close_position": do_close_position,
+    "order": do_order, "close_position": do_close_position, "modify_stop": do_modify_stop,
 }
 
 

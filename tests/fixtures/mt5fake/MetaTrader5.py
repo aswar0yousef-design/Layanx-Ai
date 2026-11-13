@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 ORDER_FILLING_FOK, ORDER_FILLING_IOC, ORDER_FILLING_RETURN = 0, 1, 2
 TRADE_ACTION_DEAL = 1
+TRADE_ACTION_SLTP = 6
 ORDER_TYPE_BUY, ORDER_TYPE_SELL = 0, 1
 POSITION_TYPE_BUY, POSITION_TYPE_SELL = 0, 1
 DEAL_TYPE_BUY, DEAL_TYPE_SELL, DEAL_TYPE_BALANCE = 0, 1, 2
@@ -139,6 +140,13 @@ def order_send(request):
     if s.get("order_none"):
         return None  # e.g. the terminal's reply was lost (-10002)
     delay = s.get("order_delay", 0)
+    if request.get("action") == TRADE_ACTION_SLTP:
+        s.setdefault("modifies", []).append({"position": request["position"], "sl": request["sl"]})
+        for p in s.get("positions", []):
+            if p["ticket"] == request["position"]:
+                p["sl"] = request["sl"]
+        _save(s)
+        return _ns({"retcode": 10009, "order": 0, "price": 0.0, "volume": 0.0, "comment": "Request executed"})
     s.setdefault("sends", []).append({k: request.get(k) for k in ("type_filling", "comment", "position", "magic", "volume", "type")})
     accepted_filling = {1: ORDER_FILLING_FOK, 2: ORDER_FILLING_IOC}
     mask = s.get("filling_mode", 1)
