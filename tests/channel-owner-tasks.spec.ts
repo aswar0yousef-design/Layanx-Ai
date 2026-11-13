@@ -56,6 +56,14 @@ try{
   const {movesMoney}=await import("../src/autonomy/domain-coordinator.js");
   for(const t of ["transfer 300 to my trading account","pay the DHL invoice","حول 500 ريال لحسابي في بينانس"])assert.ok(movesMoney(t),t);
   for(const t of ["حول الملف إلى PDF","ارسل المنشور","send the invoice email","كم أرباح المتجر اليوم؟","ارسل رسالة لأحمد","اطبع فاتورة الطلب 1041"])assert.ok(!movesMoney(t),t);
+  // A supervisor milestone: the owner's words, then LayanX's own rules ("do not ... send anything"). Only the owner's words count.
+  const {ownerRequest,routeGoal}=await import("../src/autonomy/domain-coordinator.js");
+  const milestone=(goal:string)=>`Overall goal: ${goal}\nAcceptance criteria: x\nCurrent milestone (1/4): create the project\nRules: work only inside this project;\nrecord important choices; do not push, publish or send anything.`;
+  const expenses="اريد بناء تطبيق اندرويد في Android Studio للقيام بعمل محاسب مصروفات: إضافة مصروف (المبلغ، الفئة، التاريخ، ملاحظة)";
+  assert.ok(movesMoney(milestone(expenses)),"the whole text looks like 'send + amount': the bug");
+  assert.equal(routeGoal(ownerRequest(milestone(expenses))).needsOwner,false,"an expense-tracker app is not a money transfer");
+  assert.equal(routeGoal(ownerRequest(milestone("حوّل 500 من أرباح المتجر إلى حساب التداول"))).needsOwner,true,"a real transfer inside a milestone is still refused");
+  assert.equal(ownerRequest("ارسل 200 دولار لأحمد"),"ارسل 200 دولار لأحمد");
 }finally{await woo.close();await graph.close();}
 console.log("channel owner tasks: real answers on WhatsApp, the exact step approved by the owner's reply, expiring, staff cannot approve");
 // (exit moved to the end)

@@ -26,6 +26,15 @@ const ACCOUNT=/حساب|محفظ|بنك|بطاقه|account|wallet|bank|card/;
 export const MONEY_REFUSAL="تحويل الأموال أو دفعها أو سحبها قرارك أنت، وتنفذه بنفسك خارج LayanX. لن أقوم به، ولم يُنقل أي مال.";
 export function movesMoney(goal:string):boolean{const t=plain(goal);return TRANSFER.test(t)&&(CASH.test(t)||/\d/.test(t)&&ACCOUNT.test(t))||PAY.test(t)&&(BILL.test(t)||CASH.test(t)||ACCOUNT.test(t));}
 
+/**
+ * The owner's own words inside a supervisor milestone text ("Overall goal: ..." then LayanX's instructions,
+ * whose rules mention "send"); any other goal is the request itself.
+ */
+export function ownerRequest(goal:string):string{
+  const m=/^Overall goal: (.*)$/m.exec(goal);
+  return m?m[1]!:goal;
+}
+
 export function routeGoal(goal:string):Routing{
   const text=plain(goal),store=STORE.test(text),trading=TRADING.test(text);
   if(movesMoney(goal))return{domain:"other",agentId:"core",needsOwner:true,reason:"Moving, sending, paying or withdrawing money is the owner's decision, made outside LayanX."};

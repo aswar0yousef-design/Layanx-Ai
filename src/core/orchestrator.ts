@@ -78,7 +78,7 @@ import {StrategyRegistry,HtfStructureLiquidityStrategy,ScalpingSweepStrategy} fr
 import {ScalpRiskController} from "../trading/scalp-risk.js";
 import {registerPaperTradingAgentTool,registerBinanceMarketDataTool,registerBinanceLiveOrderTool} from "../trading/agent-integration.js";
 import type {LiveScreenObserver} from "../desktop/live-screen.js";
-import {routeGoal} from "../autonomy/domain-coordinator.js";
+import {ownerRequest,routeGoal} from "../autonomy/domain-coordinator.js";
 /** Tools whose failure is a question for the owner (which product, which number), so the loop stops instead of repairing. */
 const OWNER_INPUT_TOOLS=new Set(["social.draft","social.publish","store.change","shipping.from_store","shipping.invoice.document","shipping.store.close"]);
 
@@ -618,7 +618,10 @@ export class LayanXCore{
   }
 
   async runAgentGateway(goal:string,projectId="default",maxSteps=10,approvalIds:Record<number,string>={},agentId="core",routing?:ModelRoutingOptions){
-    const domain=routeGoal(goal);
+    // Judge the owner's request, not the instructions LayanX wraps around it: a supervisor milestone ends with
+    // "do not push, publish or send anything", and that "send" next to «المبلغ» in an expense-tracker goal was
+    // refused as a money transfer (found 2026-11-13).
+    const domain=routeGoal(ownerRequest(goal));
     if(domain.needsOwner)throw new Error(domain.reason);
     // Cloud escalation: a goal that names Claude/GPT/Gemini, or a complex goal under the "complex" policy,
     // is planned by that cloud model; a local planning failure is retried once on the cloud (no tool has run yet).
