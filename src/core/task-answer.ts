@@ -237,15 +237,19 @@ export async function composeTaskAnswer(models:Pick<ModelExecutionRouter,"execut
     `Owner's request: ${goal.slice(0,1000)}`,
     text?`Tool results:\n${text}`:""
   ].filter(Boolean).join("\n");
-  const attempt=async(withImage:boolean)=>models.execute({
+  const attempt=async(withImage:boolean,words=false)=>models.execute({
     capability:withImage?"vision":"reasoning",
-    input:withImage?[{type:"text",text:prompt},{type:"image",image:image!}]:prompt,
+    input:withImage?[{type:"text",text:prompt+(words?WORDS_ONLY:"")},{type:"image",image:image!}]:prompt+(words?WORDS_ONLY:""),
     maxOutputTokens:900,routing:{preferLocal:true}
   } as never);
   try{
-    const r=await attempt(Boolean(image));
-    const answer=unwrapAnswer(String(r.output??""));
-    return answer?{text:answer.slice(0,3000),modelId:r.modelId,fromImage:Boolean(image)}:null;
+    let r=await attempt(Boolean(image));
+    let answer=unwrapAnswer(String(r.output??""));
+    // The vision model sometimes answers with a made-up tool call ({"tool_calls":[{"name":"image_analysis",...}]}), seen
+    // live 2026-11-13: ask once more for words only, and never show the owner that JSON.
+    if(!answer||looksLikeToolCall(answer)){r=await attempt(Boolean(image),true);answer=unwrapAnswer(String(r.output??""));}
+    if(!answer||looksLikeToolCall(answer))return{text:lang==="Arabic"?(image?"التقطت صورة الشاشة، لكن النموذج لم يكتب وصفاً لها. اطلب مرة أخرى.":"لم يكتب النموذج رداً مفهوماً على النتائج. اطلب مرة أخرى."):(image?"I captured the screen, but the model did not write a description of it. Please ask again.":"The model did not write a readable reply. Please ask again."),fromImage:false};
+    return{text:answer.slice(0,3000),modelId:r.modelId,fromImage:Boolean(image)};
   }catch(error){
     // No model that sees images: answer from the text results, and say the screenshot could not be read.
     if(!image)return null;
@@ -254,16 +258,36 @@ export async function composeTaskAnswer(models:Pick<ModelExecutionRouter,"execut
   }
 }
 
+const WORDS_ONLY="\nYou cannot call any tool and there is no other tool: the screenshot and results are already here. Reply to the owner in plain words now, no JSON.";
+/** A reply that is really a tool call the model made up (JSON with tool_calls, function or name+parameters), not words. */
+export function looksLikeToolCall(text:string):boolean{
+  const t=text.trim();
+  if(!/^[\[{]/.test(t))return false;
+  return/"(?:tool_calls?|function_call|function)"\s*:|"name"\s*:\s*"[^"]+"\s*,\s*"(?:parameters|arguments)"\s*:/.test(t);
+}
 /** Small models sometimes wrap a plain reply in JSON ({"response":"..."}); the owner should see the words. */
 export function unwrapAnswer(raw:string):string{
   const text=raw.replace(/<think>[\s\S]*?<\/think>/gi,"").replace(/^\s*```(?:json)?/i,"").replace(/```\s*$/,"").trim();
-  if(!/^\{[\s\S]*\}$/.test(text))return text;
+  if(!/^(?:\{[\s\S]*\}|\[[\s\S]*\])$/.test(text))return text;
   try{
-    const o=JSON.parse(text) as Record<string,unknown>;
-    const value=["response","reply","answer","text","message","content"].map(k=>o[k]).find(v=>typeof v==="string"&&v.trim());
-    if(typeof value==="string")return value.trim();
-    // Any other key ({"user_question":"...","tool_response":"..."}, seen live): the longest text is the reply.
-    const longest=Object.values(o).filter((v):v is string=>typeof v==="string").sort((a,b)=>b.length-a.length)[0];
-    return longest&&longest.trim().length>=20?longest.trim():text;
+    const o=JSON.parse(text) as unknown;
+    if(o&&typeof o==="object"&&!Array.isArray(o)){
+      const value=["response","reply","answer","text","message","content"].map(k=>(o as Record<string,unknown>)[k]).find(v=>typeof v==="string"&&v.trim());
+      if(typeof value==="string")return value.trim();
+    }
+    // Any other shape, nested too ({"tool_invocation":[{"tool":"capture_screenshot","output":"..."}]}, {"answer":["..",".."]},
+    // seen live 2026-11-13): the owner gets the sentences, not the tool names, paths or keys around them.
+    const words:string[]=[];
+    const walk=(v:unknown,key="")=>{
+      if(typeof v==="string"){const s=v.trim();if(s&&!IDENTIFIER_KEYS.test(key)&&!/^[\w./:\\-]+$/.test(s))words.push(s);return;}
+      if(Array.isArray(v)){for(const x of v)walk(x,key);return;}
+      if(v&&typeof v==="object")for(const [k,x] of Object.entries(v))walk(x,k);
+    };
+    walk(o);
+    const joined=words.join("\n").trim();
+    // A short answer is still an answer ({"name":"vision","output":{"text":"سيارة 400"}}, seen live).
+    return /\p{L}/u.test(joined)&&joined.length>=2?joined:text;
   }catch{return text;}
 }
+// Names and paths, and fields that only repeat the owner's question back ({"user_question":"...","tool_response":"..."}).
+const IDENTIFIER_KEYS=/^(?:tool|tool_name|name|function|type|id|image_path|path|url|model|user_question|question|request|query|prompt|input|goal)$/i;

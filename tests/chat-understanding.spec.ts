@@ -132,3 +132,33 @@ console.log("chat understanding: replies wrapped under any key are unwrapped");
   assert.ok(isUnsupportedCriterion("result.page shows the thank you message"));
   console.log("chat understanding: planner criteria are repaired instead of rejecting the plan");
 }
+
+// 7. A vision model that answers with a made-up tool call (seen live 2026-11-13) is asked once more for words; the owner never sees the JSON.
+{
+  const {looksLikeToolCall}=await import("../src/core/task-answer.js");
+  const fake='{ "tool_calls": [ { "name": "image_analysis", "parameters": { "image_path": "/mnt/data/x.png" } } ] }';
+  assert.ok(looksLikeToolCall(fake));assert.ok(looksLikeToolCall('{"name":"zoom","arguments":{}}'));
+  assert.ok(!looksLikeToolCall("الكلمة «قلم» والرقم 812."));assert.ok(!looksLikeToolCall('{"response":"نص"}'));
+  const shot2={ok:true,tool:"desktop.screenshot",data:{mimeType:"image/png",base64:"AAAA"}};
+  const said:string[]=[];let calls=0;
+  const flaky={execute:async(r:any)=>{calls++;said.push(JSON.stringify(r.input));return{output:calls===1?fake:"الكلمة نخلة والرقم 715.",modelId:"v"};}};
+  const fixed=await composeTaskAnswer(flaky as never,"التقط صورة للشاشة وأخبرني ما الكلمة",[shot2],true);
+  assert.equal(fixed!.text,"الكلمة نخلة والرقم 715.");assert.equal(calls,2);assert.match(said[1]!,/cannot call any tool/);
+  const stubborn={execute:async()=>({output:fake,modelId:"v"})};
+  const honest=await composeTaskAnswer(stubborn as never,"التقط صورة للشاشة وأخبرني ما الكلمة",[shot2],true);
+  assert.ok(!honest!.text.includes("tool_calls"));assert.match(honest!.text,/لم يكتب وصفاً/);
+  console.log("chat understanding: made-up tool calls are retried for words, never shown");
+}
+
+// 8. Replies wrapped in nested JSON (seen live 2026-11-13) reach the owner as sentences only.
+{
+  const {unwrapAnswer,looksLikeToolCall}=await import("../src/core/task-answer.js");
+  const a=unwrapAnswer(`{ "tool_invocation": [ { "tool": "capture_screenshot", "output": "تُظهر الصورة النافذة وفي وسطها: 'سيارة 735'." } ] }`);
+  assert.equal(a,"تُظهر الصورة النافذة وفي وسطها: 'سيارة 735'.");
+  assert.equal(unwrapAnswer(`{ "answer": [ "الكلمة هي: شمس", "- الرقم هو: 190" ] }`),"الكلمة هي: شمس\n- الرقم هو: 190");
+  assert.equal(unwrapAnswer(`["الكلمة قلم","الرقم 812"]`),"الكلمة قلم\nالرقم 812");
+  assert.equal(unwrapAnswer(`{ "name": "vision", "output": { "text": "سيارة 400" } }`),"سيارة 400");
+  const fake='{ "tool_calls": [ { "name": "image_analysis", "parameters": { "image_path": "/mnt/data/x.png" } } ] }';
+  assert.ok(looksLikeToolCall(unwrapAnswer(fake)),"a pure made-up tool call stays a tool call (and is retried)");
+  console.log("chat understanding: nested JSON replies become sentences");
+}
