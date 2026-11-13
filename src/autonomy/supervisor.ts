@@ -172,6 +172,8 @@ const clip=(s:unknown,n=1500)=>{const t=typeof s==="string"?s:JSON.stringify(s??
 
 /** A goal for an Android app (planned as a native project that opens in Android Studio). */
 export const ANDROID_GOAL=/\bandroid\b|android studio|\bapk\b|اندرويد|أندرويد|اندرويد ستوديو|تطبيق (?:جوال|موبايل|هاتف)/i;
+/** A goal for a dashboard / admin panel (started from the professional kit). */
+export const DASHBOARD_GOAL=/dashboard|admin panel|\bcrm\b|analytics panel|لوحه تحكم|لوحة تحكم|لوحة التحكم|لوحه التحكم|داشبورد|لوحة إدارة|لوحة ادارة|لوحة مؤشرات/i;
 const MAX_REVIEWERS=3,MAX_REVIEW_CASES=5,TWIN_HARNESS_FILE="tests/zz-layanx-twin.test.mjs",slowReviewers=new Set<string>();
 // Test cases and blind answers are parsed as JSON; an unparseable reply cost whole build runs (csv, wordcount: "no answers array").
 // Ollama constrains decoding to these shapes, so the reply is always well-formed JSON; the content is still checked as before.
@@ -514,6 +516,9 @@ export class Supervisor{
       'Schema: {"acceptance":["checkable outcome",...],"milestones":[{"title":"short","goal":"what to do","kind":"code|test|research|desktop|business|general"}],"checks":{"install":bool,"test":bool,"build":bool,"typecheck":bool,"lint":bool,"browser":{"path":"/"}|null}}',
       "Rules: 1-6 milestones, smallest safe steps, reuse and edit existing code instead of rewriting, never delete working features.",
       "Set checks to what really proves the goal for this project. browser is for anything visible in a web page.",
+      DASHBOARD_GOAL.test(job.goal)&&!ANDROID_GOAL.test(job.goal)&&(!info||info.stack==="unknown"||info.stack==="node")
+        ? "This is a dashboard: the first code milestone runs project.run {task:\"template:dashboard\"} (a professional React + Tailwind + framer-motion glass kit; read KIT.md) then {task:\"install\"}; the next milestones adapt its pages, data (src/data.js) and words (src/i18n.js, English and Arabic) to the goal without rewriting the kit's components; checks: install, test and build true, browser {\"path\":\"/\"}."
+        : "",
       ANDROID_GOAL.test(job.goal)&&!/flutter|react native|فلاتر/i.test(job.goal)&&(!info||info.stack==="unknown"||info.stack==="android")
         ? "This is an Android app: build it as a native Kotlin + Jetpack Compose project that opens in Android Studio. The first code milestone runs project.run {task:\"android:create\",appName,packageId} (it writes the Gradle project and wrapper), then the screens are written under app/src/main/java/<package path>/; checks: build (assembleDebug) and test (unit tests) true, install false, browser null. The last milestone runs project.run {task:\"studio:open\"} so the owner sees it in Android Studio."
         : "",

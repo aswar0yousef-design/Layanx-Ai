@@ -22,6 +22,7 @@ const TASK_APP=/(?:قا[ئي]مه|تطبيق|موقع)\s+(?:ال)?مهام|\b(?:
 // a server or API has its own test-first path. Only these still need the general path.
 const OTHER_PLATFORM=/قاعده بيانات|تسجيل دخول|حسابات|دفع|اندرويد|ايفون|جوال|\b(?:database|login|payment|android|ios|mobile app|flutter|react|next\.?js)\b/iu;
 // A Python command-line script has its own checked path (it was reported failed 4 times while working, 2026-11-12).
+const DASHBOARD_KIND=/لوحه (?:ال)?(?:تحكم|اداره|مؤشرات)|داشبورد|\b(?:dashboard|admin panel|crm)\b/iu;
 const PYTHON_KIND=/بايثون|\bpython\b|\.py\b/iu;
 const API_KIND=/خادم|سيرفر|واجهه برمجيه|\b(?:server|backend|api|rest|endpoint)s?\b/iu;
 const SITE_KIND=/موقع|صفحه|حاسبه|لعبه|\b(?:website|web ?page|landing page|site|calculator|game|web app)\b/iu;
@@ -31,6 +32,8 @@ export function newProjectKind(text:string):NewProjectKind{
   const value=command(text);
   if(TASK_APP.test(value))return"task-app";
   if(OTHER_PLATFORM.test(value))return"general";
+  // A dashboard starts from the professional kit on the general path, never as a one-file page.
+  if(DASHBOARD_KIND.test(value))return"general";
   if(PYTHON_KIND.test(value))return API_KIND.test(value)||SITE_KIND.test(value)?"general":"python-tool";
   if(API_KIND.test(value))return"http-api";
   return SITE_KIND.test(value)?"static-site":TOOL_KIND.test(value)?"node-tool":"general";

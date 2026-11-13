@@ -10,6 +10,7 @@ import {dockerRun,dockerVersion,isolationLevel,restrictedAvailable,withoutInstal
 import {gitSnapshot,prepareRestricted,restrictedCommand,restrictedEnv,verifyGitAfterRun} from "../platform/windows-sandbox.js";
 import net from "node:net";
 import os from "node:os";
+import {copyKit} from "./templates.js";
 import {adbPath,androidEnv,androidToolchain,applicationId,createAndroidProject,isAndroidProject,openInAndroidStudio,startEmulator} from "./android.js";
 
 /**
@@ -76,7 +77,7 @@ export function emptyProjectReason(projectId:string,payload:unknown):string|unde
   let dir:string;
   try{dir=projectDir(projectId);}catch{return undefined;}
   if(fs.existsSync(dir)&&detectProject(dir).stack!=="unknown")return undefined;
-  return `The project folder has no project yet (no package.json, pyproject.toml/requirements.txt, pubspec.yaml, settings.gradle.kts or .csproj), so "${task}" has nothing to run. Create the project first: write package.json and the source files with files.write, or use project.bootstrap with the packages it needs; for an Android app run project.run with task android:create (a Kotlin project Android Studio opens). Run project.run after that.`;
+  return `The project folder has no project yet (no package.json, pyproject.toml/requirements.txt, pubspec.yaml, settings.gradle.kts or .csproj), so "${task}" has nothing to run. Create the project first: write package.json and the source files with files.write, or use project.bootstrap with the packages it needs; for an Android app run project.run with task android:create (a Kotlin project Android Studio opens); for a dashboard or admin panel run project.run with task template:dashboard. Run project.run after that.`;
 }
 
 export function commandFor(info:ProjectInfo,task:string,script?:string):Cmd{
@@ -348,6 +349,7 @@ export function createProjectRunnerAdapter():ToolAdapter{
       if(info.stack==="android"||task==="android:create")throw new Error("Gradle keeps its downloads in the user's .gradle folder, which restricted isolation does not allow. Choose local or no-scripts for this Android project.");
     }
     if(task==="detect")return{...info,isolation,...(info.stack==="android"||info.stack==="unknown"?{android:androidToolchain()}:{})};
+    if(task.startsWith("template:"))return{task,...copyKit(task.slice("template:".length),dir)};
     if(ANDROID_TASKS.includes(task)){
       if(docker)throw new Error("Android projects build on this PC with the Android SDK, not in Docker. Choose local or no-scripts isolation for this project.");
       if(task==="android:create")return{task,...(await createAndroidProject(dir,{appName:input.appName,packageId:input.packageId,projectId:request.projectId},runOnce))};
@@ -359,7 +361,7 @@ export function createProjectRunnerAdapter():ToolAdapter{
     if(task==="dev:start")return{...(await devStart(dir,key,info,typeof input.script==="string"?input.script:undefined,isolation)),isolation};
     if(task==="dev:status")return devStatus(key);
     if(task==="dev:stop")return devStop(key);
-    if(!["install","test","build","lint","typecheck","script"].includes(task))throw new Error("Unknown task. Use detect, install, test, build, lint, typecheck, script, dev:start, dev:status or dev:stop (Android: android:create, studio:open, emulator:start, device:run).");
+    if(!["install","test","build","lint","typecheck","script"].includes(task))throw new Error("Unknown task. Use detect, install, test, build, lint, typecheck, script, dev:start, dev:status or dev:stop (Android: android:create, studio:open, emulator:start, device:run; starter kits: template:dashboard).");
     let cmd=commandFor(info,task,typeof input.script==="string"?input.script:undefined);
     if(docker){const d=dockerRun(info,task,{script:typeof input.script==="string"?input.script:undefined,uid:typeof process.getuid==="function"?`${process.getuid()}:${process.getgid?.()}`:undefined});cmd={command:d.command,args:d.args,label:d.label};}
     else if((isolation==="no-scripts"||isolation==="restricted")&&task==="install"&&info.stack==="node")cmd={...cmd,args:withoutInstallScripts(cmd.args),label:cmd.label+" --ignore-scripts"};

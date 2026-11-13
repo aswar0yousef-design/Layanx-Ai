@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens. Change the look here, not in components:
+ *   --accent      main action colour (buttons, active nav, progress)
+ *   --surface     glass panel tint
+ *   --aurora-*    the three light sources behind the glass
+ */
+@theme {
+  --font-sans: "Inter", "IBM Plex Sans Arabic", ui-sans-serif, system-ui, sans-serif;
+  --color-accent: #ff7a45;
+  --color-accent-soft: #ff7a4526;
+  --color-ink: #f5f6fa;
+  --color-muted: #a3a8b8;
+  --color-faint: #6b7183;
+  --color-good: #34d399;
+  --color-warn: #fbbf24;
+  --color-bad: #f87171;
+}
+
+:root {
+  --surface: rgba(255, 255, 255, 0.055);
+  --surface-strong: rgba(255, 255, 255, 0.09);
+  --line: rgba(255, 255, 255, 0.09);
+  --aurora-a: #ff7a45;
+  --aurora-b: #7c5cff;
+  --aurora-c: #1fb6c9;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #0b0d12;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Soft light behind the glass: fixed so panels keep their blur while scrolling. */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  background: radial-gradient(1200px 700px at 85% -10%, color-mix(in srgb, var(--aurora-b) 32%, transparent), transparent 60%),
+    radial-gradient(900px 600px at -10% 110%, color-mix(in srgb, var(--aurora-c) 26%, transparent), transparent 60%),
+    radial-gradient(700px 500px at 40% 40%, color-mix(in srgb, var(--aurora-a) 14%, transparent), transparent 65%), #0b0d12;
+}
+
+.glass {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 20px 40px -24px rgba(0, 0, 0, 0.6);
+}
+
+.glass-strong {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(28px) saturate(150%);
+  -webkit-backdrop-filter: blur(28px) saturate(150%);
+}
+
+/* Visible keyboard focus everywhere. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+.scroll-x {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
