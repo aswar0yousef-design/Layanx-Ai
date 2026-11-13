@@ -1,4 +1,5 @@
 import type {LayanXCore} from "../core/orchestrator.js";
+import {createPageRenderAdapter} from "./page-render.js";
 import type {ToolRequest} from "../core/types.js";
 import type {ToolAdapter} from "./executor.js";
 import {createHttpReadAdapter} from "./http-read.js";
@@ -196,6 +197,15 @@ export function registerToolFabric(core:LayanXCore,options:{workspaceRoot?:strin
   tags:["browser","web","http","https","read","متصفح","ويب"]
  });
  core.toolAdapters.register("browser.read",createBrowserToolAdapter());
+ core.tools.register({
+  name:"browser.render",
+  description:"read a public web page after its JavaScript ran (pages that show nothing without it): payload {url, dump: text|markdown|links}. Uses the light Obscura engine first, then headless Edge/Chrome",
+  permission:"L1_READ",
+  dangerous:false,
+  actions:["render web page","read javascript page","read dynamic page","قراءة صفحة ديناميكية","اقرأ الصفحة كاملة"],
+  tags:["browser","web","render","javascript","obscura","chromium","متصفح","ويب"]
+ });
+ core.toolAdapters.register("browser.render",createPageRenderAdapter());
 
  for(const definition of [
   {name:"files.read",description:"read a file inside the configured project workspace",action:"read file",tags:["files","read","workspace","ملفات","قراءة"]},

@@ -11,7 +11,7 @@ export interface ReadPlan {
 }
 const PURE_READS=new Set([
   "project.knowledge","files.list","files.read","files.stat",
-  "runtime.status","mission.inspect","browser.read",
+  "runtime.status","mission.inspect","browser.read","browser.render",
   "github.repo.read","github.issues.list","github.prs.list"
 ]);
 function stable(value:unknown):string{
