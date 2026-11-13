@@ -333,9 +333,11 @@ function toolLabel(p){const k=TOOL_LABEL[p.tool];const base=k?t(k):(p.reason&&p.
 const S={jobs:[],setup:null,setupAt:0,missions:[],approvals:[],health:null,tools:null,channels:null,oauth:null,live:null,details:new Map(),log:(()=>{try{return JSON.parse(sessionStorage.getItem("lx.cc.log")||"[]");}catch{return[];}})(),term:JSON.parse(localStorage.getItem("lx.cc.term")||"[]"),biz:null,ads:null};
 const saveTerm=()=>localStorage.setItem("lx.cc.term",JSON.stringify(S.term.slice(0,25).map(e=>({...e,approval:undefined}))));
 async function loadSetup(force){if(force||!S.setup||Date.now()-S.setupAt>30000){S.setup=await safe(api("/v1/setup/status"),S.setup);S.setupAt=Date.now();}return S.setup;}
-async function loadMissions(){const d=await safe(api("/v1/missions?projectId="+encodeURIComponent(project())),null);if(d)S.missions=(d.missions||[]).slice().sort((a,b)=>Date.parse(b.createdAt||0)-Date.parse(a.createdAt||0));return S.missions;}
-async function loadApprovals(){const d=await safe(api("/v1/approvals?projectId="+encodeURIComponent(project())),null);if(d)S.approvals=d.approvals||[];return S.approvals;}
-async function missionDetail(id){const d=await safe(api("/v1/missions/"+encodeURIComponent(id)+"?projectId="+encodeURIComponent(project())),null);if(d&&d.mission)S.details.set(id,d);return S.details.get(id)||null;}
+// Every project's tasks and approvals: a task started from chat lives in a project of its own (chat-project-...), and
+// showing only the selected project hid it while the island showed its approval (2026-11-13).
+async function loadMissions(){const d=await safe(api("/v1/missions"),null);if(d)S.missions=(d.missions||[]).slice().sort((a,b)=>Date.parse(b.createdAt||0)-Date.parse(a.createdAt||0));return S.missions;}
+async function loadApprovals(){const d=await safe(api("/v1/approvals?projectId=all"),null);if(d)S.approvals=d.approvals||[];return S.approvals;}
+async function missionDetail(id,pid){pid=pid||S.missions.find(m=>m.id===id)?.projectId||project();const d=await safe(api("/v1/missions/"+encodeURIComponent(id)+"?projectId="+encodeURIComponent(pid)),null);if(d&&d.mission)S.details.set(id,d);return S.details.get(id)||null;}
 function deriveSteps(detail){
  if(!detail||!detail.mission)return[];
  const m=detail.mission,audit=detail.audit||[],tools=m.tools||[];
@@ -378,19 +380,20 @@ const vscodeUrl=(name)=>{const p=projectPath(name);return p?"vscode://file/"+enc
 
 // ------------------------------------------------------------------ approvals
 async function decideApproval(a,action,onResult){
- await api("/v1/approvals/"+encodeURIComponent(a.id)+"/"+action+"?projectId="+encodeURIComponent(project()),{method:"POST",body:{}});
+ const pid=a.projectId||project();
+ await api("/v1/approvals/"+encodeURIComponent(a.id)+"/"+action+"?projectId="+encodeURIComponent(pid),{method:"POST",body:{}});
  if(action!=="approve"){toast(t("rejected"));return null;}
  // An autonomous job (or Claude Code / Codex through its hook) continues by itself; resuming here too would run it twice.
  if(a.jobId||a.external){toast(t("approved"));return null;}
- const d=a.missionId?await missionDetail(a.missionId):null;
+ const d=a.missionId?await missionDetail(a.missionId,pid):null;
  const index=typeof a.index==="number"?a.index:(d?.mission?.tools||[]).findIndex(x=>x.tool===a.tool&&x.action===a.action);
  if(!a.missionId||index<0){toast(t("approved"));return null;}
  if((d?.mission?.goal||"").startsWith("run terminal command")||(d?.mission?.tools||[]).length===1&&d?.mission?.tools?.[0]?.reason==="owner quick action"){
-  const r=await api("/v1/tools/run",{method:"POST",body:{tool:d.mission.tools[0].tool,payload:d.mission.tools[0].payload||{},projectId:project(),missionId:a.missionId,approvalId:a.id},allow:[422]});
+  const r=await api("/v1/tools/run",{method:"POST",body:{tool:d.mission.tools[0].tool,payload:d.mission.tools[0].payload||{},projectId:pid,missionId:a.missionId,approvalId:a.id},allow:[422]});
   onResult&&onResult(r);return r;
  }
  toast(t("resuming"));
- const r=await api("/v1/missions/"+encodeURIComponent(a.missionId)+"/agent-loop",{method:"POST",body:{projectId:project(),maxSteps:10,agentId:"core",approvalIds:{[index]:a.id}},allow:[422]});
+ const r=await api("/v1/missions/"+encodeURIComponent(a.missionId)+"/agent-loop",{method:"POST",body:{projectId:pid,maxSteps:10,agentId:"core",approvalIds:{[index]:a.id}},allow:[422]});
  toast(r.completed?t("completedVerified"):r.paused?t("needAnother"):t("stoppedMsg")+": "+reasonText(r.reason||r.status));
  onResult&&onResult(r);return r;
 }

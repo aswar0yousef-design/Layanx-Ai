@@ -47,6 +47,9 @@ try{
   const a=listed.find(x=>x.id===first.approvalId);
   assert.ok(a&&a.pending&&!a.rejected&&a.projectId==="shop");
   assert.match(a.digest,/^[A-Za-z0-9_-]{43}$/);
+  // "all": the panel sees every project's approvals (a chat task runs in a project of its own); another project sees none.
+  assert.ok(((await get("/v1/approvals?projectId=all")).json.approvals as any[]).some(x=>x.id===first.approvalId&&x.projectId==="shop"));
+  assert.ok(!((await get("/v1/approvals?projectId=other-project")).json.approvals as any[]).some(x=>x.id===first.approvalId));
 
   // the feed: every project, pending only, a cursor that changes with what the phone shows
   const feed1=(await get("/v1/companion/feed?load=0")).json;

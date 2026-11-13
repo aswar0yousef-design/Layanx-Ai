@@ -586,7 +586,9 @@ export function startRuntimeApi(options:RuntimeApiOptions){
    if(!authorized(request,options.token)){json(response,401,{ok:false,error:"unauthorized"});return;}
    const projectId=new URL(request.url,"http://localhost").searchParams.get("projectId")?.trim()??"";
    if(!projectId){json(response,400,{ok:false,error:"projectId is required"});return;}
-   json(response,200,{ok:true,approvals:approvalViews(options.core,supervisor,projectId)});return;
+   // "all": every project's approvals, as the island and the phone see them. A task started from chat gets a project of its
+   // own, and the panel showed only the selected one: the owner saw an approval in the island and no task (2026-11-13).
+   json(response,200,{ok:true,approvals:approvalViews(options.core,supervisor,projectId==="all"?undefined:projectId)});return;
   }
   // Everything the phone and the desktop island follow, in one long-poll request.
   if(request.method==="GET"&&request.url?.split("?")[0]==="/v1/companion/feed"){
