@@ -380,7 +380,13 @@ export function createProjectRunnerAdapter():ToolAdapter{
     // Callers may shorten a task's limit, never extend it.
     const limit=(info.stack==="android"?ANDROID_TIMEOUTS[task]:undefined)??TIMEOUTS[task]??10*60_000;
     const requested=Number(input.timeoutMs);
-    const result=await runOnce(cmd,dir,Number.isFinite(requested)&&requested>=1000?Math.min(requested,limit):limit,env);
+    let result=await runOnce(cmd,dir,Number.isFinite(requested)&&requested>=1000?Math.min(requested,limit):limit,env);
+    // `npm ci` refuses when package.json gained or changed a package and the lock file was not updated (the agent edited
+    // package.json; seen 2026-11-14, every attempt then failed "install"). `npm install` brings the lock file in line.
+    if(task==="install"&&info.stack==="node"&&result.exitCode!==0&&cmd.args.includes("ci")&&/package\.json and package-lock\.json[^\n]*in sync|Missing: .* from lock file/i.test(result.stderr+result.stdout)){
+      cmd={...cmd,args:cmd.args.map(a=>a==="ci"?"install":a),label:cmd.label.replace(/\bci\b/,"install")+" (lock file out of date)"};
+      result=await runOnce(cmd,dir,limit,env);
+    }
     const gitWarning=[prepWarning,gitBefore?await verifyGitAfterRun(dir,gitBefore):undefined].filter(Boolean).join(" ")||undefined;
     const ok=result.exitCode===0&&!result.timedOut;
     if(["test","build","lint","typecheck"].includes(task))updateHealth(dir,task,{ok,summary:ok?`${cmd.label} passed`:(result.stderr||result.stdout).slice(-500)});
