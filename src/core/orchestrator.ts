@@ -925,8 +925,12 @@ export class LayanXCore{
           requiredPermission:current.requiredPermission,successCriteria:current.successCriteria?.length?current.successCriteria:this.agents.get(agentId).successCriteria,routing,completedTools:results.map(item=>(item as {tool?:string}).tool??""),
           projectContext:{repairAfterFailure:true}
         });
-        const recoveryPlan=await repair;
-        if(!recoveryPlan){cleanupLiveScreen();return{missionId,completed:false,status:"failed",steps,results,reason:result.error};}
+        // No model to suggest a repair (Ollama stopped, a machine without one) is the end of this task, reported with the step's
+        // own failure; it used to escape as an exception (found on CI, where no model exists).
+        let recoveryPlan:Awaited<typeof repair>=null;
+        let repairError:string|undefined;
+        try{recoveryPlan=await repair;}catch(error){repairError=error instanceof Error?error.message:String(error);}
+        if(!recoveryPlan){cleanupLiveScreen();return{missionId,completed:false,status:"failed",steps,results,reason:repairError?`${result.error} (no repair step: ${repairError})`:result.error};}
         current.tools=current.tools??[];
         current.tools.push(recoveryPlan);
         this.missions.save(current);
