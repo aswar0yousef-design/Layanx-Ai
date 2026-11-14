@@ -1,10 +1,27 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Mail, Phone, Users, ListTodo } from "lucide-react";
+import { Check, ListChecks, Mail, Phone, Users, ListTodo } from "lucide-react";
 import { useState } from "react";
-import { TODAY, tasks as initialTasks } from "../data.js";
+import * as data from "../data.js";
 import { t } from "../i18n.js";
 import { bucketTasks } from "../lib/format.js";
 import { Avatar, Glass, Heading, Pill, rise } from "../components/ui.jsx";
+
+export const meta = { group: "workspace", icon: ListChecks, order: 2, badge: 3, action: "newTask", sub: "tasksSub" };
+
+// Sample data for this page: replace with the project's tasks.
+const initialTasks = [
+  { id: "t1", title: "Follow up on the renewal call", kind: "call", priority: "high", due: "2026-11-11", owner: "noor", done: false },
+  { id: "t2", title: "Send the revised proposal", kind: "email", priority: "high", due: "2026-11-12", owner: "omar", done: false },
+  { id: "t3", title: "Product demo with the ops team", kind: "meeting", priority: "medium", due: "2026-11-13", owner: "lina", done: false },
+  { id: "t4", title: "Discovery call with a new lead", kind: "call", priority: "medium", due: "2026-11-13", owner: "yusuf", done: false },
+  { id: "t5", title: "Update close dates in the pipeline", kind: "todo", priority: "low", due: "2026-11-14", owner: "noor", done: false },
+  { id: "t6", title: "Contract review with legal", kind: "meeting", priority: "high", due: "2026-11-15", owner: "omar", done: false },
+  { id: "t7", title: "Quarterly business review invite", kind: "email", priority: "low", due: "2026-11-17", owner: "lina", done: false },
+  { id: "t8", title: "Thank-you note after signing", kind: "email", priority: "low", due: "2026-11-10", owner: "yusuf", done: true },
+  { id: "t9", title: "Share the case study deck", kind: "todo", priority: "medium", due: "2026-11-12", owner: "noor", done: true },
+];
+
+const TODAY = data.TODAY ?? new Date().toISOString().slice(0, 10);
 
 const KIND_ICON = { call: Phone, email: Mail, meeting: Users, todo: ListTodo };
 const FILTERS = ["all", "call", "email", "meeting", "todo"];

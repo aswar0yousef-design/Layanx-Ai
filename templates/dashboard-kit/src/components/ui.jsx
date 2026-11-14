@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { linePath } from "../lib/format.js";
-import { people } from "../data.js";
+import * as data from "../data.js";
 
 /** A glass panel. Every surface on the page is one of these. */
 export function Glass({ as: Tag = "section", className = "", children, ...rest }) {
@@ -54,7 +54,7 @@ export function Change({ value, label }) {
 }
 
 export function Avatar({ id, size = 26 }) {
-  const p = people[id] ?? { name: "?", hue: 0 };
+  const p = (data.people ?? {})[id] ?? { name: String(id ?? "?"), hue: 210 };
   const initials = p.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2);
   return (
     <span

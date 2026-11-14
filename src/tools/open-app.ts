@@ -31,10 +31,29 @@ const START_MENU_NAMES:Record<string,string>={
   "الكاميرا":"Camera","camera":"Camera","المتجر":"Microsoft Store","متجر مايكروسوفت":"Microsoft Store","microsoft store":"Microsoft Store",
   "ollama":"Ollama","اولاما":"Ollama","obs":"OBS Studio","او بي اس":"OBS Studio","anydesk":"AnyDesk","اني ديسك":"AnyDesk"
 };
+/** Well-known sites said by name («يوتيوب», "youtube"): opened at their real address. */
+const SITES:Record<string,{url:string;label:string}>={};
+for(const [label,url,names] of [
+  ["YouTube","https://www.youtube.com/",["youtube","you tube","يوتيوب","اليوتيوب","يوتوب"]],
+  ["Google","https://www.google.com/",["google","جوجل","قوقل","غوغل"]],
+  ["Gmail","https://mail.google.com/",["gmail","جيميل","جي ميل"]],
+  ["Facebook","https://www.facebook.com/",["facebook","فيسبوك","فيس بوك","الفيسبوك","الفيس"]],
+  ["Instagram","https://www.instagram.com/",["instagram","انستغرام","انستقرام","انستجرام","الانستغرام"]],
+  ["X","https://x.com/",["twitter","تويتر","x.com"]],
+  ["TikTok","https://www.tiktok.com/",["tiktok","tik tok","تيك توك","تيكتوك"]],
+  ["LinkedIn","https://www.linkedin.com/",["linkedin","لينكدان","لينكد ان"]],
+  ["GitHub","https://github.com/",["github","جيت هب","جيتهب","قيت هب"]],
+  ["ChatGPT","https://chatgpt.com/",["chatgpt","شات جي بي تي"]],
+  ["WhatsApp Web","https://web.whatsapp.com/",["واتساب ويب","whatsapp web"]],
+  ["Google Maps","https://www.google.com/maps",["خرائط جوجل","google maps","الخرائط"]],
+  ["Amazon","https://www.amazon.com/",["amazon","امازون"]],
+  ["Netflix","https://www.netflix.com/",["netflix","نتفلكس","نتفليكس"]],
+] as Array<[string,string,string[]]>)for(const n of names)SITES[n]={url,label};
 const norm=(s:string)=>s.toLowerCase().replace(/[\u064B-\u065F\u0670\u0640]/g,"").replace(/[أإآٱ]/g,"ا").replace(/ى/g,"ي").replace(/ة/g,"ه")
   .replace(/[«»"'“”.,،!؟?:;()]/g," ").replace(/\s+/g," ").trim();
 const KNOWN_BY_NAME=new Map<string,KnownApp>(Object.entries(KNOWN_APPS).flatMap(([k,v])=>[...v.names,v.label].map(n=>[norm(n),k as KnownApp] as [string,KnownApp])));
 const START_BY_NAME=new Map(Object.entries(START_MENU_NAMES).map(([k,v])=>[norm(k),v]));
+const SITE_BY_NAME=new Map(Object.entries(SITES).map(([k,v])=>[norm(k),v]));
 const APP_NAME=/^[\p{L}\p{N} .+&_-]{1,60}$/u;
 
 export type OpenTarget={kind:"known";app:KnownApp;label:string}|{kind:"start";name:string;label:string}|{kind:"url";url:string;browser?:KnownApp;label:string};
@@ -65,7 +84,7 @@ export function resolveOpenTarget(payload:{app?:unknown;url?:unknown}):OpenTarge
   return{kind:"start",name,label:name};
 }
 
-const OPEN_VERB=/^(?:(?:يا\s+)?(?:ليان|جارفيس)[\s،,]+)?(?:لو سمحت\s+)?(?:افتح|إفتح|أفتح|شغل|شغّل|افتحلي|افتح لي|شغل لي|open|launch|start|run)\s+(?:لي\s+)?(?:برنامج|تطبيق|موقع|the\s+app|the\s+program|app|program)?\s*(.+)$/iu;
+const OPEN_VERB=/^(?:(?:يا\s+)?(?:ليان|جارفيس)[\s،,]+)?(?:لو سمحت\s+)?(?:قم\s+ب(?:فتح|تشغيل)|ممكن\s+تفتح|افتح|إفتح|أفتح|افتحي|شغل|شغّل|افتحلي|افتح لي|شغل لي|open|launch|start|run)\s+(?:لي\s+)?(?:برنامج|تطبيق|موقع|the\s+app|the\s+program|app|program)?\s*(.+)$/iu;
 /**
  * A short "open X" request whose X is certainly something to open: a known program, a Start-menu
  * name LayanX knows, or a web address. Anything else ("open the report file") goes to the planner.
@@ -82,9 +101,19 @@ export function openRequest(text:string):{app?:string;url?:string;label:string}|
   if(bare!==target&&KNOWN_BY_NAME.has(norm(bare)))target=bare;
   const known=KNOWN_BY_NAME.get(norm(target));
   if(known)return{app:target,label:KNOWN_APPS[known].label};
+  const site=SITE_BY_NAME.get(norm(target));
+  if(site)return{url:site.url,label:site.label};
+  // «كروم يوتيوب» / "chrome youtube": a browser, then a site, without a word between them.
+  for(const [name,app] of KNOWN_BY_NAME){
+    if(!KNOWN_APPS[app].browser)continue;
+    const n=norm(target);
+    if(n.startsWith(name+" ")){const rest=SITE_BY_NAME.get(n.slice(name.length+1))??(webAddress(target.slice(target.length-(n.length-name.length-1)))?{url:webAddress(target.slice(target.length-(n.length-name.length-1)))!,label:""}:undefined);
+      if(rest)return{app:KNOWN_APPS[app].label,url:rest.url,label:rest.label||rest.url};}
+  }
   const url=webAddress(target);if(url)return{url,label:url};
   const onBrowser=target.match(/^(.+?)\s+(?:في|على|ب|in|on|with)\s+(.+)$/i);
-  if(onBrowser){const b=KNOWN_BY_NAME.get(norm(onBrowser[2]!));const u=webAddress(onBrowser[1]!);if(b&&KNOWN_APPS[b].browser&&u)return{app:onBrowser[2]!.trim(),url:u,label:u};}
+  if(onBrowser){const b=KNOWN_BY_NAME.get(norm(onBrowser[2]!));const s=SITE_BY_NAME.get(norm(onBrowser[1]!));const u=webAddress(onBrowser[1]!);
+    if(b&&KNOWN_APPS[b].browser&&(u||s))return{app:onBrowser[2]!.trim(),url:s?.url??u!,label:s?.label??u!};}
   const mapped=START_BY_NAME.get(norm(target));
   if(mapped)return{app:mapped,label:mapped};
   return null;

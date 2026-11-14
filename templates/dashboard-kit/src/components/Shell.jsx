@@ -1,24 +1,20 @@
 import { motion } from "framer-motion";
-import { BarChart3, Bell, Columns3, Languages, LayoutGrid, ListChecks, Menu, Plus, Search, Settings, Sparkles, Users, X } from "lucide-react";
+import { Bell, Circle, Languages, Menu, Plus, Search, Sparkles, X } from "lucide-react";
 import { useState } from "react";
 import { t } from "../i18n.js";
-import { user } from "../data.js";
+import * as data from "../data.js";
+
+const user = data.user ?? { name: "", role: "", initials: "" };
 import { Progress } from "./ui.jsx";
 
-export const NAV = [
-  { group: "workspace", items: [{ id: "overview", icon: LayoutGrid }, { id: "tasks", icon: ListChecks, badge: 3 }] },
-  { group: "sales", items: [{ id: "pipeline", icon: Columns3 }, { id: "customers", icon: Users }] },
-  { group: "insights", items: [{ id: "reports", icon: BarChart3 }, { id: "settings", icon: Settings }] },
-];
-
-function NavList({ lang, page, onPage }) {
+function NavList({ nav, lang, page, onPage }) {
   return (
     <nav aria-label="Main" className="flex flex-col gap-5">
-      {NAV.map((g) => (
+      {nav.map((g) => (
         <div key={g.group}>
           <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">{t(lang, g.group)}</p>
           <ul className="flex flex-col gap-0.5">
-            {g.items.map(({ id, icon: Icon, badge }) => {
+            {g.items.map(({ id, icon: Icon = Circle, badge }) => {
               const active = page === id;
               return (
                 <li key={id} className="relative">
@@ -43,7 +39,7 @@ function NavList({ lang, page, onPage }) {
   );
 }
 
-function SidebarBody({ lang, page, onPage }) {
+function SidebarBody({ nav, lang, page, onPage }) {
   return (
     <div className="flex h-full flex-col gap-6 p-4">
       <div className="flex items-center gap-2.5 px-2 pt-1">
@@ -52,7 +48,7 @@ function SidebarBody({ lang, page, onPage }) {
         </span>
         <span className="text-[15px] font-semibold tracking-tight">{t(lang, "brand")}</span>
       </div>
-      <NavList lang={lang} page={page} onPage={onPage} />
+      <NavList nav={nav} lang={lang} page={page} onPage={onPage} />
       <div className="mt-auto flex flex-col gap-3">
         <div className="glass-strong rounded-xl p-3">
           <div className="mb-2 flex items-center justify-between text-xs">
@@ -81,7 +77,7 @@ export function Sidebar(props) {
   );
 }
 
-export function Topbar({ lang, page, onPage, onLang, action }) {
+export function Topbar({ nav, lang, page, onPage, onLang, action }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -128,7 +124,7 @@ export function Topbar({ lang, page, onPage, onLang, action }) {
             <button type="button" className="absolute end-3 top-3 rounded-lg p-2 text-muted hover:text-ink" onClick={() => setOpen(false)} aria-label="Close menu">
               <X size={18} />
             </button>
-            <SidebarBody lang={lang} page={page} onPage={(p) => { onPage(p); setOpen(false); }} />
+            <SidebarBody nav={nav} lang={lang} page={page} onPage={(p) => { onPage(p); setOpen(false); }} />
           </motion.aside>
         </div>
       )}

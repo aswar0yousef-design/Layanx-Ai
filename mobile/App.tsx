@@ -1,6 +1,7 @@
 import React,{useCallback,useEffect,useMemo,useRef,useState}from"react";
 import {runPhoneCommand} from "./src/phone-commands";
-import{Alert,Image,Modal,PermissionsAndroid,Platform,Pressable,RefreshControl,SafeAreaView,ScrollView,StyleSheet,Switch,Text,TextInput,View}from"react-native";
+import{Alert,Image,Modal,PermissionsAndroid,Platform,Pressable,RefreshControl,ScrollView,StatusBar,StyleSheet,Switch,Text,TextInput,View}from"react-native";
+import{SafeAreaProvider,useSafeAreaInsets}from"react-native-safe-area-context";
 import*as SecureStore from"expo-secure-store";
 import{CameraView,useCameraPermissions}from"expo-camera";
 import{LayanXApi,type Approval,type Feed,type Job,type MissionSummary}from"./src/api";
@@ -17,7 +18,7 @@ type Device={name:string;url:string;urls?:string[];token:string;deviceId:string;
  pin?:string|null};
 type Tab="home"|"missions"|"apps"|"settings";
 const K={devices:"layanx.devices",selected:"layanx.selected",project:"layanx.project"};
-const C={bg:"#0A0F1E",panel:"#121A2E",panel2:"#18223A",line:"#24304D",ink:"#EEF2FA",soft:"#9AA6C2",purple:"#6D4AFF",purple2:"#8B6CFF",green:"#22C55E",amber:"#F59E0B",rose:"#EF4444",blue:"#3B82F6"};
+const C={bg:"#0B0D12",panel:"#15171F",panel2:"#1B1E28",line:"#262A36",ink:"#F5F6FA",soft:"#A3A8B8",purple:"#FF7A45",purple2:"#FF9A62",green:"#34D399",amber:"#FBBF24",rose:"#F87171",blue:"#7C5CFF"};
 const STATUS:Record<string,[string,string]>={completed:["مكتملة",C.green],failed:["فشلت",C.rose],running:["قيد التنفيذ",C.blue],planned:["مخططة",C.blue],verifying:["قيد التحقق",C.blue],blocked:["متوقفة",C.amber],cancelled:["أُلغيت",C.soft]};
 const APPS:Array<{key:string;label:string;color:string;goal:string}>=[
  {key:"shop",label:"التجارة",color:"#16A34A",goal:"أنشئ 5 منتجات جديدة في المتجر مع أوصاف"},
@@ -26,7 +27,9 @@ const APPS:Array<{key:string;label:string;color:string;goal:string}>=[
  {key:"pc",label:"الكمبيوتر",color:"#2563EB",goal:"التقط صورة للشاشة وصف ما تراه"}
 ];
 
-export default function App(){
+export default function Root(){return <SafeAreaProvider><App/></SafeAreaProvider>;}
+function App(){
+ const insets=useSafeAreaInsets();
  const[tab,setTab]=useState<Tab>("home");
  const[devices,setDevices]=useState<Device[]>([]),[selected,setSelected]=useState(0);
  const[pairName,setPairName]=useState("هاتفي"),[pairUrl,setPairUrl]=useState(""),[pairCode,setPairCode]=useState("");
@@ -281,7 +284,8 @@ export default function App(){
  </>;
 
  const tabs:Array<[Tab,string]>=[["home","الرئيسية"],["missions","المهام"],["apps","التطبيقات"],["settings","الإعدادات"]];
- return <SafeAreaView style={s.safe}>
+ return <View style={[s.safe,{paddingTop:insets.top}]}>
+  <StatusBar barStyle="light-content" backgroundColor="transparent" translucent/>
   <Modal visible={scanning} animationType="slide" onRequestClose={()=>setScanning(false)}>
    <View style={{flex:1,backgroundColor:"#000"}}>
     <CameraView style={{flex:1}} facing="back" barcodeScannerSettings={{barcodeTypes:["qr"]}} onBarcodeScanned={r=>onScanned(r.data)}/>
@@ -289,7 +293,7 @@ export default function App(){
      <Pressable style={s.ghost} onPress={()=>setScanning(false)}><Text style={s.bt}>إلغاء</Text></Pressable></View>
    </View>
   </Modal>
-  <ScrollView contentContainerStyle={s.container} refreshControl={<RefreshControl refreshing={refreshing} tintColor={C.purple} onRefresh={async()=>{setRefreshing(true);const c=api??await connect();await load(c);setRefreshing(false)}}/>}>
+  <ScrollView contentContainerStyle={[s.container,{paddingBottom:120+insets.bottom}]} refreshControl={<RefreshControl refreshing={refreshing} tintColor={C.purple} onRefresh={async()=>{setRefreshing(true);const c=api??await connect();await load(c);setRefreshing(false)}}/>}>
    {header}
    {!!error&&<Text style={s.err}>{error}</Text>}
    {tab==="home"&&(device?home:settingsTab)}
@@ -297,12 +301,12 @@ export default function App(){
    {tab==="apps"&&appsTab}
    {tab==="settings"&&settingsTab}
   </ScrollView>
-  <View style={s.tabbar}>
+  <View style={[s.tabbar,{paddingBottom:Math.max(insets.bottom,12)+6}]}>
    {tabs.slice(0,2).map(([k,l])=><Pressable key={k} style={s.tabBtn} onPress={()=>setTab(k)}><Text style={[s.tabText,tab===k&&s.tabOn]}>{l}</Text>{k==="missions"&&approvals.length>0&&<View style={s.tabBadge}/>}</Pressable>)}
    <Pressable style={s.center} onPress={()=>{setTab("home");setTimeout(()=>input.current?.focus(),50);}}><Text style={s.centerText}>X</Text></Pressable>
    {tabs.slice(2).map(([k,l])=><Pressable key={k} style={s.tabBtn} onPress={()=>setTab(k)}><Text style={[s.tabText,tab===k&&s.tabOn]}>{l}</Text></Pressable>)}
   </View>
- </SafeAreaView>
+ </View>
 }
 
 const s=StyleSheet.create({
@@ -313,16 +317,16 @@ const s=StyleSheet.create({
  small:{fontSize:13},bell:{backgroundColor:C.rose,borderRadius:14,minWidth:28,height:28,alignItems:"center",justifyContent:"center",paddingHorizontal:6},bellText:{color:"#fff",fontWeight:"800"},
  h2:{color:C.ink,fontSize:17,fontWeight:"700",textAlign:"right",marginBottom:8},
  muted:{color:C.soft,textAlign:"right",lineHeight:20},
- card:{backgroundColor:C.panel,borderColor:C.line,borderWidth:1,borderRadius:16,padding:14,marginBottom:14},
- mission:{backgroundColor:"#1B1640",borderColor:"#3B2F8F",borderWidth:1,borderRadius:18,padding:16,marginBottom:14},
+ card:{backgroundColor:C.panel,borderColor:C.line,borderWidth:1,borderRadius:20,padding:16,marginBottom:14},
+ mission:{backgroundColor:"#1A1513",borderColor:"#4A2C1F",borderWidth:1,borderRadius:22,padding:18,marginBottom:16},
  missionLabel:{color:C.ink,fontWeight:"800",fontSize:16,textAlign:"right"},
  missionInput:{color:C.ink,fontSize:16,minHeight:64,textAlign:"right",textAlignVertical:"top",marginTop:8},
- start:{backgroundColor:C.purple,borderRadius:12,padding:14,alignItems:"center",marginTop:12},startText:{color:"#fff",fontWeight:"800",fontSize:15},
- askLink:{color:"#B9B2FF",textAlign:"center",marginTop:10},
+ start:{backgroundColor:C.purple,borderRadius:14,padding:15,alignItems:"center",marginTop:12,shadowColor:C.purple,shadowOpacity:.45,shadowRadius:14,shadowOffset:{width:0,height:6},elevation:6},startText:{color:"#fff",fontWeight:"800",fontSize:15},
+ askLink:{color:C.purple2,textAlign:"center",marginTop:10},
  apps:{flexDirection:"row-reverse",justifyContent:"space-between",marginBottom:14},
- app:{width:"23%",backgroundColor:C.panel,borderColor:C.line,borderWidth:1,borderRadius:14,paddingVertical:12,alignItems:"center",gap:6},
- appIcon:{width:40,height:40,borderRadius:11,alignItems:"center",justifyContent:"center"},appGlyph:{color:"#fff",fontWeight:"800",fontSize:16},appText:{color:C.ink,fontSize:12},
- input:{backgroundColor:"#0B1222",borderColor:C.line,borderWidth:1,borderRadius:10,color:C.ink,padding:12,marginTop:10,textAlign:"right"},
+ app:{width:"23%",backgroundColor:C.panel,borderColor:C.line,borderWidth:1,borderRadius:18,paddingVertical:14,alignItems:"center",gap:8},
+ appIcon:{width:42,height:42,borderRadius:14,alignItems:"center",justifyContent:"center"},appGlyph:{color:"#fff",fontWeight:"800",fontSize:16},appText:{color:C.ink,fontSize:12},
+ input:{backgroundColor:"#101219",borderColor:C.line,borderWidth:1,borderRadius:10,color:C.ink,padding:12,marginTop:10,textAlign:"right"},
  row:{flexDirection:"row-reverse",gap:10,marginTop:10},between:{flexDirection:"row-reverse",justifyContent:"space-between",alignItems:"center"},
  ghost:{borderColor:C.line,borderWidth:1,borderRadius:10,padding:12,alignItems:"center",marginTop:8},bt:{color:C.ink,fontWeight:"600",textAlign:"center"},
  warn:{backgroundColor:C.amber,borderRadius:10,padding:12,alignItems:"center"},warnText:{color:"#2A1A02",fontWeight:"800"},
@@ -332,11 +336,11 @@ const s=StyleSheet.create({
  itemTitle:{color:C.ink,fontWeight:"700",textAlign:"right",marginBottom:4},
  q:{color:C.purple2,textAlign:"right",fontWeight:"600"},a:{color:C.ink,textAlign:"right",marginTop:4,lineHeight:21},
  screen:{width:"100%",aspectRatio:16/9,marginTop:10,borderRadius:10,backgroundColor:"#000"},
- grid:{flexDirection:"row-reverse",flexWrap:"wrap",gap:8,marginTop:6},tile:{width:"31%",backgroundColor:"#0B1222",borderRadius:10,padding:10},tileValue:{color:C.ink,fontSize:18,fontWeight:"700",textAlign:"right",marginTop:2},
+ grid:{flexDirection:"row-reverse",flexWrap:"wrap",gap:8,marginTop:6},tile:{width:"31%",backgroundColor:"#101219",borderRadius:14,padding:10},tileValue:{color:C.ink,fontSize:18,fontWeight:"700",textAlign:"right",marginTop:2},
  err:{color:C.rose,textAlign:"right",marginBottom:12},
- tabbar:{position:"absolute",left:0,right:0,bottom:0,flexDirection:"row-reverse",alignItems:"center",justifyContent:"space-around",backgroundColor:"#0E1428",borderTopColor:C.line,borderTopWidth:1,paddingBottom:18,paddingTop:8},
- tabBtn:{alignItems:"center",paddingHorizontal:6,paddingVertical:6},tabText:{color:C.soft,fontSize:12},tabOn:{color:C.purple2,fontWeight:"800"},
+ tabbar:{position:"absolute",left:12,right:12,bottom:0,flexDirection:"row-reverse",alignItems:"center",justifyContent:"space-around",backgroundColor:"#15171FF2",borderColor:C.line,borderWidth:1,borderTopLeftRadius:24,borderTopRightRadius:24,paddingTop:10},
+ tabBtn:{alignItems:"center",justifyContent:"center",minWidth:64,minHeight:48,paddingHorizontal:6,paddingVertical:8},tabText:{color:C.soft,fontSize:13},tabOn:{color:C.purple2,fontWeight:"800"},
  tabBadge:{position:"absolute",top:2,right:0,width:8,height:8,borderRadius:4,backgroundColor:C.rose},
  scanBar:{position:"absolute",left:0,right:0,bottom:0,padding:20,backgroundColor:"#000000CC"},scanText:{color:"#fff",textAlign:"center",fontSize:15,marginBottom:6},
- center:{width:56,height:56,borderRadius:28,backgroundColor:C.blue,alignItems:"center",justifyContent:"center",marginTop:-26,borderWidth:4,borderColor:C.bg},centerText:{color:"#fff",fontSize:24,fontWeight:"900"}
+ center:{width:58,height:58,borderRadius:29,backgroundColor:C.purple,alignItems:"center",justifyContent:"center",marginTop:-30,borderWidth:4,borderColor:C.bg,shadowColor:C.purple,shadowOpacity:.5,shadowRadius:12,elevation:8},centerText:{color:"#fff",fontSize:24,fontWeight:"900"}
 });

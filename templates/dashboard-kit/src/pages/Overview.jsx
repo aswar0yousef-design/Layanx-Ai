@@ -1,8 +1,31 @@
 import { motion } from "framer-motion";
-import { activity, kpis, revenue } from "../data.js";
+import { LayoutGrid } from "lucide-react";
 import { t } from "../i18n.js";
 import { changePercent, linePath, shortMoney } from "../lib/format.js";
 import { Avatar, Change, Glass, Heading, Sparkline, rise } from "../components/ui.jsx";
+
+export const meta = { group: "workspace", icon: LayoutGrid, order: 1, action: "newDeal" };
+
+// Sample data for this page: replace with the project's numbers.
+const kpis = [
+  { id: "pipeline", value: 846000, previous: 772000, money: true, trend: [42, 48, 45, 53, 58, 55, 63, 70, 68, 76, 81, 85] },
+  { id: "forecast", value: 452000, previous: 430000, money: true, trend: [30, 31, 33, 32, 36, 38, 37, 40, 42, 41, 44, 45] },
+  { id: "won", value: 229000, previous: 251000, money: true, trend: [28, 26, 27, 25, 24, 26, 23, 22, 24, 23, 22, 23] },
+  { id: "deal", value: 47000, previous: 41000, money: true, trend: [32, 33, 35, 34, 37, 38, 40, 41, 43, 44, 46, 47] },
+];
+
+const revenue = [
+  { month: "Dec", value: 61 }, { month: "Jan", value: 58 }, { month: "Feb", value: 66 }, { month: "Mar", value: 72 },
+  { month: "Apr", value: 69 }, { month: "May", value: 78 }, { month: "Jun", value: 84 }, { month: "Jul", value: 81 },
+  { month: "Aug", value: 90 }, { month: "Sep", value: 96 }, { month: "Oct", value: 104 }, { month: "Nov", value: 112 },
+];
+
+const activity = [
+  { id: "a1", who: "lina", text: { en: "moved Clinic network licence to Proposal", ar: "نقلت ترخيص شبكة العيادات إلى العرض" }, when: { en: "12 min ago", ar: "قبل 12 دقيقة" } },
+  { id: "a2", who: "omar", text: { en: "won Studio seats x40", ar: "ربح صفقة مقاعد الاستوديو ×40" }, when: { en: "1 h ago", ar: "قبل ساعة" } },
+  { id: "a3", who: "noor", text: { en: "added a note to Fleet tracking rollout", ar: "أضافت ملاحظة إلى نظام تتبع الأسطول" }, when: { en: "3 h ago", ar: "قبل 3 ساعات" } },
+  { id: "a4", who: "yusuf", text: { en: "scheduled a call with Oasis Retail", ar: "حدد مكالمة مع واحة للتجزئة" }, when: { en: "Yesterday", ar: "أمس" } },
+];
 
 const KPI_COLORS = ["#ff7a45", "#7c5cff", "#34d399", "#1fb6c9"];
 

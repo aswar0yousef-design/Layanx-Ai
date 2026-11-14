@@ -10,8 +10,8 @@ import {fileURLToPath} from "node:url";
 export const TEMPLATES_DIR=fileURLToPath(new URL("../../templates/",import.meta.url));
 export const KITS:Record<string,{dir:string;about:string;next:string}>={
   dashboard:{dir:"dashboard-kit",
-    about:"React 18 + Vite 6 + Tailwind 4 + framer-motion + lucide-react glass dashboard: sidebar, top bar, KPI cards, revenue chart, drag-and-drop pipeline, task board, Arabic/English (RTL).",
-    next:"Read KIT.md. Then project.run install, test and build. Fit it to the goal: tokens in src/index.css, words in src/i18n.js (en + ar), data in src/data.js, pages in src/pages and PAGES in src/App.jsx, menu in NAV (src/components/Shell.jsx)."},
+    about:"React 18 + Vite 6 + Tailwind 4 + framer-motion + lucide-react glass dashboard: sidebar, top bar, KPI cards, revenue chart, drag-and-drop pipeline, task board, Arabic/English (RTL). Each file in src/pages is a page and a menu entry by itself.",
+    next:"Read KIT.md. Then project.run install, test and build. Fit it to the goal: a new page is one file src/pages/<Name>.jsx with a default export and export const meta = {group, icon, order} (never edit App.jsx routing, never add react-router or any package); words in src/i18n.js (en + ar); the data a page shows goes at the top of that page file (src/data.js only holds shared user, people, TODAY); delete sample pages that do not fit; look in src/index.css tokens."},
 };
 const SKIP=new Set(["node_modules","dist",".vite"]);
 

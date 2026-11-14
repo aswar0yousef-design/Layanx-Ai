@@ -332,6 +332,20 @@ export function isUnsupportedCriterion(c:string):boolean{
       ||/^result\.[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/i.test(t));
 }
 /** "result.url === http://x/contact" -> "result.url === \"http://x/contact\"": the value was meant as text. */
+const RISK_WORDS:Record<string,"low"|"medium"|"high"|"critical">={low:"low",minimal:"low",minor:"low",none:"low",safe:"low",medium:"medium",moderate:"medium",mid:"medium",normal:"medium",high:"high",severe:"high",major:"high",critical:"critical"};
+/** The model's risk word as one of low|medium|high|critical; anything unknown counts as high. */
+export function normaliseRisk(value:unknown):"low"|"medium"|"high"|"critical"{
+  return RISK_WORDS[String(value??"").trim().toLowerCase()]??"high";
+}
+const PERMISSION_LEVELS=["L1_READ","L2_ANALYZE","L3_MODIFY","L4_EXECUTE","L5_CRITICAL"];
+/** Spelling only ("l3_modify", "L3", "L3 MODIFY" -> "L3_MODIFY"); a value that names no level stays as it is and is refused. */
+export function normalisePermission(value:unknown):unknown{
+  const text=String(value??"").trim().toUpperCase().replace(/[\s-]+/g,"_");
+  const exact=PERMISSION_LEVELS.find(p=>p===text);if(exact)return exact;
+  const level=/^L([1-5])(?:_|$)/.exec(text);
+  if(level){const p=PERMISSION_LEVELS[Number(level[1])-1]!;if(text===`L${level[1]}`||p===text||p.startsWith(text))return p;}
+  return value;
+}
 export function quoteCriterionValue(c:string):string{
   const m=/^(result(?:\.[A-Za-z_$][\w$]*)*)\s*(===|==|!==|!=|contains)\s*(.+)$/i.exec(c.trim());
   if(!m)return c;
@@ -385,7 +399,7 @@ export class AiMissionPlanner{
       "For project.verify use payload {script:\"test\"}, {script:\"typecheck\"}, or {script:\"build\"} according to the goal. For terminal.exec include a safe allowlisted command payload.",
       "For files.list use payload {path:\".\"} to list the current project root (or omit path); for files.read and files.stat supply an existing project-relative file path. Never use an absolute drive path, home folder, leading slash, or path outside the project.",
       "A new project starts as an empty folder: create its files (files.write) or its package.json and packages (project.bootstrap) before project.run or project.verify, which only run an existing project.",
-      "For a dashboard, admin panel, CRM or analytics page, start from the professional kit: project.run {task:\"template:dashboard\"}, then {task:\"install\"}, then adapt its pages, data (src/data.js) and words (src/i18n.js) with files.write, then {task:\"test\"} and {task:\"build\"}; never write a dashboard from an empty file.",
+      "For a dashboard, admin panel, CRM or analytics page, start from the professional kit: project.run {task:\"template:dashboard\"}, then {task:\"install\"}, then adapt it with files.write: each new page is ONE file src/pages/<Name>.jsx with a default export and export const meta (it joins the menu by itself; never edit App.jsx routing, never add react-router or any package), the data a page shows at the top of that page file, words in src/i18n.js (English and Arabic), sample pages that do not fit deleted, then {task:\"test\"} and {task:\"build\"}; never write a dashboard from an empty file.",
       "For an Android (mobile) app, unless the owner asked for Flutter or React Native, build a native Kotlin + Jetpack Compose app that opens in Android Studio: first project.run {task:\"android:create\",appName,packageId}, then write the screens under app/src/main/java/<package path>/ with files.write, then project.run {task:\"build\"} and {task:\"test\"}; project.run {task:\"studio:open\"} opens it in Android Studio and {task:\"device:run\"} runs it on the emulator.",
       "When using files.write, supply payload {path:\"src/server.mjs\",content:\"actual complete nonempty source code\"} (or another required relative file). Do not write empty content, placeholders or just filenames. The tool returns {path,bytes,written:true}; use successCriteria [\"result.written === true\"] for the final files.write call. Never write result.fileExists <filename> or pretend file existence was checked.",
       "When the goal needs outside data (exchange rates, weather, maps, products, email checks, test data), call apis.search first for a free public API (prefer auth No with HTTPS), then read its documentation with http.read before writing code for it; never invent an API.",
@@ -500,7 +514,11 @@ export class AiMissionPlanner{
     value=parseModelJson(raw,"Model planner");
     if(!value||typeof value!=="object")throw new Error("Model planner returned an invalid plan.");
     const v=value as Record<string,unknown>;
-    if(!["low","medium","high","critical"].includes(String(v.risk)))throw new Error("Invalid mission risk.");
+    // risk is the model's own description of the plan, not a gate (each tool keeps its permission and approval): a
+    // differently written word ("Medium", "moderate") is normalised and an unknown one counts as high, instead of
+    // stopping the whole step (seen live 2026-11-14 while building a dashboard).
+    v.risk=normaliseRisk(v.risk);
+    v.requiredPermission=normalisePermission(v.requiredPermission);
     if(!["L1_READ","L2_ANALYZE","L3_MODIFY","L4_EXECUTE","L5_CRITICAL"].includes(String(v.requiredPermission)))throw new Error("Invalid mission permission.");
     const steps=Array.isArray(v.steps)?v.steps.filter(x=>x&&typeof x==="object"&&typeof (x as Record<string,unknown>).description==="string").map(x=>({description:String((x as Record<string,unknown>).description)})):[];
     // An unquoted value ("result.browser.url === http://...") is quoted: rejecting the whole plan for it stopped every
@@ -529,6 +547,21 @@ export class AiMissionPlanner{
       // enforced artifact/behavior gates verify whether the code really works.
       const unique=[...new Set(successCriteria)];
       successCriteria.splice(0,successCriteria.length,...unique);
+    }
+    // project.run returns {task, ok, exitCode, ...} (template:* returns {template, written}, android:create {created}).
+    // A criterion on a field it never returns ("result.status === 'success'", seen 2026-11-14 after the dashboard kit was
+    // copied and installed) is replaced by the tool's real receipt; criteria on real fields stay as written.
+    const last=tools.at(-1);
+    if(last?.tool==="project.run"){
+      const task=String((last.payload as {task?:unknown}|undefined)?.task??"");
+      const receipt=task.startsWith("template:")?`result.template === "${task.slice("template:".length).replace(/[^\w-]/g,"")}"`
+        :task==="android:create"?"result.created === true":["install","test","build","lint","typecheck","script","device:run"].includes(task)?"result.ok === true":undefined;
+      // Every result.* guess is replaced: field names differ per task ("written" is a file list for template:*, absent
+      // for install), and the model kept writing ones the last task does not return (seen twice 2026-11-14).
+      if(receipt){
+        const kept=successCriteria.filter(c=>!/^result\./.test(c.trim()));
+        successCriteria.splice(0,successCriteria.length,...new Set([receipt,...kept]));
+      }
     }
     // A missing stop condition is not a reason to fail the owner's task; the runtime has its own limits.
     if(typeof v.stopCondition!=="string"||!v.stopCondition.trim())v.stopCondition="Stop when the goal is done, a step fails twice, or approval is needed.";

@@ -153,8 +153,12 @@ function directDesktopOpenGoal(text:string):{app?:string;url?:string;label:strin
     .replace(/[،,;؛.!؟?]+$/u,"")
     .trim();
   const request=openRequest(command);
-  if(!request||!request.app||request.label.toLowerCase()!=="notepad")return undefined;
-  return{...request,command:"افتح Notepad"};
+  if(!request)return undefined;
+  if(request.app&&request.label.toLowerCase()==="notepad")return{...request,command:"افتح Notepad"};
+  // Any other certain "open X" (a known program, a Start-menu app, a site such as «كروم يوتيوب»): open it directly,
+  // never as a research project (found 2026-11-14: «قم بفتح كروم يوتيوب» became 3 milestones starting with research).
+  const target=request.url?(request.app?`${request.url} في ${request.app}`:request.url):request.app!;
+  return{...request,command:`افتح ${target}`};
 }
 
 const MAX_ATTEMPTS=4;
@@ -170,6 +174,10 @@ function extractJson(raw:string):any{
 }
 const clip=(s:unknown,n=1500)=>{const t=typeof s==="string"?s:JSON.stringify(s??"");return t.length>n?t.slice(0,n)+"…":t;};
 
+/** An agent stop caused only by the model's reply being malformed, not by anything it did or was refused. */
+export function plannerFormatStop(reason:string|undefined):boolean{
+  return /(?:Model|Adaptive) planner returned (?:invalid JSON|an invalid (?:plan|tool))|Mission has no execution step|Invalid mission (?:risk|permission)/i.test(reason??"");
+}
 /** A goal for an Android app (planned as a native project that opens in Android Studio). */
 export const ANDROID_GOAL=/\bandroid\b|android studio|\bapk\b|اندرويد|أندرويد|اندرويد ستوديو|تطبيق (?:جوال|موبايل|هاتف)/i;
 /** A goal for a dashboard / admin panel (started from the professional kit). */
@@ -517,7 +525,7 @@ export class Supervisor{
       "Rules: 1-6 milestones, smallest safe steps, reuse and edit existing code instead of rewriting, never delete working features.",
       "Set checks to what really proves the goal for this project. browser is for anything visible in a web page.",
       DASHBOARD_GOAL.test(job.goal)&&!ANDROID_GOAL.test(job.goal)&&(!info||info.stack==="unknown"||info.stack==="node")
-        ? "This is a dashboard: the first code milestone runs project.run {task:\"template:dashboard\"} (a professional React + Tailwind + framer-motion glass kit; read KIT.md) then {task:\"install\"}; the next milestones adapt its pages, data (src/data.js) and words (src/i18n.js, English and Arabic) to the goal without rewriting the kit's components; checks: install, test and build true, browser {\"path\":\"/\"}."
+        ? "This is a dashboard: the first code milestone runs project.run {task:\"template:dashboard\"} (a professional React + Tailwind + framer-motion glass kit; read KIT.md) then {task:\"install\"}; the next milestones adapt it to the goal: each new page is ONE file src/pages/<Name>.jsx with a default export and export const meta = {group, icon, order} (it joins the menu by itself; never edit App.jsx routing, never add react-router or any package), the data a page shows at the top of that page file, words in src/i18n.js (English and Arabic), sample pages that do not fit deleted, without rewriting the kit components; checks: install, test and build true, browser {\"path\":\"/\"}."
         : "",
       ANDROID_GOAL.test(job.goal)&&!/flutter|react native|فلاتر/i.test(job.goal)&&(!info||info.stack==="unknown"||info.stack==="android")
         ? "This is an Android app: build it as a native Kotlin + Jetpack Compose project that opens in Android Studio. The first code milestone runs project.run {task:\"android:create\",appName,packageId} (it writes the Gradle project and wrapper), then the screens are written under app/src/main/java/<package path>/; checks: build (assembleDebug) and test (unit tests) true, install false, browser null. The last milestone runs project.run {task:\"studio:open\"} so the owner sees it in Android Studio."
@@ -537,7 +545,9 @@ export class Supervisor{
         acceptance:[`تم فتح ${directOpen.label} بنجاح`,`نافذة ${directOpen.label} ظاهرة على سطح المكتب`],
         milestones:[
           {title:`فتح ${directOpen.label}`,goal:directOpen.command,kind:"desktop"},
-          {title:"التحقق من النافذة",goal:`تحقق من أن نافذة ${directOpen.label} ظاهرة على سطح مكتب Windows باستخدام أدوات قراءة النوافذ أو شجرة الواجهة، ولا تغلق التطبيق.`,kind:"desktop"}
+          {title:"التحقق من النافذة",goal:directOpen.url
+            ?`تحقق من أن نافذة متصفح تعرض ${directOpen.label} ظاهرة على سطح مكتب Windows باستخدام أدوات قراءة النوافذ أو شجرة الواجهة، ولا تغلق المتصفح.`
+            :`تحقق من أن نافذة ${directOpen.label} ظاهرة على سطح مكتب Windows باستخدام أدوات قراءة النوافذ أو شجرة الواجهة، ولا تغلق التطبيق.`,kind:"desktop"}
         ],
         checks:{install:false,test:false,build:false,typecheck:false,lint:false,security:false,browser:null}
       };
@@ -1248,8 +1258,13 @@ export class Supervisor{
     // stop does not erase that evidence. Other stop reasons remain failures.
     const evidenceAfterReadStop=job.acceptanceProfile==="task-app-http-v1"&&!failed.length&&
       /^Repeated read-only tool blocked:/i.test(agentStopped??"");
-    if(!failed.length&&(!agentFailed||evidenceAfterReadStop)){
+    // The model wrote the work in this attempt, then its NEXT reply was malformed (no step, broken JSON): the files are
+    // there and every real check passed, so the step is done. Seen 2026-11-14: a dashboard page was fixed and built,
+    // then "Mission has no execution step" failed the attempt and the work was handed to a weaker model.
+    const evidenceAfterFormatStop=!failed.length&&plannerFormatStop(agentStopped)&&checks.some(c=>c.ok&&!c.skipped)&&this.attemptChangedFiles(job);
+    if(!failed.length&&(!agentFailed||evidenceAfterReadStop||evidenceAfterFormatStop)){
       if(evidenceAfterReadStop)this.log(job,"Read-only loop stopped, but current milestone passed independent artifact/check gates","warn");
+      if(evidenceAfterFormatStop)this.log(job,`The model's last reply was malformed (${agentStopped}), but this attempt changed the project and every check passed`,"warn");
       const missionId=m.missions.at(-1);
       if(missionId&&!(job.runtimeProofs??[]).some(p=>p.missionId===missionId)){
         (job.runtimeProofs??=[]).push({missionId,milestone:m.title,observedAt:now()});

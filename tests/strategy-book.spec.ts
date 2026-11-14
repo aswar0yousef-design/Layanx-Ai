@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+// This test is about the strategy book, not trading hours (asset-profiles has its own spec): on a weekend the
+// hours gate answered first and the test failed (2026-11-14, a Saturday).
+process.env.MT5_TRADING_HOURS="off";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

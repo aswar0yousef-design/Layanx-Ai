@@ -1,10 +1,34 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, Columns3 } from "lucide-react";
 import { useState } from "react";
-import { deals as initialDeals, stages } from "../data.js";
 import { t } from "../i18n.js";
 import { groupByStage, moveDeal, shortMoney, total } from "../lib/format.js";
 import { Avatar, Glass, Progress, rise } from "../components/ui.jsx";
+
+export const meta = { group: "sales", icon: Columns3, order: 1, action: "newDeal", sub: "pipelineSub" };
+
+// Sample data for this page: replace with the project's deals and stages.
+const stages = [
+  { id: "lead", color: "#a3a8b8" },
+  { id: "qualified", color: "#1fb6c9" },
+  { id: "proposal", color: "#7c5cff" },
+  { id: "negotiation", color: "#fbbf24" },
+  { id: "won", color: "#34d399" },
+];
+
+const initialDeals = [
+  { id: "d1", title: "Fleet tracking rollout", company: "Northwind Freight", value: 64000, stage: "lead", owner: "noor", progress: 15, due: "2026-11-28" },
+  { id: "d2", title: "Supplier portal", company: "Cedar Foods", value: 37000, stage: "lead", owner: "omar", progress: 10, due: "2026-12-03" },
+  { id: "d3", title: "Warehouse scanners", company: "Delta Logistics", value: 21000, stage: "lead", owner: "yusuf", progress: 20, due: "2026-12-09" },
+  { id: "d4", title: "Lab data sync", company: "Helix Labs", value: 52000, stage: "qualified", owner: "lina", progress: 40, due: "2026-11-25" },
+  { id: "d5", title: "Loyalty programme", company: "Palm Outdoor", value: 29000, stage: "qualified", owner: "noor", progress: 35, due: "2026-12-01" },
+  { id: "d6", title: "Onboarding automation", company: "Brightpath HR", value: 41000, stage: "proposal", owner: "omar", progress: 60, due: "2026-11-21" },
+  { id: "d7", title: "Clinic network licence", company: "Saha Clinics", value: 148000, stage: "proposal", owner: "lina", progress: 55, due: "2026-11-30" },
+  { id: "d8", title: "Store analytics", company: "Oasis Retail", value: 86000, stage: "negotiation", owner: "yusuf", progress: 80, due: "2026-11-18" },
+  { id: "d9", title: "Support desk migration", company: "Falcon Telecom", value: 33000, stage: "negotiation", owner: "noor", progress: 75, due: "2026-11-20" },
+  { id: "d10", title: "Studio seats x40", company: "Atlas Design", value: 18400, stage: "won", owner: "omar", progress: 100, due: "2026-11-10" },
+  { id: "d11", title: "Live-ops dashboard", company: "Pixel Forge", value: 76000, stage: "won", owner: "lina", progress: 100, due: "2026-11-07" },
+];
 
 function DealCard({ deal, color, lang, onDragStart }) {
   return (
