@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { LayoutGrid } from "lucide-react";
 import { t } from "../i18n.js";
 import { changePercent, linePath, shortMoney } from "../lib/format.js";
-import { Avatar, Change, Glass, Heading, Sparkline, rise } from "../components/ui.jsx";
+import { Avatar, Glass, Heading, StatCard, rise } from "../components/ui.jsx";
 
 export const meta = { group: "workspace", icon: LayoutGrid, order: 1, action: "newDeal" };
 
@@ -28,24 +28,6 @@ const activity = [
 ];
 
 const KPI_COLORS = ["#ff7a45", "#7c5cff", "#34d399", "#1fb6c9"];
-
-export function StatCard({ lang, kpi, index }) {
-  const change = changePercent(kpi.value, kpi.previous);
-  return (
-    <Glass as={motion.article} {...rise(index)} whileHover={{ y: -4 }} className="flex flex-col gap-4 p-5">
-      <p className="text-xs font-medium text-muted">{t(lang, `kpi_${kpi.id}`)}</p>
-      <div className="flex items-end justify-between gap-2">
-        <div>
-          <p className="text-[28px] font-semibold leading-none tracking-tight">{kpi.money ? shortMoney(kpi.value) : kpi.value.toLocaleString()}</p>
-          <div className="mt-2">
-            <Change value={change} label={` ${t(lang, "vsLast")}`} />
-          </div>
-        </div>
-        <Sparkline values={kpi.trend} color={KPI_COLORS[index % KPI_COLORS.length]} />
-      </div>
-    </Glass>
-  );
-}
 
 function RevenueChart({ lang }) {
   const W = 640, H = 220, values = revenue.map((r) => r.value);
@@ -100,7 +82,7 @@ export default function Overview({ lang }) {
     <div className="flex flex-col gap-4">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {kpis.map((k, i) => (
-          <StatCard key={k.id} lang={lang} kpi={k} index={i} />
+          <StatCard key={k.id} index={i} title={t(lang, `kpi_${k.id}`)} value={k.money ? shortMoney(k.value) : k.value.toLocaleString()} change={changePercent(k.value, k.previous)} changeLabel={t(lang, "vsLast")} trend={k.trend} color={KPI_COLORS[i % KPI_COLORS.length]} />
         ))}
       </div>
       <div className="grid gap-4 xl:grid-cols-3">

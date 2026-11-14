@@ -12,7 +12,9 @@ Arabic and English, with the whole layout turning right-to-left in Arabic.
 | Every visible word (en + ar) | `src/i18n.js` |
 | Shared data (user, people, today) | `src/data.js` |
 | Pure logic with tests | `src/lib/format.js`, `src/lib/format.test.js` |
-| Glass panel, heading, sparkline, avatar, pill, progress, `rise()` entrance | `src/components/ui.jsx` |
+| Shared components: `Glass`, `Heading`, `StatCard`, `Sparkline`, `Change`, `Avatar`, `Pill`, `Progress`, `rise()` | `src/components/ui.jsx` (import them from `"../components/ui.jsx"`; nothing else lives there) |
+| Words: `t(lang, key)` | `src/i18n.js` (import `{ t }` from `"../i18n.js"`; there is no `useTranslation` hook) |
+| Formatting: `shortMoney`, `changePercent`, `total`, `linePath` | `src/lib/format.js` |
 | Sidebar, top bar, mobile menu | `src/components/Shell.jsx` |
 | Pages (each file is a page and a menu entry) | `src/pages/*.jsx` |
 

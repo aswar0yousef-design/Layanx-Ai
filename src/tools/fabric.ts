@@ -1,3 +1,4 @@
+import {brokenImporters,missingPackages} from "./import-guard.js";
 import {assertPublicAddress} from "./http-read.js";
 import {linkedProjectPath} from "../platform/linked-projects.js";
 import {safeChildEnv} from "../platform/safe-env.js";
@@ -74,6 +75,12 @@ export function createFileWriteToolAdapter(options:{root:string}):ToolAdapter{
     try{manifest=JSON.parse(content);}catch{throw new Error("package.json must contain valid, non-empty JSON before it can be written.");}
     if(!manifest||typeof manifest!=="object"||Array.isArray(manifest))
      throw new Error("package.json must be a JSON object.");
+   }
+   if(/\.(?:mjs|cjs|js|jsx|ts|tsx|vue|svelte)$/i.test(target)){
+    const missing=missingPackages(workspace,content);
+    if(missing.length)throw new Error(`${path} imports ${missing.map(m=>`"${m}"`).join(", ")}, which this project does not have (not in package.json, not installed). Use what the project already has (read package.json and the existing files), or add the package to package.json and run project.run install first. Nothing was written.`);
+    const broken=brokenImporters(workspace,target,content);
+    if(broken.length)throw new Error(`This version of ${path} drops exports other files still use: ${broken.slice(0,8).join("; ")}${broken.length>8?"; …":""}. Keep those exports (edit the file instead of rewriting it), or change those files first. Nothing was written.`);
    }
    await mkdir(resolve(target,".."),{recursive:true});
    await writeFile(target,content,"utf8");

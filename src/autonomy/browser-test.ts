@@ -3,6 +3,8 @@ import path from "node:path";
 import type {ToolAdapter} from "../tools/executor.js";
 import type {ToolRequest} from "../core/types.js";
 import {projectDir} from "./project-dir.js";
+/** The icon a browser requests by itself: its absence is not a page error. */
+const FAVICON=/\/favicon\.ico(?:[?#]|$)/i;
 import {ensureLayanxIgnore} from "./knowledge.js";
 
 /**
@@ -163,10 +165,10 @@ export function createBrowserTestAdapter():ToolAdapter{
       const ctx=await b.newContext({viewport:{width:VIEWPORTS[vp]!.width,height:VIEWPORTS[vp]!.height},isMobile:VIEWPORTS[vp]!.isMobile??false,deviceScaleFactor:VIEWPORTS[vp]!.deviceScaleFactor??1,locale:"ar"});
       const page=await ctx.newPage();
       const consoleErrors:string[]=[],pageErrors:string[]=[],failedRequests:string[]=[];
-      page.on("console",(m:any)=>{if(m.type()==="error")consoleErrors.push(String(m.text()).slice(0,300));});
+      page.on("console",(m:any)=>{if(m.type()!=="error")return;const at=String(m.location?.()?.url??"");if(/Failed to load resource/i.test(String(m.text()))&&FAVICON.test(at))return;consoleErrors.push(String(m.text()).slice(0,300));});
       page.on("pageerror",(e:Error)=>pageErrors.push(String(e.message).slice(0,300)));
       page.on("requestfailed",(r:any)=>failedRequests.push(r.method()+" "+String(r.url()).slice(0,200)+" "+(r.failure()?.errorText??"")));
-      page.on("response",(r:any)=>{if(r.status()>=400)failedRequests.push(r.status()+" "+String(r.url()).slice(0,200));});
+      page.on("response",(r:any)=>{if(r.status()>=400&&!FAVICON.test(String(r.url())))failedRequests.push(r.status()+" "+String(r.url()).slice(0,200));});
       const started=Date.now();let status=0,stepsDone:string[]=[],stepError:string|undefined;const snapshots:string[]=[];
       try{const resp=await page.goto(url,{waitUntil:"load",timeout:30000});status=resp?.status()??0;await page.waitForTimeout(400);stepsDone=await runSteps(page,steps,snapshots);}
       catch(e){stepError=String((e as Error).message).split("\n")[0];}

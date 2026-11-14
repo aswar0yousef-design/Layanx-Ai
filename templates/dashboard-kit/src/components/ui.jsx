@@ -86,3 +86,27 @@ export const rise = (i = 0) => ({
   animate: { opacity: 1, y: 0 },
   transition: { duration: 0.45, delay: i * 0.06, ease: [0.22, 1, 0.36, 1] },
 });
+
+/**
+ * A number card: a small title, a big value, an optional change and trend line.
+ *   <StatCard title={t(lang, "sales")} value="$12.4K" change={8.5} trend={[3, 4, 6, 5, 7]} index={0} />
+ * value is shown as given (format it with shortMoney or toLocaleString first).
+ */
+export function StatCard({ title, value, change, changeLabel, trend, color = "var(--color-accent)", index = 0 }) {
+  return (
+    <Glass as={motion.article} {...rise(index)} whileHover={{ y: -4 }} className="flex flex-col gap-4 p-5">
+      <p className="text-xs font-medium text-muted">{title}</p>
+      <div className="flex items-end justify-between gap-2">
+        <div>
+          <p className="text-[28px] font-semibold leading-none tracking-tight">{value}</p>
+          {typeof change === "number" && (
+            <div className="mt-2">
+              <Change value={change} label={changeLabel ? ` ${changeLabel}` : ""} />
+            </div>
+          )}
+        </div>
+        {Array.isArray(trend) && trend.length > 1 && <Sparkline values={trend} color={color} />}
+      </div>
+    </Glass>
+  );
+}
