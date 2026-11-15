@@ -142,7 +142,14 @@ function Ensure-Whisper {
   $role = if (Test-CohereAsr) { 'backup speech recognition' } else { 'local speech recognition' }
   Say "Starting $role (Whisper: $($model.Name))..."
   $threads = [Math]::Max(2, [Environment]::ProcessorCount / 2)
-  Start-Process -FilePath $server.FullName -WorkingDirectory $server.DirectoryName -WindowStyle Hidden -ArgumentList @('-m', "`"$($model.FullName)`"", '--host', '127.0.0.1', '--port', "$port", '--inference-path', '/v1/audio/transcriptions', '-t', "$threads")
+  $whisperArgs = @('-m', "`"$($model.FullName)`"", '--host', '127.0.0.1', '--port', "$port", '--inference-path', '/v1/audio/transcriptions', '-t', "$threads")
+  # Whisper on the CPU leaves the graphics card to Ollama: on a 6 GB card the two together filled it and
+  # Ollama's model loads crashed (CUDA "shared object initialization failed"). Chosen by LAYANX_WHISPER_DEVICE
+  # or by the word "cpu" in <data>\whisper\device.txt; the default stays the GPU.
+  $device = $env:LAYANX_WHISPER_DEVICE
+  if (-not $device) { $deviceFile = Join-Path $dir 'device.txt'; if (Test-Path $deviceFile) { $device = (Get-Content $deviceFile -Raw).Trim() } }
+  if ($device -eq 'cpu') { $whisperArgs += '-ng'; Say 'Whisper runs on the CPU (the graphics card is left to Ollama).' }
+  Start-Process -FilePath $server.FullName -WorkingDirectory $server.DirectoryName -WindowStyle Hidden -ArgumentList $whisperArgs
   for ($i = 0; $i -lt 30 -and -not (Test-PortInUse $port); $i++) { Start-Sleep -Milliseconds 500 }
 }
 
